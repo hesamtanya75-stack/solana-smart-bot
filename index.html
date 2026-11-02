@@ -1,1 +1,71 @@
-
+<!doctype html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solana Smart Bot — Demo</title>
+<style>
+body{margin:0;background:#0c1220;color:#edf2ff;font-family:Arial,sans-serif;padding:18px}
+.wrap{max-width:760px;margin:auto}
+.card{background:#151f33;border:1px solid #2b3b58;border-radius:16px;padding:16px;margin:12px 0}
+h1{font-size:24px}.muted{color:#aab8d1;font-size:14px;line-height:1.7}
+button{border:0;border-radius:10px;padding:12px;background:#4388f5;color:white;font-weight:bold}
+.metric{font-size:22px;font-weight:bold}
+table{width:100%;font-size:13px;text-align:right}
+td,th{padding:9px;border-bottom:1px solid #2b3b58}
+.token{word-break:break-all;font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🤖 Solana Smart Bot</h1>
+<p class="muted">دۆزینەوەی کۆین و مامەڵەی خەیاڵی</p>
+<div class="card">
+<div class="metric">$5.00</div>
+<p class="muted">بودجەی خەیاڵی — ئامانجی فرۆشتن 2x</p>
+<p class="muted">ئەمە تەنها Demo ـیە. هیچ پارەیەکی ڕاستەقینە بەکارناهێنێت و بە Phantom پەیوەست نییە.</p>
+</div>
+<div class="card">
+<h2>کۆینە نوێکان</h2>
+<button id="refresh">نوێکردنەوە</button>
+<p id="status" class="muted">بۆ بینینی کۆینەکان نوێکردنەوە دابگرە.</p>
+<div style="overflow-x:auto">
+<table>
+<thead><tr><th>کۆین</th><th>نرخ</th><th>Liquidity</th><th>24h Volume</th></tr></thead>
+<tbody id="coins"><tr><td colspan="4">هێشتا داتا نییە</td></tr></tbody>
+</table>
+</div>
+</div>
+<div class="card">
+<h2>ئاگاداری گرنگ</h2>
+<p class="muted">ئەم پڕۆتۆتایپە پشکنینی تەواوی mint authority و freeze authority و هەموو هۆڵدەرەکان ناکات. پێش کڕینی هەر کۆینێک پشکنینی سەربەخۆ بکە.</p>
+</div>
+</div>
+<script>
+const statusBox=document.getElementById('status');
+document.getElementById('refresh').onclick=async()=>{
+statusBox.textContent='داتا بار دەکرێت...';
+try{
+const r=await fetch('https://api.dexscreener.com/token-profiles/latest/v1');
+if(!r.ok)throw Error();
+const data=await r.json();
+const tokens=data.filter(x=>x.chainId==='solana').slice(0,12);
+const results=await Promise.all(tokens.map(async t=>{
+try{
+const p=await fetch('https://api.dexscreener.com/token-pairs/v1/solana/'+t.tokenAddress);
+const a=await p.json();
+return Array.isArray(a)?a.sort((x,y)=>(y.liquidity?.usd||0)-(x.liquidity?.usd||0))[0]:null;
+}catch{return null}
+}));
+const valid=results.filter(x=>x&&x.baseToken);
+document.getElementById('coins').innerHTML=valid.map(p=>
+`<tr><td><b>${p.baseToken.symbol}</b><div class="token">${p.baseToken.address}</div></td><td>$${Number(p.priceUsd||0).toFixed(8)}</td><td>$${Math.round(p.liquidity?.usd||0)}</td><td>$${Math.round(p.volume?.h24||0)}</td></tr>`
+).join('')||'<tr><td colspan="4">کۆین نەدۆزرایەوە</td></tr>';
+statusBox.textContent='ژمارەی کۆینەکان: '+valid.length;
+}catch(e){
+statusBox.textContent='نەتوانرا داتا باربکرێت. دووبارە هەوڵ بدە.';
+}
+};
+</script>
+</body>
+</html>
