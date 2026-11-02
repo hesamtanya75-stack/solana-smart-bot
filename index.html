@@ -1,6 +1,4 @@
 
-
-
 <!doctype html>
 <html lang="ckb" dir="rtl">
 <head>
@@ -10,7 +8,7 @@
 <style>
 *{box-sizing:border-box}
 body{margin:0;padding:16px;background:#101522;color:#f4f6fb;font-family:Arial}
-main{max-width:820px;margin:auto}
+main{max-width:850px;margin:auto}
 h1{text-align:center;color:#a99aff}
 .card{background:#1b2639;border:1px solid #34445c;border-radius:13px;padding:15px;margin:13px 0;overflow-wrap:anywhere}
 .muted{color:#b8c3d6;line-height:1.8}
@@ -26,11 +24,11 @@ a{color:#aebdff}.small{font-size:12px}
 <body>
 <main>
 <h1>🤖 Solana Smart Bot</h1>
-<p class="muted">پشکنینی کۆین، هۆڵدەرەکان و مەترسییەکان.</p>
+<p class="muted">پشکنینی کۆین، بازاڕ، هۆڵدەر و مەترسییەکان.</p>
 
 <section class="card">
 <b>بودجەی خەیاڵی: $5</b>
-<p class="muted">تەنها Demo ـە؛ هیچ مامەڵەیەکی ڕاستەقینە ناکات و بە Phantom پەیوەست نییە.</p>
+<p class="muted">تەنها بۆ Demo ـە. هیچ مامەڵەیەکی ڕاستەقینە ناکات و بە Phantom پەیوەست نییە.</p>
 </section>
 
 <section class="card">
@@ -44,7 +42,7 @@ a{color:#aebdff}.small{font-size:12px}
 <p class="small muted">
 سەرچاوە: DexScreener، RugCheck و Jupiter.
 داتای نەدۆزرایەوە بە ڕوونی دیارە.
-هیچ ئەنجامێک گەرەنتی سەلامەتی یان توانای فرۆشتن نییە.
+Quote گەرەنتی فرۆشتنی ڕاستەقینە نییە.
 Seed Phrase و Private Key مەنووسە.
 </p>
 </main>
@@ -56,12 +54,10 @@ const esc=x=>String(x??"—").replace(/[&<>"']/g,c=>({
 "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 }[c]));
 
-const fmt=x=>x==null||!Number.isFinite(Number(x))
-?"نەدۆزرایەوە":Number(x).toLocaleString("en-US",{maximumFractionDigits:4});
-
-const usd=x=>x==null?"نەدۆزرایەوە":"$"+fmt(x);
-const section=(t,b)=>'<section class="card"><h3>'+t+'</h3>'+b+'</section>';
+const num=x=>x==null||!Number.isFinite(Number(x))?"نەدۆزرایەوە":Number(x).toLocaleString("en-US",{maximumFractionDigits:4});
+const usd=x=>x==null?"نەدۆزرایەوە":"$"+num(x);
 const row=(k,v)=>'<div style="padding:8px 0;border-bottom:1px solid #39465c"><b>'+k+':</b> '+v+'</div>';
+const section=(t,b)=>'<section class="card"><h3>'+t+'</h3>'+b+'</section>';
 
 async function get(url){
  const r=await fetch(url);
@@ -78,103 +74,116 @@ function authority(x){
 async function sellCheck(mint,decimals){
  try{
   if(decimals==null)return "نەزانراو؛ decimals بەردەست نییە.";
-
   const amount=(10n**BigInt(Number(decimals))).toString();
-  const url="https://lite-api.jup.ag/swap/v1/quote?inputMint="+
-   encodeURIComponent(mint)+
-   "&outputMint=So11111111111111111111111111111111111111112"+
-   "&amount="+amount+"&slippageBps=100";
-
+  const url="https://lite-api.jup.ag/swap/v1/quote?inputMint="+encodeURIComponent(mint)+"&outputMint=So11111111111111111111111111111111111111112&amount="+amount+"&slippageBps=100";
   const q=await get(url);
-
-  if(q.outAmount&&Number(q.outAmount)>0&&q.routePlan?.length){
-   return "ڕێڕەوی quote بۆ فرۆشتنی ١ یەکە دۆزرایەوە. ئەمە گەرەنتی فرۆشتنی سەرکەوتوو نییە.";
-  }
-  return "ڕێڕەوی quote بۆ ئەم بڕە نەدۆزرایەوە.";
+  if(q.outAmount&&Number(q.outAmount)>0&&q.routePlan?.length)
+   return "ڕێڕەوی Quote بۆ فرۆشتنی ١ یەکە دۆزرایەوە؛ بەڵام فرۆشتنی ڕاستەقینە پشتڕاست نەکراوەتەوە.";
+  return "ڕێڕەوی Quote نەدۆزرایەوە.";
  }catch(e){
-  return "پشکنینی Jupiter سەرکەوتوو نەبوو؛ توانای فرۆشتن پشتڕاست نەکراوەتەوە.";
+  return "پشکنینی Jupiter سەرکەوتوو نەبوو؛ فرۆشتن نەسەلمێنرا.";
  }
 }
 
 async function scan(){
  const mint=$("mint").value.trim();
-
- if(!mint){
-  $("status").textContent="تکایە Mint Address بنووسە.";
-  return;
- }
+ if(!mint){$("status").textContent="تکایە Mint Address بنووسە.";return;}
 
  $("status").textContent="⏳ پشکنین دەکرێت...";
  $("result").innerHTML="";
 
  try{
   const [dex,rug]=await Promise.allSettled([
-   get("https://api.dexscreener.com/latest/dex/tokens/"+encodeURIComponent(mint)),
+   get("https://api.dexscreener.com/token-pairs/v1/solana/"+encodeURIComponent(mint)),
    get("https://api.rugcheck.xyz/v1/tokens/"+encodeURIComponent(mint)+"/report")
   ]);
 
-  const pairs=dex.status==="fulfilled"
-   ?(dex.value.pairs||[]).filter(p=>p.chainId==="solana"):[];
-  const p=pairs.sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0]||null;
+  const pairs=dex.status==="fulfilled"&&Array.isArray(dex.value)?dex.value:[];
+  const valid=pairs.filter(p=>p.chainId==="solana");
   const r=rug.status==="fulfilled"?rug.value:null;
   const token=r?.token||{};
+  const holders=r?.topHolders||[];
   let out="";
 
-  if(p){
+  if(valid.length){
+   const best=[...valid].sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0));
+   const p=best[0];
+   const sum=key=>valid.reduce((s,x)=>s+Number(x[key]?.usd||0),0);
+   const volume=sum("volume");
+   const liquidity=sum("liquidity");
+   const buys=valid.reduce((s,x)=>s+Number(x.txns?.h24?.buys||0),0);
+   const sells=valid.reduce((s,x)=>s+Number(x.txns?.h24?.sells||0),0);
+
    out+=section("📊 زانیاری بازاڕ",
     row("ناوی کۆین",esc(p.baseToken?.name))+
     row("Symbol",esc(p.baseToken?.symbol))+
-    row("نرخ",Number(p.priceUsd)>0?"$"+fmt(p.priceUsd):"نەدۆزرایەوە")+
-    row("Liquidity",usd(p.liquidity?.usd))+
-    row("Volume 24h",usd(p.volume?.h24))+
-    row("کڕین / فرۆشتن",fmt(p.txns?.h24?.buys)+" / "+fmt(p.txns?.h24?.sells))+
+    row("نرخ",Number(p.priceUsd)>0?"$"+num(p.priceUsd):"نەدۆزرایەوە")+
+    row("کۆی Liquidity لە هەموو پەیرەکان",usd(liquidity))+
+    row("کۆی Volume 24h",usd(volume))+
+    row("کڕین / فرۆشتن 24h",num(buys)+" / "+num(sells))+
+    row("ژمارەی پەیرەکان",num(valid.length))+
+    row("گۆڕانی نرخ 5m",p.priceChange?.m5==null?"نەدۆزرایەوە":num(p.priceChange.m5)+"%")+
+    row("گۆڕانی نرخ 1h",p.priceChange?.h1==null?"نەدۆزرایەوە":num(p.priceChange.h1)+"%")+
+    row("گۆڕانی نرخ 6h",p.priceChange?.h6==null?"نەدۆزرایەوە":num(p.priceChange.h6)+"%")+
+    row("گۆڕانی نرخ 24h",p.priceChange?.h24==null?"نەدۆزرایەوە":num(p.priceChange.h24)+"%")+
     row("FDV",usd(p.fdv))+
     row("Market Cap",usd(p.marketCap))+
-    row("Pair Address",esc(p.pairAddress))+
+    row("Pair age",p.pairCreatedAt?new Date(p.pairCreatedAt).toLocaleString():"نەدۆزرایەوە")+
+    row("Pair address",'<a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(p.pairAddress||"")+'">'+esc(p.pairAddress)+'</a>')+
     row("DexScreener",'<a target="_blank" href="'+esc(p.url)+'">کردنەوە</a>')
    );
+
+   out+=section("📈 چالاکی پەیرەکان",valid.map((x,i)=>
+    row("پەیری "+(i+1),esc(x.dexId||"DEX")+" — "+usd(x.liquidity?.usd)+" liquidity")
+   ).join(""));
   }else{
-   out+=section("📊 زانیاری بازاڕ","هیچ پەیری Solana نەدۆزرایەوە.");
+   out+=section("📊 زانیاری بازاڕ","هیچ پەیری Solana نەدۆزرایەوە یان DexScreener بەردەست نییە.");
   }
 
   if(r){
-   const holders=r.topHolders||[];
    const risks=r.risks||[];
    const top=holders[0]?.pct;
+   const sumPct=n=>holders.slice(0,n).reduce((s,h)=>s+Number(h.pct||0),0);
    const flags=[];
-
-   if(!p||Number(p.liquidity?.usd||0)<5000)flags.push("لیکوییدیتی کەمە");
-   if(Number(top||0)>=20)flags.push("کۆبوونەوەی زۆری کۆین لە دەستی هۆڵدەری یەکەم");
-   if(p&&(p.txns?.h24?.sells||0)>(p.txns?.h24?.buys||0))flags.push("فرۆشتن زیاترە لە کڕین");
+   if(!valid.length||valid.reduce((s,p)=>s+Number(p.liquidity?.usd||0),0)<5000)flags.push("لیکوییدیتی کەمە");
+   if(Number(top||0)>=20)flags.push("کۆبوونەوەی زۆری کۆین لە هۆڵدەری یەکەم");
+   if(valid.length){
+    const b=valid.reduce((s,p)=>s+Number(p.txns?.h24?.buys||0),0);
+    const se=valid.reduce((s,p)=>s+Number(p.txns?.h24?.sells||0),0);
+    if(se>b)flags.push("فرۆشتن زیاترە لە کڕین");
+   }
    risks.forEach(x=>flags.push(x.name||"مەترسی RugCheck"));
 
-   out+=section("🛡️ پشکنینی مەترسی",
-    row("RugCheck Score",fmt(r.score_normalised??r.score))+
-    row("ژمارەی هۆڵدەر",fmt(r.totalHolders))+
+   out+=section("🛡️ مەترسی و سەلامەتی",
+    row("RugCheck Score",num(r.score_normalised??r.score))+
+    row("ژمارەی هۆڵدەر",num(r.totalHolders))+
     row("Mint Authority",authority(token.mintAuthority))+
     row("Freeze Authority",authority(token.freezeAuthority))+
-    row("گەورەترین هۆڵدەر",top==null?"نەدۆزرایەوە":fmt(top)+"%")+
-    row("ژمارەی مەترسییەکان",fmt(risks.length))+
+    row("گەورەترین هۆڵدەر",top==null?"نەدۆزرایەوە":num(top)+"%")+
+    row("کۆی Top 5",num(sumPct(5))+"%")+
+    row("کۆی Top 10",num(sumPct(10))+"%")+
+    row("ژمارەی مەترسییەکان",num(risks.length))+
     (risks.length?risks.map(x=>row(esc(x.name||"مەترسی"),esc(x.description||x.level||""))).join(""):"<p class='muted'>هیچ مەترسییەک لە لیستەکەدا نەهاتەوە؛ ئەمە گەرەنتی سەلامەتی نییە.</p>")+
-    row("هەڵسەنگاندنی بۆت",'<b class="bad">'+(flags.length?esc(flags.join("؛ ")):"هیچ نیشانەیەکی ئاشکرا نەدۆزرایەوە")+'</b>')
+    row("هەڵسەنگاندنی بۆت",'<b class="bad">'+esc(flags.length?flags.join("؛ "):"نیشانەی مەترسیی ئاشکرا نەدۆزرایەوە")+'</b>')
    );
 
    let table='<div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Wallet address</th><th>%</th></tr></thead><tbody>';
-
    holders.slice(0,20).forEach((h,i)=>{
     const a=h.address||"";
-    table+='<tr><td>'+(i+1)+'</td><td><a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(a)+'">'+esc(a)+'</a></td><td>'+fmt(h.pct)+'%</td></tr>';
+    table+='<tr><td>'+(i+1)+'</td><td><a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(a)+'">'+esc(a)+'</a></td><td>'+num(h.pct)+'%</td></tr>';
    });
-
    table+='</tbody></table></div>';
    out+=section("👥 تاپ ٢٠ هۆڵدەر",holders.length?table:"داتای هۆڵدەر بەردەست نییە.");
 
    const creator=r.creator||token.creator||r.tokenMeta?.creator;
-
-   out+=section("🔍 Dev و LP Wallet",
+   const best=valid.sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
+   out+=section("🔍 Dev و LP",
     row("Creator address",creator?'<a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(creator)+'">'+esc(creator)+'</a>':"نەدۆزرایەوە")+
-    row("Pair / Pool address",p?.pairAddress?'<a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(p.pairAddress)+'">'+esc(p.pairAddress)+'</a>':"نەدۆزرایەوە")+
-    '<p class="muted">Creator address بە تەنها Dev Wallet پشتڕاست ناکاتەوە. Pair address پۆڵەکەیە، نەک LP Wallet. ناسینەوەی LP wallet پێویستی بە بەڵگەی on-chain هەیە.</p>'
+    row("LP wallet","نەسەلمێنراو؛ پێویستی بە بەڵگەی On-chain هەیە.")+
+    row("LP Lock","نەسەلمێنراو؛ داتای پشتڕاستکراوە نییە.")+
+    row("LP Burn","نەسەلمێنراو؛ داتای پشتڕاستکراوە نییە.")+
+    row("Pair / Pool",best?.pairAddress?'<a target="_blank" href="https://solscan.io/account/'+encodeURIComponent(best.pairAddress)+'">'+esc(best.pairAddress)+'</a>':"نەدۆزرایەوە")+
+    '<p class="muted">Creator بە تەنها Dev Wallet نییە. Pair address ـیش LP Wallet نییە. بۆ ناسینەوەی Dev و LP پێویستی بە بەڵگەی مامەڵەکانی زنجیرەیە.</p>'
    );
   }else{
    out+=section("🛡️ RugCheck","ڕاپۆرتی RugCheck بەردەست نەبوو.");
@@ -184,14 +193,12 @@ async function scan(){
   $("status").textContent="⏳ پشکنینی ڕێڕەوی فرۆشتن...";
 
   const sell=await sellCheck(mint,token.decimals);
-
-  $("result").innerHTML+=section("⚠️ پشکنینی ڕێڕەوی فرۆشتن",
+  $("result").innerHTML+=section("⚠️ پشکنینی فرۆشتن",
    esc(sell)+
-   '<p class="muted">ئەم پشکنینە هیچ Swap ـێک ناکات و هیچ مامەڵەیەک واژۆ ناکات. Quote گەرەنتی فرۆشتنی ڕاستەقینە نییە.</p>'
+   '<p class="muted">Quote تەنها ڕێڕەو دەدۆزێتەوە؛ گەرەنتی فرۆشتنی ڕاستەقینە نییە. هیچ Swap ـێک ناکرێت.</p>'
   );
 
   $("status").textContent="✅ پشکنین تەواو بوو.";
-
  }catch(e){
   $("status").textContent="هەڵە لە پشکنین: "+e.message;
  }
