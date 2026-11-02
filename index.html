@@ -1,4 +1,124 @@
+
 <!doctype html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solana Smart Bot</title>
+<style>
+body{margin:0;padding:16px;background:#0c1220;color:#edf2ff;font-family:Arial}
+.wrap{max-width:850px;margin:auto}
+.card{background:#151f33;border:1px solid #2b3b58;border-radius:15px;padding:16px;margin:12px 0}
+h1{font-size:25px}
+.muted{color:#aab8d1;line-height:1.8;font-size:14px}
+input{width:100%;box-sizing:border-box;padding:13px;background:#0c1220;color:white;border:1px solid #405372;border-radius:9px;margin:10px 0;direction:ltr}
+button{background:#4388f5;color:white;border:0;border-radius:9px;padding:12px;font-weight:bold;margin:5px;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{padding:9px;border-bottom:1px solid #2b3b58;text-align:right}
+.token{direction:ltr;word-break:break-all}
+#report{white-space:pre-wrap;line-height:1.9;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🤖 Solana Smart Bot</h1>
+<p class="muted">پشکنینی کۆینەکانی Solana</p>
+
+<div class="card">
+<h2>💵 بودجەی خەیاڵی</h2>
+<h2>$5.00</h2>
+<p class="muted">تەنها Demo ـیە. هیچ پارەیەکی ڕاستەقینە بەکارناهێنێت و بە Phantom پەیوەست نییە.</p>
+</div>
+
+<div class="card">
+<h2>🔎 پشکنینی کۆین</h2>
+<p class="muted">ناونیشانی Mint بنووسە:</p>
+<input id="mint" placeholder="Solana token address">
+<button id="check">پشکنین</button>
+<p id="status" class="muted">ئامادەیە</p>
+<div id="report"></div>
+</div>
+
+<div class="card">
+<h2>📊 کۆینە نوێکان</h2>
+<button id="refresh">نوێکردنەوە</button>
+<p id="feed" class="muted">بۆ بارکردنی کۆینەکان کرتە بکە.</p>
+<div style="overflow-x:auto">
+<table>
+<thead><tr><th>کۆین</th><th>نرخ</th><th>Liquidity</th><th>Volume</th></tr></thead>
+<tbody id="coins"><tr><td colspan="4">هێشتا داتا نییە</td></tr></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>⚠️ ئاگاداری</h2>
+<p class="muted">هیچ پشکنینێک گەرەنتی سەلامەتی یان توانای فرۆشتن نادات. داتای نەزانراو بە ڕوونی نیشان دەدرێت. هەرگیز Seed Phrase یان Private Key مەنووسە.</p>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+
+$("check").onclick=async()=>{
+ const mint=$("mint").value.trim();
+ if(!mint){$("status").textContent="ناونیشانی کۆین بنووسە.";return;}
+ $("status").textContent="پشکنین دەکرێت...";
+ $("report").textContent="";
+ try{
+  const r=await fetch("https://api.rugcheck.xyz/v1/tokens/"+encodeURIComponent(mint)+"/report");
+  if(!r.ok)throw Error();
+  const d=await r.json();
+  const t=d.token||{};
+  const risks=d.risks||[];
+  const lines=[
+   "ناوی کۆین: "+(d.tokenMeta?.name||d.fileMeta?.name||"نەزانراو"),
+   "Risk Score: "+(d.score_normalised??d.score??"نەزانراو"),
+   "Mint Authority: "+(t.mintAuthority===null?"داخراو":t.mintAuthority===undefined?"نەزانراو":"چالاک"),
+   "Freeze Authority: "+(t.freezeAuthority===null?"داخراو":t.freezeAuthority===undefined?"نەزانراو":"چالاک"),
+   "ژمارەی هۆڵدەر: "+(d.totalHolders??"نەزانراو"),
+   "",
+   "مەترسییەکان:"
+  ];
+  if(risks.length){
+   risks.forEach(x=>lines.push("- "+(x.name||"Risk")+": "+(x.description||x.value||x.level||"")));
+  }else{
+   lines.push("هیچ مەترسییەک لە لیستەکەدا نەدۆزرایەوە.");
+  }
+  $("report").textContent=lines.join("\n");
+  $("status").textContent="پشکنین تەواو بوو.";
+ }catch(e){
+  $("status").textContent="داتا بەردەست نییە یان پشکنین سەرکەوتوو نەبوو. دووبارە هەوڵ بدە.";
+ }
+};
+
+$("refresh").onclick=async()=>{
+ $("feed").textContent="داتا بار دەکرێت...";
+ try{
+  const r=await fetch("https://api.dexscreener.com/token-profiles/latest/v1");
+  if(!r.ok)throw Error();
+  const data=await r.json();
+  const tokens=data.filter(x=>x.chainId==="solana").slice(0,10);
+  const results=await Promise.all(tokens.map(async t=>{
+   try{
+    const p=await fetch("https://api.dexscreener.com/token-pairs/v1/solana/"+encodeURIComponent(t.tokenAddress));
+    const a=await p.json();
+    return Array.isArray(a)?a.sort((x,y)=>(y.liquidity?.usd||0)-(x.liquidity?.usd||0))[0]:null;
+   }catch{return null;}
+  }));
+  const valid=results.filter(x=>x&&x.baseToken);
+  $("coins").innerHTML=valid.map(p=>
+   "<tr><td><b>"+String(p.baseToken.symbol||"").replace(/[&<>"]/g,"")+"</b><div class='token'>"+p.baseToken.address+"</div></td><td>$"+Number(p.priceUsd||0).toFixed(8)+"</td><td>$"+Math.round(p.liquidity?.usd||0)+"</td><td>$"+Math.round(p.volume?.h24||0)+"</td></tr>"
+  ).join("")||"<tr><td colspan='4'>کۆین نەدۆزرایەوە</td></tr>";
+  $("feed").textContent="کۆینەکان: "+valid.length;
+ }catch(e){
+  $("feed").textContent="داتا بار نەکرا. دووبارە هەوڵ بدە.";
+ }
+};
+</script>
+</body>
+</html>
+
 <html lang="ckb" dir="rtl">
 <head>
 <meta charset="utf-8">
