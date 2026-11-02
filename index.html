@@ -1,3 +1,115 @@
+
+<!DOCTYPE html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solana Smart Scanner</title>
+<style>
+body{font-family:Arial,sans-serif;background:#101522;color:#f4f6fb;margin:0;padding:18px}
+main{max-width:760px;margin:auto}
+h1{color:#9b8cff;text-align:center}
+p{color:#c5ccda;line-height:1.8}
+input,button{box-sizing:border-box;width:100%;padding:14px;margin:7px 0;border-radius:9px;border:1px solid #39445c;font-size:15px}
+input{background:#1c2638;color:white}
+button{background:#7965ed;color:white;font-weight:bold;border:0}
+.card{background:#1c2638;padding:14px;margin:12px 0;border-radius:12px;overflow-wrap:anywhere}
+.row{padding:9px 0;border-bottom:1px solid #354158}
+.muted{color:#aab5c8}
+.good{color:#54d69a}.bad{color:#ff7777}.warn{color:#ffc66d}
+a{color:#9eaeff}
+.small{font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>🔎 Solana Smart Scanner</h1>
+<p>ناونیشانی کۆینەکە دابنێ بۆ پشکنینی دۆخی بازاڕ و مەترسی.</p>
+<input id="mint" placeholder="Solana Token Mint Address">
+<button onclick="scan()">پشکنینی کۆین</button>
+<div id="status" class="muted"></div>
+<div id="result"></div>
+<p class="small">ئەم ئامرازە تەنها بۆ زانیارییە؛ هیچ کڕین و فرۆشتنێک ناکات. داتای API دەتوانێت تەواو نەبێت یان دوا بکەوێت.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"—").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>n==null?"نەدۆزرایەوە":Number(n).toLocaleString("en-US",{maximumFractionDigits:4});
+function box(title,body){return `<section class="card"><h3>${title}</h3>${body}</section>`}
+function line(k,v){return `<div class="row"><b>${k}:</b> ${v??"نەدۆزرایەوە"}</div>`}
+async function get(url){
+ const r=await fetch(url);
+ if(!r.ok) throw Error("API error "+r.status);
+ return r.json();
+}
+async function scan(){
+ const mint=$("mint").value.trim();
+ if(!mint){$("status").textContent="تکایە ناونیشانی کۆین بنووسە.";return}
+ $("status").textContent="⏳ پشکنین دەکرێت...";
+ $("result").innerHTML="";
+ try{
+  const [pairs,rug]=await Promise.allSettled([
+   get("https://api.dexscreener.com/latest/dex/tokens/"+encodeURIComponent(mint)),
+   get("https://api.rugcheck.xyz/v1/tokens/"+encodeURIComponent(mint)+"/report")
+  ]);
+  let html="";
+  let pair=null,token=null;
+  if(pairs.status==="fulfilled"){
+   const list=pairs.value.pairs||[];
+   pair=list.filter(p=>p.chainId==="solana").sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
+  }
+  if(pair){
+   token=pair.baseToken||{};
+   html+=box("📊 زانیاری بازاڕ",
+    line("ناوی کۆین",esc(token.name))+
+    line("Symbol",esc(token.symbol))+
+    line("نرخ",pair.priceUsd?"$"+fmt(pair.priceUsd):"نەدۆزرایەوە")+
+    line("لیکوییدیتی","$"+fmt(pair.liquidity?.usd))+
+    line("ڤۆڵیوم ٢٤ کاتژمێر","$"+fmt(pair.volume?.h24))+
+    line("کڕین / فرۆشتن",fmt(pair.txns?.h24?.buys)+" / "+fmt(pair.txns?.h24?.sells))+
+    line("FDV","$"+fmt(pair.fdv))+
+    line("Market Cap","$"+fmt(pair.marketCap))+
+    line("Pair Address",esc(pair.pairAddress))+
+    line("DexScreener",`<a target="_blank" href="${esc(pair.url)}">کردنەوە</a>`)
+   );
+  }else{
+   html+=box("📊 بازاڕ","هیچ جووتێکی Solana لە DexScreener نەدۆزرایەوە.");
+  }
+  if(rug.status==="fulfilled"){
+   const d=rug.value;
+   const risks=d.risks||[];
+   const holders=d.topHolders||[];
+   const topPct=holders.length?holders[0].pct:null;
+   html+=box("🛡️ پشکنینی مەترسی",
+    line("Risk Score",fmt(d.score))+
+    line("ژمارەی هۆڵدەر",fmt(d.totalHolders))+
+    line("بەڕێوەبەری Mint",d.mintAuthority?esc(d.mintAuthority):'<span class="good">داخراو / نییە</span>')+
+    line("بەڕێوەبەری Freeze",d.freezeAuthority?esc(d.freezeAuthority):'<span class="good">داخراو / نییە</span>')+
+    line("بەشی گەورەترین هۆڵدەر",topPct==null?"نەدۆزرایەوە":fmt(topPct)+"%")+
+    line("ژمارەی مەترسییەکان",fmt(risks.length))+
+    (risks.length?risks.map(x=>line(esc(x.name||"مەترسی"),esc(x.description||x.level||""))).join(""):"<div class='good'>هیچ مەترسییەکی ڕاپۆرتکراو نییە.</div>")
+   );
+   html+=box("👥 تاپ ٢٠ هۆڵدەر",
+    holders.length?holders.slice(0,20).map((h,i)=>line("#"+(i+1),
+     `<a target="_blank" href="https://solscan.io/account/${encodeURIComponent(h.address||"")}">${esc(h.address||"ناونیشان نییە")}</a> — ${fmt(h.pct)}%`
+    )).join(""):"زانیاری تاپ هۆڵدەر لە API بەردەست نییە."
+   );
+   html+=box("🔍 جۆری وۆڵێتەکان",
+    "ناسینەوەی Dev Wallet و LP Wallet لەم داتایەدا پشتڕاست نەکراوەتەوە. تەنها بە ناونیشانی وۆڵێت ناتوانرێت جۆرەکەی بە دڵنیایی دیاری بکرێت."
+   );
+  }else{
+   html+=box("🛡️ RugCheck","داتای مەترسی لە RugCheck بەردەست نەبوو. دواتر هەوڵ بدەرەوە.");
+  }
+  html+=box("⚠️ توانای فرۆشتن","ئەم پشکنینە بە تەنها ناتوانێت دڵنیایی بدات کە هەموو کەس دەتوانێت کۆینەکە بفرۆشێت. پێویستە فرۆشتنی تاقیکراوە و دۆخی بازاڕیش بپشکنرێت.");
+  $("result").innerHTML=html;
+  $("status").textContent="✅ پشکنین تەواو بوو.";
+ }catch(e){
+  $("status").textContent="هەڵەیەک ڕوویدا: "+e.message;
+ }
+}
+</script>
+</body>
+</html>
 <!doctype html>
 <html lang="ckb" dir="rtl">
 <head>
