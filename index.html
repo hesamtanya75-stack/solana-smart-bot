@@ -248,9 +248,14 @@ if(holders.length){
   largestText=largest.toFixed(2)+"%";
   topTenText=topTen.toFixed(2)+"%";
 
-  if(largest>30){
+    if(largest>30){
     risk+=2;
     notes.push("گەورەترین هەژماری تۆکن بەشی زۆری هەیە");
+
+    if(Number(market?.liquidity?.usd||0)<5000){
+      risk+=2;
+      notes.push("مەترسی زۆر بەرزە: کۆبوونەوەی زۆری کۆین لە یەک هەژمار و لیکوییدیتی زۆر کەم");
+    }
   }else if(topTen>50){
     risk+=2;
     notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
