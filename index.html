@@ -238,8 +238,10 @@ async function scanToken(){
   const total=Number(supplyData?.amount);
 
   if(Array.isArray(holderData)&&holderData.length&&total>0){
-    holders=holderData.slice(0,10).map(x=>({
+        holders=holderData.slice(0,10).map(x=>({
       address:x.address||"نەزانراو",
+      owner:null,
+      insider:null,
       pct:Number(x.amount)/total*100
     })).filter(x=>Number.isFinite(x.pct));
 
@@ -247,9 +249,12 @@ async function scanToken(){
     holderText="داتا لە RPC وەرگیرا";
   }
 
-  if(!holders.length&&Array.isArray(rug?.topHolders)&&rug.topHolders.length){
-    holders=rug.topHolders.slice(0,10).map(x=>({
-      address:x.address||x.owner||"نەزانراو",
+      holders=rug.topHolders.slice(0,10).map(x=>({
+      address:x.address||"نەزانراو",
+      owner:x.owner||null,
+      insider:x.insider??null,
+      pct:Number(x.pct)
+    })).filter(x=>Number.isFinite(x.pct));
       pct:Number(x.pct)
     })).filter(x=>Number.isFinite(x.pct));
 
