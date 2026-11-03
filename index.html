@@ -304,7 +304,12 @@ async function scanToken(){
   
 
   let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە";
-  if(market){
+    const finalSells=Number(market?.txns?.h24?.sells||0);
+  const finalLiquidity=Number(market?.liquidity?.usd||0);
+
+  if(finalLiquidity<5000 && finalSells===0){
+    notes.push("🚨 ئاگاداری: لیکوییدیتی کەمترە لە $5,000 و هیچ فرۆشتنێک نییە؛ ئەم کۆینە مەکڕە.");
+  }if(market){
    const sells=Number(market.txns?.h24?.sells||0);
    const buys=Number(market.txns?.h24?.buys||0);
    const liquidity=Number(market.liquidity?.usd||0);
