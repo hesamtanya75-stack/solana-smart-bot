@@ -207,7 +207,14 @@ async function scanToken(){
       notes.push("Freeze Authority چالاکە");
     }
   }
-  if(!rug){
+    show("security",
+    row("Mint Authority",mintStatus)+
+    row("Freeze Authority",freezeStatus)+
+    row("Token Program",programOwner||"داتا نییە")+
+    (mintStatus==="داتا نییە" || freezeStatus==="داتا نییە"
+      ? "<p class='bad'><b>⚠️ ئاگاداری: دۆخی Mint و Freeze پشتڕاست نەکراوەتەوە.</b></p>"
+      : "")
+  );
    risk+=2;
    notes.push("داتای RugCheck بەردەست نەبوو");
   }else if(rug.score!=null){
