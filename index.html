@@ -258,32 +258,8 @@ if(holders.length){
     notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
   }
 }
-   const accounts=holderData.slice(0,10);
-   const topAmount=Number(accounts[0]?.amount||0);
-   const tenAmount=accounts.reduce((sum,x)=>sum+Number(x.amount||0),0);
+   
 
-   if(totalSupply>0){
-    largestPercent=topAmount/totalSupply*100;
-    topTenPercent=tenAmount/totalSupply*100;
-
-    largestText=largestPercent.toFixed(2)+"%";
-    topTenText=topTenPercent.toFixed(2)+"%";
-    holderText="داتای ١٠ هەژماری گەورەتر بەردەستە";
-
-    if(largestPercent>30){
-     risk+=2;
-     notes.push("یەک هەژماری تۆکن بڕێکی زۆری تۆکنی هەیە");
-    }else if(topTenPercent>50){
-     risk+=2;
-     notes.push("١٠ هەژماری گەورەتر بەشی زۆری تۆکنیان هەیە");
-    show("basic",
-   row("ناونیشان",short(mint))+
-   row("DEX",market?.dexId||"نەزانراو")+
-   row("نرخ",money(market?.priceUsd))+
-   row("Token Program",programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"?"Token-2022":programOwner?"Token Program":"نەزانراو")
-  );
-   }
-  }
 
   
 
