@@ -301,7 +301,7 @@ async function scanToken(){
 
   
 
-    const largestPct=holders.length
+    ";const largestPct=holders.length
     ?Math.max(...holders.map(x=>x.pct)):0;
   const topTenPct=holders.reduce((sum,x)=>sum+x.pct,0);
 
@@ -313,7 +313,7 @@ async function scanToken(){
     topTenPct>50 ||
     (finalLiquidity<5000 && finalSells===0);
 
-  let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە";
+  let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە
     const finalSells=Number(market?.txns?.h24?.sells||0);
   const finalLiquidity=Number(market?.liquidity?.usd||0);
 
