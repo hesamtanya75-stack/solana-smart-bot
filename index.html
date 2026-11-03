@@ -256,30 +256,22 @@ if(holders.length){
     notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
   }
 }
-   
+   show("holders",
+  row("دۆخی داتا",holderText)+
+  row("گەورەترین هەژماری تۆکن",largestText)+
+  row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
+  row("ژمارەی هەژمارە گەورەکان",holderCount)+
+  holders.map((x,i)=>
+    row("هەژمار "+(i+1),safe(x.address)+" — "+x.pct.toFixed(2)+"%")
+  ).join("")+
+  "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
+);
+  );
 
 
   
 
-  show("basic",
- row("ناونیشان",short(mint))+
- row("DEX",market?.dexId||"نەزانراو")+
- row("نرخ",money(market?.priceUsd))+
- row("Token Program",programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"?"Token-2022":programOwner?"Token Program":"نەزانراو")
-);
-  show("security",
- row("Mint Authority",mintChecked?(mintAuth?"<span class='bad'>چالاکە</span>":"<span class='good'>ناچالاکە</span>"):"<span class='warn'>نەزانراو</span>")+
- row("Freeze Authority",mintChecked?(freezeAuth?"<span class='bad'>چالاکە</span>":"<span class='good'>ناچالاکە</span>"):"<span class='warn'>نەزانراو</span>")+
- row("RugCheck Score",rug?.score??"نەزانراو")+
- row("هۆشدارییەکان",rug?.risks?.length?rug.risks.map(x=>safe(x.name)).join("، "):"هیچ هۆشدارییەکی گەڕاوە نییە")
-);
-  show("holders",
-   row("دۆخی داتا",holderText)+
-   row("گەورەترین هەژماری تۆکن",largestText)+
-   row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
-   row("ژمارەی هەژمارە گەورەکان",holderCount)+
-   "<p class='small'>ئەمە هەژمارەکانی تۆکنە، نەک بە دڵنیایی خاوەنە کۆتاییەکان. هەژمارەکان دەتوانن هی لیکوییدیتی یان خزمەتگوزارییەکان بن. ئەم لیستە تەنها ١٠ هەژماری گەورەتر نیشان دەدات.</p>"
-  );
+  
 
   let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە";
   if(market){
