@@ -81,7 +81,7 @@ function el(id){return document.getElementById(id)}
 function show(id,value){el(id).innerHTML=value}
 function row(label,value){return `<div class="item"><span>${label}</span><b class="value">${value}</b></div>`}
 function safe(v){return String(v??"نەزانراو").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function money(v){return v==null?"نەزانراو":"$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:4})}
+function money(v){return v==null||!Number.isFinite(Number(v))||Number(v)<=0?"نەزانراو":"$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:8})}
 function number(v){return v==null?"نەزانراو":Number(v).toLocaleString("en-US")}
 async function getJSON(url,options={}){
  const r=await fetch(url,options);
