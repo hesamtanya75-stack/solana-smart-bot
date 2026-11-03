@@ -228,7 +228,7 @@ if(holderData?.length && supplyData?.amount){
     holders=holderData.slice(0,10).map(x=>({
       pct:Number(x.amount)/total*100
     }));
-    holderCount=holderData.length;
+    holderCountholders=Array.isArray(holderData)?holderData.slice(0,10).map(x=>({.length;
     holderText="داتا لە RPC وەرگیرا";
   }
 }
