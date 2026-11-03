@@ -7,6 +7,291 @@
 <title>پشکنەری زیرەکی کۆینی سولانا</title>
 <style>
 *{box-sizing:border-box}
+body{margin:0;padding:16px;background:#0b1020;color:#eef2ff;font-family:Arial,sans-serif;line-height:1.8}
+main{max-width:850px;margin:auto}
+header{text-align:center;margin:20px 0}
+h1,h2{color:#60e6c0}
+.panel,.section{background:#151d32;border:1px solid #293653;border-radius:14px;padding:16px;margin:14px 0}
+input{width:100%;padding:14px;border-radius:9px;border:1px solid #465674;background:#0c1427;color:white;font-size:15px;direction:ltr}
+button{width:100%;padding:14px;border:0;border-radius:9px;background:#16b995;color:#061b18;font-weight:bold;font-size:17px;margin-top:12px}
+button:disabled{opacity:.5}
+.item{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #293653;padding:8px 0}
+.value{font-weight:bold;text-align:left;overflow-wrap:anywhere}
+.good{color:#55e6a5}.warn{color:#ffd166}.bad{color:#ff7777}
+.small{font-size:12px;color:#9ba9c5}
+a{color:#6bc9ff;overflow-wrap:anywhere}
+#status{text-align:center;color:#ffd166;margin-top:10px}
+.hidden{display:none}
+ul{padding-right:20px}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>🛡️ پشکنەری زیرەکی کۆینی سولانا</h1>
+<div class="small">پشکنینی مەترسی، لیکوییدیتی، هۆڵدەران و فرۆشتن</div>
+</header>
+
+<div class="panel">
+<h2>🔎 ناونیشانی Mint بنووسە</h2>
+<input id="mint" placeholder="Solana token address" dir="ltr">
+<button id="scan" onclick="scanToken()">پشکنینی کۆین</button>
+<div id="status"></div>
+</div>
+
+<div id="results" class="hidden">
+<div class="section"><h2>📌 زانیاری گشتی</h2><div id="basic"></div></div>
+<div class="section"><h2>💰 نرخ و لیکوییدیتی</h2><div id="market"></div></div>
+<div class="section"><h2>📊 مامەڵەکان</h2><div id="trades"></div></div>
+<div class="section"><h2>🛡️ RugCheck</h2><div id="security"></div></div>
+<div class="section"><h2>👥 هۆڵدەران</h2><div id="holders"></div></div>
+<div class="section"><h2>🔐 دەسەڵاتی کۆین</h2><div id="authority"></div></div>
+<div class="section"><h2>💧 دۆخی LP</h2><div id="lp"></div></div>
+<div class="section"><h2>🔄 تاقیکردنەوەی فرۆشتن</h2><div id="sell"></div></div>
+<div class="section"><h2>📜 زانیاری زیاتر</h2><div id="extra"></div></div>
+<div class="section"><h2>⚠️ هەڵسەنگاندنی کۆتایی</h2><div id="verdict"></div></div>
+</div>
+
+<p class="small">ئەم بۆتە تەنها پشکنین دەکات. هیچ مامەڵەیەک ناکات و پێویستی بە Phantom یان کلیلی نهێنی نییە.</p>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const RPC="https://api.mainnet-beta.solana.com";
+const SOL="So11111111111111111111111111111111111111112";
+
+function safe(v){
+ return String(v??"بەردەست نییە").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function row(a,b,cl=""){
+ return `<div class="item"><span>${safe(a)}</span><span class="value ${cl}">${b??"بەردەست نییە"}</span></div>`;
+}
+function usd(v){
+ return Number.isFinite(Number(v))?"$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:8}):"بەردەست نییە";
+}
+function link(v){
+ return v?`<a target="_blank" rel="noopener" href="https://solscan.io/account/${encodeURIComponent(v)}">${safe(v)}</a>`:"بەردەست نییە";
+}
+async function json(url,options={}){
+ const r=await fetch(url,options);
+ if(!r.ok)throw Error("HTTP "+r.status);
+ return r.json();
+}
+async function rpc(method,params){
+ const d=await json(RPC,{
+  method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
+ });
+ if(d.error)throw Error(d.error.message||"RPC error");
+ return d.result;
+}
+function show(id,html){$(id).innerHTML=html;}
+
+async function scanToken(){
+ const mint=$("mint").value.trim();
+ if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){
+  $("status").textContent="ناونیشانی Mint دروست نییە.";
+  return;
+ }
+ $("scan").disabled=true;
+ $("results").classList.remove("hidden");
+ $("status").textContent="⏳ پشکنین دەکرێت...";
+ ["basic","market","trades","security","holders","authority","lp","sell","extra","verdict"].forEach(x=>show(x,"پشکنین دەکرێت..."));
+
+ let pair=null,rug=null,supply=null,largest=null,mintInfo=null;
+ let ownerRows=[],quote=null,errors=[];
+
+ const jobs=await Promise.allSettled([
+  json("https://api.dexscreener.com/latest/dex/tokens/"+mint),
+  json("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
+  rpc("getTokenSupply",[mint]),
+  rpc("getTokenLargestAccounts",[mint]),
+  rpc("getAccountInfo",[mint,{encoding:"jsonParsed"}])
+ ]);
+
+ if(jobs[0].status==="fulfilled"){
+  pair=(jobs[0].value.pairs||[]).filter(p=>p.chainId==="solana")
+   .sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0]||null;
+ }else errors.push("DexScreener");
+
+ if(jobs[1].status==="fulfilled")rug=jobs[1].value;
+ else errors.push("RugCheck");
+
+ if(jobs[2].status==="fulfilled")supply=jobs[2].value?.value||null;
+ else errors.push("Supply");
+
+ if(jobs[3].status==="fulfilled")largest=jobs[3].value?.value||null;
+ else errors.push("Largest Accounts");
+
+ if(jobs[4].status==="fulfilled")
+  mintInfo=jobs[4].value?.value?.data?.parsed?.info||null;
+ else errors.push("Mint Account");
+
+ // ناسینەوەی خاوەنی Token Account
+ if(largest?.length){
+  try{
+   const addresses=largest.map(x=>x.address);
+   const result=await rpc("getMultipleAccounts",[addresses,{encoding:"jsonParsed"}]);
+   ownerRows=(result.value||[]).map((a,i)=>({
+    address:addresses[i],
+    owner:a?.data?.parsed?.info?.owner||null,
+    amount:largest[i]?.uiAmountString||largest[i]?.amount,
+    uiAmount:largest[i]?.uiAmount
+   }));
+  }catch(e){errors.push("Account owners");}
+ }
+
+ // زانیاری گشتی
+ show("basic",
+  row("ناونیشانی کۆین",safe(mint))+
+  row("ناوی کۆین",safe(pair?.baseToken?.name))+
+  row("کۆدی کۆین",safe(pair?.baseToken?.symbol))+
+  row("DEX",safe(pair?.dexId))+
+  row("ناونیشانی جووت",pair?.pairAddress?link(pair.pairAddress):"بەردەست نییە")+
+  row("Solscan",`<a target="_blank" href="https://solscan.io/token/${mint}">کردنەوە</a>`)
+ );
+
+ show("market",
+  row("نرخی ئێستا",pair?usd(pair.priceUsd):"بەردەست نییە")+
+  row("لیکوییدیتی",pair?usd(pair.liquidity?.usd):"بەردەست نییە",
+   pair?.liquidity?.usd<10000?"warn":"")+
+  row("FDV",pair?usd(pair.fdv):"بەردەست نییە")+
+  row("کاتی دروستبوونی جووت",pair?.pairCreatedAt?new Date(pair.pairCreatedAt).toLocaleString():"بەردەست نییە")
+ );
+
+ const tx=pair?.txns?.h24||{},vol=pair?.volume||{};
+ show("trades",
+  row("قەبارەی ٢٤ کاتژمێر",usd(vol.h24))+
+  row("کڕین",tx.buys??"بەردەست نییە")+
+  row("فرۆشتن",tx.sells??"بەردەست نییە")+
+  row("جیاوازی کڕین و فرۆشتن",tx.buys!=null&&tx.sells!=null?tx.buys-tx.sells:"بەردەست نییە")
+ );
+
+ const risks=rug?.risks||[];
+ show("security",
+  row("نمرەی RugCheck",rug?.score??"بەردەست نییە")+
+  row("ژمارەی هۆڵدەران",rug?.totalHolders??"بەردەست نییە")+
+  row("ژمارەی ئاگاداری",risks.length)+
+  (risks.length?risks.map(x=>row(
+   x.name||"ئاگاداری",
+   safe(x.description||x.value||x.level||"وردەکاری نییە"),
+   "warn"
+  )).join(""):"<p class='good'>هیچ ئاگادارییەک لە داتای RugCheck نەدۆزرایەوە.</p>")
+ );
+
+ // هۆڵدەران: token account و wallet owner جیا دەکرێنەوە
+ let h="";
+ if(ownerRows.length){
+  h=ownerRows.slice(0,10).map((x,i)=>{
+   const pct=supply?.uiAmount?x.uiAmount/Number(supply.uiAmount)*100:null;
+   return row("Token Account "+(i+1),link(x.address))+
+    row("بڕ",safe(x.amount))+
+    row("خاوەن",x.owner?link(x.owner):"نەناسراوە")+
+    row("ڕێژەی supply",pct!==null?pct.toFixed(4)+"%":"بەردەست نییە");
+  }).join("");
+ }else h="زانیاری گەورەترین هەژمارەکان بەردەست نییە.";
+ show("holders",h+"<p class='small'>Token Account هەمان Wallet نییە. Pool و Bonding Curve دەبێت جیا بکرێنەوە؛ بۆیە ئەم لیستە بە تەنها بەڵگەی دابەشبوونی خاوەنانی تاک نییە.</p>");
+
+ // Mint authority بە Solana RPC
+ const mintAuth=mintInfo?.mintAuthority??null;
+ const freezeAuth=mintInfo?.freezeAuthority??null;
+ const mintKnown=!!mintInfo;
+ const authText=(v)=>v===null?"ناچالاکە (RPC null)":"چالاکە: "+link(v);
+
+ show("authority",
+  row("Mint Authority",mintKnown?authText(mintAuth):"پشتڕاست نەکراوەتەوە",
+   !mintKnown?"warn":mintAuth===null?"good":"bad")+
+  row("Freeze Authority",mintKnown?authText(freezeAuth):"پشتڕاست نەکراوەتەوە",
+   !mintKnown?"warn":freezeAuth===null?"good":"bad")+
+  row("کۆی Supply",supply?.uiAmountString??"بەردەست نییە")+
+  row("Decimals",supply?.decimals??mintInfo?.decimals??"بەردەست نییە")
+ );
+
+ show("lp",
+  row("لیکوییدیتی",pair?usd(pair.liquidity?.usd):"بەردەست نییە")+
+  row("قوفڵکردنی LP","نەسەلمێنراوە","warn")+
+  row("سووتاندنی LP","نەسەلمێنراوە","warn")+
+  "<p class='small'>بوونی لیکوییدیتی بەڵگەی قوفڵکردن یان سووتاندنی LP نییە.</p>"
+ );
+
+ // Jupiter quote-only. API key may be required; no wallet and no execution.
+ let sellHtml="";
+ if(supply?.amount && Number(supply.amount)>0){
+  try{
+   const amount=Math.max(1,Math.floor(Number(supply.amount)*0.0001));
+   const url="https://api.jup.ag/swap/v2/order?"+new URLSearchParams({
+    inputMint:mint,outputMint:SOL,amount:String(amount)
+   });
+   quote=await json(url);
+   if(quote?.outAmount&&!quote.error){
+    sellHtml=row("Jupiter Quote","ڕێڕەو دۆزرایەوە","good")+
+     row("بڕی تاقیکراوە",amount+" atomic units")+
+     row("SOL ـی چاوەڕوانکراو",safe(quote.outAmount));
+   }else sellHtml=row("Jupiter Quote",safe(quote?.error||"ڕێڕەو نەدۆزرایەوە"),"warn");
+  }catch(e){
+   sellHtml=row("Jupiter Quote","پشکنین سەرکەوتوو نەبوو: "+safe(e.message),"warn");
+  }
+ }else sellHtml=row("Jupiter Quote","Supply بەردەست نییە؛ پشکنین نەکرا","warn");
+
+ show("sell",
+  row("توانای فرۆشتنی هەموو کەسێک","ناتوانرێت پشتڕاست بکرێتەوە","warn")+
+  sellHtml+
+  "<p class='small'>Quote تەنها نرخ و ڕێڕەوی پێشبینی دەکات. گەرەنتیی جێبەجێبوونی فرۆشتن نییە. ئەم بۆتە هیچ مامەڵەیەک دروست ناکات یان واژۆ ناکات.</p>"
+ );
+
+ show("extra",
+  row("بازاڕ",pair?"دۆزرایەوە":"نەدۆزرایەوە")+
+  row("RugCheck",rug?"دۆزرایەوە":"نەدۆزرایەوە")+
+  row("Supply",supply?"دۆزرایەوە":"نەدۆزرایەوە")+
+  row("Largest Accounts",largest?"دۆزرایەوە":"نەدۆزرایەوە")+
+  row("Mint Account",mintKnown?"دۆزرایەوە":"نەدۆزرایەوە")+
+  row("DexScreener",`<a target="_blank" href="https://dexscreener.com/solana/${mint}">بینین</a>`)
+ );
+
+ // خاڵی مەترسی: زانیاریی نەبوو بە خۆی وەک دۆخی خراپ نیشان نادرێت
+ let points=0,notes=[];
+ if(!pair){points+=3;notes.push("داتای بازاڕ بەردەست نییە.");}
+ else{
+  if((pair.liquidity?.usd||0)<10000){points+=2;notes.push("لیکوییدیتی کەمە.");}
+  if((pair.volume?.h24||0)<1000){points+=1;notes.push("قەبارەی مامەڵە کەمە.");}
+  if((tx.sells||0)===0){points+=2;notes.push("فرۆشتن لە ٢٤ کاتژمێر نیشان نەدراوە.");}
+ }
+ if(!rug){points+=2;notes.push("RugCheck بەردەست نییە.");}
+ if(!mintKnown){points+=2;notes.push("Mint Account پشتڕاست نەکراوەتەوە.");}
+ else{
+  if(mintAuth!==null){points+=2;notes.push("Mint Authority چالاکە.");}
+  if(freezeAuth!==null){points+=2;notes.push("Freeze Authority چالاکە.");}
+ }
+ if(!supply){points+=1;notes.push("Supply بەردەست نییە.");}
+ if(!largest){points+=1;notes.push("Largest Accounts بەردەست نییە.");}
+ if(!quote?.outAmount){points+=2;notes.push("Jupiter Quote بە سەرکەوتوویی نەدۆزرایەوە.");}
+ if(risks.length){points+=Math.min(3,risks.length);notes.push("RugCheck ئاگاداری تۆمار کردووە.");}
+
+ let label="ئاگاداری",cls="warn";
+ if(points>=7){label="مەترسی بەرز یان داتای زۆر ناتەواو";cls="bad";}
+ else if(points<=2){label="خاڵی مەترسیی کەم لە داتای بەردەستدا";cls="good";}
+ show("verdict",
+  `<h2 class="${cls}">${label}</h2>`+
+  row("خاڵی ئاگاداری",points)+
+  (notes.length?`<ul>${notes.map(x=>"<li>"+safe(x)+"</li>").join("")}</ul>`:"<p>ئاگادارییەکی سەرەکی نەدۆزرایەوە.</p>")+
+  "<p class='small'>ئەم خاڵانە پێوانەی ڕێنمایین، نەک حوکمی قطعی لەسەر سکامبوون یان سەلامەتی. Quote و داتای بازار دەگۆڕێن.</p>"
+ );
+
+ $("status").textContent="✅ پشکنین تەواو بوو.";
+ $("scan").disabled=false;
+}
+</script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پشکنەری زیرەکی کۆینی سولانا</title>
+<style>
+*{box-sizing:border-box}
 body{margin:0;background:#0b1020;color:#eef2ff;font-family:Arial,sans-serif;padding:18px;line-height:1.7}
 main{max-width:850px;margin:auto}
 header{text-align:center;margin:20px 0 28px}
