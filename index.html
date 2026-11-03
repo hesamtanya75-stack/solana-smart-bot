@@ -263,11 +263,12 @@ if(holders.length){
 
   
 
-  show("market",
-   row("لیکوییدیتی",money(market?.liquidity?.usd))+
-   row("قەبارەی مامەڵەی ٢٤ کاتژمێر",money(market?.volume?.h24))+
-   row("کڕین / فرۆشتن",market?number(market.txns?.h24?.buys)+" / "+number(market.txns?.h24?.sells):"نەزانراو")+
-   row("FDV",money(market?.fdv))
+  show("basic",
+ row("ناونیشان",short(mint))+
+ row("DEX",market?.dexId||"نەزانراو")+
+ row("نرخ",money(market?.priceUsd))+
+ row("Token Program",programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"?"Token-2022":programOwner?"Token Program":"نەزانراو")
+);
   );
 
   show("security",
