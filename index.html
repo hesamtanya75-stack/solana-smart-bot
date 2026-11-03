@@ -228,16 +228,16 @@ if(holderData?.length && supplyData?.amount){
     holders=holderData.slice(0,10).map(x=>({
   address:x.address,
   pct:Number(x.amount)/total*100
-}));
+}));holders=rug.topHolders.slice(0,10).map(x=>({
+    pct:Number(x.pct)
+  })).filter(x=>Number.isFinite(x.pct));
     holderCount=holderData.length;
     holderText="داتا لە RPC وەرگیرا";
   }
 }
 
 if(!holders.length && Array.isArray(rug?.topHolders) && rug.topHolders.length){
-  holders=rug.topHolders.slice(0,10).map(x=>({
-    pct:Number(x.pct)
-  })).filter(x=>Number.isFinite(x.pct));
+  
   if(holders.length){
     holderCount=rug.topHolders.length;
     holderText="داتا لە RugCheck وەرگیرا";
