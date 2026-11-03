@@ -65,3 +65,103 @@ button {
 </div>
 <div id="status"></div>
 <div id="result"></div>
+<script>
+const $ = id => document.getElementById(id);
+
+function fmt(n) {
+  if (n === null || n === undefined || !Number.isFinite(Number(n)))
+    return "نەدۆزرایەوە";
+  return Number(n).toLocaleString("en-US", {
+    maximumFractionDigits: 2
+  });
+}
+
+function row(name, value) {
+  return `<div class="row"><span>${name}</span><b>${value}</b></div>`;
+}
+
+async function scan() {
+  const mint = $("mint").value.trim();
+  $("result").innerHTML = "";
+
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+    $("status").textContent = "ناونیشانی کۆین دروست نییە.";
+    return;
+  }
+
+  $("scan").disabled = true;
+  $("status").textContent = "تکایە چاوەڕێ بکە...";
+
+  let output = "";
+
+  try {
+    const response = await fetch(
+      "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint)
+    );
+
+    if (!response.ok) throw new Error("API error");
+
+    const data = await response.json();
+    const pairs = (data.pairs || [])
+      .filter(p => p.chainId === "solana")
+      .sort((a,b) => (Number(b.liquidity?.usd)||0) -
+                     (Number(a.liquidity?.usd)||0));
+
+    if (pairs.length) {
+      const p = pairs[0];
+      output += `<div class="card"><h3>📊 زانیاری بازاڕ</h3>`;
+      output += row("ناوی کۆین", p.baseToken?.name || "نەدۆزرایەوە");
+      output += row("نرخ", Number(p.priceUsd) > 0 ? "$" + fmt(p.priceUsd) : "نەدۆزرایەوە");
+      output += row("Liquidity", "$" + fmt(p.liquidity?.usd));
+      output += row("Volume 24h", "$" + fmt(p.volume?.h24));
+      output += row("کڕین 24h", fmt(p.txns?.h24?.buys));
+      output += row("فرۆشتن 24h", fmt(p.txns?.h24?.sells));
+      output += `<p><a href="${p.url}" target="_blank" rel="noopener">بینینی کۆین لە DexScreener</a></p></div>`;
+    } else {
+      output += `<div class="card">بازاڕی Solana نەدۆزرایەوە.</div>`;
+    }
+  } catch (error) {
+    output += `<div class="card">نەتوانرا داتای بازاڕ بهێنرێت. دووبارە هەوڵ بدەرەوە.</div>`;
+  }
+
+  try {
+    const response = await fetch(
+      "https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"
+    );
+
+    if (!response.ok) throw new Error("RugCheck unavailable");
+
+    const r = await response.json();
+    output += `<div class="card"><h3>🛡️ پشکنینی مەترسی</h3>`;
+    output += row("Risk Score", fmt(r.score));
+    output += row("Mint Authority", r.mintAuthority ? "هەیە ⚠️" : "نییە / null");
+    output += row("Freeze Authority", r.freezeAuthority ? "هەیە ⚠️" : "نییە / null");
+    output += row("ژمارەی هۆڵدەر", fmt(r.totalHolders));
+
+    if (r.risks?.length) {
+      output += "<h4>ئاگادارییەکان</h4>";
+      r.risks.slice(0,10).forEach(x => {
+        output += row(x.name || "Risk", x.level || "ئاگاداری");
+      });
+    } else {
+      output += "<p>هیچ ئاگادارییەک لە ڕاپۆرتەکەدا نەدۆزرایەوە.</p>";
+    }
+
+    output += "</div>";
+  } catch (error) {
+    output += `<div class="card">داتای RugCheck بەردەست نییە.</div>`;
+  }
+
+  output += `<div class="card"><h3>⚠️ ئاگاداری</h3>
+  <p>ژمارەی فرۆشتن بەڵگەی ئەوە نییە کە هەمووان دەتوانن بفرۆشن. ئەم ئامرازە توانای فرۆشتن یان سەلامەتی کۆین دڵنیا ناکات.</p></div>`;
+
+  $("result").innerHTML = output;
+  $("status").textContent = "پشکنین تەواو بوو.";
+  $("scan").disabled = false;
+}
+
+$("scan").addEventListener("click", scan);
+</script>
+</main>
+</body>
+</html>
