@@ -1,1 +1,67 @@
 
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solana Smart Scanner</title>
+<style>
+body {
+  margin: 0;
+  padding: 18px;
+  background: #0b1020;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+main {
+  max-width: 760px;
+  margin: auto;
+}
+.card {
+  background: #151d33;
+  border: 1px solid #2b3858;
+  border-radius: 15px;
+  padding: 16px;
+  margin: 14px 0;
+}
+input, button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+input {
+  background: #0b1020;
+  color: white;
+  border: 1px solid #526384;
+  direction: ltr;
+}
+button {
+  background: #7c5cff;
+  color: white;
+  border: 0;
+  font-weight: bold;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #2b3858;
+}
+.good { color: #57d6a0; }
+.warn { color: #ffd166; }
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+<h1>🔎 Solana Smart Scanner</h1>
+<p>ناونیشانی کۆینی Solana بنووسە بۆ پشکنینی مەترسی و بازاڕ.</p>
+<input id="mint" placeholder="Paste Solana token address">
+<button id="scan">پشکنین بکە</button>
+<p>ئەم ئامرازە تەنها پشکنین دەکات؛ هیچ مامەڵەیەک ناکات.</p>
+</div>
+<div id="status"></div>
+<div id="result"></div>
