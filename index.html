@@ -219,38 +219,32 @@ async function scanToken(){
 let largestText="نەزانراو";
 let topTenText="نەزانراو";
 let holderCount="نەزانراو";
-
 let holders=[];
 
-if(holderData?.length && supplyData?.amount){
+if(Array.isArray(holderData) && holderData.length && supplyData?.amount){
   const total=Number(supplyData.amount);
   if(total>0){
     holders=holderData.slice(0,10).map(x=>({
-  address:x.address,
-  pct:Number(x.amount)/total*100
-}));
-holders=rug.topHolders.slice(0,10).map(x=>({
-  address:x.address||x.owner||"نەزانراو",
-  pct:Number(x.pct)
-})).filter(x=>Number.isFinite(x.pct));
-holderCount=rug.topHolders.length;
-holderText="داتا لە RugCheck وەرگیرا";
-
+      address:x.address||"نەزانراو",
+      pct:Number(x.amount)/total*100
+    }));
+    holderCount=holderData.length;
+    holderText="داتا لە RPC وەرگیرا";
   }
 }
 
 if(!holders.length && Array.isArray(rug?.topHolders) && rug.topHolders.length){
-  
-  if(holders.length){
-    holderCount=rug.topHolders.length;
-    holderText="داتا لە RugCheck وەرگیرا";
-  }
+  holders=rug.topHolders.slice(0,10).map(x=>({
+    address:x.address||x.owner||"نەزانراو",
+    pct:Number(x.pct)
+  })).filter(x=>Number.isFinite(x.pct));
+  holderCount=rug.topHolders.length;
+  holderText="داتا لە RugCheck وەرگیرا";
 }
 
 if(holders.length){
   const largest=Math.max(...holders.map(x=>x.pct));
   const topTen=holders.reduce((sum,x)=>sum+x.pct,0);
-
   largestText=largest.toFixed(2)+"%";
   topTenText=topTen.toFixed(2)+"%";
 
