@@ -276,16 +276,16 @@ if(holders.length){
     }else if(topTenPercent>50){
      risk+=2;
      notes.push("١٠ هەژماری گەورەتر بەشی زۆری تۆکنیان هەیە");
-    }
-   }
-  }
-
-  show("basic",
+    show("basic",
    row("ناونیشان",short(mint))+
    row("DEX",market?.dexId||"نەزانراو")+
    row("نرخ",money(market?.priceUsd))+
    row("Token Program",programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"?"Token-2022":programOwner?"Token Program":"نەزانراو")
   );
+   }
+  }
+
+  
 
   show("market",
    row("لیکوییدیتی",money(market?.liquidity?.usd))+
