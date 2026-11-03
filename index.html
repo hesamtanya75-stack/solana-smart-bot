@@ -215,13 +215,49 @@ async function scanToken(){
    }
   }
 
-  let holderText="داتای هەژمارە گەورەکان بەردەست نییە";
-  let largestText="نەزانراو";
-  let topTenText="نەزانراو";
-  let largestPercent=null,topTenPercent=null;
+  let holderText="داتای خاوەنەکان بەردەست نییە";
+let largestText="نەزانراو";
+let topTenText="نەزانراو";
+let holderCount="نەزانراو";
 
-  if(holderData?.length&&supplyData?.amount){
-   const totalSupply=Number(supplyData.amount);
+let holders=[];
+
+if(holderData?.length && supplyData?.amount){
+  const total=Number(supplyData.amount);
+  if(total>0){
+    holders=holderData.slice(0,10).map(x=>({
+      pct:Number(x.amount)/total*100
+    }));
+    holderCount=holderData.length;
+    holderText="داتا لە RPC وەرگیرا";
+  }
+}
+
+if(!holders.length && Array.isArray(rug?.topHolders) && rug.topHolders.length){
+  holders=rug.topHolders.slice(0,10).map(x=>({
+    pct:Number(x.pct)
+  })).filter(x=>Number.isFinite(x.pct));
+  if(holders.length){
+    holderCount=rug.topHolders.length;
+    holderText="داتا لە RugCheck وەرگیرا";
+  }
+}
+
+if(holders.length){
+  const largest=Math.max(...holders.map(x=>x.pct));
+  const topTen=holders.reduce((sum,x)=>sum+x.pct,0);
+
+  largestText=largest.toFixed(2)+"%";
+  topTenText=topTen.toFixed(2)+"%";
+
+  if(largest>30){
+    risk+=2;
+    notes.push("گەورەترین هەژماری تۆکن بەشی زۆری هەیە");
+  }else if(topTen>50){
+    risk+=2;
+    notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
+  }
+}
    const accounts=holderData.slice(0,10);
    const topAmount=Number(accounts[0]?.amount||0);
    const tenAmount=accounts.reduce((sum,x)=>sum+Number(x.amount||0),0);
