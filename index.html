@@ -188,20 +188,25 @@ async function scanToken(){
   const programOwner=mintInfo?.owner;
   const mintChecked=!!parsed;
 
-  if(!mintChecked){
-   risk+=2;
-   notes.push("پشکنینی Mint و Freeze بەردەست نەبوو");
-  }else{
-   if(mintAuth){
-    risk+=3;
-    notes.push("Mint Authority چالاکە");
-   }
-   if(freezeAuth){
-    risk+=3;
-    notes.push("Freeze Authority چالاکە");
-   }
-  }
+  let mintStatus="داتا نییە";
+  let freezeStatus="داتا نییە";
 
+  if(!mintChecked){
+    risk+=2;
+    notes.push("پشکنینی Mint و Freeze بەردەست نەبوو");
+  }else{
+    mintStatus=mintAuth?"چالاک ⚠️":"ناچالاک ✅";
+    freezeStatus=freezeAuth?"چالاک ⚠️":"ناچالاک ✅";
+
+    if(mintAuth){
+      risk+=3;
+      notes.push("Mint Authority چالاکە");
+    }
+    if(freezeAuth){
+      risk+=3;
+      notes.push("Freeze Authority چالاکە");
+    }
+  }
   if(!rug){
    risk+=2;
    notes.push("داتای RugCheck بەردەست نەبوو");
