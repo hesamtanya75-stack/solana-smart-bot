@@ -591,3 +591,275 @@ async function scanToken(){
 </script>
 </body>
 </html>
+
+async function scanToken(){
+ const mint=$("mint").value.trim();
+
+ if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){
+  $("status").textContent="ناونیشانی Mint دروست نییە.";
+  return;
+ }
+
+ $("scan").disabled=true;
+ $("results").classList.remove("hidden");
+ $("status").textContent="⏳ پشکنین دەکرێت...";
+
+ ["basic","market","trades","security","holders","authority","lp","sell","extra","verdict"].forEach(x=>put(x,"پشکنین دەکرێت..."));
+
+ let pair=null,rug=null,supply=null,largest=null,mintInfo=null;
+ let owners=[],quote=null,errors={};
+
+ try {
+  const tasks=await Promise.allSettled([
+   getJson("https://api.dexscreener.com/latest/dex/tokens/"+mint),
+   getJson("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
+   rpc("getTokenSupply",[mint]),
+   rpc("getTokenLargestAccounts",[mint]),
+   rpc("getAccountInfo",[mint,{encoding:"jsonParsed",commitment:"confirmed"}])
+  ]);
+
+  if(tasks[0].status==="fulfilled")
+   pair=(tasks[0].value.pairs||[])
+    .filter(p=>p.chainId==="solana")
+    .sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0]||null;
+  else errors.dex=tasks[0].reason.message;
+
+  if(tasks[1].status==="fulfilled")rug=tasks[1].value;
+  else errors.rug=tasks[1].reason.message;
+
+  if(tasks[2].status==="fulfilled")supply=tasks[2].value.value?.value||null;
+  else errors.supply=tasks[2].reason.message;
+
+  if(tasks[3].status==="fulfilled")largest=tasks[3].value.value?.value||null;
+  else errors.largest=tasks[3].reason.message;
+
+  if(tasks[4].status==="fulfilled")
+   mintInfo=tasks[4].value.value?.value?.data?.parsed?.info||null;
+  else errors.mint=tasks[4].reason.message;
+
+  // دۆزینەوەی خاوەنی Token Account
+  if(largest?.length){
+   try {
+    const a=await rpc("getMultipleAccounts",[
+     largest.map(x=>x.address),
+     {encoding:"jsonParsed"}
+    ]);
+    owners=(a.value.value||[]).map((v,i)=>({
+     address:largest[i].address,
+     owner:v?.data?.parsed?.info?.owner||null,
+     amount:largest[i].uiAmountString||largest[i].amount,
+     ui:largest[i].uiAmount
+    }));
+   } catch(e) {
+    errors.owners=e.message;
+   }
+  }
+
+  // زانیاری گشتی
+  put("basic",
+   row("ناونیشانی کۆین",esc(mint))+
+   row("ناوی کۆین",esc(pair?.baseToken?.name))+
+   row("کۆدی کۆین",esc(pair?.baseToken?.symbol))+
+   row("DEX",esc(pair?.dexId))+
+   row("ناونیشانی جووت",pair?.pairAddress?addr(pair.pairAddress):"بەردەست نییە")+
+   row("Solscan",'<a target="_blank" href="https://solscan.io/token/'+mint+'">کردنەوە</a>')
+  );
+
+  // نرخ و لیکوییدیتی
+  put("market",
+   row("نرخی ئێستا",pair?usd(pair.priceUsd):"بەردەست نییە")+
+   row("لیکوییدیتی",pair?usd(pair.liquidity?.usd):"بەردەست نییە",
+    (pair?.liquidity?.usd||0)<10000?"warn":"")+
+   row("FDV",pair?usd(pair.fdv):"بەردەست نییە")+
+   row("کاتی دروستبوونی جووت",
+    pair?.pairCreatedAt?new Date(pair.pairCreatedAt).toLocaleString():"بەردەست نییە")
+  );
+
+  const tx=pair?.txns?.h24||{};
+  const vol=pair?.volume||{};
+
+  put("trades",
+   row("قەبارەی ٢٤ کاتژمێر",usd(vol.h24))+
+   row("کڕین",tx.buys??"بەردەست نییە")+
+   row("فرۆشتن",tx.sells??"بەردەست نییە")+
+   row("جیاوازی کڕین و فرۆشتن",
+    tx.buys!=null&&tx.sells!=null?tx.buys-tx.sells:"بەردەست نییە")
+  );
+
+  const risks=rug?.risks||[];
+
+  put("security",
+   row("نمرەی RugCheck",rug?.score??"بەردەست نییە")+
+   row("ژمارەی هۆڵدەران",rug?.totalHolders??"بەردەست نییە")+
+   row("ژمارەی ئاگاداری",risks.length)+
+   (risks.length
+    ?risks.map(x=>row(
+      x.name||"ئاگاداری",
+      esc(x.description||x.value||x.level||"وردەکاری نییە"),
+      "warn"
+     )).join("")
+    :"<p class='good'>هیچ ئاگادارییەک لە داتای RugCheck نەدۆزرایەوە.</p>")
+  );
+
+  // هۆڵدەران
+  let hh=owners.length
+   ?owners.slice(0,10).map((x,i)=>{
+     let pct=supply?.uiAmount?x.ui/Number(supply.uiAmount)*100:null;
+     return row("Token Account "+(i+1),addr(x.address))+
+      row("بڕ",esc(x.amount))+
+      row("خاوەن",x.owner?addr(x.owner):"نەناسراوە")+
+      row("ڕێژەی Supply",
+       pct!==null?pct.toFixed(4)+"%":"بەردەست نییە");
+    }).join("")
+   :"زانیاری گەورەترین هەژمارەکان بەردەست نییە.";
+
+  put("holders",hh+
+   "<p class='small'>Token Account هەمان Wallet نییە. Pool و Bonding Curve دەبێت جیا بکرێنەوە؛ لیستی هۆڵدەران بە تەنها بەڵگەی دابەشبوونی خاوەنانی تاک نییە.</p>"
+  );
+
+  // دەسەڵاتی کۆین
+  const auth=v=>v===null
+   ?"ناچالاکە (RPC null)"
+   :"چالاکە: "+addr(v);
+
+  put("authority",
+   row("Mint Authority",
+    mintInfo?auth(mintInfo.mintAuthority):"پشتڕاست نەکراوەتەوە",
+    !mintInfo?"warn":mintInfo.mintAuthority===null?"good":"bad")+
+   row("Freeze Authority",
+    mintInfo?auth(mintInfo.freezeAuthority):"پشتڕاست نەکراوەتەوە",
+    !mintInfo?"warn":mintInfo.freezeAuthority===null?"good":"bad")+
+   row("کۆی Supply",supply?.uiAmountString??"بەردەست نییە")+
+   row("Decimals",supply?.decimals??mintInfo?.decimals??"بەردەست نییە")
+  );
+
+  put("lp",
+   row("لیکوییدیتی",pair?usd(pair.liquidity?.usd):"بەردەست نییە")+
+   row("قوفڵکردنی LP","نەسەلمێنراوە","warn")+
+   row("سووتاندنی LP","نەسەلمێنراوە","warn")+
+   "<p class='small'>بوونی لیکوییدیتی بەڵگەی قوفڵکردن یان سووتاندنی LP نییە.</p>"
+  );
+</script>
+
+  // تاقیکردنەوەی Quote ـی فرۆشتن
+  let sell="";
+
+  if(supply?.amount){
+   try {
+    const raw=BigInt(supply.amount)/10000n;
+
+    if(raw<=0n) throw Error("بڕی تاقیکردنەوە زۆر بچووکە");
+
+    const url="https://lite-api.jup.ag/swap/v1/quote?"+
+     new URLSearchParams({
+      inputMint:mint,
+      outputMint:SOL,
+      amount:String(raw),
+      slippageBps:"100"
+     });
+
+    quote=await getJson(url);
+
+    if(quote?.outAmount){
+     sell=row("Jupiter Quote","ڕێڕەوی پێشبینی دۆزرایەوە","good")+
+      row("بڕی تاقیکراوە",String(raw)+" atomic units")+
+      row("SOL ـی چاوەڕوانکراو",esc(quote.outAmount));
+    }else{
+     sell=row("Jupiter Quote","ڕێڕەو نەدۆزرایەوە","warn");
+    }
+   }catch(e){
+    sell=row("Jupiter Quote",
+     "پشکنین سەرکەوتوو نەبوو: "+esc(e.message),"warn");
+   }
+  }else{
+   sell=row("Jupiter Quote",
+    "Supply بەردەست نییە؛ پشکنین نەکرا","warn");
+  }
+
+  put("sell",
+   row("توانای فرۆشتنی هەموو کەسێک",
+    "ناتوانرێت پشتڕاست بکرێتەوە","warn")+
+   sell+
+   "<p class='small'>Quote تەنها ڕێڕەوی پێشبینی دەکات؛ گەرەنتی جێبەجێبوونی فرۆشتن نییە. هیچ مامەڵەیەک واژۆ یان جێبەجێ ناکرێت.</p>"
+  );
+
+  // زانیاری زیاتر و هۆکاری هەڵەکان
+  put("extra",
+   row("بازاڕ",pair?"دۆزرایەوە":"نەدۆزرایەوە")+
+   row("RugCheck",rug?"دۆزرایەوە":"نەدۆزرایەوە")+
+   row("Supply",supply?"دۆزرایەوە":"نەدۆزرایەوە")+
+   row("Largest Accounts",largest?"دۆزرایەوە":"نەدۆزرایەوە")+
+   row("Mint Account",mintInfo?"دۆزرایەوە":"نەدۆزرایەوە")+
+   row("DexScreener",
+    '<a target="_blank" href="https://dexscreener.com/solana/'+mint+'">بینین</a>')+
+   Object.entries(errors).map(([k,v])=>
+    row("هۆکاری "+k,esc(v),"warn")
+   ).join("")
+  );
+
+  // هەڵسەنگاندنی مەترسی
+  let pts=0,notes=[];
+
+  if(!pair){
+   pts+=3;notes.push("داتای بازاڕ بەردەست نییە.");
+  }else{
+   if((pair.liquidity?.usd||0)<10000){
+    pts+=2;notes.push("لیکوییدیتی کەمە.");
+   }
+   if((pair.volume?.h24||0)<1000){
+    pts++;notes.push("قەبارەی مامەڵە کەمە.");
+   }
+   if((tx.sells||0)===0){
+    pts+=2;notes.push("فرۆشتن لە ٢٤ کاتژمێر نیشان نەدراوە.");
+   }
+  }
+
+  if(!rug){pts+=2;notes.push("RugCheck بەردەست نییە.");}
+  if(!mintInfo){pts+=2;notes.push("Mint Account پشتڕاست نەکراوەتەوە.");}
+  else{
+   if(mintInfo.mintAuthority!==null){
+    pts+=2;notes.push("Mint Authority چالاکە.");
+   }
+   if(mintInfo.freezeAuthority!==null){
+    pts+=2;notes.push("Freeze Authority چالاکە.");
+   }
+  }
+
+  if(!supply){pts++;notes.push("Supply بەردەست نییە.");}
+  if(!largest){pts++;notes.push("Largest Accounts بەردەست نییە.");}
+  if(!quote?.outAmount){
+   pts+=2;notes.push("Jupiter Quote بە سەرکەوتوویی نەدۆزرایەوە.");
+  }
+  if(risks.length){
+   pts+=Math.min(3,risks.length);
+   notes.push("RugCheck ئاگاداری تۆمار کردووە.");
+  }
+
+  const label=pts>=7
+   ?"مەترسی بەرز یان داتای زۆر ناتەواو"
+   :pts<=2
+   ?"خاڵی مەترسی کەم لە داتای بەردەستدا"
+   :"ئاگاداری";
+
+  const cls=pts>=7?"bad":pts<=2?"good":"warn";
+
+  put("verdict",
+   '<h2 class="'+cls+'">'+label+'</h2>'+
+   row("خاڵی ئاگاداری",pts)+
+   (notes.length
+    ?"<ul>"+notes.map(n=>"<li>"+esc(n)+"</li>").join("")+"</ul>"
+    :"<p>ئاگادارییەکی سەرەکی نەدۆزرایەوە.</p>")+
+   "<p class='small'>ئەم خاڵانە پێوانەی ڕێنمایین، نەک حوکمی قطعی لەسەر سکامبوون یان سەلامەتی. داتای بازار دەگۆڕێت.</p>"
+  );
+
+  $("status").textContent="✅ پشکنین تەواو بوو.";
+
+ }catch(e){
+  $("status").textContent="هەڵە: "+e.message;
+ }finally{
+  $("scan").disabled=false;
+ }
+}
+</script>
+</body>
+</html>
