@@ -118,8 +118,9 @@ async function scan(){
   let buyd = 0; let sells = 0; if(valid.length){
    const p=[...valid].sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0))[0];
    const total=key=>valid.reduce((s,x)=>s+Number(x[key]?.usd||0),0);
-    buys=valid.reduce((s,x)=>s+Number(x.txns?.h24?.buys||0),0);
-    sells=valid.reduce((s,x)=>s+Number(x.txns?.h24?.sells||0),0);
+   ((s,x)=>s+Number(x.txns?.h24?.buys||0),0);
+  0);
+     sells=valid.reduce((s,x)=>s+Number(x.txns?.h24?.sells||0),0);
    out+=section("📊 زانیاری بازاڕ",
     row("ناوی کۆین",esc(p.baseToken?.name))+
     row("Symbol",esc(p.baseToken?.symbol))+
