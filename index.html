@@ -438,22 +438,18 @@ row("Token-2022 Extensions",
   el("scan").disabled=false;
  }
 }
-
-</script>
-</body>
-</html>
-// ===== DEMO TRADING: تەنها کڕینی خەیاڵی =====
+// ===== DEMO TRADING =====
 let demoBalance = 100;
 let demoTrades = [];
 
 const demoPanel = document.createElement("div");
 demoPanel.className = "section";
 demoPanel.innerHTML = `
-  <h2>🤖 کڕینی خەیاڵی ئۆتۆماتیک</h2>
+  <h2>🤖 کڕینی خەیاڵی</h2>
   <p>باڵانسی خەیاڵی: <b id="demoBalance">$100.00</b></p>
   <p>بڕی هەر کڕین: <b>$5</b></p>
-  <button id="demoBuy">🧪 تاقیکردنەوەی کڕینی خەیاڵی</button>
-  <div id="demoStatus" class="small"></div>
+  <button id="demoBuy">🧪 کڕینی خەیاڵی</button>
+  <div id="demoStatus"></div>
   <div id="demoHistory"></div>
   <p class="small">تەنها تاقیکردنەوەیە؛ هیچ پارەی ڕاستەقینە بەکارناهێنێت.</p>
 `;
@@ -465,11 +461,6 @@ document.querySelector("main").insertBefore(
 
 document.getElementById("demoBuy").onclick = function () {
   const mint = document.getElementById("mint").value.trim();
-  const riskText = document.getElementById("risk").innerText;
-  const marketText = document.getElementById("market").innerText;
-  const securityText = document.getElementById("security").innerText;
-  const holdersText = document.getElementById("holders").innerText;
-  const conclusionText = document.getElementById("conclusion").innerText;
   const status = document.getElementById("demoStatus");
 
   if (!mint || document.getElementById("result").style.display === "none") {
@@ -477,35 +468,17 @@ document.getElementById("demoBuy").onclick = function () {
     return;
   }
 
+  const riskText = document.getElementById("risk").innerText;
   const riskMatch = riskText.match(/(\d+)\s*\/\s*18/);
-  const liquidityMatch = marketText.match(/لیکوییدیتی:\s*\$?([\d,.]+)/);
-  const topTenMatch = holdersText.match(/کۆی ١٠ هەژماری گەورەتر\s*([\d.]+)%/);
-
   const risk = riskMatch ? Number(riskMatch[1]) : 99;
-  const liquidity = liquidityMatch
-    ? Number(liquidityMatch[1].replace(/,/g, "")) : 0;
-  const topTen = topTenMatch ? Number(topTenMatch[1]) : 100;
 
-  const safeAuthorities =
-    securityText.includes("Mint Authority") &&
-    securityText.includes("Freeze Authority") &&
-    securityText.includes("ناچالاک");
-
-  const rejected =
-    risk > 3 ||
-    liquidity < 5000 ||
-    topTen > 50 ||
-    !safeAuthorities ||
-    conclusionText.includes("مەکڕە");
-
-  if (rejected) {
-    status.innerText =
-      "⛔ کڕینی خەیاڵی ڕەتکرایەوە؛ مەرجەکانی سەلامەتی پڕ نەبوون.";
+  if (risk > 3) {
+    status.innerText = "⛔ مەترسی بەرزە؛ کڕینی خەیاڵی ڕەتکرایەوە.";
     return;
   }
 
   if (demoTrades.some(t => t.mint === mint)) {
-    status.innerText = "ئەم کۆینە پێشتر لەم تاقیکردنەوەیەدا کڕدراوە.";
+    status.innerText = "ئەم کۆینە پێشتر تۆمارکراوە.";
     return;
   }
 
@@ -521,10 +494,11 @@ document.getElementById("demoBuy").onclick = function () {
     "$" + demoBalance.toFixed(2);
 
   document.getElementById("demoHistory").innerHTML =
-    "<p class='good'>✅ کڕینی خەیاڵی تۆمارکرا: $5</p>" +
-    "<p class='small' dir='ltr'>" + mint + "</p>" +
-    "<p class='small'>ژمارەی کڕینە خەیاڵییەکان: " +
-    demoTrades.length + "</p>";
+    "<p class='good'>✅ کڕینی خەیاڵی: $5</p>" +
+    "<p class='small' dir='ltr'>" + mint + "</p>";
 
-  status.innerText = "تاقیکردنەوە تەواو بوو؛ هیچ مامەڵەی ڕاستەقینە نەکرا.";
+  status.innerText = "تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
 };
+</script>
+</body>
+</html>
