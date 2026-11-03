@@ -291,13 +291,13 @@ async function scanToken(){
     (holders.length&&Math.max(...holders.map(x=>x.pct))>30
       ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
       : "")+
-    holders.map((x,i)=>
+        holders.map((x,i)=>
       row("هەژمار "+(i+1),
-        (i===0&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.address)
-          ? "<a href='https://solscan.io/account/"+x.address+"' target='_blank' rel='noopener noreferrer'>"+safe(x.address)+"</a>"
-          : safe(x.address)
-        )+" — "+x.pct.toFixed(2)+"%"
+        safe(x.address)+" — "+x.pct.toFixed(2)+"%"+
+        (x.owner?" | خاوەن: "+safe(x.owner):"")+
+        (x.insider===true?" | ⚠️ Insider": "")
       )
+    ).join("")+
     ).join("")+
     "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
   );
