@@ -146,7 +146,7 @@ async function scanToken(){
    getJSON("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
    rpc("getAccountInfo",[mint,{encoding:"jsonParsed",commitment:"confirmed"}]),
    rpc("getTokenLargestAccounts",[mint,{commitment:"confirmed"}]),
-   rpc("getTokenSupply",[mint,{commitment:"confirmed"}]),rpc("getTokenSupply",[mint,{commitment:"confirmed"}]),
+   rpc("getTokenSupply",[mint,{commitment:"confirmed"}]),
 rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}])
   ]);
 
