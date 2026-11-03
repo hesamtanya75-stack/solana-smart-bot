@@ -261,6 +261,9 @@ if(holders.length){
   row("گەورەترین هەژماری تۆکن",largestText)+
   row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
   row("ژمارەی هەژمارە گەورەکان",holderCount)+
+  (holders.length && Math.max(...holders.map(x=>x.pct))>30
+    ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
+    : "")+
   holders.map((x,i)=>
     row("هەژمار "+(i+1),safe(x.address)+" — "+x.pct.toFixed(2)+"%")
   ).join("")+
