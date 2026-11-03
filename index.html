@@ -229,89 +229,73 @@ async function scanToken(){
     }
   }
 
-  let holderText="داتای خاوەنەکان بەردەست نییە";
+    let holderText="داتای خاوەنەکان بەردەست نییە";
   let largestText="نەزانراو";
   let topTenText="نەزانراو";
   let holderCount="نەزانراو";
   let holders=[];
-  const total=Number(supplyData.amount);
-  if(total>0){
+
+  const total=Number(supplyData?.amount);
+
+  if(Array.isArray(holderData)&&holderData.length&&total>0){
     holders=holderData.slice(0,10).map(x=>({
       address:x.address||"نەزانراو",
       pct:Number(x.amount)/total*100
-    }));
+    })).filter(x=>Number.isFinite(x.pct));
+
     holderCount=holderData.length;
     holderText="داتا لە RPC وەرگیرا";
   }
-}
-if(!rug){
-    risk+=2;
-    notes.push("داتای RugCheck بەردەست نەبوو");
-  }else if(rug.score!=null){
-    if(rug.score>5000){
-      risk+=3;
-      notes.push("نمرەی مەترسی RugCheck بەرزە");
-    }else if(rug.score>2500){
-      risk+=2;
-      notes.push("نمرەی مەترسی RugCheck مامناوەندە");
-    }
-  }
-   if(rug.score>5000){
-    risk+=3;
-    notes.push("نمرەی مەترسی RugCheck بەرزە");
-   }else if(rug.score>2500){
-    risk+=2;
-    notes.push("نمرەی مەترسی RugCheck مامناوەندە");
-   }
+
+  if(!holders.length&&Array.isArray(rug?.topHolders)&&rug.topHolders.length){
+    holders=rug.topHolders.slice(0,10).map(x=>({
+      address:x.address||x.owner||"نەزانراو",
+      pct:Number(x.pct)
+    })).filter(x=>Number.isFinite(x.pct));
+
+    holderCount=rug.topHolders.length;
+    holderText="داتا لە RugCheck وەرگیرا";
   }
 
-  let holderText="داتای خاوەنەکان بەردەست نییە";
-if(!holders.length && Array.isArray(rug?.topHolders) && rug.topHolders.length){
-  holders=rug.topHolders.slice(0,10).map(x=>({
-    address:x.address||x.owner||"نەزانراو",
-    pct:Number(x.pct)
-  })).filter(x=>Number.isFinite(x.pct));
-  holderCount=rug.topHolders.length;
-  holderText="داتا لە RugCheck وەرگیرا";
-}
+  if(holders.length){
+    const largest=Math.max(...holders.map(x=>x.pct));
+    const topTen=holders.reduce((sum,x)=>sum+x.pct,0);
 
-if(holders.length){
-  const largest=Math.max(...holders.map(x=>x.pct));
-  const topTen=holders.reduce((sum,x)=>sum+x.pct,0);
-  largestText=largest.toFixed(2)+"%";
-  topTenText=topTen.toFixed(2)+"%";
+    largestText=largest.toFixed(2)+"%";
+    topTenText=topTen.toFixed(2)+"%";
 
     if(largest>30){
-    risk+=2;
-    notes.push("گەورەترین هەژماری تۆکن بەشی زۆری هەیە");
-
-    if(Number(market?.liquidity?.usd||0)<5000){
       risk+=2;
-      notes.push("مەترسی زۆر بەرزە: کۆبوونەوەی زۆری کۆین لە یەک هەژمار و لیکوییدیتی زۆر کەم");
+      notes.push("گەورەترین هەژماری تۆکن بەشی زۆری هەیە");
+
+      if(Number(market?.liquidity?.usd||0)<5000){
+        risk+=2;
+        notes.push("مەترسی زۆر بەرزە: کۆبوونەوەی زۆری کۆین لە یەک هەژمار و لیکوییدیتی زۆر کەم");
+      }
+    }else if(topTen>50){
+      risk+=2;
+      notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
     }
-  }else if(topTen>50){
-    risk+=2;
-    notes.push("١٠ هەژماری گەورەتر بەشی زۆریان هەیە");
   }
-}
-   show("holders",
-  row("دۆخی داتا",holderText)+
-  row("گەورەترین هەژماری تۆکن",largestText)+
-  row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
-  row("ژمارەی هەژمارە گەورەکان",holderCount)+
-  (holders.length && Math.max(...holders.map(x=>x.pct))>30
-    ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
-    : "")+
-  holders.map((x,i)=>
-  row("هەژمار "+(i+1),
-    (i===0 && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.address)
-      ? "<a href='https://solscan.io/account/"+x.address+"' target='_blank' rel='noopener noreferrer'>"+safe(x.address)+"</a>"
-      : safe(x.address)
-    )+" — "+x.pct.toFixed(2)+"%"
-  )
-).join("")+
-  "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
-);
+
+  show("holders",
+    row("دۆخی داتا",holderText)+
+    row("گەورەترین هەژماری تۆکن",largestText)+
+    row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
+    row("ژمارەی هەژمارە گەورەکان",holderCount)+
+    (holders.length&&Math.max(...holders.map(x=>x.pct))>30
+      ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
+      : "")+
+    holders.map((x,i)=>
+      row("هەژمار "+(i+1),
+        (i===0&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(x.address)
+          ? "<a href='https://solscan.io/account/"+x.address+"' target='_blank' rel='noopener noreferrer'>"+safe(x.address)+"</a>"
+          : safe(x.address)
+        )+" — "+x.pct.toFixed(2)+"%"
+      )
+    ).join("")+
+    "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
+  );
 
 
 
