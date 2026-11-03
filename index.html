@@ -182,31 +182,54 @@ async function scanToken(){
    }
   }
 
-  const parsed=mintInfo?.data?.parsed?.info;
-  const mintAuth=parsed?.mintAuthority;
-  const freezeAuth=parsed?.freezeAuthority;
-  const programOwner=mintInfo?.owner;
-  const mintChecked=!!parsed;
+  const mintData=mintInfo?.data;
+let mintAuth=null;
+let freezeAuth=null;
+let mintChecked=false;
 
-  let mintStatus="داتا نییە";
-  let freezeStatus="داتا نییە";
-
-  if(!mintChecked){
-    risk+=2;
-    notes.push("پشکنینی Mint و Freeze بەردەست نەبوو");
-  }else{
-    mintStatus=mintAuth?"چالاک ⚠️":"ناچالاک ✅";
-    freezeStatus=freezeAuth?"چالاک ⚠️":"ناچالاک ✅";
-
-    if(mintAuth){
-      risk+=3;
-      notes.push("Mint Authority چالاکە");
+if(mintData?.parsed?.info){
+  mintAuth=!!mintData.parsed.info.mintAuthority;
+  freezeAuth=!!mintData.parsed.info.freezeAuthority;
+  mintChecked=true;
+}else if(Array.isArray(mintData)&&typeof mintData[0]==="string"){
+  try{
+    const bytes=Uint8Array.from(atob(mintData[0]),c=>c.charCodeAt(0));
+    if(bytes.length>=82){
+      const readU32=(i)=>(
+        bytes[i]|(bytes[i+1]<<8)|(bytes[i+2]<<16)|(bytes[i+3]<<24)
+      );
+      const mintOption=readU32(0);
+      const freezeOption=readU32(46);
+      if(mintOption<=1&&freezeOption<=1){
+        mintAuth=mintOption===1;
+        freezeAuth=freezeOption===1;
+        mintChecked=true;
+      }
     }
-    if(freezeAuth){
-      risk+=3;
-      notes.push("Freeze Authority چالاکە");
-    }
+  }catch(e){}
+}
+
+const programOwner=mintInfo?.owner;
+
+let mintStatus="داتا نییە";
+let freezeStatus="داتا نییە";
+
+if(!mintChecked){
+  risk+=2;
+  notes.push("پشکنینی Mint و Freeze بەردەست نەبوو");
+}else{
+  mintStatus=mintAuth?"چالاک ⚠️":"ناچالاک ✅";
+  freezeStatus=freezeAuth?"چالاک ⚠️":"ناچالاک ✅";
+
+  if(mintAuth){
+    risk+=3;
+    notes.push("Mint Authority چالاکە");
   }
+  if(freezeAuth){
+    risk+=3;
+    notes.push("Freeze Authority چالاکە");
+  }
+}
          show("security",
     row("Mint Authority",mintStatus)+
     row("Freeze Authority",freezeStatus)+
