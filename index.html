@@ -347,6 +347,39 @@ async function scanToken(){
   el("scan").disabled=false;
  }
 }
+// ئاگادارییە زیادەکان بۆ مەترسیی کۆین
+const extraWarnings = [];
+
+const largestHolder = holders.length
+  ? Math.max(...holders.map(x => x.pct))
+  : null;
+
+const topTenHolder = holders.length
+  ? holders.reduce((sum, x) => sum + x.pct, 0)
+  : null;
+
+const liquidity = Number(market?.liquidity?.usd || 0);
+const sells = Number(market?.txns?.h24?.sells || 0);
+
+if (largestHolder !== null && largestHolder > 30) {
+  extraWarnings.push("⚠️ یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە.");
+}
+
+if (topTenHolder !== null && topTenHolder > 50) {
+  extraWarnings.push("🚨 10 هەژماری گەورەتر زیاتر لە 50%ی کۆینەکەیان هەیە.");
+}
+
+if (liquidity > 0 && liquidity < 5000 && sells === 0) {
+  extraWarnings.push("🚨 لیکوییدیتی کەمە و هیچ فرۆشتنێک لە 24 کاتژمێردا نییە.");
+}
+
+if (extraWarnings.length) {
+  el("conclusion").innerHTML +=
+    "<h3 class='bad'>🚨 ئاگاداریی تایبەت</h3>" +
+    extraWarnings.map(x => "<p class='bad'>" + safe(x) + "</p>").join("") +
+    "<p class='bad'><b>پێشنیار: ئەم کۆینە مەکڕە تا مەترسییەکانی ڕوون نەبنەوە.</b></p>";
+}
+
 </script>
 </body>
 </html>
