@@ -216,7 +216,24 @@ async function scanToken(){
       : "")
   );
 
-  if(!rug){
+  
+let largestText="نەزانراو";
+let topTenText="نەزانراو";
+let holderCount="نەزانراو";
+let holders=[];
+
+if(Array.isArray(holderData) && holderData.length && supplyData?.amount){
+  const total=Number(supplyData.amount);
+  if(total>0){
+    holders=holderData.slice(0,10).map(x=>({
+      address:x.address||"نەزانراو",
+      pct:Number(x.amount)/total*100
+    }));
+    holderCount=holderData.length;
+    holderText="داتا لە RPC وەرگیرا";
+  }
+}
+if(!rug){
     risk+=2;
     notes.push("داتای RugCheck بەردەست نەبوو");
   }else if(rug.score!=null){
@@ -238,23 +255,6 @@ async function scanToken(){
   }
 
   let holderText="داتای خاوەنەکان بەردەست نییە";
-let largestText="نەزانراو";
-let topTenText="نەزانراو";
-let holderCount="نەزانراو";
-let holders=[];
-
-if(Array.isArray(holderData) && holderData.length && supplyData?.amount){
-  const total=Number(supplyData.amount);
-  if(total>0){
-    holders=holderData.slice(0,10).map(x=>({
-      address:x.address||"نەزانراو",
-      pct:Number(x.amount)/total*100
-    }));
-    holderCount=holderData.length;
-    holderText="داتا لە RPC وەرگیرا";
-  }
-}
-
 if(!holders.length && Array.isArray(rug?.topHolders) && rug.topHolders.length){
   holders=rug.topHolders.slice(0,10).map(x=>({
     address:x.address||x.owner||"نەزانراو",
