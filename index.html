@@ -139,14 +139,14 @@ async function scanToken(){
 
  try{
   let risk=0,notes=[],market=null,rug=null;
-  let mintInfo=null,holderData=null,supplyData=null;
+  let mintInfo=null,mintRawInfo=null,holderData=null,supplyData=null;
 
   const tasks=await Promise.allSettled([
    getJSON("https://api.dexscreener.com/latest/dex/tokens/"+mint),
    getJSON("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
    rpc("getAccountInfo",[mint,{encoding:"jsonParsed",commitment:"confirmed"}]),
    rpc("getTokenLargestAccounts",[mint,{commitment:"confirmed"}]),
-   rpc("getTokenSupply",[mint,{commitment:"confirmed"}])
+   rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}])
   ]);
 
   if(tasks[0].status==="fulfilled"){
