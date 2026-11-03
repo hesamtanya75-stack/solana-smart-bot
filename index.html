@@ -207,7 +207,7 @@ async function scanToken(){
       notes.push("Freeze Authority چالاکە");
     }
   }
-       show("security",
+         show("security",
     row("Mint Authority",mintStatus)+
     row("Freeze Authority",freezeStatus)+
     row("Token Program",programOwner||"داتا نییە")+
@@ -228,11 +228,12 @@ async function scanToken(){
       notes.push("نمرەی مەترسی RugCheck مامناوەندە");
     }
   }
-let topTenText="نەزانراو";
-let holderCount="نەزانراو";
-let holders=[];
 
-if(Array.isArray(holderData) && holderData.length && supplyData?.amount){
+  let holderText="داتای خاوەنەکان بەردەست نییە";
+  let largestText="نەزانراو";
+  let topTenText="نەزانراو";
+  let holderCount="نەزانراو";
+  let holders=[];
   const total=Number(supplyData.amount);
   if(total>0){
     holders=holderData.slice(0,10).map(x=>({
