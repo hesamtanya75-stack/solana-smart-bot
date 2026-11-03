@@ -279,6 +279,11 @@ if(!mintChecked){
     row("Mint Authority",mintStatus)+
     row("Freeze Authority",freezeStatus)+
     row("Token Program",programOwner||"داتا نییە")+
+row("Token-2022 Extensions",
+  foundExtensions.length
+    ? foundExtensions.join("، ")
+    : "هیچ Extension ـێک نەدۆزرایەوە"
+)+
     (mintStatus==="داتا نییە" || freezeStatus==="داتا نییە"
       ? "<p class='bad'><b>⚠️ ئاگاداری: دۆخی Mint و Freeze پشتڕاست نەکراوەتەوە.</b></p>"
       : "")
