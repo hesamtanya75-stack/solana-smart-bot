@@ -301,7 +301,17 @@ async function scanToken(){
 
   
 
-  
+    const largestPct=holders.length
+    ?Math.max(...holders.map(x=>x.pct)):0;
+  const topTenPct=holders.reduce((sum,x)=>sum+x.pct,0);
+
+  if(topTenPct>50){
+    notes.push("🚨 ئاگاداری: ١٠ هەژماری گەورەتر زیاتر لە 50%ی کۆینەکەیان هەیە.");
+  }
+
+  const noBuyWarning=largestPct>30 ||
+    topTenPct>50 ||
+    (finalLiquidity<5000 && finalSells===0);
 
   let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە";
     const finalSells=Number(market?.txns?.h24?.sells||0);
