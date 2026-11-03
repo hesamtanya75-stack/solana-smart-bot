@@ -226,8 +226,9 @@ if(holderData?.length && supplyData?.amount){
   const total=Number(supplyData.amount);
   if(total>0){
     holders=holderData.slice(0,10).map(x=>({
-      pct:Number(x.amount)/total*100
-    }));
+  address:x.address,
+  pct:Number(x.amount)/total*100
+}));
     holderCount=holderData.length;
     holderText="داتا لە RPC وەرگیرا";
   }
