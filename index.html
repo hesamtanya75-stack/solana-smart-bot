@@ -1,5 +1,4 @@
 
-
 <!DOCTYPE html>
 <html lang="ckb" dir="rtl">
 <head>
@@ -21,14 +20,13 @@ button:disabled{opacity:.5}
 .good{color:#60e6a8}.bad{color:#ff7777}.warn{color:#ffd166}
 .small{font-size:12px;color:#aab6d0}
 #status{margin-top:12px;text-align:center;color:#ffd166}
-a{color:#60e6c0}
 </style>
 </head>
 <body>
 <main>
 <header>
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا</h1>
-<p>پشکنینی لیکوییدیتی، قەبارەی مامەڵە و مەترسی</p>
+<p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
 </header>
 
 <div class="panel">
@@ -71,7 +69,7 @@ a{color:#60e6c0}
 </div>
 </div>
 
-<p class="small">تێبینی: هیچ پشکنینێک دڵنیایی تەواو نادات. پێش کڕین، خۆتیش ئاگاداری مەترسی بە.</p>
+<p class="small">تێبینی: هیچ پشکنینێک دڵنیایی تەواو نادات. ئەم بۆتە هیچ مامەڵەیەک ناکات و هیچ واژۆیەکت ناوێت.</p>
 </main>
 
 <script>
@@ -82,11 +80,24 @@ const RPCS=[
 
 function el(id){return document.getElementById(id)}
 function show(id,value){el(id).innerHTML=value}
-function row(label,value){return `<div class="item"><span>${label}</span><b class="value">${value}</b></div>`}
-function safe(v){return String(v??"نەزانراو").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function money(v){return v==null||!Number.isFinite(Number(v))||Number(v)<=0?"نەزانراو":"$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:8})}
-function number(v){return v==null?"نەزانراو":Number(v).toLocaleString("en-US")}
-function short(s){return s?s.slice(0,6)+"..."+s.slice(-6):"نەزانراو"}
+function row(label,value){
+ return `<div class="item"><span>${label}</span><b class="value">${value}</b></div>`;
+}
+function safe(v){
+ return String(v??"نەزانراو").replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ }[c]));
+}
+function money(v){
+ return v==null||!Number.isFinite(Number(v))||Number(v)<=0
+ ?"نەزانراو":"$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:8});
+}
+function number(v){
+ return v==null?"نەزانراو":Number(v).toLocaleString("en-US");
+}
+function short(s){
+ return s?s.slice(0,6)+"..."+s.slice(-6):"نەزانراو";
+}
 
 async function getJSON(url,options={}){
  const r=await fetch(url,options);
@@ -101,11 +112,15 @@ async function rpc(method,params){
    const j=await getJSON(endpoint,{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({jsonrpc:"2.0",id:1,method,params})
+    body:JSON.stringify({
+     jsonrpc:"2.0",id:1,method,params
+    })
    });
    if(j.error)throw new Error(j.error.message);
    return j.result;
-  }catch(e){lastError=e;}
+  }catch(e){
+   lastError=e;
+  }
  }
  throw lastError||new Error("RPC unavailable");
 }
@@ -154,13 +169,16 @@ async function scanToken(){
    notes.push("زانیاری بازاڕ بەردەست نییە");
   }else{
    if((market.liquidity?.usd||0)<5000){
-    risk+=3;notes.push("لیکوییدیتی زۆر کەمە");
+    risk+=3;
+    notes.push("لیکوییدیتی زۆر کەمە");
    }else if(market.liquidity.usd<20000){
-    risk+=1;notes.push("لیکوییدیتی مامناوەندە");
+    risk+=1;
+    notes.push("لیکوییدیتی مامناوەندە");
    }
 
    if((market.volume?.h24||0)<1000){
-    risk+=2;notes.push("قەبارەی مامەڵەی ٢٤ کاتژمێر کەمە");
+    risk+=2;
+    notes.push("قەبارەی مامەڵەی ٢٤ کاتژمێر کەمە");
    }
   }
 
@@ -168,43 +186,60 @@ async function scanToken(){
   const mintAuth=parsed?.mintAuthority;
   const freezeAuth=parsed?.freezeAuthority;
   const programOwner=mintInfo?.owner;
-
   const mintChecked=!!parsed;
-  const isToken2022=programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
   if(!mintChecked){
    risk+=2;
-   notes.push("پشکنینی Mint و Freeze بە دڵنیایی ئەنجام نەدرا");
+   notes.push("پشکنینی Mint و Freeze بەردەست نەبوو");
   }else{
    if(mintAuth){
-    risk+=3;notes.push("Mint Authority چالاکە");
+    risk+=3;
+    notes.push("Mint Authority چالاکە");
    }
    if(freezeAuth){
-    risk+=3;notes.push("Freeze Authority چالاکە");
+    risk+=3;
+    notes.push("Freeze Authority چالاکە");
    }
   }
 
   if(!rug){
-   risk+=2;notes.push("داتای RugCheck بەردەست نەبوو");
+   risk+=2;
+   notes.push("داتای RugCheck بەردەست نەبوو");
   }else if(rug.score!=null){
    if(rug.score>5000){
-    risk+=3;notes.push("نمرەی مەترسی RugCheck بەرزە");
+    risk+=3;
+    notes.push("نمرەی مەترسی RugCheck بەرزە");
    }else if(rug.score>2500){
-    risk+=2;notes.push("نمرەی مەترسی RugCheck مامناوەندە");
+    risk+=2;
+    notes.push("نمرەی مەترسی RugCheck مامناوەندە");
    }
   }
 
-  let topText="زانیاری هەژمارە گەورەکان بەردەست نییە";
-  let topPercent=null;
+  let holderText="داتای هەژمارە گەورەکان بەردەست نییە";
+  let largestText="نەزانراو";
+  let topTenText="نەزانراو";
+  let largestPercent=null,topTenPercent=null;
 
   if(holderData?.length&&supplyData?.amount){
    const totalSupply=Number(supplyData.amount);
-   const largest=Number(holderData[0].amount);
+   const accounts=holderData.slice(0,10);
+   const topAmount=Number(accounts[0]?.amount||0);
+   const tenAmount=accounts.reduce((sum,x)=>sum+Number(x.amount||0),0);
+
    if(totalSupply>0){
-    topPercent=largest/totalSupply*100;
-    topText="گەورەترین هەژماری تۆکنی تۆمارکراو: "+topPercent.toFixed(2)+"%";
-    if(topPercent>30){
-     risk+=2;notes.push("بڕی زۆری تۆکن لە یەک هەژماردا کۆبووەتەوە");
+    largestPercent=topAmount/totalSupply*100;
+    topTenPercent=tenAmount/totalSupply*100;
+
+    largestText=largestPercent.toFixed(2)+"%";
+    topTenText=topTenPercent.toFixed(2)+"%";
+    holderText="داتای ١٠ هەژماری گەورەتر بەردەستە";
+
+    if(largestPercent>30){
+     risk+=2;
+     notes.push("یەک هەژماری تۆکن بڕێکی زۆری تۆکنی هەیە");
+    }else if(topTenPercent>50){
+     risk+=2;
+     notes.push("١٠ هەژماری گەورەتر بەشی زۆری تۆکنیان هەیە");
     }
    }
   }
@@ -213,7 +248,7 @@ async function scanToken(){
    row("ناونیشان",short(mint))+
    row("DEX",market?.dexId||"نەزانراو")+
    row("نرخ",money(market?.priceUsd))+
-   row("جۆری Token Program",isToken2022?"Token-2022":programOwner?"Token Program":"نەزانراو")
+   row("Token Program",programOwner==="TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"?"Token-2022":programOwner?"Token Program":"نەزانراو")
   );
 
   show("market",
@@ -231,14 +266,32 @@ async function scanToken(){
   );
 
   show("holders",
-   row("دابەشبوونی گەورەترین هەژمار",topText)+
+   row("دۆخی داتا",holderText)+
+   row("گەورەترین هەژماری تۆکن",largestText)+
+   row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
    row("ژمارەی هەژمارە گەورەکان",holderData?.length??"نەزانراو")+
-   "<p class='small'>ئەم داتایە هەژماری تۆکنە، نەک بە دڵنیایی خاوەنی کۆتایی. هەژمارەکانی گەورەترینەکان هەموو خاوەنەکان ناگرنەوە.</p>"
+   "<p class='small'>ئەمە هەژمارەکانی تۆکنە، نەک بە دڵنیایی خاوەنە کۆتاییەکان. هەژمارەکان دەتوانن هی لیکوییدیتی یان خزمەتگوزارییەکان بن. ئەم لیستە تەنها ١٠ هەژماری گەورەتر نیشان دەدات.</p>"
   );
 
+  let sellText="داتای فرۆشتنی بازاڕ بەردەست نییە";
+  if(market){
+   const sells=Number(market.txns?.h24?.sells||0);
+   const buys=Number(market.txns?.h24?.buys||0);
+   const liquidity=Number(market.liquidity?.usd||0);
+
+   if(sells>0&&liquidity>=5000){
+    sellText="<span class='warn'>مامەڵەی فرۆشتن لە بازاڕ تۆمار کراوە، بەڵام فرۆشتنی تۆ پشتڕاست نەکراوەتەوە.</span>";
+   }else if(sells>0){
+    sellText="<span class='bad'>هەندێک فرۆشتن تۆمار کراوە، بەڵام لیکوییدیتی زۆر کەمە.</span>";
+   }else{
+    sellText="<span class='bad'>هیچ فرۆشتنێک لە داتای ٢٤ کاتژمێردا تۆمار نەکراوە.</span>";
+   }
+   sellText+="<br>کڕین: "+buys+"، فرۆشتن: "+sells+"، لیکوییدیتی: "+money(liquidity);
+  }
+
   show("selling",
-   "<span class='warn'>پشکنینی فرۆشتنی ڕاستەقینە ئەنجام نەدراوە</span><br>"+
-   "بوونی لیکوییدیتی بەڵگەی ئەوە نییە کە هەموو کەس دەتوانێت بفرۆشێت. بۆتەکە هیچ مامەڵەیەکی فرۆشتنی تاقیکردنەوەیی ناکات. هیچ Sign ـێکی نەناسراو مەدەرەوە."
+   sellText+
+   "<p class='small'>ئەمە تەنها داتای بازاڕە. بۆتەکە هیچ Swap یان مامەڵەیەکی تاقیکردنەوەیی ناکات. ناتوانێت دڵنیایی بدات کە تۆ دەتوانیت بفرۆشیت. هیچ Sign ـێکی نەناسراو مەدەرەوە.</p>"
   );
 
   let level=risk>=8
