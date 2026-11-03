@@ -161,7 +161,24 @@ rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}])
   if(tasks[3].status==="fulfilled")holderData=tasks[3].value?.value;
   if(tasks[4].status==="fulfilled")supplyData=tasks[4].value?.value;
 if(tasks[5].status==="fulfilled")mintRawInfo=tasks[5].value?.value;
-  const name=market?.baseToken?.name||"کۆینی نەناسراو";
+ let tokenExtensions=[];
+try{
+  const raw=mintRawInfo?.data;
+  if(Array.isArray(raw)&&typeof raw[0]==="string"){
+    const bytes=Uint8Array.from(atob(raw[0]),c=>c.charCodeAt(0));
+    if(bytes.length>=166){
+      let offset=166;
+      while(offset+4<=bytes.length){
+        const type=bytes[offset]|(bytes[offset+1]<<8);
+        const len=bytes[offset+2]|(bytes[offset+3]<<8);
+        if(type===0&&len===0)break;
+        if(offset+4+len>bytes.length)break;
+        tokenExtensions.push(type);
+        offset+=4+len;
+      }
+    }
+  }
+}catch(e){} const name=market?.baseToken?.name||"کۆینی نەناسراو";
   const symbol=market?.baseToken?.symbol||"---";
   el("coinName").textContent=name+" ("+symbol+")";
 
