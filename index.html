@@ -275,8 +275,7 @@ if(holders.length){
    row("Mint Authority",mintChecked?(mintAuth?"<span class='bad'>چالاکە</span>":"<span class='good'>ناچالاکە</span>"):"<span class='warn'>نەزانراو</span>")+
    row("Freeze Authority",mintChecked?(freezeAuth?"<span class='bad'>چالاکە</span>":"<span class='good'>ناچالاکە</span>"):"<span class='warn'>نەزانراو</span>")+
    row("RugCheck Score",rug?.score??"نەزانراو")+
-   row("هۆشدارییەکان",rug?.risks?.length?rug.risks.map(x=>safe(x.name)).join("، "):"هیچ هۆشدارییەکی گەڕاوە نییە")
-  );
+   row("هۆشدارییەکان",rug?.risks?.length?rug.risks.map(x=>safe(x.name)).join("، "):"هیچ هۆشدارییەکی گەڕاوە 
 
   show("holders",
    row("دۆخی داتا",holderText)+
