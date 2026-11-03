@@ -160,7 +160,7 @@ rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}])
   if(tasks[2].status==="fulfilled")mintInfo=tasks[2].value?.value;
   if(tasks[3].status==="fulfilled")holderData=tasks[3].value?.value;
   if(tasks[4].status==="fulfilled")supplyData=tasks[4].value?.value;
-
+if(tasks[5].status==="fulfilled")mintRawInfo=tasks[5].value?.value;
   const name=market?.baseToken?.name||"کۆینی نەناسراو";
   const symbol=market?.baseToken?.symbol||"---";
   el("coinName").textContent=name+" ("+symbol+")";
