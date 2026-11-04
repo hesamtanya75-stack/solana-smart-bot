@@ -824,28 +824,64 @@ document.querySelector("main").insertBefore(
 );
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
+
 function renderDemoHistory() {
   const box = document.getElementById("demoHistory");
 
-  box.innerHTML = demoTrades.map(t => {
+  const profitTrades = [];
+  const lossTrades = [];
+  const openTrades = [];
+
+  demoTrades.forEach(t => {
     const buy = Number(t.amount || 0);
     const price = Number(t.sold ? t.sellPrice : (t.currentPrice || t.buyPrice));
-    const value = Number((t.tokens * price).toFixed(2));
+    const value = Number(t.sold
+      ? (t.saleValue ?? t.tokens * price)
+      : t.tokens * price);
     const profit = Number((value - buy).toFixed(2));
-    const mint = String(t.mint).replace(/[&<>"']/g, "");
 
-    return `
-      <hr>
-      <p>🟢 کڕین: $${buy.toFixed(2)}</p>
-      <p>نرخی کڕین: $${Number(t.buyPrice).toFixed(8)}</p>
-      <p>بڕی تۆکن: ${Number(t.tokens).toFixed(4)}</p>
-      <p class="small" dir="ltr">${mint}</p>
-      <p>نرخی ${t.sold ? "فرۆشتن" : "ئێستا"}: $${price.toFixed(8)}</p>
-      <p>بەهای مامەڵە: $${value.toFixed(2)}</p>
-      <p>قازانج / زیان: ${profit >= 0 ? "+" : ""}$${profit.toFixed(2)}</p>
-      <p>${t.sold ? "✅ فرۆشراوە" : "⏳ هێشتا نەفرۆشراوە"}</p>
-    `;
-  }).join("");
+    if (!t.sold) openTrades.push({t, profit});
+    else if (profit >= 0) profitTrades.push({t, profit});
+    else lossTrades.push({t, profit});
+  });
+
+  function makeCards(items) {
+    if (!items.length) return "<p>هیچ مامەڵەیەک نییە.</p>";
+
+    return items.map(({t, profit}) => `
+      <div class="item">
+        <p>🪙 کڕین: $${Number(t.amount).toFixed(2)}</p>
+        <p>ناونیشان: <span dir="ltr">${String(t.mint).replace(/[&<>"']/g,"")}</span></p>
+        <p>قازانج / زیان: 
+          <b>${profit >= 0 ? "+" : "-"}$${Math.abs(profit).toFixed(2)}</b>
+        </p>
+        <p>بەهای فرۆشتن: $${Number(t.saleValue ?? t.tokens * t.sellPrice).toFixed(2)}</p>
+        <p>✅ فرۆشراوە</p>
+      </div>
+    `).join("");
+  }
+
+  const totalProfit = profitTrades.reduce((s,x) => s + x.profit, 0);
+  const totalLoss = lossTrades.reduce((s,x) => s + Math.abs(x.profit), 0);
+
+  box.innerHTML = `
+    <section class="section">
+      <h2 style="color:#48e5a5">🟢 قازانج</h2>
+      <h3>کۆی قازانج: +$${totalProfit.toFixed(2)}</h3>
+      ${makeCards(profitTrades)}
+    </section>
+
+    <section class="section">
+      <h2 style="color:#ff7777">🔴 زیان</h2>
+      <h3>کۆی زیان: -$${totalLoss.toFixed(2)}</h3>
+      ${makeCards(lossTrades)}
+    </section>
+
+    <section class="section">
+      <h2>⏳ مامەڵە کراوەکان</h2>
+      ${openTrades.length ? makeCards(openTrades) : "<p>هیچ مامەڵەیەکی کراوە نییە.</p>"}
+    </section>
+  `;
 }
 
 renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
