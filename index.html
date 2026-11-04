@@ -520,7 +520,7 @@ if (price <= 0) {
 
 demoTrades[demoTrades.length - 1].buyPrice = price;
 demoTrades[demoTrades.length - 1].tokens = 5 / price;
-  document.getElementById("demoBalance").innerText =
+ saveDemoState(); document.getElementById("demoBalance").innerText =
     "$" + demoBalance.toFixed(2);
 
   document.getElementById("demoHistory").innerHTML =
