@@ -479,7 +479,8 @@ document.querySelector("main").insertBefore(
   demoPanel,
   document.querySelector("main").lastElementChild
 );
-
+document.getElementById("demoBalance").innerText =
+  "$" + demoBalance.toFixed(2);
 document.getElementById("demoBuy").onclick = function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
