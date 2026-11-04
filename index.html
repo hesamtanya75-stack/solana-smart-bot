@@ -1155,7 +1155,7 @@ pauseBuyBtn.onclick = function() {
       : "بۆت دووبارە دەستی پێکردەوە.";
 };
 async function runAutoDemoBuy() {
-  if (!autoDemoBuyEnabled || autoDemoBuyRunning) return;
+  if (!autoDemoBuyEnabled || autoDemoBuyPaused || autoDemoBuyRunning) return;
   autoDemoBuyRunning = true;
 
   try {
