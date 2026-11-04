@@ -1202,7 +1202,9 @@ async function runAutoDemoBuy() {
 }
 
 setInterval(() => {
-  if (autoDemoBuyEnabled) runAutoDemoBuy();
+  if (autoDemoBuyEnabled && !autoDemoBuyPaused) {
+    runAutoDemoBuy();
+  }
 }, 60000);
 </script>
 </body>
