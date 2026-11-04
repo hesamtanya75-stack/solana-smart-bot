@@ -1,10 +1,11 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://hesamtanya75-stack.github.io",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 };
 
 const kv = await Deno.openKv();
+const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -16,33 +17,70 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function authorized(req: Request) {
-  const key = Deno.env.get("BOT_API_KEY");
-  const supplied = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-  return Boolean(key && supplied && key === supplied);
+async function authorized(req: Request) {
+  const token = req.headers
+    .get("Authorization")
+    ?.replace(/^Bearer\s+/i, "");
+
+  if (!token) return false;
+
+  const session = await kv.get<{ expiresAt: number }>([
+    "sessions",
+    token,
+  ]);
+
+  return Boolean(
+    session.value && session.value.expiresAt > Date.now()
+  );
 }
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
   }
 
-  if (url.pathname === "/health") {
+  if (url.pathname === "/health" && req.method === "GET") {
     return json({
       ok: true,
       mode: "paper-trading",
       storage: "Deno KV",
-      apiConfigured: Boolean(Deno.env.get("BOT_API_KEY")),
     });
+  }
+
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const password = Deno.env.get("BOT_LOGIN_PASSWORD");
+
+      if (!password || body.password !== password) {
+        return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
+      }
+
+      const token = crypto.randomUUID();
+      const expiresAt = Date.now() + SESSION_MS;
+
+      await kv.set(
+        ["sessions", token],
+        { expiresAt },
+        { expireIn: SESSION_MS }
+      );
+
+      return json({ ok: true, token });
+    } catch {
+      return json({ error: "داواکاری هەڵەیە" }, 400);
+    }
   }
 
   if (url.pathname !== "/api/state") {
     return json({ error: "Not found" }, 404);
   }
 
-  if (!authorized(req)) {
+  if (!(await authorized(req))) {
     return json({ error: "Unauthorized" }, 401);
   }
 
@@ -50,6 +88,7 @@ Deno.serve(async (req) => {
 
   if (req.method === "GET") {
     const result = await kv.get(key);
+
     return json(result.value ?? {
       balance: 100,
       trades: [],
@@ -63,9 +102,13 @@ Deno.serve(async (req) => {
       const balance = Number(body.balance);
       const trades = body.trades;
 
-      if (!Number.isFinite(balance) || balance < 0 ||
-          !Array.isArray(trades) || trades.length > 500) {
-        return json({ error: "Invalid balance or trades" }, 400);
+      if (
+        !Number.isFinite(balance) ||
+        balance < 0 ||
+        !Array.isArray(trades) ||
+        trades.length > 500
+      ) {
+        return json({ error: "Invalid data" }, 400);
       }
 
       const state = {
@@ -75,6 +118,7 @@ Deno.serve(async (req) => {
       };
 
       await kv.set(key, state);
+
       return json({ ok: true, updatedAt: state.updatedAt });
     } catch {
       return json({ error: "Invalid JSON" }, 400);
