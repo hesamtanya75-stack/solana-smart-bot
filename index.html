@@ -1188,7 +1188,7 @@ async function runAutoDemoBuy() {
 
       if (!autoDemoBuyEnabled) break;
 
-      if (window.demoBuyAllowed === true) {
+      if (!autoDemoBuyPaused && window.demoBuyAllowed === true) {
         document.getElementById("demoBuy").click();
         break;
       }
