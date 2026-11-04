@@ -167,54 +167,51 @@ async function discoverTokens() {
       "https://api.dexscreener.com/token-profiles/latest/v1"
     );
 
-    if (!response.ok) throw new Error("API error");
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
 
     const data = await response.json();
-    const tokens = data
-      .filter(t => t.chainId === "solana" && t.tokenAddress)
-      .slice(0, 10);
+
+    const tokens = Array.isArray(data)
+      ? data.filter(t =>
+          t.chainId === "solana" && t.tokenAddress
+        ).slice(0, 10)
+      : [];
 
     if (!tokens.length) {
-      status.textContent = "هیچ کۆینێک نەدۆزرایەوە.";
+      status.textContent = "هیچ پڕۆفایلی کۆینی Solana نەدۆزرایەوە.";
       return;
     }
 
     tokens.forEach(t => {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent =
-    (t.description || "کۆینی نوێ") +
-    " — " + t.tokenAddress.slice(0, 8) + "...";
-
-  button.onclick = () => {
-    document.getElementById("mint").value = t.tokenAddress;
-    status.textContent = "✅ ناونیشانی کۆین دانرا.";
-    scanToken();
-  };
-  list.appendChild(button);
-});
-  
-
-  
-      
       const button = document.createElement("button");
-button.textContent =
-  (t.header || t.description || "کۆینی نوێ") +
-  " — " + t.tokenAddress.slice(0, 8) + "...";
+      button.type = "button";
+      button.textContent =
+        (t.description || "کۆینی نوێ") +
+        " — " + t.tokenAddress.slice(0, 8) + "...";
 
-button.onclick = () => {
-  document.getElementById("mint").value = t.tokenAddress;
-  scanToken();
-};
+      button.onclick = () => {
+        document.getElementById("mint").value = t.tokenAddress;
+        status.textContent = "✅ ناونیشانی کۆین دانرا.";
+        scanToken();
+      };
+
+      list.appendChild(button);
+    });
 
     status.textContent =
       "✅ " + tokens.length + " پڕۆفایلی کۆینی Solana دۆزرایەوە.";
+
   } catch (e) {
     status.textContent = "هەڵە لە دۆزینەوە: " + e.message;
   } finally {
     btn.disabled = false;
   }
 }
+
+document.getElementById("autoDiscover")
+  .addEventListener("click", discoverTokens);
 async function scanToken(){
  window.demoBuyAllowed=false;
  window.demoBuyBlockReasons=["پشکنین تەواو نییە."];
