@@ -571,53 +571,7 @@ document.getElementById("demoHistory").innerHTML =
   status.innerText = "کڕینی خەیاڵی تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
   updateDemoProfit();
 };
-  const mint = document.getElementById("mint").value.trim();
-  const status = document.getElementById("demoStatus");
-
-  if (!mint || document.getElementById("result").style.display === "none") {
-    status.innerText = "سەرەتا کۆینێک پشکنین بکە.";
-    return;
-  }
-
-  const riskText = document.getElementById("risk").innerText;
-  const riskMatch = riskText.match(/(\d+)\s*\/\s*18/);
-  const risk = riskMatch ? Number(riskMatch[1]) : 99;
-
-  if (risk > 3) {
-    status.innerText = "⛔ مەترسی بەرزە؛ کڕینی خەیاڵی ڕەتکرایەوە.";
-    return;
-  }
-
-  if (demoTrades.some(t => t.mint === mint)) {
-    status.innerText = "ئەم کۆینە پێشتر تۆمارکراوە.";
-    return;
-  }
-
-  if (demoBalance < 5) {
-    status.innerText = "باڵانسی خەیاڵی بەس نییە.";
-    return;
-  }
-
-  demoBalance -= 5;
-  demoTrades.push({ mint, amount: 5 });
-const price = Number(window.lastTokenPrice || 0);
-if (price <= 0) {
-  status.innerText = "نرخی کۆین بەردەست نییە؛ تۆمار نەکرا.";
-  demoBalance += 5;
-  demoTrades.pop();
-  return;
-}
-
-demoTrades[demoTrades.length - 1].buyPrice = price;
-demoTrades[demoTrades.length - 1].tokens = 5 / price;
- saveDemoState(); document.getElementById("demoBalance").innerText =
-    "$" + demoBalance.toFixed(2);
-
-  document.getElementById("demoHistory").innerHTML =
-    "<p class='good'>✅ کڕینی خەیاڵی: $5</p>" +
-    "<p class='small' dir='ltr'>" + mint + "</p>";
-
-  status.innerText = "تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";updateDemoProfit();
+  
 };function updateDemoProfit() {
   const box = document.getElementById("demoProfit");
   if (!box) return;
