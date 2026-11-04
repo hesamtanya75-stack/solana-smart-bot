@@ -697,53 +697,74 @@ if (duplicate) {
 }
 
 async function refreshDemoPrice() {
-  const mint = document.getElementById("mint").value.trim();
-  const trade = demoTrades.find(t => t.mint === mint);
+  if (refreshDemoPrice.running) return;
+  refreshDemoPrice.running = true;
 
-  if (!trade || trade.sold) return;
+  let soldCount = 0;
 
   try {
-    const data = await getJSON(
-      "https://api.dexscreener.com/latest/dex/tokens/" + mint
-    );
+    const openTrades = demoTrades.filter(t => !t.sold);
 
-    const market = (data.pairs || [])
-      .filter(p => p.chainId === "solana")
-      .sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+    for (const trade of openTrades) {
+      if (trade.sold) continue;
 
-    const price = Number(market?.priceUsd || 0);
-    if (price <= 0) return;
+      try {
+        const data = await getJSON(
+          "https://api.dexscreener.com/latest/dex/tokens/" +
+          encodeURIComponent(trade.mint)
+        );
 
-    trade.currentPrice = price;
+        const market = (data.pairs || [])
+          .filter(p => p.chainId === "solana")
+          .sort((a, b) =>
+            (b.liquidity?.usd || 0) -
+            (a.liquidity?.usd || 0)
+          )[0];
+
+        const price = Number(market?.priceUsd || 0);
+        if (price <= 0) continue;
+
+        trade.currentPrice = price;
+
+        if (
+          price >= trade.buyPrice * 1.10 ||
+          price <= trade.buyPrice * 0.95
+        ) {
+          const saleValue = Number(
+            (trade.tokens * price).toFixed(2)
+          );
+
+          demoBalance = Number(
+            (demoBalance + saleValue).toFixed(2)
+          );
+
+          trade.sold = true;
+          trade.sellPrice = price;
+          trade.saleValue = saleValue;
+          soldCount++;
+        }
+      } catch (e) {}
+    }
+
     saveDemoState();
 
-    if (
-      price >= trade.buyPrice * 1.10 ||
-      price <= trade.buyPrice * 0.95
-    ) {
-      const saleValue = Number((trade.tokens * price).toFixed(2));
+    document.getElementById("demoBalance").innerText =
+      "$" + demoBalance.toFixed(2);
 
-      demoBalance = Number((demoBalance + saleValue).toFixed(2));
-      trade.sold = true;
-      trade.sellPrice = price;
-      trade.saleValue = saleValue;
-      saveDemoState();
-
-      document.getElementById("demoBalance").innerText =
-        "$" + demoBalance.toFixed(2);
-
+    if (soldCount > 0) {
       document.getElementById("demoStatus").innerText =
-        "✅ فرۆشتنی خەیاڵی تەواو بوو.";
+        "✅ فرۆشتنی خەیاڵی تەواو بوو. ژمارە: " +
+        soldCount;
 
       renderDemoHistory();
     }
 
     updateDemoProfit();
 
-  } catch (e) {
-    document.getElementById("demoProfit").innerText =
-      "نوێکردنەوەی نرخ سەرکەوتوو نەبوو.";
+  } finally {
+    refreshDemoPrice.running = false;
   }
+}
 }
 setInterval(refreshDemoPrice, 5000);
 
