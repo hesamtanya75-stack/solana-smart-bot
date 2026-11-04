@@ -546,11 +546,11 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
   let totalProfit = 0;
 
   demoTrades.forEach(t => {
-    const saleValue = t.sold
+    const value = t.sold
       ? Number(t.saleValue ?? (t.tokens * t.sellPrice).toFixed(2))
-      : Number(((t.tokens * (t.currentPrice || t.buyPrice)) - t.amount).toFixed(2));
+      : Number((t.tokens * Number(t.currentPrice || t.buyPrice)).toFixed(2));
 
-    totalProfit += saleValue - (t.sold ? 0 : 0);
+    totalProfit += value - Number(t.amount);
   });
 
   box.innerText =
@@ -558,6 +558,8 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     (totalProfit >= 0 ? "+" : "") +
     "$" + totalProfit.toFixed(2);
 }
+
+async function refreshDemoPrice() {
   const mint = document.getElementById("mint").value.trim();
   const trade = demoTrades.find(t => t.mint === mint);
 
@@ -573,10 +575,8 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
       .sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
 
     const price = Number(market?.priceUsd || 0);
-
     if (price <= 0) return;
 
-    window.lastTokenPrice = price;
     trade.currentPrice = price;
     saveDemoState();
 
@@ -586,11 +586,11 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     ) {
       const saleValue = Number((trade.tokens * price).toFixed(2));
 
-demoBalance = Number((demoBalance + saleValue).toFixed(2));
-trade.sold = true;
-trade.sellPrice = price;
-trade.saleValue = saleValue;
-saveDemoState();
+      demoBalance = Number((demoBalance + saleValue).toFixed(2));
+      trade.sold = true;
+      trade.sellPrice = price;
+      trade.saleValue = saleValue;
+      saveDemoState();
 
       document.getElementById("demoBalance").innerText =
         "$" + demoBalance.toFixed(2);
@@ -609,6 +609,7 @@ saveDemoState();
       "نوێکردنەوەی نرخ سەرکەوتوو نەبوو.";
   }
 }
+setInterval(refreshDemoPrice, 5000);
 setInterval(refreshDemoPrice, 5000);
 </script>
 </body>
