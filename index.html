@@ -544,7 +544,7 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
   if (!box) return;
 
   const mint = document.getElementById("mint").value.trim();
-  const price = Number(window.lastTokenPrice || 0);
+  const price = Number(trade?.sold ? trade.sellPrice : window.lastTokenPrice || 0);
 
   const trade = [...demoTrades].reverse().find(t => t.mint === mint);
 
