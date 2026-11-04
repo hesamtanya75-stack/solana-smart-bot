@@ -1109,7 +1109,83 @@ renderDemoHistory = function() {
 };
 
 renderDemoHistory();
+// ===== AUTO DEMO BUY =====
+let autoDemoBuyEnabled = false;
+let autoDemoBuyRunning = false;
 
+const autoBuyBtn = document.createElement("button");
+autoBuyBtn.id = "autoDemoBuy";
+autoBuyBtn.textContent = "🤖 کڕینی خۆکار: ناچالاک";
+autoBuyBtn.style.width = "100%";
+autoBuyBtn.style.marginBottom = "12px";
+
+document.getElementById("demoBuy").before(autoBuyBtn);
+
+autoBuyBtn.onclick = function() {
+  autoDemoBuyEnabled = !autoDemoBuyEnabled;
+
+  autoBuyBtn.textContent = autoDemoBuyEnabled
+    ? "🟢 کڕینی خۆکار: چالاک"
+    : "🤖 کڕینی خۆکار: ناچالاک";
+
+  document.getElementById("demoStatus").innerText =
+    autoDemoBuyEnabled
+      ? "کڕینی خۆکاری خەیاڵی چالاک کرا."
+      : "کڕینی خۆکاری خەیاڵی ناچالاک کرا.";
+
+  if (autoDemoBuyEnabled) runAutoDemoBuy();
+};
+
+async function runAutoDemoBuy() {
+  if (!autoDemoBuyEnabled || autoDemoBuyRunning) return;
+  autoDemoBuyRunning = true;
+
+  try {
+    if (demoBalance < 5) return;
+
+    // تەنها یەک مامەڵەی کراوە ڕێگەپێدراوە
+    if (demoTrades.some(t => !t.sold)) return;
+
+    const data = await getJSON(
+      "https://api.dexscreener.com/token-profiles/latest/v1"
+    );
+
+    const tokens = Array.isArray(data)
+      ? data.filter(t =>
+          t.chainId === "solana" && t.tokenAddress
+        ).slice(0, 10)
+      : [];
+
+    for (const token of tokens) {
+      if (!autoDemoBuyEnabled) break;
+
+      const mint = token.tokenAddress;
+
+      // کۆینی پێشتر تاقیکراوە دووبارە مەکڕە
+      if (demoTrades.some(t => t.mint === mint)) continue;
+
+      document.getElementById("mint").value = mint;
+
+      await scanToken();
+
+      if (!autoDemoBuyEnabled) break;
+
+      if (window.demoBuyAllowed === true) {
+        document.getElementById("demoBuy").click();
+        break;
+      }
+    }
+  } catch (e) {
+    document.getElementById("demoStatus").innerText =
+      "هەڵە لە کڕینی خۆکار: " + e.message;
+  } finally {
+    autoDemoBuyRunning = false;
+  }
+}
+
+setInterval(() => {
+  if (autoDemoBuyEnabled) runAutoDemoBuy();
+}, 60000);
 </script>
 </body>
 </html>
