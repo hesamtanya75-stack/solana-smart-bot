@@ -441,7 +441,28 @@ updateDemoProfit();
 // ===== DEMO TRADING =====
 let demoBalance = 100;
 let demoTrades = [];
+try {
+  const saved = JSON.parse(
+    localStorage.getItem("demoTradingData") || "null"
+  );
 
+  if (saved) {
+    demoBalance = Number(saved.balance) || 100;
+    demoTrades = Array.isArray(saved.trades)
+      ? saved.trades
+      : [];
+  }
+} catch (e) {
+  demoBalance = 100;
+  demoTrades = [];
+}
+
+function saveDemoState() {
+  localStorage.setItem("demoTradingData", JSON.stringify({
+    balance: demoBalance,
+    trades: demoTrades
+  }));
+}
 const demoPanel = document.createElement("div");
 demoPanel.className = "section";
 demoPanel.innerHTML = `
