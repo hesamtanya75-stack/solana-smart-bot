@@ -580,6 +580,7 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
   trade.currentPrice = price;
   saveDemoState();
   updateDemoProfit();
+     if (!trade.sold &&
     (price >= trade.buyPrice * 1.10 ||
      price <= trade.buyPrice * 0.95)) {
 
