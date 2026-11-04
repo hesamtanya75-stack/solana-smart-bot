@@ -206,7 +206,7 @@ const foundExtensions=tokenExtensions.map(
 );
 
 const name=market?.baseToken?.name||"کۆینی نەناسراو";
-  const symbol=market?.baseToken?.symbol||"---";
+  window.lastTokenPrice = Number(market?.priceUsd || 0);const symbol=market?.baseToken?.symbol||"---";
   el("coinName").textContent=name+" ("+symbol+")";
 
   if(!market){
