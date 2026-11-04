@@ -163,7 +163,20 @@ async function discoverTokens() {
 
   button.addEventListener("click", () => {
     document.getElementById("mint").value = t.tokenAddress;
+     tokens.forEach(t => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = (t.description || "کۆینی نوێ") +
+    " — " + t.tokenAddress.slice(0, 8) + "...";
+
+  button.onclick = () => {
+    document.getElementById("mint").value = t.tokenAddress;
     status.textContent = "✅ ناونیشانی کۆین دانرا.";
+    scanToken();
+  };
+
+  list.appendChild(button);
+});"✅ ناونیشانی کۆین دانرا.";
     scanToken();
   });
 
