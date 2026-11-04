@@ -107,27 +107,52 @@ async function getJSON(url,options={}){
  return r.json();
 }
 
-async function rpc(method,params){
- let lastError;
- for(const endpoint of RPCS){
-  try{
-   const j=await getJSON(endpoint,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-     jsonrpc:"2.0",id:1,method,params
-    })
-   });
-   if(j.error)throw new Error(j.error.message);
-   return j.result;
-  }catch(e){
-   lastError=e;
-  }
- }
- throw lastError||new Error("RPC unavailable");
-}
-document.getElementById("autoDiscover").onclick = discoverTokens;
+let rpcQueue = Promise.resolve();
 
+async function rpcRequest(method,params){
+  let lastError;
+
+  for(const endpoint of RPCS){
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        const j=await getJSON(endpoint,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            jsonrpc:"2.0",
+            id:1,
+            method,
+            params
+          })
+        });
+
+        if(j.error) throw new Error(j.error.message);
+        return j.result;
+
+      }catch(e){
+        lastError=e;
+
+        if(!String(e.message).includes("429")) break;
+
+        await new Promise(resolve =>
+          setTimeout(resolve,2000)
+        );
+      }
+    }
+  }
+
+  throw lastError||new Error("RPC unavailable");
+}
+
+function rpc(method,params){
+  const request=rpcQueue.then(() =>
+    rpcRequest(method,params)
+  );
+
+  rpcQueue=request.catch(()=>{});
+
+  return request;
+}
 async function discoverTokens() {
   const btn = document.getElementById("autoDiscover");
   const status = document.getElementById("discoverStatus");
