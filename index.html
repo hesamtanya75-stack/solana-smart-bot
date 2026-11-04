@@ -335,7 +335,15 @@ if(mintData?.parsed?.info){
 }
 
 const programOwner=mintInfo?.owner;
+const rpcErrors = [2,5]
+  .filter(i => tasks[i].status === "rejected")
+  .map(i => "RPC " + i + ": " +
+    (tasks[i].reason?.message || "هەڵەی نەناسراو")
+  );
 
+const rpcDiagnostic = rpcErrors.length
+  ? rpcErrors.join(" | ")
+  : "RPC وەڵامی داوە";
 let mintStatus="داتا نییە";
 let freezeStatus="داتا نییە";
 
