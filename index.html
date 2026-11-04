@@ -558,8 +558,9 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     (totalProfit >= 0 ? "+" : "") +
     "$" + totalProfit.toFixed(2);
 }
+  async function refreshDemoPrice() {
   const mint = document.getElementById("mint").value.trim();
- async function refreshDemoPrice() { const trade = demoTrades.find(t => t.mint === mint);
+  const trade = demoTrades.find(t => t.mint === mint);
   if (!trade || trade.sold) return;
 
   try {
