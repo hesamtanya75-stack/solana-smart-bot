@@ -575,8 +575,11 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     const price = Number(market?.priceUsd || 0);
 
     if (price > 0) {
-      window.lastTokenPrice = price;
-   if (!trade.sold &&
+      
+  window.lastTokenPrice = price;
+  trade.currentPrice = price;
+  saveDemoState();
+  updateDemoProfit();
     (price >= trade.buyPrice * 1.10 ||
      price <= trade.buyPrice * 0.95)) {
 
