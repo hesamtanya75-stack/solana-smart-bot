@@ -598,8 +598,15 @@ async function refreshDemoPrice() {
       document.getElementById("demoStatus").innerText =
         "✅ فرۆشتنی خەیاڵی تەواو بوو.";
 
-      document.getElementById("demoHistory").innerHTML +=
-        "<p>فرۆشتنی خەیاڵی: $" + saleValue.toFixed(2) + "</p>";
+      document.getElementById("demoHistory").innerHTML =
+  demoTrades.map(t =>
+    "<p>کڕینی خەیاڵی: $" + Number(t.amount).toFixed(2) + "</p>" +
+    "<p class='small' dir='ltr'>" + t.mint + "</p>" +
+    (t.sold
+      ? "<p>فرۆشتنی خەیاڵی: $" +
+        Number(t.saleValue ?? (t.tokens * t.sellPrice)).toFixed(2) + "</p>"
+      : "<p>هێشتا نەفرۆشراوە</p>")
+  ).join("");
     }
 
     updateDemoProfit();
