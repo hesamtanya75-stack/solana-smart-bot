@@ -546,11 +546,11 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
   let totalProfit = 0;
 
   demoTrades.forEach(t => {
-    const price = Number(
-      t.sold ? t.sellPrice : (t.currentPrice || t.buyPrice)
-    );
+    const saleValue = t.sold
+      ? Number(t.saleValue ?? (t.tokens * t.sellPrice).toFixed(2))
+      : Number(((t.tokens * (t.currentPrice || t.buyPrice)) - t.amount).toFixed(2));
 
-    totalProfit += (t.tokens * price) - t.amount;
+    totalProfit += saleValue - (t.sold ? 0 : 0);
   });
 
   box.innerText =
@@ -558,7 +558,6 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     (totalProfit >= 0 ? "+" : "") +
     "$" + totalProfit.toFixed(2);
 }
-  async function refreshDemoPrice() {
   const mint = document.getElementById("mint").value.trim();
   const trade = demoTrades.find(t => t.mint === mint);
 
