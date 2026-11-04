@@ -616,10 +616,15 @@ renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
     return;
   }
 
-  if (demoTrades.some(t => t.mint === mint)) {
-    status.innerText = "ئەم کۆینە پێشتر تۆمارکراوە.";
-    return;
-  }
+  const duplicate = demoTrades.find(
+  t => String(t.mint).trim().toLowerCase() === mint.trim().toLowerCase()
+);
+
+if (duplicate) {
+  status.innerText =
+    "ئەم کۆینە پێشتر تۆمارکراوە.\nناونیشانی تۆمارکراو:\n" + duplicate.mint;
+  return;
+}
 
   if (demoBalance < 5) {
     status.innerText = "باڵانسی خەیاڵی بەس نییە.";
