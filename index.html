@@ -532,7 +532,11 @@ if(!rug || rug.score==null)
 
 if(finalSells<=0)
  window.demoBuyBlockReasons.push("هیچ فرۆشتنێکی بازاڕ تۆمار نەکراوە");
-
+if(riskyExtensions.length>0)
+ window.demoBuyBlockReasons.push(
+  "Extension ـی مەترسیدار هەیە: "+
+  riskyExtensions.map(type=>extensionNames[type]||type).join("، ")
+ );
 window.demoBuyAllowed=window.demoBuyBlockReasons.length===0;
 
 el("result").style.display="block";
