@@ -481,7 +481,15 @@ document.querySelector("main").insertBefore(
 );
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
-document.getElementById("demoBuy").onclick = function () {
+document.getElementById("demoHistory").innerHTML =
+  demoTrades.map(t =>
+    "<p>کڕینی خەیاڵی: $" + Number(t.amount).toFixed(2) + "</p>" +
+    "<p class='small' dir='ltr'>" + t.mint + "</p>" +
+    (t.sold
+      ? "<p>فرۆشتنی خەیاڵی: $" +
+        (Number(t.tokens) * Number(t.sellPrice)).toFixed(2) + "</p>"
+      : "<p>هێشتا نەفرۆشراوە</p>")
+  ).join("");document.getElementById("demoBuy").onclick = function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
 
