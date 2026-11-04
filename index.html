@@ -267,7 +267,11 @@ const extensionNames={
   26:"Pausable — توانای وەستاندنی مامەڵە",
   28:"Permissioned Burn"
 };
+const riskyExtensionTypes=[6,9,12,14,26];
 
+const riskyExtensions=tokenExtensions.filter(
+  type=>riskyExtensionTypes.includes(type)
+);
 const foundExtensions=tokenExtensions.map(
   type=>extensionNames[type]||("Extension "+type)
 );
