@@ -171,17 +171,15 @@ async function discoverTokens() {
 
   
       const button = document.createElement("button");
-      button.textContent =
-        (t.header || t.description || "کۆینی نوێ") +
-        " — " + t.tokenAddress.slice(0, 8) + "...";
+      const button = document.createElement("button");
+button.textContent =
+  (t.header || t.description || "کۆینی نوێ") +
+  " — " + t.tokenAddress.slice(0, 8) + "...";
 
-      button.onclick = () => {
-        document.getElementById("mint").value = t.tokenAddress;
-        scanToken();
-      };
-
-      list.appendChild(button);
-    });
+button.onclick = () => {
+  document.getElementById("mint").value = t.tokenAddress;
+  scanToken();
+};
 
     status.textContent =
       "✅ " + tokens.length + " پڕۆفایلی کۆینی Solana دۆزرایەوە.";
