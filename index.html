@@ -546,7 +546,7 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
   const mint = document.getElementById("mint").value.trim();
   const price = Number(window.lastTokenPrice || 0);
 
-  const trade = demoTrades.find(t => t.mint === mint);
+  const trade = [...demoTrades].reverse().find(t => t.mint === mint);
 
   if (!trade || price <= 0) {
     box.innerText = "نرخی نوێ بۆ هەژمارکردنی قازانج بەردەست نییە.";
