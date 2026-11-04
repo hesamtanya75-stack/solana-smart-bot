@@ -585,12 +585,13 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
       price >= trade.buyPrice * 1.10 ||
       price <= trade.buyPrice * 0.95
     ) {
-      const saleValue = trade.tokens * price;
+      const saleValue = Number((trade.tokens * price).toFixed(2));
 
-      demoBalance += saleValue;
-      trade.sold = true;
-      trade.sellPrice = price;
-      saveDemoState();
+demoBalance = Number((demoBalance + saleValue).toFixed(2));
+trade.sold = true;
+trade.sellPrice = price;
+trade.saleValue = saleValue;
+saveDemoState();
 
       document.getElementById("demoBalance").innerText =
         "$" + demoBalance.toFixed(2);
