@@ -507,7 +507,28 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     "<p class='small' dir='ltr'>" + mint + "</p>";
 
   status.innerText = "تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
-};
+};function updateDemoProfit() {
+  const box = document.getElementById("demoProfit");
+  if (!box) return;
+
+  const mint = document.getElementById("mint").value.trim();
+  const price = Number(window.lastTokenPrice || 0);
+
+  const trade = demoTrades.find(t => t.mint === mint);
+
+  if (!trade || price <= 0) {
+    box.innerText = "نرخی نوێ بۆ هەژمارکردنی قازانج بەردەست نییە.";
+    return;
+  }
+
+  const value = trade.tokens * price;
+  const profit = value - trade.amount;
+
+  box.innerText =
+    "قازانج / زیان: " +
+    (profit >= 0 ? "+" : "") +
+    "$" + profit.toFixed(2);
+}
 </script>
 </body>
 </html>
