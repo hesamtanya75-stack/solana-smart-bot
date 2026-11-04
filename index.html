@@ -447,7 +447,9 @@ try {
   );
 
   if (saved) {
-    demoBalance = Number(saved.balance) || 100;
+    demoBalance = Number.isFinite(Number(saved.balance))
+  ? Number(saved.balance)
+  : 100;
     demoTrades = Array.isArray(saved.trades)
       ? saved.trades
       : [];
