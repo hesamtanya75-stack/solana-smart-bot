@@ -1035,6 +1035,32 @@ renderDemoHistory();
 
 setInterval(refreshDemoPrice, 5000);
 
+const clearTradesBtn = document.createElement("button");
+clearTradesBtn.textContent = "🗑️ سڕینەوەی مامەڵە کۆنەکان";
+clearTradesBtn.style.background = "linear-gradient(120deg,#b83245,#ef5968)";
+clearTradesBtn.style.color = "white";
+clearTradesBtn.style.marginTop = "12px";
+clearTradesBtn.style.width = "100%";
+
+document.getElementById("demoBuy").insertAdjacentElement(
+  "afterend",
+  clearTradesBtn
+);
+
+clearTradesBtn.onclick = function() {
+  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) {
+    return;
+  }
+
+  demoTrades = [];
+  saveDemoState();
+  renderDemoHistory();
+  updateDemoProfit();
+
+  document.getElementById("demoStatus").innerText =
+    "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+};
+
 </script>
 </body>
 </html>
