@@ -529,6 +529,32 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     (profit >= 0 ? "+" : "") +
     "$" + profit.toFixed(2);
 }
-</script>
+</script>async function refreshDemoPrice() {
+  const mint = document.getElementById("mint").value.trim();
+  const trade = demoTrades.find(t => t.mint === mint);
+  if (!trade) return;
+
+  try {
+    const data = await getJSON(
+      "https://api.dexscreener.com/latest/dex/tokens/" + mint
+    );
+
+    const market = (data.pairs || [])
+      .filter(p => p.chainId === "solana")
+      .sort((a,b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+
+    const price = Number(market?.priceUsd || 0);
+
+    if (price > 0) {
+      window.lastTokenPrice = price;
+      updateDemoProfit();
+    }
+  } catch (e) {
+    document.getElementById("demoProfit").innerText =
+      "نوێکردنەوەی نرخ سەرکەوتوو نەبوو.";
+  }
+}
+
+setInterval(refreshDemoPrice, 15000);
 </body>
 </html>
