@@ -371,7 +371,9 @@ row("Token-2022 Extensions",
   foundExtensions.length
     ? foundExtensions.join("، ")
     : "هیچ Extension ـێک نەدۆزرایەوە"
-)+
+)+    (rpcErrors.length
+      ? row("هەڵەی RPC",safe(rpcDiagnostic))
+      : "")+
     (mintStatus==="داتا نییە" || freezeStatus==="داتا نییە"
       ? "<p class='bad'><b>⚠️ ئاگاداری: دۆخی Mint و Freeze پشتڕاست نەکراوەتەوە.</b></p>"
       : "")
