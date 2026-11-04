@@ -529,7 +529,7 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
     (profit >= 0 ? "+" : "") +
     "$" + profit.toFixed(2);
 }
-</script>async function refreshDemoPrice() {
+async function refreshDemoPrice() {
   const mint = document.getElementById("mint").value.trim();
   const trade = demoTrades.find(t => t.mint === mint);
   if (!trade) return;
@@ -556,5 +556,5 @@ demoTrades[demoTrades.length - 1].tokens = 5 / price;
 }
 
 setInterval(refreshDemoPrice, 15000);
-</body>
+</body></script>
 </html>
