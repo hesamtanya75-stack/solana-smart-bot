@@ -295,6 +295,8 @@ const name=market?.baseToken?.name||"کۆینی نەناسراو";
   }
 
   const mintData=mintInfo?.data;
+const rawMintData=mintRawInfo?.data;
+
 let mintAuth=null;
 let freezeAuth=null;
 let mintChecked=false;
@@ -303,15 +305,22 @@ if(mintData?.parsed?.info){
   mintAuth=!!mintData.parsed.info.mintAuthority;
   freezeAuth=!!mintData.parsed.info.freezeAuthority;
   mintChecked=true;
-}else if(Array.isArray(mintData)&&typeof mintData[0]==="string"){
+
+}else if(Array.isArray(rawMintData)&&typeof rawMintData[0]==="string"){
   try{
-    const bytes=Uint8Array.from(atob(mintData[0]),c=>c.charCodeAt(0));
+    const bytes=Uint8Array.from(
+      atob(rawMintData[0]),
+      c=>c.charCodeAt(0)
+    );
+
     if(bytes.length>=82){
       const readU32=(i)=>(
         bytes[i]|(bytes[i+1]<<8)|(bytes[i+2]<<16)|(bytes[i+3]<<24)
       );
+
       const mintOption=readU32(0);
       const freezeOption=readU32(46);
+
       if(mintOption<=1&&freezeOption<=1){
         mintAuth=mintOption===1;
         freezeAuth=freezeOption===1;
