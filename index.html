@@ -431,7 +431,32 @@ row("Token-2022 Extensions",
    `<p class="small">نمرەکە هەڵسەنگاندنێکی سادەیە، نەک پێوانەی فەرمی یان گەرەنتی. داتای نەزانراو بە مانای سەلامەتبوون نییە.</p>`
   );
 
-  el("result").style.display="block";
+  window.demoBuyBlockReasons=[];
+
+if(risk>3)
+ window.demoBuyBlockReasons.push("نمرەی مەترسی زیاترە لە 3");
+
+if(!market || finalLiquidity<10000)
+ window.demoBuyBlockReasons.push("لیکوییدیتی کەمترە لە $10,000");
+
+if(!market || Number(market.volume?.h24||0)<1000)
+ window.demoBuyBlockReasons.push("قەبارەی مامەڵە کەمە");
+
+if(!mintChecked || mintAuth!==false || freezeAuth!==false)
+ window.demoBuyBlockReasons.push("دۆخی Mint و Freeze پشتڕاست نییە");
+
+if(!holders.length || topTenPct>50)
+ window.demoBuyBlockReasons.push("داتای هۆڵدەرەکان ناتەواوە یان کۆبوونەوە زۆرە");
+
+if(!rug || rug.score==null)
+ window.demoBuyBlockReasons.push("داتای RugCheck بەردەست نییە");
+
+if(finalSells<=0)
+ window.demoBuyBlockReasons.push("هیچ فرۆشتنێکی بازاڕ تۆمار نەکراوە");
+
+window.demoBuyAllowed=window.demoBuyBlockReasons.length===0;
+
+el("result").style.display="block";
   el("status").textContent="پشکنین تەواو بوو.";
 updateDemoProfit();
  }catch(e){
