@@ -512,7 +512,8 @@ if(!mintChecked || mintAuth!==false || freezeAuth!==false)
 
 if(!holders.length || topTenPct>50)
  window.demoBuyBlockReasons.push("داتای هۆڵدەرەکان ناتەواوە یان کۆبوونەوە زۆرە");
-
+if(largestPct>30)
+  window.demoBuyBlockReasons.push("یەک هەژمار زیاتر لە 30%ی تۆکنی هەیە");
 if(!rug || rug.score==null)
  window.demoBuyBlockReasons.push("داتای RugCheck بەردەست نییە");
 
