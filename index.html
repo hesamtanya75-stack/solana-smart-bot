@@ -1135,7 +1135,25 @@ autoBuyBtn.onclick = function() {
 
   if (autoDemoBuyEnabled) runAutoDemoBuy();
 };
+const pauseBuyBtn = document.createElement("button");
+pauseBuyBtn.textContent = "⏸️ ڕاوەستاندنی بۆت";
+pauseBuyBtn.style.width = "100%";
+pauseBuyBtn.style.marginBottom = "12px";
 
+autoBuyBtn.after(pauseBuyBtn);
+
+pauseBuyBtn.onclick = function() {
+  autoDemoBuyPaused = !autoDemoBuyPaused;
+
+  pauseBuyBtn.textContent = autoDemoBuyPaused
+    ? "▶️ دەستپێکردنەوەی بۆت"
+    : "⏸️ ڕاوەستاندنی بۆت";
+
+  document.getElementById("demoStatus").innerText =
+    autoDemoBuyPaused
+      ? "بۆت ڕاوەستێندرا؛ فرۆشتنی مامەڵە کراوەکان بەردەوامە."
+      : "بۆت دووبارە دەستی پێکردەوە.";
+};
 async function runAutoDemoBuy() {
   if (!autoDemoBuyEnabled || autoDemoBuyRunning) return;
   autoDemoBuyRunning = true;
