@@ -580,9 +580,7 @@ renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
   document.getElementById("demoBalance").innerText =
     "$" + demoBalance.toFixed(2);
 
-  document.getElementById("demoHistory").innerHTML =
-    "<p class='good'>✅ کڕینی خەیاڵی: $5</p>" +
-    "<p class='small' dir='ltr'>" + mint + "</p>";
+  renderDemoHistory();
 
   status.innerText = "کڕینی خەیاڵی تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
   updateDemoProfit();
