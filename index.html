@@ -577,7 +577,7 @@ async function refreshDemoPrice() {
   demoBalance += saleValue;
   trade.sold = true;
   trade.sellPrice = price;
-
+saveDemoState();
   document.getElementById("demoBalance").innerText =
     "$" + demoBalance.toFixed(2);
 
