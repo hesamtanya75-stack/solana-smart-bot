@@ -154,6 +154,71 @@ button:disabled{opacity:.45;box-shadow:none}
  header{padding:18px 10px}
 }
 
+/* داشبۆردی پرۆفیشناڵ */
+header{
+ position:relative;
+ overflow:hidden;
+ text-align:center;
+ background:linear-gradient(125deg,#123b55,#17213c 55%,#241c45);
+ border:1px solid #3c6684;
+}
+header:after{
+ content:"";
+ display:block;
+ width:90px;
+ height:4px;
+ margin:18px auto 0;
+ border-radius:9px;
+ background:linear-gradient(90deg,#24d6b0,#58a6ff);
+}
+header p{color:#a9c5df}
+.panel,.section{
+ position:relative;
+ overflow:hidden;
+ border:1px solid #38516e;
+ background:linear-gradient(145deg,#1b2d48,#111b2e);
+ transition:border-color .2s,transform .2s;
+}
+.panel:hover,.section:hover{
+ border-color:#39cdb0;
+}
+h2{
+ color:#65e5c3;
+ padding-bottom:10px;
+ border-bottom:1px solid #344b67;
+}
+#demoBalance{
+ display:inline-block;
+ padding:7px 15px;
+ border-radius:12px;
+ color:#53f0b2;
+ background:#123d38;
+ border:1px solid #287b68;
+ font-size:24px;
+}
+#demoBuy,#scan{
+ min-height:52px;
+ font-size:17px;
+ letter-spacing:.3px;
+}
+#demoBuy{
+ background:linear-gradient(110deg,#10b98e,#4ce4b5);
+}
+#scan{
+ background:linear-gradient(110deg,#287bd7,#45a9ed);
+ color:white;
+}
+#status,#discoverStatus,#demoStatus{
+ padding:10px;
+ border-radius:10px;
+}
+#demoHistory .item{
+ background:#101c2e;
+ border-radius:10px;
+ padding:12px;
+ margin:8px 0;
+}
+
 </style>
 </head>
 <body>
