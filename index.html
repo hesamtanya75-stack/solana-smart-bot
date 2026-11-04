@@ -87,6 +87,73 @@ button:disabled{opacity:.45;box-shadow:none}
  .panel,.section{padding:14px;border-radius:14px}
  header{padding:18px 10px}
 }
+:root{color-scheme:dark}
+body{
+ background:
+ radial-gradient(ellipse at top,#172d49 0%,transparent 55%),
+ linear-gradient(135deg,#080d19,#101a2d);
+ color:#edf4ff;
+}
+main{max-width:1050px}
+header{
+ padding:24px 16px;
+ border:1px solid #29415f;
+ border-radius:20px;
+ background:linear-gradient(135deg,#142b43,#101827);
+ box-shadow:0 12px 35px #0005;
+}
+h1{font-size:clamp(23px,5vw,34px);letter-spacing:.2px}
+h2{font-size:20px}
+.panel,.section{
+ background:linear-gradient(145deg,#192740,#111b2e);
+ border:1px solid #304563;
+ border-radius:18px;
+ padding:20px;
+ margin:18px 0;
+ box-shadow:0 8px 25px #0003;
+}
+input{
+ border:1px solid #405b7c;
+ background:#0b1424;
+ transition:.2s;
+}
+input:focus{
+ outline:none;
+ border-color:#38d9b2;
+ box-shadow:0 0 0 3px #38d9b233;
+}
+button{
+ background:linear-gradient(120deg,#18c9a0,#42e0b5);
+ border-radius:12px;
+ box-shadow:0 5px 16px #16b89125;
+ transition:transform .2s,opacity .2s;
+}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.45;box-shadow:none}
+.item{
+ padding:12px 4px;
+ border-bottom:1px solid #30415b;
+}
+.good{color:#48e5a5}
+.bad{color:#ff7777}
+.warn{color:#ffd166}
+.small{line-height:1.9;color:#a9bad2}
+#discoverList button{
+ background:linear-gradient(120deg,#263e5b,#1a2d46);
+ color:#edf4ff;
+ border:1px solid #3a5879;
+ font-size:14px;
+}
+#status,#discoverStatus,#demoStatus{
+ white-space:pre-line;
+ line-height:1.9;
+}
+@media(max-width:600px){
+ body{padding:10px}
+ .panel,.section{padding:14px;border-radius:14px}
+ header{padding:18px 10px}
+}
+
 </style>
 </head>
 <body>
