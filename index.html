@@ -1061,6 +1061,55 @@ clearTradesBtn.onclick = function() {
     "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
 };
 
+const statsBox = document.createElement("div");
+statsBox.id = "demoStats";
+statsBox.className = "section";
+document.getElementById("demoHistory").insertAdjacentElement(
+  "beforebegin",
+  statsBox
+);
+
+function updateDemoStats() {
+  const sold = demoTrades.filter(t => t.sold);
+  const wins = sold.filter(t =>
+    Number(t.saleValue ?? t.tokens * t.sellPrice) > Number(t.amount)
+  );
+  const losses = sold.filter(t =>
+    Number(t.saleValue ?? t.tokens * t.sellPrice) < Number(t.amount)
+  );
+
+  const net = sold.reduce((sum,t) =>
+    sum + Number(t.saleValue ?? t.tokens * t.sellPrice) - Number(t.amount), 0
+  );
+
+  const rate = sold.length
+    ? (wins.length / sold.length * 100).toFixed(1)
+    : "0.0";
+
+  statsBox.innerHTML = `
+    <h2>📊 ئاماری ئەدای بۆت</h2>
+    <p>کۆی مامەڵەکان: <b>${demoTrades.length}</b></p>
+    <p>ژمارەی کڕینەکان: <b>${demoTrades.length}</b></p>
+    <p>ژمارەی فرۆشتنەکان: <b>${sold.length}</b></p>
+    <p>🟢 مامەڵە قازانجدارەکان: <b>${wins.length}</b></p>
+    <p>🔴 مامەڵە زیان‌دارەکان: <b>${losses.length}</b></p>
+    <p>ڕێژەی سەرکەوتن: <b>${rate}%</b></p>
+    <h3>کۆی قازانج / زیانی تەواوکراو:
+      <b style="color:${net >= 0 ? '#48e5a5' : '#ff7777'}">
+        ${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}
+      </b>
+    </h3>
+  `;
+}
+
+const oldRenderDemoHistory = renderDemoHistory;
+renderDemoHistory = function() {
+  oldRenderDemoHistory();
+  updateDemoStats();
+};
+
+renderDemoHistory();
+
 </script>
 </body>
 </html>
