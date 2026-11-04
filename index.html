@@ -126,6 +126,8 @@ async function rpc(method,params){
 }
 
 async function scanToken(){
+ window.demoBuyAllowed=false;
+ window.demoBuyBlockReasons=["پشکنین تەواو نییە."];
  const mint=el("mint").value.trim();
 
  if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)){
