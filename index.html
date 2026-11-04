@@ -510,15 +510,31 @@ document.querySelector("main").insertBefore(
 );
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
-document.getElementById("demoHistory").innerHTML =
-  demoTrades.map(t =>
-    "<p>کڕینی خەیاڵی: $" + Number(t.amount).toFixed(2) + "</p>" +
-    "<p class='small' dir='ltr'>" + t.mint + "</p>" +
-    (t.sold
-      ? "<p>فرۆشتنی خەیاڵی: $" +
-        (Number(t.tokens) * Number(t.sellPrice)).toFixed(2) + "</p>"
-      : "<p>هێشتا نەفرۆشراوە</p>")
-  ).join("");document.getElementById("demoBuy").onclick = function () {
+function renderDemoHistory() {
+  const box = document.getElementById("demoHistory");
+
+  box.innerHTML = demoTrades.map(t => {
+    const buy = Number(t.amount || 0);
+    const price = Number(t.sold ? t.sellPrice : (t.currentPrice || t.buyPrice));
+    const value = Number((t.tokens * price).toFixed(2));
+    const profit = Number((value - buy).toFixed(2));
+    const mint = String(t.mint).replace(/[&<>"']/g, "");
+
+    return `
+      <hr>
+      <p>🟢 کڕین: $${buy.toFixed(2)}</p>
+      <p>نرخی کڕین: $${Number(t.buyPrice).toFixed(8)}</p>
+      <p>بڕی تۆکن: ${Number(t.tokens).toFixed(4)}</p>
+      <p class="small" dir="ltr">${mint}</p>
+      <p>نرخی ${t.sold ? "فرۆشتن" : "ئێستا"}: $${price.toFixed(8)}</p>
+      <p>بەهای مامەڵە: $${value.toFixed(2)}</p>
+      <p>قازانج / زیان: ${profit >= 0 ? "+" : ""}$${profit.toFixed(2)}</p>
+      <p>${t.sold ? "✅ فرۆشراوە" : "⏳ هێشتا نەفرۆشراوە"}</p>
+    `;
+  }).join("");
+}
+
+renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
 
