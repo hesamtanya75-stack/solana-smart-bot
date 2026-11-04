@@ -617,12 +617,14 @@ renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
   }
 
   const duplicate = demoTrades.find(
-  t => String(t.mint).trim().toLowerCase() === mint.trim().toLowerCase()
+  t =>
+    String(t.mint).trim().toLowerCase() === mint.trim().toLowerCase() &&
+    t.sold !== true
 );
 
 if (duplicate) {
   status.innerText =
-    "ئەم کۆینە پێشتر تۆمارکراوە.\nناونیشانی تۆمارکراو:\n" + duplicate.mint;
+    "ئەم کۆینە هێشتا نەفرۆشراوە؛ دووبارە کڕین ڕێگەپێنەدراوە.\nناونیشانی تۆمارکراو:\n" + duplicate.mint;
   return;
 }
 
