@@ -1028,7 +1028,7 @@ async function refreshDemoPrice() {
         trade.currentPrice = price;
 
         if (
-          price >= trade.buyPrice * 1.10 ||
+          price >= trade.buyPrice * 2 ||
           price <= trade.buyPrice * 0.95
         ) {
           const saleValue = Number(
@@ -1270,73 +1270,7 @@ setInterval(() => {
   }
 }, 60000);
 
-// چوونەژوورەوەی بۆت
-const loginBox = document.createElement("div");
-
-loginBox.id = "botLogin";
-loginBox.style.cssText = `
-  position:fixed;
-  inset:0;
-  z-index:99999;
-  background:#101827;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-  direction:rtl;
-`;
-
-loginBox.innerHTML = `
-  <div style="background:#1e293b;padding:25px;border-radius:15px;width:100%;max-width:350px;text-align:center;color:white">
-    <h2>🔐 چوونەژوورەوە</h2>
-    <p>وشەی نهێنی بۆتەکە بنووسە</p>
-    <input id="botPassword" type="password"
-      placeholder="وشەی نهێنی"
-      style="width:100%;padding:13px;box-sizing:border-box;border-radius:8px;margin:10px 0">
-    <button id="botLoginBtn"
-      style="width:100%;padding:13px;background:#16a34a;color:white;border:0;border-radius:8px">
-      چوونەژوورەوە
-    </button>
-    <p id="loginMessage"></p>
-  </div>
-`;
-
-document.body.appendChild(loginBox);
-
-document.getElementById("botLoginBtn").onclick = async () => {
-  const password = document.getElementById("botPassword").value;
-  const message = document.getElementById("loginMessage");
-
-  if (!password) {
-    message.textContent = "وشەی نهێنی بنووسە";
-    return;
-  }
-
-  message.textContent = "چاوەڕێ بکە...";
-
-  try {
-    const API_URL = "https://solana-smart-bot-17.hesamtanya75-stack.deno.net";
-
-const response = await fetch(API_URL + "/api/login", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ password })
-});
-
-const data = await response.json();
-
-    if (!response.ok) {
-      message.textContent = data.error || "وشەی نهێنی هەڵەیە";
-      return;
-    }
-
-    sessionStorage.setItem("botToken", data.token);
-    loginBox.remove();
-    alert("چوونەژوورەوە سەرکەوتوو بوو");
-  } catch (error) {
-    message.textContent = "پەیوەندی بە سێرڤەرەوە سەرکەوتوو نەبوو";
-  }
-};
+// چوونەژوورەوە لابرا: API ـی /api/login لە server.js نییە.
 </script>
 </body>
 </html>
