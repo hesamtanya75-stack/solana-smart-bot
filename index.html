@@ -934,6 +934,59 @@ if(mintData?.parsed?.info){
 }
 
 const programOwner=mintInfo?.owner;
+
+// زانیاریی بنەڕەتی کۆین
+const tokenDecimals = mintData?.parsed?.info?.decimals ?? supplyData?.decimals;
+const supplyUi = supplyData?.uiAmountString ?? supplyData?.uiAmount;
+const createdAt = market?.pairCreatedAt
+  ? new Date(market.pairCreatedAt).toLocaleString("en-US")
+  : "داتا نییە";
+const rugScore = rug?.score;
+const basicRows = [
+  row("ناوی کۆین", safe(name)),
+  row("هێما", safe(symbol)),
+  row("ناونیشانی Mint", "<span dir='ltr'>" + safe(mint) + "</span>"),
+  row("ژمارەی Decimal", tokenDecimals == null ? "داتا نییە" : number(tokenDecimals)),
+  row("کۆی دابینکراو (Supply)", supplyUi == null ? "داتا نییە" : safe(supplyUi)),
+  row("Token Program", safe(programOwner || "داتا نییە")),
+  row("نمرەی RugCheck", rugScore == null ? "بەردەست نییە" : number(rugScore)),
+  row("کاتی دروستبوونی Pair", safe(createdAt))
+];
+show("basic", basicRows.join(""));
+
+const fmtPct = v => v == null || !Number.isFinite(Number(v))
+  ? "داتا نییە"
+  : (Number(v) > 0 ? "+" : "") + Number(v).toFixed(2) + "%";
+const h24 = market?.txns?.h24 || {};
+const h6 = market?.txns?.h6 || {};
+const h1 = market?.txns?.h1 || {};
+const h5 = market?.txns?.m5 || {};
+const priceChanges = market?.priceChange || {};
+const marketRows = market ? [
+  row("نرخی ئێستا (USD)", money(market.priceUsd)),
+  row("نرخی بە SOL", market.priceNative ? safe(market.priceNative) + " SOL" : "داتا نییە"),
+  row("لیکوییدیتی", money(market.liquidity?.usd)),
+  row("قەبارەی مامەڵە ٢٤ کاتژمێر", money(market.volume?.h24)),
+  row("قەبارەی مامەڵە ٦ کاتژمێر", money(market.volume?.h6)),
+  row("قەبارەی مامەڵە ١ کاتژمێر", money(market.volume?.h1)),
+  row("قەبارەی مامەڵە ٥ خولەک", money(market.volume?.m5)),
+  row("کڕین / فرۆشتن ٢٤ کاتژمێر", number(h24.buys || 0) + " / " + number(h24.sells || 0)),
+  row("کڕین / فرۆشتن ٦ کاتژمێر", number(h6.buys || 0) + " / " + number(h6.sells || 0)),
+  row("کڕین / فرۆشتن ١ کاتژمێر", number(h1.buys || 0) + " / " + number(h1.sells || 0)),
+  row("کڕین / فرۆشتن ٥ خولەک", number(h5.buys || 0) + " / " + number(h5.sells || 0)),
+  row("گۆڕانی نرخ ٢٤ کاتژمێر", fmtPct(priceChanges.h24)),
+  row("گۆڕانی نرخ ٦ کاتژمێر", fmtPct(priceChanges.h6)),
+  row("گۆڕانی نرخ ١ کاتژمێر", fmtPct(priceChanges.h1)),
+  row("گۆڕانی نرخ ٥ خولەک", fmtPct(priceChanges.m5)),
+  row("Market Cap", money(market.marketCap)),
+  row("FDV", money(market.fdv)),
+  row("DEX", safe(market.dexId || "داتا نییە")),
+  row("ناونیشانی Pair", "<span dir='ltr'>" + safe(market.pairAddress || "داتا نییە") + "</span>")
+].join("") : "<p class='bad'>هیچ Pair ـێکی Solana لە DexScreener نەدۆزرایەوە؛ زانیاری بازاڕ بەردەست نییە.</p>";
+const pairLink = typeof market?.url === "string" && market.url.startsWith("https://")
+  ? "<p><a href='" + safe(market.url) + "' target='_blank' rel='noopener noreferrer'>کردنەوەی Pair لە DexScreener ↗</a></p>"
+  : "";
+show("market", marketRows + pairLink);
 const rpcErrors = [2,5]
   .filter(i => tasks[i].status === "rejected")
   .map(i => "RPC " + i + ": " +
@@ -1110,7 +1163,8 @@ row("Token-2022 Extensions",
    ?"<span class='warn'>مەترسی مامناوەند</span>"
    :"<span class='good'>مەترسی کەمتر لە داتای بەردەستدا</span>";
 
-  show("risk",`<h2>نمرەی مەترسی: ${risk} / 18</h2><h3>${level}</h3>`);
+  const displayedRisk=Math.min(18,risk);
+  show("risk",`<h2>نمرەی مەترسی: ${displayedRisk} / 18</h2><h3>${level}</h3>`);
 
   show("conclusion",
    `<p>${noBuyWarning||risk>=8?"ئەم کۆینە مەترسییەکی بەرزی هەیە. پێشنیار ناکەم بیکڕیت.":risk>=4?"پێش کڕین پێویستی بە پشکنینی زیاتر هەیە.":"لە داتای بەردەستدا هەندێک نیشانە باشە، بەڵام ئەمە مانای سەلامەتی نییە."}</p>`+
