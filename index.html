@@ -1199,7 +1199,7 @@ async function runAutoDemoBuy() {
     const tokens = Array.isArray(data)
       ? data.filter(t =>
           t.chainId === "solana" && t.tokenAddress
-        ).slice(0, 10)
+        ).slice(0, 2)
       : [];
 
     for (const token of tokens) {
