@@ -460,6 +460,66 @@ a{color:#7acbff}
  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important}
 }
 
+
+/* ===== Single-screen tab workspace ===== */
+html,body{height:100%;overflow:hidden}
+body{padding:7px 10px;min-height:0}
+main{height:calc(100dvh - 14px);max-width:1180px;display:flex;flex-direction:column;min-height:0;overflow:hidden;gap:7px}
+main>header{flex:0 0 auto;margin:0;padding:9px 12px;border-radius:14px}
+main>header h1{font-size:clamp(17px,4vw,24px);line-height:1.25}
+main>header p{margin:3px 0 0;font-size:11px}
+main>.dashboard{flex:0 0 auto;margin:0;padding:9px 11px;border-radius:13px}
+.dash-heading{margin-bottom:7px}
+.dash-heading h2{font-size:14px}
+.eyebrow{font-size:8px}
+.mode-pill{padding:4px 8px;font-size:9px}
+.dash-grid{gap:6px}
+.metric{padding:6px 8px;border-radius:9px}
+.metric span,.metric small{font-size:9px}
+.metric strong{font-size:16px;margin:2px 0}
+.dash-foot{margin-top:6px;padding:5px 9px;font-size:10px}
+.dash-foot strong{font-size:14px}
+.dash-note{display:none}
+#botTabs{display:flex;flex:0 0 auto;gap:5px;overflow-x:auto;padding:3px 1px;scrollbar-width:none}
+#botTabs::-webkit-scrollbar{display:none}
+#botTabs button{flex:0 0 auto;width:auto;min-height:34px;margin:0;padding:6px 10px;border-radius:9px;font-size:11px;white-space:nowrap;background:#142a40;border:1px solid #34516b;color:#c8dced;box-shadow:none}
+#botTabs button[aria-selected="true"]{background:linear-gradient(110deg,#087c77,#159d8c);border-color:#52d9c5;color:#fff}
+#botWorkspace{flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
+.bot-page{display:none;height:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 2px 8px}
+.bot-page.active{display:block}
+.bot-page>.panel,.bot-page>.section{margin:0 0 8px;padding:12px;border-radius:13px}
+.bot-page h2{font-size:15px;margin-bottom:7px;padding-bottom:6px}
+.bot-page .item{padding:7px;margin:4px 0}
+.bot-page input{min-height:42px;padding:9px}
+.bot-page button{min-height:39px;padding:8px 11px;margin-top:7px;font-size:13px}
+#botPage-scan #result{display:none!important}
+#botPage-overview #walletPanel{margin-top:0}
+#botPage-overview .panel{margin-top:8px}
+#botPage-trading #demoPanel{margin:0 0 8px}
+#botPage-trading #liveTradingNotice{margin:8px 0 0}
+#botPage-trading #demoHistory .section{margin:8px 0}
+#botPage-trading #demoStats{margin:8px 0}
+#botPage-trading .item{display:block}
+#botPage-analysis .section{margin:0 0 8px}
+#botPage-analysis .section h2{font-size:15px}
+#botPage-analysis .section:first-child{margin-top:0}
+#botPage-analysis .section .item{font-size:12px}
+#botPage-wallet .section{margin:0}
+#botPage-wallet #walletPanel{margin:0}
+#botPage-risk .section,#botPage-market .section,#botPage-security .section,#botPage-holders .section,#botPage-selling .section,#botPage-conclusion .section{margin:0}
+#botPage-analysis-placeholder{color:#9db5ca;text-align:center;padding:18px}
+@media(max-width:680px){
+ body{padding:5px}
+ main{height:calc(100dvh - 10px);gap:5px}
+ main>header{padding:8px 9px}
+ .dashboard{padding:7px 8px}
+ .metric{padding:6px}
+ .metric strong{font-size:15px}
+ .dash-foot{flex-direction:row;align-items:center}
+ #botTabs button{min-height:32px;padding:5px 9px;font-size:10px}
+ .bot-page>.panel,.bot-page>.section{padding:10px}
+}
+
 </style>
 </head>
 <body>
@@ -1582,6 +1642,48 @@ setInterval(() => {
 }, 60000);
 
 // چوونەژوورەوە لابرا: API ـی /api/login لە server.js نییە.
+
+// ===== One-screen navigation: detail tabs =====
+(function(){
+ const main=document.querySelector("main");
+ const header=main.querySelector(":scope > header");
+ const dashboard=main.querySelector(":scope > .dashboard");
+ const wallet=document.getElementById("walletPanel");
+ const scanner=main.querySelector(":scope > .panel");
+ const result=document.getElementById("result");
+ const live=document.getElementById("liveTradingNotice");
+ const demo=main.querySelector(":scope > #demoPanel");
+ if(!main||!header||!dashboard||!scanner||!result)return;
+ const tabs=[
+  ["overview","سەرەکی"],["market","بازاڕ"],["security","سەلامەتی"],
+  ["holders","خاوەنەکان"],["selling","توانای فرۆشتن"],
+  ["conclusion","هەڵسەنگاندن"],["trading","تاقیکردنەوە"]
+ ];
+ const nav=document.createElement("nav");nav.id="botTabs";nav.setAttribute("aria-label","بەشەکانی بۆت");
+ const workspace=document.createElement("div");workspace.id="botWorkspace";
+ const pages={};
+ function page(id){const p=document.createElement("section");p.className="bot-page";p.id="botPage-"+id;workspace.appendChild(p);pages[id]=p;return p;}
+ tabs.forEach(([id,label])=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.dataset.tab=id;b.setAttribute("aria-selected","false");b.addEventListener("click",()=>activate(id));nav.appendChild(b);});
+ function activate(id){
+  Object.entries(pages).forEach(([key,p])=>p.classList.toggle("active",key===id));
+  nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===id)));
+ }
+ const overview=page("overview");overview.append(wallet,scanner);
+ const sections=[...result.querySelectorAll(":scope > .section")];
+ const ids=["analysis","market","security","holders","selling","conclusion"];
+ sections.forEach((s,i)=>{const p=pages[ids[i]]||page(ids[i]);p.appendChild(s);});
+ // The overview risk/basic card is its own analysis tab.
+ const analysisBtn=document.createElement("button");analysisBtn.type="button";analysisBtn.textContent="پوختەی کۆین";analysisBtn.dataset.tab="analysis";analysisBtn.setAttribute("aria-selected","false");analysisBtn.addEventListener("click",()=>activate("analysis"));nav.insertBefore(analysisBtn,nav.children[1]);
+ const trading=page("trading");
+ if(demo)trading.appendChild(demo);
+ if(live)trading.appendChild(live);
+ // Keep the result holder hidden; its six detail cards now live in their own tabs.
+ result.style.display="none";
+ main.insertBefore(nav,main.children[2]);
+ main.appendChild(workspace);
+ activate("overview");
+})();
+
 </script>
 </body>
 </html>
