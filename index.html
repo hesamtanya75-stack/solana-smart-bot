@@ -396,6 +396,14 @@ p{overflow-wrap:anywhere}
   <p class="dash-note">ئەم ئامارانە تەنها بۆ مامەڵە خەیاڵییەکانن؛ باڵانسی Phantom نین.</p>
 </section>
 
+<section class="section" id="walletPanel" aria-label="خوێندنەوەی وۆڵێتی Phantom">
+  <h2>👛 وۆڵێتی دووەمی Phantom</h2>
+  <div class="item"><span>ناونیشانی گشتی</span><b class="value" id="walletAddress">BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9</b></div>
+  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">هێشتا پشکنین نەکراوە</b></div>
+  <button type="button" id="checkWalletBalance">🔄 پشکنینی باڵانسی SOL</button>
+  <div id="walletStatus" role="status" aria-live="polite" class="small">ئەم بەشە تەنها زانیاریی گشتی دەخوێنێتەوە؛ وۆڵێتەکە ناگرێتەوە و هیچ مامەڵەیەک ناکات.</div>
+</section>
+
 
 <div class="panel">
 <h2>ناونیشانی کۆین</h2>
@@ -439,6 +447,11 @@ p{overflow-wrap:anywhere}
 </div>
 </div>
 
+<div class="section" id="liveTradingNotice" style="border-color:#a66a35;background:#302417">
+  <h2 style="color:#ffd166">🔒 مامەڵەی ڕاستەقینە ناچالاکە</h2>
+  <p>ئەم وێبسایتە لە GitHub Pages کار دەکات و تەنها پشکنین و تاقیکردنەوەی خەیاڵی ئەنجام دەدات. کڕین و فرۆشتنی ئۆتۆماتیکی بە پارەی ڕاستەقینە چالاک نییە.</p>
+  <p class="small">هیچ کلیلی نهێنی، Seed Phrase یان Private Key لێرە مەنووسە. بۆت تەنها ناونیشانی گشتی وۆڵێت دەخوێنێتەوە.</p>
+</div>
 <p class="small">تێبینی: هیچ پشکنینێک دڵنیایی تەواو نادات. ئەم بۆتە هیچ مامەڵەیەک ناکات و هیچ واژۆیەکت ناوێت.</p>
 </main>
 
@@ -539,6 +552,28 @@ function rpc(method,params){
 
   return request;
 }
+
+const PUBLIC_PHANTOM_ADDRESS = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
+async function checkPublicWalletBalance(){
+  const button = document.getElementById("checkWalletBalance");
+  const balance = document.getElementById("walletSol");
+  const status = document.getElementById("walletStatus");
+  button.disabled = true;
+  status.textContent = "لە پشکنینی باڵانسی گشتی وۆڵێت دام...";
+  try{
+    const result = await rpc("getBalance", [PUBLIC_PHANTOM_ADDRESS, {commitment:"confirmed"}]);
+    const sol = Number(result?.value) / 1e9;
+    if(!Number.isFinite(sol)) throw new Error("داتای باڵانس دروست نییە.");
+    balance.textContent = sol.toLocaleString("en-US",{maximumFractionDigits:9}) + " SOL";
+    status.textContent = "✅ باڵانسی گشتی لە Solana RPC وەرگیرا. ئەمە تەنها خوێندنەوەیە.";
+  }catch(e){
+    status.textContent = "❌ نەمانتوانی باڵانس بخوێنینەوە: " + safe(e.message) + "؛ دواتر دووبارە هەوڵ بدە.";
+  }finally{
+    button.disabled = false;
+  }
+}
+document.getElementById("checkWalletBalance").addEventListener("click", checkPublicWalletBalance);
+
 async function discoverTokens() {
   const btn = document.getElementById("autoDiscover");
   const status = document.getElementById("discoverStatus");
