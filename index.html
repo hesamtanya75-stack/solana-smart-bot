@@ -338,6 +338,40 @@ p{overflow-wrap:anywhere}
  h2{font-size:17px}
 }
 
+
+/* ===== Professional dashboard finish ===== */
+.dashboard{
+ margin:0 0 20px;padding:20px;border:1px solid #315978;border-radius:20px;
+ background:linear-gradient(145deg,#10263b,#0d1c2d);
+ box-shadow:0 14px 38px #0004;
+}
+.dash-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}
+.dash-heading h2{margin:4px 0 0;padding:0;border:0;font-size:20px}
+.eyebrow{font-size:10px;letter-spacing:2px;color:#6db8e7;font-weight:800}
+.mode-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid #3c806d;border-radius:30px;background:#10382f;color:#8af0c5;font-size:11px;white-space:nowrap}
+.mode-pill i{width:7px;height:7px;border-radius:50%;background:#39e3a5;box-shadow:0 0 10px #39e3a5}
+.dash-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{min-width:0;padding:14px;border:1px solid #29465f;border-radius:14px;background:linear-gradient(145deg,#142e46,#102337)}
+.metric span,.metric small{display:block;color:#a8c1d7;font-size:12px}
+.metric strong{display:block;margin:8px 0 3px;color:#f2fbff;font-size:clamp(19px,3vw,26px);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.metric small{font-size:10px;color:#718da8}
+.dash-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding:13px 15px;border-radius:12px;background:#0a1b2a;color:#b7d0e4}
+.dash-foot strong{font-size:20px;color:#5de5b4;font-variant-numeric:tabular-nums}
+.dash-note{margin:10px 0 0;color:#8faac2;font-size:11px}
+#result{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+#result>.section{margin:0}
+#result>.section:first-child{grid-column:1/-1}
+#result .section{min-width:0}
+#demoHistory .section{margin-top:12px}
+@media(max-width:680px){
+ .dashboard{padding:15px;border-radius:16px}
+ .dash-heading{align-items:flex-start;flex-direction:column}
+ .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .metric{padding:12px}
+ #result{grid-template-columns:1fr}
+ #result>.section:first-child{grid-column:auto}
+}
+
 </style>
 </head>
 <body>
@@ -346,6 +380,22 @@ p{overflow-wrap:anywhere}
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا</h1>
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
 </header>
+
+<section class="dashboard" aria-label="پوختەی داشبۆرد">
+  <div class="dash-heading">
+    <div><span class="eyebrow">SOLANA SMART BOT</span><h2>پوختەی بۆت</h2></div>
+    <span class="mode-pill"><i></i> دۆخی تاقیکردنەوە</span>
+  </div>
+  <div class="dash-grid">
+    <article class="metric"><span>باڵانسی خەیاڵی</span><strong id="dashBalance">$100.00</strong><small>USD · Demo</small></article>
+    <article class="metric"><span>مامەڵە کراوەکان</span><strong id="dashOpen">0</strong><small>Open positions</small></article>
+    <article class="metric"><span>مامەڵە تەواوبووەکان</span><strong id="dashClosed">0</strong><small>Closed trades</small></article>
+    <article class="metric"><span>ڕێژەی بردن</span><strong id="dashWinRate">0%</strong><small>لە مامەڵە تەواوبووەکان</small></article>
+  </div>
+  <div class="dash-foot"><span>قازانج / زیانی تەواوکراو</span><strong id="dashPnl">$0.00</strong></div>
+  <p class="dash-note">ئەم ئامارانە تەنها بۆ مامەڵە خەیاڵییەکانن؛ باڵانسی Phantom نین.</p>
+</section>
+
 
 <div class="panel">
 <h2>ناونیشانی کۆین</h2>
@@ -914,7 +964,7 @@ if(riskyExtensions.length>0)
  );
 window.demoBuyAllowed=window.demoBuyBlockReasons.length===0;
 
-el("result").style.display="block";
+el("result").style.display="grid";
   el("status").textContent="پشکنین تەواو بوو.";
 updateDemoProfit();
  }catch(e){
@@ -1255,10 +1305,28 @@ function updateDemoStats() {
   `;
 }
 
+
+function updateDashboard(){
+  const closed=demoTrades.filter(t=>t.sold===true);
+  const open=demoTrades.filter(t=>t.sold!==true);
+  const wins=closed.filter(t=>Number(t.saleValue ?? (Number(t.tokens||0)*Number(t.sellPrice||0)))>Number(t.amount||0));
+  const pnl=closed.reduce((sum,t)=>sum+Number(t.saleValue ?? (Number(t.tokens||0)*Number(t.sellPrice||0)))-Number(t.amount||0),0);
+  const rate=closed.length?(wins.length/closed.length*100):0;
+  const set=(id,value)=>{const node=document.getElementById(id);if(node)node.textContent=value;};
+  set("dashBalance","$"+Number(demoBalance).toFixed(2));
+  set("dashOpen",String(open.length));
+  set("dashClosed",String(closed.length));
+  set("dashWinRate",rate.toFixed(1)+"%");
+  set("dashPnl",(pnl>=0?"+":"-")+"$"+Math.abs(pnl).toFixed(2));
+  const pnlNode=document.getElementById("dashPnl");
+  if(pnlNode)pnlNode.style.color=pnl>=0?"#5de5b4":"#ff8585";
+}
+
 const oldRenderDemoHistory = renderDemoHistory;
 renderDemoHistory = function() {
   oldRenderDemoHistory();
   updateDemoStats();
+  updateDashboard();
 };
 
 renderDemoHistory();
