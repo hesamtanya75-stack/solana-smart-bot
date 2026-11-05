@@ -1315,7 +1315,7 @@ document.getElementById("botLoginBtn").onclick = async () => {
   message.textContent = "چاوەڕێ بکە...";
 
   try {
-    const response = await fetch(API_URL + "/api/login", {
+    const API_URL = "https://solana-smart-bot-17.hesamtanya75-stack.deno.net";
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password })
