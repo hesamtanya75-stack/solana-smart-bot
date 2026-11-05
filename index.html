@@ -1188,6 +1188,7 @@ pauseBuyBtn.onclick = function() {
       ? "بۆت ڕاوەستێندرا؛ فرۆشتنی مامەڵە کراوەکان بەردەوامە."
       : "بۆت دووبارە دەستی پێکردەوە.";
 };
+
 async function runAutoDemoBuy() {
   if (!autoDemoBuyEnabled || autoDemoBuyPaused || autoDemoBuyRunning) return;
   autoDemoBuyRunning = true;
@@ -1195,8 +1196,19 @@ async function runAutoDemoBuy() {
   try {
     if (demoBalance < 5) return;
 
-    // تەنها یەک مامەڵەی کراوە ڕێگەپێدراوە
+    // تەنها یەک مامەڵەی کراوە
     if (demoTrades.some(t => !t.sold)) return;
+
+    // هەڵگرتنی کۆینە پشکنراوەکان
+    const storageKey = "solanaSmartBotScannedMints";
+    let scannedMints = [];
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      if (Array.isArray(saved)) scannedMints = saved;
+    } catch (e) {}
+
+    const scannedSet = new Set(scannedMints);
 
     const data = await getJSON(
       "https://api.dexscreener.com/token-profiles/latest/v1"
@@ -1205,28 +1217,46 @@ async function runAutoDemoBuy() {
     const tokens = Array.isArray(data)
       ? data.filter(t =>
           t.chainId === "solana" && t.tokenAddress
-        ).slice(0, 2)
+        ).filter((t, i, arr) =>
+          arr.findIndex(x => x.tokenAddress === t.tokenAddress) === i
+        ).slice(0, 100)
       : [];
 
+    let checkedCount = 0;
+
     for (const token of tokens) {
-      if (!autoDemoBuyEnabled) break;
+      if (!autoDemoBuyEnabled || autoDemoBuyPaused) break;
+      if (checkedCount >= 20) break;
 
       const mint = token.tokenAddress;
 
-      // کۆینی پێشتر تاقیکراوە دووبارە مەکڕە
-      if (demoTrades.some(t => t.mint === mint)) continue;
+      // کۆینی پشکنراو دووبارە پشکنین مەکە
+      if (scannedSet.has(mint)) continue;
 
       document.getElementById("mint").value = mint;
 
       await scanToken();
 
-      if (!autoDemoBuyEnabled) break;
+      // تەنها دوای پشکنین ناونیشانەکە هەڵبگرە
+      scannedSet.add(mint);
+      checkedCount++;
 
-      if (!autoDemoBuyPaused && window.demoBuyAllowed === true) {
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify([...scannedSet].slice(-1000))
+        );
+      } catch (e) {}
+
+      if (!autoDemoBuyEnabled || autoDemoBuyPaused) break;
+
+      // تەنها کۆینی ڕێگەپێدراو بکڕە
+      if (window.demoBuyAllowed === true) {
         document.getElementById("demoBuy").click();
         break;
       }
     }
+
   } catch (e) {
     document.getElementById("demoStatus").innerText =
       "هەڵە لە کڕینی خۆکار: " + e.message;
@@ -1235,7 +1265,6 @@ async function runAutoDemoBuy() {
   }
 }
 
-setInterval(() => {
   if (autoDemoBuyEnabled && !autoDemoBuyPaused) {
     runAutoDemoBuy();
   }
