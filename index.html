@@ -884,8 +884,13 @@ const safeValue = Number.isFinite(value) ? value : 0;
         <p>قازانج / زیان: 
           <b>${profit >= 0 ? "+" : "-"}$${Math.abs(profit).toFixed(2)}</b>
         </p>
-        <p>بەهای فرۆشتن: $${Number(t.saleValue ?? t.tokens * t.sellPrice).toFixed(2)}</p>
-        <p>✅ فرۆشراوە</p>
+        ${t.sold ? `
+  <p>بەهای فرۆشتن: $${Number(t.saleValue ?? (Number(t.tokens || 0) * Number(t.sellPrice || 0))).toFixed(2)}</p>
+  <p>✅ فرۆشراوە</p>
+` : `
+  <p>بەهای ئێستا: $${Number(Number(t.tokens || 0) * Number(t.currentPrice || t.buyPrice || 0)).toFixed(2)}</p>
+  <p>⏳ مامەڵە کراوەیە</p>
+`}
       </div>
     `).join("");
   }
