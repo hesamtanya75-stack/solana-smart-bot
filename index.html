@@ -1316,12 +1316,14 @@ document.getElementById("botLoginBtn").onclick = async () => {
 
   try {
     const API_URL = "https://solana-smart-bot-17.hesamtanya75-stack.deno.net";
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
 
-    const data = await response.json();
+const response = await fetch(API_URL + "/api/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ password })
+});
+
+const data = await response.json();
 
     if (!response.ok) {
       message.textContent = data.error || "وشەی نهێنی هەڵەیە";
