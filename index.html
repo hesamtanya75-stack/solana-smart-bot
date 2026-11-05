@@ -1149,7 +1149,8 @@ if(riskyExtensions.length>0)
 window.demoBuyAllowed=window.demoBuyBlockReasons.length===0;
 
 el("result").style.display="grid";
-  el("status").textContent="پشکنین تەواو بوو.";
+  el("status").textContent="پشکنین تەواو بوو. هەموو بەشەکان لە تابەکانی خوارەوە بەردەستن.";
+  if(typeof window.showBotTab==="function") window.showBotTab("analysis");
 updateDemoProfit();
  }catch(e){
   el("status").textContent="هەڵە لە پشکنین: "+safe(e.message);
@@ -1668,6 +1669,7 @@ setInterval(() => {
   Object.entries(pages).forEach(([key,p])=>p.classList.toggle("active",key===id));
   nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===id)));
  }
+ window.showBotTab=activate;
  const overview=page("overview");overview.append(wallet,scanner);
  const sections=[...result.querySelectorAll(":scope > .section")];
  const ids=["analysis","market","security","holders","selling","conclusion"];
