@@ -401,6 +401,7 @@ p{overflow-wrap:anywhere}
   <div class="item"><span>ناونیشانی گشتی</span><b class="value" id="walletAddress">BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9</b></div>
   <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">هێشتا پشکنین نەکراوە</b></div>
   <button type="button" id="checkWalletBalance">🔄 پشکنینی باڵانسی SOL</button>
+  <p class="small"><a href="https://solscan.io/account/BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9" target="_blank" rel="noopener noreferrer" style="color:#75c9ff">بینینی ناونیشان لە Solscan ↗</a></p>
   <div id="walletStatus" role="status" aria-live="polite" class="small">ئەم بەشە تەنها زانیاریی گشتی دەخوێنێتەوە؛ وۆڵێتەکە ناگرێتەوە و هیچ مامەڵەیەک ناکات.</div>
 </section>
 
@@ -565,7 +566,7 @@ async function checkPublicWalletBalance(){
     const sol = Number(result?.value) / 1e9;
     if(!Number.isFinite(sol)) throw new Error("داتای باڵانس دروست نییە.");
     balance.textContent = sol.toLocaleString("en-US",{maximumFractionDigits:9}) + " SOL";
-    status.textContent = "✅ باڵانسی گشتی لە Solana RPC وەرگیرا. ئەمە تەنها خوێندنەوەیە.";
+    status.textContent = "✅ باڵانسی گشتی لە Solana RPC وەرگیرا. ئەمە تەنها خوێندنەوەیە. کاتی پشکنین: " + new Date().toLocaleTimeString("en-US");
   }catch(e){
     status.textContent = "❌ نەمانتوانی باڵانس بخوێنینەوە: " + safe(e.message) + "؛ دواتر دووبارە هەوڵ بدە.";
   }finally{
