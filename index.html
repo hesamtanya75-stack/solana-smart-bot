@@ -372,6 +372,94 @@ p{overflow-wrap:anywhere}
  #result>.section:first-child{grid-column:auto}
 }
 
+
+/* ===== UI polish: responsive professional trading terminal ===== */
+:root{
+ --accent:#54e6c1;--accent2:#56b8ff;--panel:#102238;
+ --panel-border:#294862;--muted:#9db5ca;
+}
+html{scroll-padding-top:18px}
+body{
+ background:
+  radial-gradient(ellipse at 8% 3%,#164a68 0,transparent 31%),
+  radial-gradient(ellipse at 92% 12%,#174b47 0,transparent 27%),
+  linear-gradient(145deg,#050b14 0%,#091727 48%,#07111e 100%);
+ letter-spacing:.05px;
+}
+main{max-width:1180px}
+header{
+ padding:34px 22px 30px;
+ border-radius:26px;
+ border:1px solid #3a6985;
+ background:
+  radial-gradient(circle at 50% -30%,#2b7a8d66,transparent 60%),
+  linear-gradient(120deg,#102c47,#102438 58%,#103a38);
+ box-shadow:0 22px 60px #0006,inset 0 1px #ffffff12;
+}
+header p{font-size:14px;color:#b8d2e4}
+.dashboard{
+ border-color:#347c78;
+ background:linear-gradient(145deg,#102b39f5,#0c1c2d 72%);
+}
+.metric{
+ border-color:#31516a;
+ background:linear-gradient(145deg,#17344b,#102338);
+ transition:transform .18s,border-color .18s;
+}
+.metric:hover{transform:translateY(-2px);border-color:#4b9c9a}
+.metric strong{letter-spacing:-.5px}
+.dash-foot{border:1px solid #244a4d;background:#0a202a}
+.panel,.section{
+ border-color:#2c4b66;
+ background:linear-gradient(150deg,#142b42f5,#0c1a2bf5);
+ box-shadow:0 13px 34px #0003,inset 0 1px #ffffff08;
+}
+.panel{border-color:#3a6686}
+h2{color:#76e9d4}
+.item{
+ border-color:#29465d;
+ background:linear-gradient(100deg,#0b1b2b,#0d2031);
+}
+.item span{color:#b4cadc}
+.value{color:#f3f8ff;font-variant-numeric:tabular-nums}
+input{min-height:54px;border-color:#3b607d;background:#071523}
+button{
+ min-height:49px;border-radius:13px;
+ box-shadow:0 8px 20px #0003;
+ font-weight:750;
+}
+button:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-1px)}
+button:focus-visible,input:focus-visible,a:focus-visible{
+ outline:2px solid #62e7d0;outline-offset:3px;
+}
+#scan{background:linear-gradient(110deg,#187acb,#38a6e8)}
+#autoDiscover{background:linear-gradient(110deg,#126d78,#159b8d)}
+#result>.section{min-height:100%;overflow-wrap:anywhere}
+#result>.section:first-child{
+ background:linear-gradient(145deg,#16364a,#102238);
+ border-color:#3c7188;
+}
+#risk h2{color:#f3f8ff}
+#demoStats{background:#10283b}
+#demoProfit{border:1px solid #287c6b}
+#liveTradingNotice{box-shadow:0 12px 30px #0003}
+a{color:#7acbff}
+.small{color:#9fb6ca}
+::selection{background:#1a887a;color:#fff}
+@media(max-width:680px){
+ body{padding:9px}
+ header{padding:25px 14px 22px;margin:4px 0 15px}
+ h1{line-height:1.45}
+ .dash-grid{gap:8px}
+ .metric strong{font-size:21px}
+ .dash-foot{align-items:flex-start;flex-direction:column}
+ .panel,.section{padding:14px}
+ button{min-height:48px}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;transition:none!important}
+}
+
 </style>
 </head>
 <body>
