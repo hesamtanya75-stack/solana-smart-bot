@@ -860,10 +860,14 @@ function renderDemoHistory() {
   demoTrades.forEach(t => {
     const buy = Number(t.amount || 0);
     const price = Number(t.sold ? t.sellPrice : (t.currentPrice || t.buyPrice));
-    const value = Number(t.sold
-      ? (t.saleValue ?? t.tokens * price)
-      : t.tokens * price);
-    const profit = Number((value - buy).toFixed(2));
+    const value = Number(
+  t.sold
+    ? (t.saleValue ?? (Number(t.tokens || 0) * price))
+    : (Number(t.tokens || 0) * price)
+);
+
+const safeValue = Number.isFinite(value) ? value : 0;
+    const profit = Number((safeValue - buy).toFixed(2));
 
     if (!t.sold) openTrades.push({t, profit});
     else if (profit >= 0) profitTrades.push({t, profit});
