@@ -1193,11 +1193,11 @@ async function runAutoDemoBuy() {
   if (!autoDemoBuyEnabled || autoDemoBuyPaused || autoDemoBuyRunning) return;
   autoDemoBuyRunning = true;
 
-  try {
+    try {
     if (demoBalance < 5) return;
 
-    // تەنها یەک مامەڵەی کراوە
-    if (demoTrades.some(t => !t.sold)) return;
+    // ڕێگە بە ١٠ مامەڵەی کراوە بدە
+    if (demoTrades.filter(t => !t.sold).length >= 10) return;
 
     // هەڵگرتنی کۆینە پشکنراوەکان
     const storageKey = "solanaSmartBotScannedMints";
