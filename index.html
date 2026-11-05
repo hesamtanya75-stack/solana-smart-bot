@@ -1206,281 +1206,23 @@ setInterval(() => {
     runAutoDemoBuy();
   }
 }, 60000);
+
 const API_URL = "https://solana-smart-bot.hesamtanya75-stack.deno.net";
+
 // چوونەژوورەوەی بۆت
 const loginBox = document.createElement("div");
 
 loginBox.id = "botLogin";
 loginBox.style.cssText = `
-  position:fixed; inset:0; z-index:99999;
-  background:#101827; display:flex;
-  align-items:center; justify-content:center;
-  padding:20px; direction:rtl;
-`;
-
-loginBox.innerHTML = `
-  <div style="background:#1e293b;padding:25px;border-radius:15px;width:100%;max-width:350px;text-align:center;color:white">
-    <h2>🔐 چوونەژوورەوە</h2>
-    <p>وشەی نهێنی بۆتەکە بنووسە</p>
-    <input id="botPassword" type="password"
-      placeholder="وشەی نهێنی"
-      style="width:100%;padding:13px;box-sizing:border-box;border-radius:8px;margin:10px 0">
-    <button id="botLoginBtn"
-      style="width:100%;padding:13px;background:#16a34a;color:white;border:0;border-radius:8px">
-      چوونەژوورەوە
-    </button>
-    <p id="loginMessage"></p>
-  </div>
-`;
-
-document.body.appendChild(loginBox);
-
-document.getElementById("botLoginBtn").onclick = async () => {
-  const password = document.getElementById("botPassword").value;
-  const message = document.getElementById("loginMessage");
-
-  if (!password) {
-    message.textContent = "وشەی نهێنی بنووسە";
-    return;
-  }
-
-  message.textContent = "چاوەڕێ بکە...";
-
-  try {
-    const response = await fetch(window.BOT_API_URL + "/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      message.textContent = data.error || "وشەی نهێنی هەڵەیە";
-      return;
-    }
-
-    sessionStorage.setItem("botToken", data.token);
-    loginBox.remove();
-    alert("چوونەژوورەوە سەرکەوتوو بوو");
-  } catch (error) {
-    message.textContent = "پەیوەندی بە سێرڤەرەوە سەرکەوتوو نەبوو";
-  }
-};</body>
-</html>
-trade.sold = true;
-          trade.sellPrice = price;
-          trade.saleValue = saleValue;
-          soldCount++;
-        }
-      } catch (e) {}
-    }
-
-    saveDemoState();
-
-    document.getElementById("demoBalance").innerText =
-      "$" + demoBalance.toFixed(2);
-
-    if (soldCount > 0) {
-      document.getElementById("demoStatus").innerText =
-        "✅ فرۆشتنی خەیاڵی تەواو بوو. ژمارە: " +
-        soldCount;
-
-      renderDemoHistory();
-    }
-renderDemoHistory();
-    updateDemoProfit();
-
-  } finally {
-    refreshDemoPrice.running = false;
-  }
-}
-
-setInterval(refreshDemoPrice, 5000);
-
-const clearTradesBtn = document.createElement("button");
-clearTradesBtn.textContent = "🗑️ سڕینەوەی مامەڵە کۆنەکان";
-clearTradesBtn.style.background = "linear-gradient(120deg,#b83245,#ef5968)";
-clearTradesBtn.style.color = "white";
-clearTradesBtn.style.marginTop = "12px";
-clearTradesBtn.style.width = "100%";
-
-document.getElementById("demoBuy").insertAdjacentElement(
-  "afterend",
-  clearTradesBtn
-);
-
-clearTradesBtn.onclick = function() {
-  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) {
-    return;
-  }
-
-  demoTrades = [];
-  saveDemoState();
-  renderDemoHistory();
-  updateDemoProfit();
-
-  document.getElementById("demoStatus").innerText =
-    "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
-};
-
-const statsBox = document.createElement("div");
-statsBox.id = "demoStats";
-statsBox.className = "section";
-document.getElementById("demoHistory").insertAdjacentElement(
-  "beforebegin",
-  statsBox
-);
-
-function updateDemoStats() {
-  const sold = demoTrades.filter(t => t.sold);
-  const wins = sold.filter(t =>
-    Number(t.saleValue ?? t.tokens * t.sellPrice) > Number(t.amount)
-  );
-  const losses = sold.filter(t =>
-    Number(t.saleValue ?? t.tokens * t.sellPrice) < Number(t.amount)
-  );
-
-  const net = sold.reduce((sum,t) =>
-    sum + Number(t.saleValue ?? t.tokens * t.sellPrice) - Number(t.amount), 0
-  );
-
-  const rate = sold.length
-    ? (wins.length / sold.length * 100).toFixed(1)
-    : "0.0";
-
-  statsBox.innerHTML = `
-    <h2>📊 ئاماری ئەدای بۆت</h2>
-    <p>کۆی مامەڵەکان: <b>${demoTrades.length}</b></p>
-    <p>ژمارەی کڕینەکان: <b>${demoTrades.length}</b></p>
-    <p>ژمارەی فرۆشتنەکان: <b>${sold.length}</b></p>
-    <p>🟢 مامەڵە قازانجدارەکان: <b>${wins.length}</b></p>
-    <p>🔴 مامەڵە زیان‌دارەکان: <b>${losses.length}</b></p>
-    <p>ڕێژەی سەرکەوتن: <b>${rate}%</b></p>
-    <h3>کۆی قازانج / زیانی تەواوکراو:
-      <b style="color:${net >= 0 ? '#48e5a5' : '#ff7777'}">
-        ${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}
-      </b>
-    </h3>
-  `;
-}
-
-const oldRenderDemoHistory = renderDemoHistory;
-renderDemoHistory = function() {
-  oldRenderDemoHistory();
-  updateDemoStats();
-};
-
-renderDemoHistory();
-// ===== AUTO DEMO BUY =====
-let autoDemoBuyEnabled = false;
-let autoDemoBuyRunning = false;
-let autoDemoBuyPaused = false;
-const autoBuyBtn = document.createElement("button");
-autoBuyBtn.id = "autoDemoBuy";
-autoBuyBtn.textContent = "🤖 کڕینی خۆکار: ناچالاک";
-autoBuyBtn.style.width = "100%";
-autoBuyBtn.style.marginBottom = "12px";
-
-document.getElementById("demoBuy").before(autoBuyBtn);
-
-autoBuyBtn.onclick = function() {
-  autoDemoBuyEnabled = !autoDemoBuyEnabled;
-
-  autoBuyBtn.textContent = autoDemoBuyEnabled
-    ? "🟢 کڕینی خۆکار: چالاک"
-    : "🤖 کڕینی خۆکار: ناچالاک";
-
-  document.getElementById("demoStatus").innerText =
-    autoDemoBuyEnabled
-      ? "کڕینی خۆکاری خەیاڵی چالاک کرا."
-      : "کڕینی خۆکاری خەیاڵی ناچالاک کرا.";
-
-  if (autoDemoBuyEnabled) runAutoDemoBuy();
-};
-const pauseBuyBtn = document.createElement("button");
-pauseBuyBtn.textContent = "⏸️ ڕاوەستاندنی بۆت";
-pauseBuyBtn.style.width = "100%";
-pauseBuyBtn.style.marginBottom = "12px";
-
-autoBuyBtn.after(pauseBuyBtn);
-
-pauseBuyBtn.onclick = function() {
-  autoDemoBuyPaused = !autoDemoBuyPaused;
-
-  pauseBuyBtn.textContent = autoDemoBuyPaused
-    ? "▶️ دەستپێکردنەوەی بۆت"
-    : "⏸️ ڕاوەستاندنی بۆت";
-
-  document.getElementById("demoStatus").innerText =
-    autoDemoBuyPaused
-      ? "بۆت ڕاوەستێندرا؛ فرۆشتنی مامەڵە کراوەکان بەردەوامە."
-      : "بۆت دووبارە دەستی پێکردەوە.";
-};
-async function runAutoDemoBuy() {
-  if (!autoDemoBuyEnabled || autoDemoBuyPaused || autoDemoBuyRunning) return;
-  autoDemoBuyRunning = true;
-
-  try {
-    if (demoBalance < 5) return;
-
-    // تەنها یەک مامەڵەی کراوە ڕێگەپێدراوە
-    if (demoTrades.some(t => !t.sold)) return;
-
-    const data = await getJSON(
-      "https://api.dexscreener.com/token-profiles/latest/v1"
-    );
-
-    const tokens = Array.isArray(data)
-      ? data.filter(t =>
-          t.chainId === "solana" && t.tokenAddress
-        ).slice(0, 10)
-      : [];
-
-    for (const token of tokens) {
-      if (!autoDemoBuyEnabled) break;
-
-      const mint = token.tokenAddress;
-
-      // کۆینی پێشتر تاقیکراوە دووبارە مەکڕە
-      if (demoTrades.some(t => t.mint === mint)) continue;
-
-      document.getElementById("mint").value = mint;
-
-      await scanToken();
-
-      if (!autoDemoBuyEnabled) break;
-
-      if (!autoDemoBuyPaused && window.demoBuyAllowed === true) {
-        document.getElementById("demoBuy").click();
-        break;
-      }
-    }
-  } catch (e) {
-    document.getElementById("demoStatus").innerText =
-      "هەڵە لە کڕینی خۆکار: " + e.message;
-  } finally {
-    autoDemoBuyRunning = false;
-  }
-}
-
-setInterval(() => {
-  if (autoDemoBuyEnabled && !autoDemoBuyPaused) {
-    runAutoDemoBuy();
-  }
-}, 60000);
-</script>
-<script>
-window.BOT_API_URL = "https://solana-smart-bot.hesamtanya75-stack.deno.net";
-// چوونەژوورەوەی بۆت
-const loginBox = document.createElement("div");
-
-loginBox.id = "botLogin";
-loginBox.style.cssText = `
-  position:fixed; inset:0; z-index:99999;
-  background:#101827; display:flex;
-  align-items:center; justify-content:center;
-  padding:20px; direction:rtl;
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  background:#101827;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  direction:rtl;
 `;
 
 loginBox.innerHTML = `
@@ -1531,6 +1273,8 @@ document.getElementById("botLoginBtn").onclick = async () => {
   } catch (error) {
     message.textContent = "پەیوەندی بە سێرڤەرەوە سەرکەوتوو نەبوو";
   }
-};</script>
+};
+</script>
 </body>
 </html>
+
