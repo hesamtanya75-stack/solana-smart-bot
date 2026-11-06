@@ -462,13 +462,13 @@ button:active{filter:brightness(1.15);transform:scale(.99)}
     <span class="mode-pill"><i></i> دۆخی تاقیکردنەوە</span>
   </div>
   <div class="dash-grid">
-    <article class="metric"><span>باڵانسی خەیاڵی</span><strong id="dashBalance">$100.00</strong><small>USD · Demo</small></article>
-    <article class="metric"><span>مامەڵە کراوەکان</span><strong id="dashOpen">0</strong><small>Open positions</small></article>
-    <article class="metric"><span>مامەڵە تەواوبووەکان</span><strong id="dashClosed">0</strong><small>Closed trades</small></article>
+    <article class="metric"><span>باڵانسی خەیاڵی</span><strong id="dashBalance">$100.00</strong><small>دۆخی خەیاڵی · دۆلار</small></article>
+    <article class="metric"><span>مامەڵە کراوەکان</span><strong id="dashOpen">0</strong><small>مامەڵەی کراوە</small></article>
+    <article class="metric"><span>مامەڵە تەواوبووەکان</span><strong id="dashClosed">0</strong><small>مامەڵەی تەواوبوو</small></article>
     <article class="metric"><span>ڕێژەی بردن</span><strong id="dashWinRate">0%</strong><small>لە مامەڵە تەواوبووەکان</small></article>
   </div>
   <div class="dash-foot"><span>قازانج / زیانی تەواوکراو</span><strong id="dashPnl">$0.00</strong></div>
-  <p class="dash-note">ئەم ئامارانە تەنها بۆ مامەڵە خەیاڵییەکانن؛ باڵانسی Phantom نین.</p>
+  <p class="dash-note">ئەم ئامارانە خەیاڵین؛ قازانج/زیان تەنها مامەڵە تۆمارکراوەکان دەژمێرێت. ئەگەر مێژووی کۆن سڕابێتەوە، باڵانس دەتوانێت لە کۆی قازانج/زیان جیاواز بێت. باڵانسی Phantom نین.</p>
 </section>
 
 <section class="section" id="walletPanel" aria-label="دۆخی وۆڵێتی تایبەتی بۆت">
@@ -1675,7 +1675,10 @@ setInterval(() => {
  if(securityCard&&conclusionCard){
    const heading=conclusionCard.querySelector("h2");
    const content=document.getElementById("conclusion");
-   if(heading) heading.textContent="⚠️ کۆتایی هەڵسەنگاندن";
+   if(heading){
+     heading.textContent="⚠️ کۆتایی هەڵسەنگاندن";
+     securityCard.appendChild(heading);
+   }
    if(content) securityCard.appendChild(content);
    conclusionCard.remove();
  }
