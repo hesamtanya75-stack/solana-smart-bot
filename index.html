@@ -580,6 +580,58 @@ main{
  .bot-page{height:auto!important;overflow:visible!important}
 }
 
+
+/* ===== ALL-IN-ONE VIEW: no tabs, no page scrolling ===== */
+html,body{height:100%!important;min-height:0!important;overflow:hidden!important}
+body{padding:4px!important;margin:0!important}
+main{
+ width:100%!important;max-width:none!important;height:100dvh!important;
+ min-height:0!important;max-height:100dvh!important;overflow:hidden!important;
+ display:grid!important;
+ grid-template-columns:repeat(4,minmax(0,1fr))!important;
+ grid-template-rows:auto auto minmax(0,1fr) auto!important;
+ gap:5px!important;align-content:stretch!important;
+}
+main>header{grid-column:1/-1!important;grid-row:1!important;margin:0!important;padding:5px 8px!important;border-radius:9px!important}
+main>header h1{font-size:clamp(12px,3vw,18px)!important;line-height:1.15!important}
+main>header p{font-size:9px!important;margin:1px 0!important}
+main>.dashboard{grid-column:1/-1!important;grid-row:2!important;margin:0!important;padding:5px 7px!important;border-radius:9px!important}
+.dash-heading{margin:0 0 3px!important;display:flex!important;flex-direction:row!important;align-items:center!important}
+.dash-heading h2{font-size:10px!important;margin:0!important}
+.eyebrow,.mode-pill,.metric small,.dash-note{display:none!important}
+.dash-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:3px!important}
+.metric{padding:3px 4px!important;border-radius:5px!important}
+.metric span{font-size:8px!important}
+.metric strong{font-size:12px!important;margin:0!important}
+.dash-foot{margin:3px 0 0!important;padding:2px 5px!important;font-size:8px!important;flex-direction:row!important}
+.dash-foot strong{font-size:11px!important}
+main>#walletPanel{grid-column:1/3!important;grid-row:3!important;margin:0!important;padding:5px!important;overflow:hidden!important}
+main>.panel{grid-column:3/5!important;grid-row:3!important;margin:0!important;padding:5px!important;overflow:hidden!important}
+main>#result{
+ grid-column:1/-1!important;grid-row:4!important;
+ display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
+ grid-template-rows:repeat(2,minmax(0,1fr))!important;
+ gap:3px!important;margin:0!important;min-height:0!important;overflow:hidden!important;
+}
+#result>.section{min-height:0!important;margin:0!important;padding:5px!important;overflow:hidden!important;border-radius:7px!important}
+#result>.section:first-child{grid-column:auto!important}
+#result h2,.panel h2,#walletPanel h2{font-size:9px!important;margin:0 0 2px!important;padding:0 0 2px!important;line-height:1.2!important}
+#result .item,#walletPanel .item{display:flex!important;gap:3px!important;padding:2px!important;margin:1px 0!important;font-size:7px!important;line-height:1.2!important}
+#result .value,#walletPanel .value{font-size:7px!important;max-width:60%!important}
+#result p,#walletPanel p,#result b{font-size:7px!important;line-height:1.2!important;margin:1px 0!important}
+#result .small,#walletPanel .small{font-size:6px!important}
+#result button,#walletPanel button,.panel button{min-height:22px!important;padding:2px 4px!important;margin:2px 0!important;font-size:8px!important}
+main>#liveTradingNotice,main>p.small{display:none!important}
+#discoverList{display:none!important}
+#status,#discoverStatus{font-size:7px!important;padding:2px!important;margin:2px 0!important}
+.panel input{min-height:25px!important;padding:3px!important;font-size:8px!important}
+@media(max-width:680px){
+ main{grid-template-rows:auto auto minmax(0,1fr) auto!important}
+ main>#walletPanel{grid-column:1/3!important}
+ main>.panel{grid-column:3/5!important}
+ #result{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}
+}
+
 </style>
 </head>
 <body>
@@ -1769,47 +1821,9 @@ setInterval(() => {
 
 // چوونەژوورەوە لابرا: API ـی /api/login لە server.js نییە.
 
-// ===== One-screen navigation: detail tabs =====
-(function(){
- const main=document.querySelector("main");
- const header=main.querySelector(":scope > header");
- const dashboard=main.querySelector(":scope > .dashboard");
- const wallet=document.getElementById("walletPanel");
- const scanner=main.querySelector(":scope > .panel");
- const result=document.getElementById("result");
- const live=document.getElementById("liveTradingNotice");
- const demo=main.querySelector(":scope > #demoPanel");
- if(!main||!header||!dashboard||!scanner||!result)return;
- const tabs=[
-  ["overview","سەرەکی"],["market","بازاڕ"],["security","سەلامەتی"],
-  ["holders","خاوەنەکان"],["selling","توانای فرۆشتن"],
-  ["conclusion","هەڵسەنگاندن"],["trading","تاقیکردنەوە"]
- ];
- const nav=document.createElement("nav");nav.id="botTabs";nav.setAttribute("aria-label","بەشەکانی بۆت");
- const workspace=document.createElement("div");workspace.id="botWorkspace";
- const pages={};
- function page(id){const p=document.createElement("section");p.className="bot-page";p.id="botPage-"+id;workspace.appendChild(p);pages[id]=p;return p;}
- tabs.forEach(([id,label])=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.dataset.tab=id;b.setAttribute("aria-selected","false");b.addEventListener("click",()=>activate(id));nav.appendChild(b);});
- function activate(id){
-  Object.entries(pages).forEach(([key,p])=>p.classList.toggle("active",key===id));
-  nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===id)));
- }
- window.showBotTab=activate;
- const overview=page("overview");overview.append(wallet,scanner);
- const sections=[...result.querySelectorAll(":scope > .section")];
- const ids=["analysis","market","security","holders","selling","conclusion"];
- sections.forEach((s,i)=>{const p=pages[ids[i]]||page(ids[i]);p.appendChild(s);});
- // The overview risk/basic card is its own analysis tab.
- const analysisBtn=document.createElement("button");analysisBtn.type="button";analysisBtn.textContent="پوختەی کۆین";analysisBtn.dataset.tab="analysis";analysisBtn.setAttribute("aria-selected","false");analysisBtn.addEventListener("click",()=>activate("analysis"));nav.insertBefore(analysisBtn,nav.children[1]);
- const trading=page("trading");
- if(demo)trading.appendChild(demo);
- if(live)trading.appendChild(live);
- // Keep the result holder hidden; its six detail cards now live in their own tabs.
- result.style.display="none";
- main.insertBefore(nav,main.children[2]);
- main.appendChild(workspace);
- activate("overview");
-})();
+// Single-view layout: keep every dashboard section visible together.
+document.getElementById("result").style.display="grid";
+;
 
 </script>
 </body>
