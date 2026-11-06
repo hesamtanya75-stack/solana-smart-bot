@@ -15,7 +15,7 @@ header{min-width:0;margin:0;padding:10px 14px;text-align:center;border:1px solid
 header:after{display:none}
 h1{margin:0;color:#f2fbff;font-size:clamp(17px,3.5vw,25px);line-height:1.3}
 header p{margin:3px 0 0;color:#a9c5d9;font-size:11px}
-main>.panel{min-width:0;margin:0;padding:9px 11px;border:1px solid #315878;border-radius:13px;background:#102238;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"heading heading" "input input" "discover scan" "status status";gap:5px 7px;overflow:hidden}
+main>.panel{min-width:0;margin:0;padding:9px 11px;border:1px solid #315878;border-radius:13px;background:#102238;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"heading heading" "input input" "discover scan" "discoverstatus discoverstatus" "discoverlist discoverlist" "status status";gap:5px 7px;overflow:hidden}
 main>.panel>h2{grid-area:heading;margin:0;padding:0;border:0;font-size:13px}
 #mint{grid-area:input;width:100%;min-width:0;height:35px;padding:6px 10px;border:1px solid #3a607d;border-radius:9px;background:#071523;color:#fff;font-size:12px;direction:ltr}
 #autoDiscover{grid-area:discover}
@@ -24,11 +24,10 @@ button{width:100%;min-width:0;min-height:32px;margin:0;padding:5px 8px;border:1p
 #scan{border-color:#4b9ed4;background:linear-gradient(110deg,#176fbd,#329de0)}
 button:disabled{opacity:.5}
 #status{grid-area:status;min-width:0;margin:0;padding:2px 5px;text-align:center;color:#ffd166;font-size:9px;line-height:1.3;white-space:pre-line}
-#discoverStatus{grid-area:status;display:block;min-width:0;font-size:9px;color:#a9c5d9;overflow-wrap:anywhere}
-#discoverList{grid-column:1/-1;display:flex;gap:4px;max-height:54px;overflow:auto;flex-wrap:wrap}
+#discoverStatus{grid-area:discoverstatus;display:block;min-width:0;font-size:9px;color:#a9c5d9;overflow-wrap:anywhere}
+#discoverList{grid-area:discoverlist;display:flex;gap:4px;max-height:54px;overflow:auto;flex-wrap:wrap}
 #discoverList button{width:auto;max-width:48%;font-size:9px}
-#result{grid-template-rows:repeat(4,minmax(0,1fr))}
-#result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:7px;min-width:0;min-height:0;margin:0;overflow:hidden}
+#result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:7px;min-width:0;min-height:0;margin:0;overflow:hidden}
 #result>.section{min-width:0;min-height:0;height:100%;margin:0;padding:9px;border:1px solid #294963;border-radius:12px;background:linear-gradient(145deg,#142b42,#0c1b2b);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;box-shadow:0 6px 16px #0003}
 #result>.section:first-child{grid-column:auto}
 #result h2{margin:0 0 5px;padding:0 0 5px;border-bottom:1px solid #29445e;color:#76e9d4;font-size:12px;line-height:1.3}
@@ -41,6 +40,21 @@ button:disabled{opacity:.5}
 #result p{margin:4px 0;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
 #result .small,.empty-hint{color:#9db5ca;font-size:9px;line-height:1.4}
 #extraInfo,#liveTradingNotice,main>p.small{display:none!important}
+#demoPanel .dashboard{padding:5px;border:1px solid #315878;border-radius:8px;background:#0a1a2a}
+#demoPanel .dash-heading{display:flex;justify-content:space-between;align-items:center;gap:4px}
+#demoPanel .eyebrow{font-size:8px;color:#8bb4ce}
+#demoPanel .dash-heading h2{border:0;margin:0;padding:0;font-size:11px}
+#demoPanel .mode-pill{font-size:8px;color:#ffd166}
+#demoPanel .dash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:5px}
+#demoPanel .metric{padding:4px;border-radius:6px;background:#132b40;min-width:0}
+#demoPanel .metric span,#demoPanel .metric small{display:block;font-size:8px;color:#a9c5d9}
+#demoPanel .metric strong{display:block;font-size:12px;overflow-wrap:anywhere}
+#demoPanel .dash-foot{display:flex;justify-content:space-between;font-size:9px;margin-top:5px}
+#demoPanel .dash-note{font-size:8px!important;color:#ffd166}
+#demoPanel .bot-warning{font-size:8px!important;color:#ffd166;border:1px solid #70552b;border-radius:6px;padding:4px}
+#demoPanel #demoStatus{font-size:9px;white-space:pre-line;overflow-wrap:anywhere}
+#demoPanel #demoStats{max-height:120px;overflow:auto}
+#demoPanel #demoHistory{max-height:160px;overflow:auto}
 #result>.section#demoPanel{min-width:0;min-height:0;height:100%;overflow:auto}
 #demoPanel h2{margin:0 0 5px}
 #demoPanel button{margin:3px 0}
@@ -816,6 +830,18 @@ demoPanel.innerHTML = `
 `;
 
 document.getElementById("result").appendChild(demoPanel);
+const dashboardSection = document.querySelector("#extraInfo .dashboard");
+if (dashboardSection) demoPanel.insertBefore(dashboardSection, demoPanel.children[1] || null);
+const liveNotice = document.getElementById("liveTradingNotice");
+if (liveNotice) {
+  liveNotice.className = "bot-warning";
+  liveNotice.removeAttribute("id");
+  demoPanel.appendChild(liveNotice);
+}
+const walletNotice = document.createElement("p");
+walletNotice.className = "bot-warning";
+walletNotice.textContent = "Phantom: پەیوەندیی وۆڵێت لەم وێبسایتەدا چالاک نییە؛ ناونیشانی گشتیی دانراوی کۆن وەک وۆڵێتی تۆ پیشان نادرێت. هیچ Seed Phrase یان Private Key مەنووسە.";
+demoPanel.appendChild(walletNotice);
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
 
