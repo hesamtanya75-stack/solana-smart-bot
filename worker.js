@@ -204,10 +204,12 @@ async function autoBuy(state) {
     if (checked >= 5 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
     if (state.scannedMints.includes(mint) || state.trades.some(t => t.mint === mint)) continue;
-    state.scannedMints.push(mint);
     checked++;
     try {
       const result = await inspectMint(mint);
+      // Only mark a mint as scanned after a complete inspection.
+      // Temporary RPC/API failures remain eligible for a later retry.
+      state.scannedMints.push(mint);
       if (!result.ok) {
         report.push({ mint, status: "rejected", reasons: result.reasons });
         continue;
