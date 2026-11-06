@@ -824,6 +824,89 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mint)!important
 
 /* Hide empty analysis cards until a scan has produced results. */
 #result[style*="display:none"]{display:none!important}
+
+/* ===== Final compact single-screen dashboard ===== */
+html,body{width:100%;height:100%;min-height:0!important;overflow:hidden!important}
+body{margin:0;padding:6px!important;min-height:0!important}
+main{
+ width:100%;max-width:1180px;height:calc(100dvh - 12px)!important;
+ min-height:0!important;max-height:none!important;margin:0 auto;
+ display:grid!important;
+ grid-template-rows:auto auto minmax(0,1fr);
+ gap:6px;overflow:hidden!important;
+}
+main>header{
+ margin:0!important;padding:8px 12px!important;border-radius:12px!important;
+ min-height:0;box-shadow:none;
+}
+main>header:after{display:none}
+main>header h1{font-size:clamp(16px,4vw,23px)!important;line-height:1.25}
+main>header p{margin:2px 0 0!important;font-size:10px!important}
+#extraInfo,#liveTradingNotice,main>p.small{display:none!important}
+main>.panel{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ grid-template-areas:
+ "heading heading"
+ "input input"
+ "discover scan"
+ "discoverStatus discoverStatus"
+ "discoverList discoverList"
+ "status status";
+ gap:4px 6px;margin:0!important;padding:7px 9px!important;
+ border-radius:12px!important;box-shadow:none;
+}
+main>.panel>h2{grid-area:heading;margin:0!important;padding:0 0 3px!important;font-size:13px!important;border:0}
+#mint{grid-area:input;min-height:34px!important;height:34px;padding:5px 9px!important;font-size:12px}
+#autoDiscover{grid-area:discover}
+#scan{grid-area:scan}
+#autoDiscover,#scan{
+ width:100%;min-height:31px!important;height:31px;margin:0!important;
+ padding:4px 6px!important;font-size:10px!important;border-radius:8px!important;
+}
+#discoverStatus{grid-area:discoverStatus;margin:0!important;padding:1px 4px!important;font-size:9px!important}
+#discoverList{grid-area:discoverList;display:flex!important;gap:4px;overflow-x:auto;max-height:27px;margin:0!important}
+#discoverList button{flex:0 0 auto;width:auto!important;min-height:24px!important;padding:2px 6px!important;font-size:9px!important}
+#status{grid-area:status;margin:0!important;padding:2px 5px!important;font-size:9px!important;line-height:1.25!important}
+#result{
+ display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ grid-template-rows:repeat(3,minmax(0,1fr));gap:5px!important;
+ min-height:0!important;height:100%;margin:0!important;overflow:hidden!important;
+}
+#result>.section,#result>.section:first-child{
+ grid-column:auto!important;grid-row:auto!important;
+ min-width:0;min-height:0;height:100%;overflow:auto!important;
+ margin:0!important;padding:7px!important;border-radius:10px!important;
+ box-shadow:none;
+}
+#result>.section h2{
+ margin:0 0 4px!important;padding:0 0 4px!important;
+ font-size:11px!important;line-height:1.25!important;
+}
+#result .item{display:flex;gap:4px;padding:4px 3px!important;margin:2px 0!important;border-radius:6px;font-size:9px!important;line-height:1.25}
+#result .item span,#result .item b,#result .value{font-size:9px!important;max-width:60%;overflow-wrap:anywhere}
+#result .small,.empty-hint{font-size:9px!important;line-height:1.35!important;color:#9db5ca}
+#risk h2{font-size:11px!important}
+#risk h3{font-size:10px!important;margin:2px 0!important}
+#basic p,#market p,#security p,#holders p,#selling p,#conclusion p{margin:3px 0!important}
+@media(max-width:600px){
+ body{padding:5px!important}
+ main{height:calc(100dvh - 10px)!important;gap:5px}
+ main>header{padding:7px 9px!important}
+ main>.panel{padding:6px 7px!important;gap:3px 5px}
+ #result{gap:4px!important}
+ #result>.section,#result>.section:first-child{padding:6px!important}
+ #result>.section h2{font-size:10px!important}
+ #result .item,#result .item span,#result .item b,#result .value{font-size:8px!important}
+ .empty-hint{font-size:8px!important}
+}
+@media(max-height:650px){
+ main>header{padding:5px 8px!important}
+ main>.panel{padding:4px 6px!important}
+ #result>.section,#result>.section:first-child{padding:4px!important}
+ #result .item{padding:3px 2px!important}
+}
+
 </style>
 </head>
 <body>
@@ -870,36 +953,36 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mint)!important
 <div id="status"></div>
 </div>
 
-<div id="result" style="display:none">
+<div id="result">
 <div class="section">
 <h2 id="coinName">زانیاری کۆین</h2>
-<div id="risk"></div>
-<div id="basic"></div>
+<div id="risk"><p class="empty-hint">دوای پشکنینی کۆین، نمرەی مەترسی لێرە دەردەکەوێت.</p></div>
+<div id="basic"><p class="empty-hint">ناو، ناونیشان و زانیاریی سەرەکی کۆین لێرە دەردەکەوێت.</p></div>
 </div>
 
 <div class="section">
 <h2>📊 دۆخی بازاڕ</h2>
-<div id="market"></div>
+<div id="market"><p class="empty-hint">نرخ، لیکوییدیتی و قەبارەی مامەڵەکان لێرە دەردەکەون.</p></div>
 </div>
 
 <div class="section">
 <h2>🛡️ پشکنینی سەلامەتی</h2>
-<div id="security"></div>
+<div id="security"><p class="empty-hint">دۆخی Mint و Freeze و نیشانەکانی مەترسی لێرە دەردەکەون.</p></div>
 </div>
 
 <div class="section">
 <h2>👥 دابەشبوونی خاوەنەکان</h2>
-<div id="holders"></div>
+<div id="holders"><p class="empty-hint">دابەشبوونی خاوەنەکان لێرە دەردەکەوێت.</p></div>
 </div>
 
 <div class="section">
 <h2>💱 توانای فرۆشتن</h2>
-<div id="selling"></div>
+<div id="selling"><p class="empty-hint">داتای فرۆشتن و توانای فرۆشتن لێرە دەردەکەوێت.</p></div>
 </div>
 
 <div class="section">
 <h2>⚠️ کۆتایی هەڵسەنگاندن</h2>
-<div id="conclusion"></div>
+<div id="conclusion"><p class="empty-hint">کۆتایی هەڵسەنگاندن دوای پشکنین لێرە دەردەکەوێت.</p></div>
 </div>
 </div>
 
