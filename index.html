@@ -1416,6 +1416,9 @@ function applyServerState(state) {
   if (!state || !Array.isArray(state.trades)) return;
   demoBalance = Number(state.balance);
   demoTrades = state.trades;
+  if (Array.isArray(state.scannedMints)) {
+    localStorage.setItem("solanaSmartBotScannedMints", JSON.stringify(state.scannedMints));
+  }
   renderServerControls(state);
   const balanceNode = document.getElementById("demoBalance");
   if (balanceNode) balanceNode.textContent = "$" + demoBalance.toFixed(2);
