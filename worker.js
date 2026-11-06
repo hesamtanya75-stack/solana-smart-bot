@@ -318,29 +318,53 @@ export default {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
       const state = await readState(env);
+      let sold = 0;
+      let refreshWarning = "";
+      let buyMessage = "";
+      let buyWarning = "";
+
+      // A temporary price-refresh failure must not prevent discovery and paper buys.
       try {
-        const sold = await refreshTrades(state);
-        const message = await autoBuy(state, env);
-        state.lastRunAt = new Date().toISOString();
-        state.lastMessage = "Server cycle complete. Sold: " + sold + ". " + message;
-        await saveState(env, state);
-        // Safe operational log: never include secrets, wallet data, or API keys.
-        console.info("Server cycle complete", {
-          sold,
-          message,
-          openTrades: state.trades.filter(t => !t.sold).length,
-          scannedMints: state.scannedMints.length,
-          durationMs: Date.now() - startedAt
-        });
+        sold = await refreshTrades(state);
       } catch (error) {
-        state.lastRunAt = new Date().toISOString();
-        state.lastMessage = "Server cycle warning: " + String(error?.message || error);
-        await saveState(env, state);
-        console.error("Server cycle warning", {
-          error: String(error?.message || error),
+        refreshWarning = String(error?.message || error);
+        console.error("Trade refresh warning", {
+          error: refreshWarning,
           durationMs: Date.now() - startedAt
         });
       }
+
+      // Run discovery independently so one subsystem cannot silently block the other.
+      try {
+        buyMessage = await autoBuy(state, env);
+      } catch (error) {
+        buyWarning = String(error?.message || error);
+        console.error("Auto-buy warning", {
+          error: buyWarning,
+          durationMs: Date.now() - startedAt
+        });
+      }
+
+      state.lastRunAt = new Date().toISOString();
+      const warnings = [
+        refreshWarning ? "Price refresh warning: " + refreshWarning : "",
+        buyWarning ? "Auto-buy warning: " + buyWarning : ""
+      ].filter(Boolean);
+      state.lastMessage = warnings.length
+        ? "Server cycle completed with warning. Sold: " + sold + ". " +
+          (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
+        : "Server cycle complete. Sold: " + sold + ". " + buyMessage;
+      await saveState(env);
+
+      // Safe operational log: never include secrets, wallet data, or API keys.
+      console.info("Server cycle finished", {
+        sold,
+        message: buyMessage,
+        warnings,
+        openTrades: state.trades.filter(t => !t.sold).length,
+        scannedMints: state.scannedMints.length,
+        durationMs: Date.now() - startedAt
+      });
     })());
   }
 };
