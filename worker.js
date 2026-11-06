@@ -12,6 +12,9 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
+  "https://rpc.nodeflare.app/solana/public",
+  "https://solana.drpc.org",
+  "https://api.mainnet.solana.com",
   "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com"
 ];
@@ -52,7 +55,7 @@ async function authorized(request, env) {
   return !!session && session.expiresAt > Date.now();
 }
 async function rpc(method, params) {
-  let lastError;
+  const errors = [];
   for (const endpoint of RPCS) {
     try {
       const response = await fetch(endpoint, {
@@ -61,13 +64,15 @@ async function rpc(method, params) {
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
         signal: AbortSignal.timeout(12000)
       });
-      if (!response.ok) throw new Error("RPC HTTP " + response.status);
+      if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       if (data.error) throw new Error(data.error.message || "RPC error");
       return data.result;
-    } catch (error) { lastError = error; }
+    } catch (error) {
+      errors.push(new URL(endpoint).hostname + ": " + String(error?.message || error));
+    }
   }
-  throw lastError || new Error("RPC unavailable");
+  throw new Error("All RPC endpoints failed — " + errors.join(" | "));
 }
 async function getJson(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
