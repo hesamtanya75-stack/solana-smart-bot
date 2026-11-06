@@ -101,6 +101,82 @@ button:disabled{opacity:.5}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
+<style id="reference-dashboard-theme">
+/* Visual theme inspired by the supplied neon dashboard reference */
+body{background:radial-gradient(ellipse at 5% 4%,#351078 0,transparent 32%),radial-gradient(ellipse at 94% 17%,#005a58 0,transparent 29%),linear-gradient(145deg,#020714 0%,#07142b 54%,#080b20 100%);color:#f7f9ff}
+body:before{background-image:radial-gradient(#8b5cf6 1px,transparent 1px),radial-gradient(#00e6b0 1px,transparent 1px);background-position:0 0,21px 21px;background-size:42px 42px;opacity:.13}
+header{border:1px solid #245d9b;background:linear-gradient(105deg,#111044 0%,#071a36 52%,#003d43 100%);box-shadow:0 0 30px #663cff44,inset 0 0 30px #06d6c51a}
+header:before{content:"SOLANA  SMART BOT";font-size:clamp(12px,2.3vw,17px);letter-spacing:3px;color:#20e6d0;text-shadow:0 0 12px #00e6d0}
+h1{font-size:clamp(21px,4vw,34px);letter-spacing:.2px}
+header p{color:#b8d7f2}
+main>.panel{border:1px solid #246fbd;background:linear-gradient(125deg,#17104a 0%,#071a36 58%,#032b39 100%);box-shadow:0 0 26px #155df044,inset 0 0 26px #00c8c51c}
+main>.panel>h2{font-size:16px;color:#d8faff}
+#mint{height:52px;border:1px solid #2879bb;border-radius:16px;background:linear-gradient(90deg,#071225,#020918);font-size:15px;box-shadow:0 0 14px #147bff24}
+#scan{background:linear-gradient(110deg,#174cff,#087dff);border:1px solid #27d9ff;box-shadow:0 0 18px #087dff66;font-size:14px}
+#autoDiscover{background:linear-gradient(110deg,#00a95b,#00df62);border:1px solid #00ff89;box-shadow:0 0 18px #00e77b55;color:#fff;font-size:14px}
+#result{grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+#result>.section{border:1px solid #236ab7;border-radius:19px;background:linear-gradient(145deg,#111849 0%,#071329 68%,#071c2d 100%);box-shadow:0 9px 25px #0007,0 0 16px #126bff1c,inset 0 0 20px #4625a51c;padding:15px}
+#result>.section:first-child{grid-column:1/-1;border:1px solid #8b43ff;background:linear-gradient(115deg,#1c0c53 0%,#0b1735 48%,#003542 100%);box-shadow:0 0 24px #8b43ff44,0 0 22px #00cfff1b}
+#result h2{color:#8ff7e5;border-bottom:1px solid #36518b;font-size:16px}
+#result>.section:first-child h2{font-size:23px;color:#fff}
+#result .item{border:1px solid #244675;border-radius:11px;background:linear-gradient(100deg,#091a37,#101b3b);padding:9px 10px}
+#result .item span{color:#b8d4ef}
+#result .value{color:#f8fbff;font-weight:700}
+#risk{padding:9px 11px;margin:6px 0 10px;border:1px solid #2d6f9e;border-radius:12px;background:linear-gradient(90deg,#07152d,#101b3b)}
+#risk h2{border:0;margin:0;padding:0;font-size:19px!important}
+#risk h3{margin:5px 0 0}
+#basic{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
+#basic .item{margin:4px 0;min-width:0;display:flex;flex-direction:column;gap:4px}
+#basic .value{max-width:100%;text-align:right}
+#market .item,#security .item{min-height:43px;align-items:center}
+#holders .item{overflow-wrap:anywhere}
+#selling{line-height:1.6}
+#conclusion{padding:10px;border-radius:12px;background:#0a1731}
+#result>.section:nth-child(6){grid-column:1/-1}
+#result>.section#demoPanel{grid-column:1/-1;border:1px solid #19d8df;background:linear-gradient(120deg,#160b4c,#07152f 52%,#003440);box-shadow:0 0 26px #0ab8d744;padding:16px}
+#demoPanel .bot-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+#demoPanel .bot-kicker{color:#a78bfa;font-size:10px;font-weight:900;letter-spacing:2px}
+#demoPanel .bot-head h2{margin:0;border:0;padding:0;color:#f8faff;font-size:19px}
+#demoPanel .demo-chip{margin-inline-start:auto;padding:5px 9px;border:1px solid #00d78c;border-radius:20px;background:#003c34;color:#62ffd0;font-size:10px}
+#demoPanel .demo-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:8px 0 12px}
+#demoPanel .demo-metric{padding:12px;border:1px solid #3552a1;border-radius:13px;background:linear-gradient(130deg,#0b1c42,#101039);min-width:0}
+#demoPanel .demo-metric span{display:block;color:#b9c9ed;font-size:11px}
+#demoPanel .demo-metric b{display:block;color:#22e6a2;font-size:21px;direction:ltr;text-align:right;overflow-wrap:anywhere}
+#demoPanel #demoBuy{min-height:48px;border:1px solid #00ff9d;background:linear-gradient(100deg,#00a95d,#00d66c);font-size:14px;box-shadow:0 0 18px #00e77b45}
+#demoPanel #demoStatus{padding:8px;color:#e3f8ff}
+#demoPanel #demoHistory{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+#demoPanel #demoHistory>.section{border:1px solid #354e91;background:#091630;border-radius:13px;padding:11px}
+#demoPanel #demoHistory h2{color:#9deee6}
+#demoPanel .demo-disclaimer{margin-top:12px;padding:9px;border:1px solid #73512e;border-radius:10px;background:#251c1b;color:#ffd58b}
+#demoPanel .dashboard{border:1px solid #6546dc;background:linear-gradient(125deg,#1a124c,#091933);border-radius:15px;padding:13px;margin:8px 0 12px}
+#demoPanel .metric{border:1px solid #354c8a;background:#091630}
+#demoPanel .metric strong{color:#f8fbff}
+#demoPanel .dash-note{color:#ffd58b}
+#demoPanel .bot-warning{border-color:#75552f;background:#261e1a;color:#ffda9c}
+@media(max-width:600px){
+ body{padding:9px}
+ header{padding:13px 10px}
+ header:before{font-size:11px}
+ main>.panel{padding:11px}
+ #mint{height:46px;font-size:13px}
+ #scan,#autoDiscover{font-size:11px;line-height:1.35;min-height:45px}
+ #result{gap:9px;grid-auto-rows:minmax(145px,auto)}
+ #result>.section{padding:11px}
+ #result>.section:first-child h2{font-size:19px}
+ #result h2{font-size:13px}
+ #basic{grid-template-columns:minmax(0,1fr)}
+ #basic .item{flex-direction:row}
+ #basic .value{max-width:65%;text-align:left}
+ #risk h2{font-size:16px!important}
+ #demoPanel .bot-head h2{font-size:16px}
+ #demoPanel .demo-metric b{font-size:18px}
+ #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:370px){
+ #result{grid-template-columns:minmax(0,1fr)}
+ #result>.section:first-child,#result>.section:nth-child(6),#result>.section#demoPanel{grid-column:1}
+}
+</style>
 </head>
 <body>
 <main>
@@ -810,13 +886,16 @@ function saveDemoState() {
 const demoPanel = document.createElement("div");
 demoPanel.className = "section";
 demoPanel.innerHTML = `
-  <h2>🤖 کڕینی خەیاڵی</h2>
-  <p>باڵانسی خەیاڵی: <b id="demoBalance">$100.00</b></p>
-  <p>بڕی هەر کڕین: <b>$5</b></p>
-  <button id="demoBuy">🧪 کڕینی خەیاڵی</button>
+  <div class="bot-head"><span class="bot-kicker">SOLANA SMART BOT</span><h2>🤖 ڕۆبۆتی ئۆتۆماتیکی</h2><span class="demo-chip">دۆخی خەیاڵی</span></div>
+  <div class="demo-metrics">
+    <div class="demo-metric"><span>باڵانسی خەیاڵی</span><b id="demoBalance">$100.00</b></div>
+    <div class="demo-metric"><span>بڕی هەر کڕین</span><b>$5.00</b></div>
+  </div>
+  <button id="demoBuy">🧪 دەستپێکردنی کڕینی خەیاڵی</button>
   <div id="demoStatus"></div>
   <div id="demoHistory"></div>
- <div id="demoProfit"></div> <p class="small">تەنها تاقیکردنەوەیە؛ هیچ پارەی ڕاستەقینە بەکارناهێنێت.</p>
+  <div id="demoProfit"></div>
+  <p class="small demo-disclaimer">تەنها تاقیکردنەوەیە؛ هیچ پارەی ڕاستەقینە بەکارناهێنێت.</p>
 `;
 
 document.getElementById("result").appendChild(demoPanel);
