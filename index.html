@@ -297,6 +297,57 @@ main>#demoPanel{
   #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
+
+
+/* ===== Requested compact Solana mobile dashboard layout ===== */
+.safety-strip{display:flex;align-items:center;gap:8px;min-width:0;padding:9px 12px;border:1px solid rgba(20,241,149,.28);border-radius:12px;background:linear-gradient(100deg,rgba(16,185,129,.12),rgba(59,130,246,.08));color:#d8fbed;font-size:11px}
+.safety-strip strong{font-size:11px;color:#effff8}
+.safety-strip>span:last-child{margin-right:auto;color:#9db5c9;font-size:9px}
+.safety-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:#14f195;box-shadow:0 0 10px #14f195}
+main{max-width:460px;gap:9px}
+header{min-height:78px;border-radius:18px}
+main>.panel{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"input input" "scan discover" "status status" "discoverstatus discoverstatus" "discoverlist discoverlist";gap:8px;padding:10px}
+#mint{height:45px;font-size:13px}
+#scan,#autoDiscover{min-height:42px;font-size:11px}
+#result{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#result>.section{min-height:0;padding:11px;border-radius:14px}
+#result>.section:first-child{grid-column:1/-1}
+#result>.section h2{font-size:12px}
+#result>.section:first-child h2{font-size:16px}
+#basic{grid-template-columns:repeat(2,minmax(0,1fr))}
+#market{grid-template-columns:repeat(2,minmax(0,1fr))}
+main>#demoPanel{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:11px!important}
+#demoPanel .bot-head{padding-bottom:7px;border-bottom:1px solid rgba(148,163,184,.14)}
+#demoPanel .dashboard{grid-column:1/-1}
+#demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#demoPanel .demo-metrics{grid-column:1/-1}
+#demoPanel #demoBuy,#demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{grid-column:auto;min-height:42px}
+#demoPanel #demoStatus,#demoPanel #demoStats,#demoPanel #demoHistory,#demoPanel #demoProfit{grid-column:1/-1}
+#demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)}
+#demoPanel .bot-warning,#demoPanel .demo-disclaimer{grid-column:1/-1}
+#demoPanel #walletPanel{grid-column:1/-1}
+@media(max-width:600px){
+ body{padding:8px}
+ main{max-width:400px;gap:8px}
+ header{min-height:72px;padding:10px 62px 10px 10px}
+ .safety-strip{padding:8px 10px;font-size:10px}
+ .safety-strip strong{font-size:10px}
+ .safety-strip>span:last-child{font-size:8px}
+ main>.panel{padding:8px;gap:6px}
+ #mint{height:42px}
+ #result{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ #result>.section{padding:9px}
+ #result>.section:first-child{grid-column:1/-1}
+ #basic{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{grid-column:span 1}
+}
+@media(max-width:350px){
+ .safety-strip>span:last-child{display:none}
+ #result{grid-template-columns:minmax(0,1fr)}
+ #result>.section:first-child{grid-column:1}
+}
+
 </style>
 </head>
 <body>
@@ -305,6 +356,7 @@ main>#demoPanel{
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
 </header>
+<div class="safety-strip"><span class="safety-dot"></span><strong>پشکنینی سەلامەتیی Solana</strong><span>تەنها تاقیکردنەوەی خەیاڵی</span></div>
 
 <details id="extraInfo"><summary>➕ بەشی زانیارییە زیادەکان (باڵانس و ئاماری تاقیکردنەوە)</summary>
 <section class="dashboard" aria-label="پوختەی داشبۆرد">
@@ -1066,7 +1118,7 @@ demoPanel.innerHTML = `
   <p class="small demo-disclaimer">تەنها تاقیکردنەوەیە؛ هیچ پارەی ڕاستەقینە بەکارناهێنێت.</p>
 `;
 
-document.querySelector("main > .panel").insertAdjacentElement("afterend", demoPanel);
+document.getElementById("result").insertAdjacentElement("afterend", demoPanel);
 const dashboardSection = document.querySelector("#extraInfo .dashboard");
 if (dashboardSection) demoPanel.insertBefore(dashboardSection, demoPanel.children[1] || null);
 const walletPanel = document.getElementById("walletPanel");
