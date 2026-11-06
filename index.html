@@ -54,7 +54,7 @@ button:disabled{opacity:.5}button:active{filter:brightness(1.15);transform:scale
 #conclusion{padding:7px;border:1px solid #3c4b7a;border-radius:10px;background:#0a1730}
 #conclusion p{font-size:10px!important;margin:4px 0!important}
 #extraInfo,#liveTradingNotice,main>p.small{display:none!important}
-#result>#demoPanel{grid-column:1/-1;min-width:0;min-height:0;padding:12px!important;border:1px solid #16bdbd!important;border-radius:15px!important;background:linear-gradient(130deg,#101b3b,#07172c)!important;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;overflow:visible}
+main>#demoPanel{grid-column:1/-1;min-width:0;min-height:0;padding:12px!important;border:1px solid #16bdbd!important;border-radius:15px!important;background:linear-gradient(130deg,#101b3b,#07172c)!important;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px;overflow:visible}
 #demoPanel .bot-head{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 #demoPanel .bot-head h2{margin:0;padding:0;border:0;font-size:16px}
 #demoPanel .bot-kicker,#demoPanel .eyebrow{color:#a78bfa;font-size:10px;letter-spacing:1px}
@@ -99,12 +99,15 @@ button:disabled{opacity:.5}button:active{filter:brightness(1.15);transform:scale
  #basic{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
  #basic .item,#market .item{font-size:8px;padding:5px}#basic .value,#market .value{font-size:8px}
  #security .item,#holders .item{font-size:8px;padding:4px}#security .value,#holders .value{font-size:8px}
- #result>#demoPanel{grid-column:1/-1;padding:9px!important;gap:7px}
+ main>#demoPanel{grid-column:1/-1;padding:9px!important;gap:7px}
  #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#demoPanel .metric{padding:6px}#demoPanel .metric strong{font-size:14px}
  #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)}#demoPanel .bot-head h2{font-size:13px}
+ #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #demoPanel .market-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #demoPanel .trend-row{grid-template-columns:48px minmax(20px,1fr) 54px}
  #demoPanel button{min-height:35px;font-size:9px}
 }
-@media(max-width:360px){#result{grid-template-columns:minmax(0,1fr)}#result>.section:first-child,#result>#demoPanel{grid-column:1}#demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:360px){#result{grid-template-columns:minmax(0,1fr)}#result>.section:first-child,main>#demoPanel{grid-column:1}#demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
