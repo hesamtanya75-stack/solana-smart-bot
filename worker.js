@@ -217,7 +217,7 @@ function mintDetails(account) {
 }
 async function inspectMint(mint, env) {
   const [dex, rug, account, largest, supply] = await Promise.all([
-    getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 45),
+    getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90),
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }], env),
     rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }], env),
@@ -295,7 +295,7 @@ async function refreshTrades(state, env) {
 }
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
-  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 45);
+  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 90);
   const tokens = Array.isArray(profiles) ? profiles.filter(t => t.chainId === "solana" && t.tokenAddress) : [];
   let checked = 0, bought = 0;
   const report = [];
