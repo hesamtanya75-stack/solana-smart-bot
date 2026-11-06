@@ -155,22 +155,55 @@ async function getJson(url) {
 }
 
 async function getDexJson(url, env, ttlSeconds = 30) {
-  // Reuse recent DexScreener responses across overlapping cron/API work.
-  // Cache failures are non-fatal; live data remains the fallback.
-  let cacheKey;
+  // Cache responses and enforce a shared cooldown after HTTP 429.
+  // Stale cached discovery profiles are allowed during cooldown, but stale
+  // market data is never used for safety checks or simulated purchases.
+  let cacheKey, cached = null;
+  const discoveryOnly = url.includes("/token-profiles/latest/v1");
   try {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
     const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
     cacheKey = "dex_cache:" + hash;
-    const cached = await env.BOT_STATE.get(cacheKey, "json");
-    if (cached && cached.savedAt && Date.now() - cached.savedAt < ttlSeconds * 1000) {
+    cached = await env.BOT_STATE.get(cacheKey, "json");
+    if (cached?.savedAt && Date.now() - cached.savedAt < ttlSeconds * 1000) {
       return cached.data;
     }
   } catch (error) {
     console.warn("DexScreener cache read warning", String(error?.message || error));
   }
 
-  const data = await getJson(url);
+  try {
+    const cooldown = await env.BOT_STATE.get("dex_cooldown", "json");
+    if (cooldown?.until > Date.now()) {
+      if (discoveryOnly && cached?.data) return cached.data;
+      throw new Error("DexScreener cooldown active; retry in " +
+        Math.ceil((cooldown.until - Date.now()) / 1000) + "s");
+    }
+  } catch (error) {
+    if (String(error?.message || error).includes("cooldown active")) throw error;
+    console.warn("DexScreener cooldown read warning", String(error?.message || error));
+  }
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (response.status === 429) {
+    const retryHeader = response.headers.get("Retry-After");
+    const seconds = Number(retryHeader);
+    const retryAfterMs = Number.isFinite(seconds) && seconds > 0
+      ? seconds * 1000
+      : Math.max(0, Date.parse(retryHeader || "") - Date.now());
+    const cooldownMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, retryAfterMs));
+    try {
+      await env.BOT_STATE.put("dex_cooldown", JSON.stringify({ until: Date.now() + cooldownMs }), {
+        expirationTtl: Math.ceil(cooldownMs / 1000) + 30
+      });
+    } catch (error) {
+      console.warn("DexScreener cooldown write warning", String(error?.message || error));
+    }
+    if (discoveryOnly && cached?.data) return cached.data;
+    throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
+  }
+  if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
+  const data = await response.json();
   if (cacheKey) {
     try {
       await env.BOT_STATE.put(cacheKey, JSON.stringify({ savedAt: Date.now(), data }), {
