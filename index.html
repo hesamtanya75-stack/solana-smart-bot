@@ -168,6 +168,56 @@ button:disabled{opacity:.5}
   header{height:48px;min-height:48px}
   #result{grid-template-rows:minmax(72px,.75fr) repeat(3,minmax(0,1fr)) minmax(90px,1fr)!important}
 }
+
+/* FINAL MOBILE LAYOUT BALANCE 2026-11-06 */
+/* Keep all six dashboard cards in four intentional mobile rows:
+   summary, market+security, holders+sellability, demo controls. */
+@media(max-width:600px){
+  main{
+    grid-template-rows:50px 86px minmax(0,1fr)!important;
+    gap:5px!important;
+  }
+  header{height:50px!important;min-height:50px!important}
+  #result{
+    grid-template-rows:
+      minmax(76px,.82fr)
+      minmax(0,1fr)
+      minmax(0,1fr)
+      minmax(96px,1.12fr)!important;
+    grid-auto-rows:0!important;
+    gap:5px!important;
+  }
+  #result>.section{padding:6px!important;border-radius:12px!important}
+  #result h2{font-size:10px!important;line-height:1.3!important}
+  #result p{font-size:8px!important;line-height:1.3!important}
+  #result .small,.empty-hint{font-size:7px!important}
+  .item{font-size:8px!important;padding:3px 4px!important;gap:4px!important}
+  .value{font-size:8px!important}
+  #basic .item,#market .item,#security .item,#holders .item{font-size:7px!important}
+  #basic .value,#market .value,#security .value,#holders .value{font-size:7px!important}
+  #demoPanel .dashboard{padding:5px!important}
+  #demoPanel .metric span,#demoPanel .metric small{font-size:6px!important}
+  #demoPanel .metric strong{font-size:10px!important}
+  #demoPanel button{min-height:25px!important;font-size:8px!important}
+}
+@media(max-height:700px) and (max-width:600px){
+  main{grid-template-rows:46px 78px minmax(0,1fr)!important}
+  header{height:46px!important;min-height:46px!important}
+  #result{
+    grid-template-rows:
+      minmax(66px,.78fr)
+      minmax(0,1fr)
+      minmax(0,1fr)
+      minmax(84px,1.05fr)!important;
+  }
+}
+@media(max-width:360px){
+  html,body{height:auto!important;min-height:100%!important;overflow:auto!important}
+  main{height:auto!important;min-height:100dvh!important;grid-template-rows:auto auto auto!important}
+  #result{height:auto!important;overflow:visible!important;grid-template-rows:none!important;grid-auto-rows:minmax(120px,auto)!important}
+  #result>.section{min-height:120px!important}
+}
+
 </style>
 <style id="unified-neon-dashboard">
 :root{color-scheme:dark;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--bg:#050914;--panel:#0b1530;--panel2:#101b3b;--line:#253c68;--violet:#8b5cf6;--cyan:#20e6d0;--green:#21e6a0;--muted:#a9bbd8;--white:#f7f9ff}
