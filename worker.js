@@ -56,17 +56,27 @@ async function authorized(request, env) {
 }
 async function rpc(method, params, env) {
   const errors = [];
-  // Prefer the dedicated Solana Mainnet endpoint when configured.
+  // Try the existing Alchemy key first, then fall back to a public Solana RPC.
   // Never expose the API key in logs or error messages.
-  const endpoints = env?.ALCHEMY_API_KEY
-    ? ["https://solana-mainnet.g.alchemy.com/v2/" + env.ALCHEMY_API_KEY]
-    : RPCS;
+  const endpoints = [];
+  if (env?.ALCHEMY_API_KEY) {
+    endpoints.push({
+      url: "https://solana-mainnet.g.alchemy.com/v2/" + env.ALCHEMY_API_KEY,
+      label: "Alchemy Solana RPC"
+    });
+    const fallback = RPCS[rpcCursor++ % RPCS.length];
+    endpoints.push({ url: fallback, label: new URL(fallback).hostname });
+  } else {
+    for (let i = 0; i < Math.min(2, RPCS.length); i++) {
+      const fallback = RPCS[rpcCursor++ % RPCS.length];
+      endpoints.push({ url: fallback, label: new URL(fallback).hostname });
+    }
+  }
+
   // Keep each RPC method to at most two outbound requests per Worker invocation.
-  const attempts = Math.min(2, endpoints.length);
-  for (let i = 0; i < attempts; i++) {
-    const endpoint = endpoints === RPCS ? RPCS[rpcCursor++ % RPCS.length] : endpoints[i];
+  for (const endpoint of endpoints.slice(0, 2)) {
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch(endpoint.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -77,7 +87,7 @@ async function rpc(method, params, env) {
       if (data.error) throw new Error(data.error.message || "RPC error");
       return data.result;
     } catch (error) {
-      errors.push((env?.ALCHEMY_API_KEY ? "Alchemy Solana RPC" : new URL(endpoint).hostname) + ": " + String(error?.message || error));
+      errors.push(endpoint.label + ": " + String(error?.message || error));
     }
   }
   throw new Error("Solana RPC providers failed (max 2 per method) — " + errors.join(" | "));
