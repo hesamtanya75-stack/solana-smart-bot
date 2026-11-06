@@ -5,6 +5,7 @@ const DEFAULT_STATE = {
   autoEnabled: false,
   paused: false,
   scannedMints: [],
+  deferredMints: [],
   lastRunAt: null,
   lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
   lastScanReport: [],
@@ -38,6 +39,7 @@ function cleanState(value) {
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
     scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
@@ -216,16 +218,21 @@ function mintDetails(account) {
   return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
 }
 async function inspectMint(mint, env) {
-  const [dex, rug, account, largest, supply] = await Promise.all([
-    getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90),
+  // Check for a real Solana market first. New-token profile entries can exist
+  // before DexScreener has indexed a tradable pair; avoid spending RPC calls then.
+  const dex = await getDexJson(
+    "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
+  );
+  const market = (dex.pairs || []).filter(p => p.chainId === "solana")
+    .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
+  if (!market) throw new Error("No Solana market pair");
+
+  const [rug, account, largest, supply] = await Promise.all([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }], env),
     rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }], env),
     rpc("getTokenSupply", [mint, { commitment: "confirmed" }], env)
   ]);
-  const market = (dex.pairs || []).filter(p => p.chainId === "solana")
-    .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-  if (!market) throw new Error("No Solana market pair");
   const details = mintDetails(account);
   const supplyAmount = Number(supply?.value?.amount || 0);
   const largestAccounts = (largest?.value || []).slice(0, 20);
@@ -296,13 +303,22 @@ async function refreshTrades(state, env) {
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
   const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 90);
-  const tokens = Array.isArray(profiles) ? profiles.filter(t => t.chainId === "solana" && t.tokenAddress) : [];
+  const seen = new Set();
+  const tokens = Array.isArray(profiles) ? profiles.filter(t => {
+    const mint = String(t?.tokenAddress || "");
+    if (t?.chainId !== "solana" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || seen.has(mint)) return false;
+    seen.add(mint);
+    return true;
+  }) : [];
   let checked = 0, bought = 0;
   const report = [];
   for (const token of tokens) {
     if (checked >= 3 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
     if (state.scannedMints.includes(mint) || state.trades.some(t => t.mint === mint)) continue;
+    const deferred = state.deferredMints.find(item => item.mint === mint);
+    if (deferred && Number(deferred.retryAt) > Date.now()) continue;
+    state.deferredMints = state.deferredMints.filter(item => item.mint !== mint);
     checked++;
     try {
       const result = await inspectMint(mint, env);
@@ -322,13 +338,24 @@ async function autoBuy(state, env) {
       bought++;
       report.push({ mint, status: "bought-paper", reasons: ["هەموو پشکنینەکان تێپەڕاند"] });
     } catch (error) {
-      report.push({ mint, status: "blocked-error", reasons: [String(error?.message || "داتای پشکنین بەردەست نییە")] });
+      const message = String(error?.message || "داتای پشکنین بەردەست نییە");
+      if (message === "No Solana market pair") {
+        // Keep the token eligible, but don't let an unindexed profile consume
+        // every minute's scan slot. Recheck it after a short cooldown.
+        state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
+        report.push({ mint, status: "deferred", reasons: ["بازاڕی Solana هێشتا نەدۆزراوەتەوە؛ دوای ٥ خولەک دووبارە پشکنین دەکرێت"] });
+      } else {
+        report.push({ mint, status: "blocked-error", reasons: [message] });
+      }
       // Unknown or unavailable data always means no simulated purchase.
     }
   }
   state.scannedMints = state.scannedMints.slice(-1000);
+  state.deferredMints = state.deferredMints.slice(-1000);
   state.lastScanReport = report.slice(-20);
-  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + report.filter(x => x.status !== "bought-paper").length + " blocked; reasons saved in scan report.";
+  const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
+  const deferred = report.filter(x => x.status === "deferred").length;
+  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report.";
 }
 
 export default {

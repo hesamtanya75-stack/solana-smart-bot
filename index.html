@@ -1435,7 +1435,7 @@ function applyServerState(state) {
   if (reportNode && scanReport.length) {
     const lines = scanReport.map(item => {
       const shortMint = item.mint ? item.mint.slice(0, 5) + "…" + item.mint.slice(-4) : "کۆین";
-      const label = item.status === "bought-paper" ? "کڕینی خەیاڵی" : "ڕەتکرایەوە";
+      const label = item.status === "bought-paper" ? "کڕینی خەیاڵی" : item.status === "deferred" ? "چاوەڕێی بازاڕ" : "ڕەتکرایەوە";
       const reasons = Array.isArray(item.reasons) ? item.reasons.join("؛ ") : "هۆکار نەدۆزرایەوە";
       return label + " [" + shortMint + "]: " + reasons;
     });
