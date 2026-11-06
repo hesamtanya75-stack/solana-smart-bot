@@ -1078,6 +1078,11 @@ row("Token-2022 Extensions",
 
   if(topTenPct>50){
     notes.push("🚨 ئاگاداری: ١٠ هەژماری گەورەتر زیاتر لە 50%ی کۆینەکەیان هەیە.");
+    if(largestPct<=30) risk+=2;
+  }
+
+  if(finalLiquidity<5000 && finalSells===0){
+    risk+=2;
   }
 
   const noBuyWarning=largestPct>30 ||
@@ -1125,6 +1130,12 @@ row("Token-2022 Extensions",
   );
 
   window.demoBuyBlockReasons=[];
+
+if(noBuyWarning)
+ window.demoBuyBlockReasons.push("ئاگاداریی مەترسیی کۆتایی هەیە؛ کڕینی خەیاڵیش ڕێگەپێنەدراوە");
+
+if(Number(rug?.score||0)>2500)
+ window.demoBuyBlockReasons.push("نمرەی RugCheck لە 2500 زیاترە");
 
 if(risk>3)
  window.demoBuyBlockReasons.push("نمرەی مەترسی زیاترە لە 3");
