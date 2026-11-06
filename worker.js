@@ -54,14 +54,17 @@ async function authorized(request, env) {
   const session = await env.BOT_STATE.get("session:" + token, "json");
   return !!session && session.expiresAt > Date.now();
 }
-async function rpc(method, params) {
+async function rpc(method, params, env) {
   const errors = [];
-  // Rotate through providers, but cap each RPC method to two outbound requests.
-  // This keeps a single Worker invocation below Cloudflare's subrequest ceiling.
-  const attempts = Math.min(2, RPCS.length);
+  // Prefer the dedicated Solana Mainnet endpoint when configured.
+  // Never expose the API key in logs or error messages.
+  const endpoints = env?.ALCHEMY_API_KEY
+    ? ["https://solana-mainnet.g.alchemy.com/v2/" + env.ALCHEMY_API_KEY]
+    : RPCS;
+  // Keep each RPC method to at most two outbound requests per Worker invocation.
+  const attempts = Math.min(2, endpoints.length);
   for (let i = 0; i < attempts; i++) {
-    const endpoint = RPCS[rpcCursor % RPCS.length];
-    rpcCursor = (rpcCursor + 1) % RPCS.length;
+    const endpoint = endpoints === RPCS ? RPCS[rpcCursor++ % RPCS.length] : endpoints[i];
     try {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -74,10 +77,10 @@ async function rpc(method, params) {
       if (data.error) throw new Error(data.error.message || "RPC error");
       return data.result;
     } catch (error) {
-      errors.push(new URL(endpoint).hostname + ": " + String(error?.message || error));
+      errors.push((env?.ALCHEMY_API_KEY ? "Alchemy Solana RPC" : new URL(endpoint).hostname) + ": " + String(error?.message || error));
     }
   }
-  throw new Error("RPC providers failed (rotating, max 2 per method) — " + errors.join(" | "));
+  throw new Error("Solana RPC providers failed (max 2 per method) — " + errors.join(" | "));
 }
 async function getJson(url) {
   const host = new URL(url).hostname;
@@ -140,13 +143,13 @@ function mintDetails(account) {
   }
   return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
 }
-async function inspectMint(mint) {
+async function inspectMint(mint, env) {
   const [dex, rug, account, largest, supply] = await Promise.all([
     getJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint)),
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
-    rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }]),
-    rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }]),
-    rpc("getTokenSupply", [mint, { commitment: "confirmed" }])
+    rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }], env),
+    rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }], env),
+    rpc("getTokenSupply", [mint, { commitment: "confirmed" }], env)
   ]);
   const market = (dex.pairs || []).filter(p => p.chainId === "solana")
     .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
@@ -199,7 +202,7 @@ async function refreshTrades(state) {
   }
   return sold;
 }
-async function autoBuy(state) {
+async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
   const profiles = await getJson("https://api.dexscreener.com/token-profiles/latest/v1");
   const tokens = Array.isArray(profiles) ? profiles.filter(t => t.chainId === "solana" && t.tokenAddress) : [];
@@ -211,7 +214,7 @@ async function autoBuy(state) {
     if (state.scannedMints.includes(mint) || state.trades.some(t => t.mint === mint)) continue;
     checked++;
     try {
-      const result = await inspectMint(mint);
+      const result = await inspectMint(mint, env);
       // Only mark a mint as scanned after a complete inspection.
       // Temporary RPC/API failures remain eligible for a later retry.
       state.scannedMints.push(mint);
@@ -285,7 +288,7 @@ export default {
       const state = await readState(env);
       try {
         const sold = await refreshTrades(state);
-        const message = await autoBuy(state);
+        const message = await autoBuy(state, env);
         state.lastRunAt = new Date().toISOString();
         state.lastMessage = "Server cycle complete. Sold: " + sold + ". " + message;
       } catch (error) {
