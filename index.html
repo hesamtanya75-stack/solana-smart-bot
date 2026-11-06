@@ -177,6 +177,107 @@ main>.panel>h2{font-size:16px;color:#d8faff}
  #result>.section:first-child,#result>.section:nth-child(6),#result>.section#demoPanel{grid-column:1}
 }
 </style>
+
+<style id="exact-reference-layout">
+/* Compact neon dashboard: visual structure follows the supplied phone reference */
+:root{color-scheme:dark}
+body{padding:7px;background:radial-gradient(ellipse at 4% 5%,#32106c 0,transparent 34%),radial-gradient(ellipse at 96% 22%,#004c53 0,transparent 30%),#030817}
+main{max-width:760px;min-height:0;gap:8px}
+header{min-height:78px;padding:9px 12px 10px 76px;border:1px solid #5734b7;border-radius:18px;background:linear-gradient(110deg,#100b36,#071a35 58%,#002b37);box-shadow:0 0 22px #782cff55}
+header:before{content:"SOLANA  SMART BOT";font-size:clamp(16px,4vw,27px);letter-spacing:.5px;color:#f4f1ff;text-shadow:0 0 10px #7c3aed}
+header:after{content:"";position:absolute;left:14px;right:auto;top:50%;bottom:auto;transform:translateY(-50%);width:48px;height:48px;border:0;background:linear-gradient(145deg,#14e6d4 0 32%,#8244ff 34% 67%,#14e6d4 69%);clip-path:polygon(0 18%,100% 0,75% 33%,0 40%,75% 57%,100% 78%,0 100%,24% 70%,72% 54%,24% 36%);filter:drop-shadow(0 0 9px #7c3aed)}
+h1{font-size:clamp(14px,3vw,21px);line-height:1.25}
+header p{font-size:10px;margin-top:2px;color:#d8d5f5}
+main>.panel{padding:9px 10px;gap:6px;border-radius:17px;grid-template-areas:"input input" "scan discover" "discoverstatus discoverstatus" "discoverlist discoverlist" "status status"}
+main>.panel>h2{display:none}
+#mint{height:42px;border-radius:14px;font-size:13px}
+#scan,#autoDiscover{min-height:40px;border-radius:12px;font-size:12px}
+#discoverStatus,#status{font-size:10px}
+#discoverList{max-height:65px}
+#result{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;grid-auto-rows:auto;align-items:stretch}
+#result>.section{padding:10px;border-radius:15px;min-height:0;height:auto;overflow:hidden;border-color:#394a9b;background:linear-gradient(145deg,#101a40,#050d20 75%);box-shadow:0 0 13px #4d36a833,inset 0 0 14px #39217a22}
+#result>.section:first-child{grid-column:1/-1;padding:11px 12px;border-color:#8b42ff;background:linear-gradient(110deg,#1b0b4c,#081831 60%,#00323b);box-shadow:0 0 18px #7c3aed44}
+#result h2{font-size:13px;margin:0 0 6px;padding-bottom:5px;color:#e5e5ff;border-color:#293b70}
+#result>.section:first-child h2{font-size:20px;color:#fff}
+#risk{margin:0 0 7px;padding:6px 9px;border:1px solid #31517d;border-radius:10px;background:#081b31}
+#risk h2{font-size:14px!important}
+#risk h3{font-size:11px;margin:3px 0 0}
+#basic{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 7px}
+#basic .item{margin:0;padding:5px 7px;min-width:0;display:flex;flex-direction:column;gap:2px;border-radius:8px;font-size:10px}
+#basic .value{max-width:100%;font-size:10px;text-align:right}
+#market{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:205px;overflow:auto}
+#market .item{min-height:35px;margin:0;padding:5px 6px;display:flex;flex-direction:column;justify-content:center;gap:2px;border-radius:8px;font-size:10px}
+#market .value{max-width:100%;font-size:11px;text-align:right}
+#market .item:nth-child(1),#market .item:nth-child(2){border-color:#265c90}
+#security .item,#holders .item{margin:4px 0;padding:6px 7px;font-size:10px;gap:5px}
+#security .value,#holders .value{font-size:10px}
+#holders{max-height:215px;overflow:auto}
+#selling{font-size:11px;line-height:1.5}
+#selling .small{font-size:9px!important}
+#conclusion{padding:7px;border:1px solid #394b83;border-radius:9px}
+#conclusion p{font-size:10px!important;margin:3px 0!important}
+#result>.section:nth-child(6){grid-column:auto}
+#result>.section#demoPanel{grid-column:1/-1;padding:10px;border-color:#8d3cff;background:linear-gradient(110deg,#19094a,#08172f 58%,#00323b);box-shadow:0 0 20px #7c3aed44}
+#demoPanel .bot-head{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+#demoPanel .bot-kicker{font-size:9px;letter-spacing:1px}
+#demoPanel .bot-head h2{font-size:14px;margin:0;padding:0;border:0}
+#demoPanel .demo-chip{font-size:9px;padding:4px 7px}
+#demoPanel .demo-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:4px 0}
+#demoPanel .demo-metric{padding:7px 9px;border-radius:9px}
+#demoPanel .demo-metric span{font-size:9px}
+#demoPanel .demo-metric b{font-size:16px}
+#demoPanel button{min-height:37px;margin:3px 0;padding:6px 7px;font-size:11px;border-radius:10px}
+#demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{width:calc(50% - 5px)!important;display:inline-block;vertical-align:top}
+#demoPanel #demoBuy{width:calc(50% - 5px);display:inline-block}
+#demoPanel #demoStatus{font-size:10px;padding:4px}
+#demoPanel #demoStats{max-height:100px;overflow:auto;padding:7px;margin:5px 0}
+#demoPanel #demoHistory{max-height:110px;overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+#demoPanel #demoHistory>.section{padding:6px;margin:0}
+#demoPanel #demoHistory h2{font-size:11px}
+#demoPanel .demo-disclaimer,#demoPanel .bot-warning{font-size:9px!important;padding:6px;margin:5px 0}
+#demoPanel .dashboard{padding:7px;margin:5px 0}
+#demoPanel .dash-heading h2{font-size:12px}
+#demoPanel .dash-grid{gap:4px;margin-top:5px}
+#demoPanel .metric{padding:5px}
+#demoPanel .metric strong{font-size:13px}
+#demoPanel .metric span,#demoPanel .metric small{font-size:8px}
+#demoPanel .dash-foot{font-size:10px;margin-top:5px}
+#demoPanel #walletPanel{padding:7px}
+#demoPanel #walletPanel .item{margin:3px 0;padding:5px}
+@media(max-width:600px){
+ body{padding:6px}
+ main{gap:7px}
+ header{min-height:70px;padding:8px 9px 8px 63px}
+ header:before{font-size:clamp(15px,4.3vw,22px);letter-spacing:0}
+ header:after{left:10px;width:42px;height:42px}
+ h1{font-size:clamp(13px,3.8vw,18px)}
+ header p{font-size:9px}
+ main>.panel{padding:8px;gap:5px}
+ #mint{height:39px;font-size:12px}
+ #scan,#autoDiscover{min-height:37px;font-size:10px;padding:5px 4px}
+ #result{gap:7px}
+ #result>.section{padding:8px}
+ #result>.section:first-child{padding:9px}
+ #result>.section:first-child h2{font-size:17px}
+ #result h2{font-size:11px}
+ #basic .item{font-size:9px;padding:4px 5px}
+ #basic .value{font-size:9px}
+ #market{max-height:185px;gap:3px}
+ #market .item{font-size:9px;padding:4px}
+ #market .value{font-size:10px}
+ #security .item,#holders .item{font-size:9px;padding:5px}
+ #security .value,#holders .value{font-size:9px}
+ #holders{max-height:185px}
+ #demoPanel .bot-head h2{font-size:12px}
+ #demoPanel .demo-metric b{font-size:15px}
+ #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:360px){
+ #result{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #result>.section:first-child,#result>.section#demoPanel{grid-column:1/-1}
+}
+</style>
+
 </head>
 <body>
 <main>
@@ -1357,6 +1458,22 @@ setInterval(() => {
 // چوونەژوورەوە لابرا: API ـی /api/login لە server.js نییە.
 
 // Analysis cards are shown only after scanToken() completes successfully.
+
+
+/* Arrange the final risk summary inside the security card, as in the reference */
+(function(){
+ const securityCard=document.getElementById("security")?.closest(".section");
+ const conclusionCard=document.getElementById("conclusion")?.closest(".section");
+ if(securityCard&&conclusionCard){
+   const heading=conclusionCard.querySelector("h2");
+   const content=document.getElementById("conclusion");
+   if(heading) heading.textContent="⚠️ کۆتایی هەڵسەنگاندن";
+   if(content) securityCard.appendChild(content);
+   conclusionCard.remove();
+ }
+ const pause=document.querySelector("#demoPanel button:nth-of-type(3)");
+ if(pause) pause.id="pauseBuyBtn";
+})();
 
 </script>
 </body>
