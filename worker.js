@@ -12,11 +12,10 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
-  "https://rpc.nodeflare.app/solana/public",
-  "https://solana.drpc.org",
-  "https://api.mainnet.solana.com",
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com"
+  "https://rpc.solanatracker.io/public",
+  "https://rpc.magicblock.app/mainnet",
+  "https://solana-rpc.publicnode.com",
+  "https://rpc.nodeflare.app/solana/public"
 ];
 let rpcCursor = 0;
 
