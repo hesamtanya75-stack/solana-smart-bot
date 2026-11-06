@@ -822,6 +822,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--mint)!important
  #result .item span,#result .value{font-size:9px!important}
 }
 
+/* Hide empty analysis cards until a scan has produced results. */
+#result[style*="display: none"]{display:none!important}
 </style>
 </head>
 <body>
@@ -2014,9 +2016,7 @@ setInterval(() => {
 
 // چوونەژوورەوە لابرا: API ـی /api/login لە server.js نییە.
 
-// Single-view layout: keep every dashboard section visible together.
-document.getElementById("result").style.display="grid";
-;
+// Analysis cards are shown only after scanToken() completes successfully.
 
 </script>
 </body>
