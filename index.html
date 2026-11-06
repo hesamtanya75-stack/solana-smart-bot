@@ -8,85 +8,96 @@
 <style>
 *{box-sizing:border-box}
 :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-html,body{width:100%;height:100%;min-height:0;margin:0;overflow:hidden}
-body{padding:8px;background:radial-gradient(ellipse at 15% 0%,#123c58 0,transparent 38%),linear-gradient(145deg,#060d18,#0b1b2d);color:#edf6ff}
-main{width:100%;max-width:1180px;height:calc(100dvh - 16px);min-height:0;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);gap:8px;overflow:hidden}
-header{min-width:0;margin:0;padding:10px 14px;text-align:center;border:1px solid #315978;border-radius:13px;background:linear-gradient(120deg,#102e49,#102b37);box-shadow:0 8px 24px #0004}
-header:after{display:none}
-h1{margin:0;color:#f2fbff;font-size:clamp(17px,3.5vw,25px);line-height:1.3}
-header p{margin:3px 0 0;color:#a9c5d9;font-size:11px}
-main>.panel{min-width:0;margin:0;padding:9px 11px;border:1px solid #315878;border-radius:13px;background:#102238;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"heading heading" "input input" "discover scan" "discoverstatus discoverstatus" "discoverlist discoverlist" "status status";gap:5px 7px;overflow:hidden}
-main>.panel>h2{grid-area:heading;margin:0;padding:0;border:0;font-size:13px}
-#mint{grid-area:input;width:100%;min-width:0;height:35px;padding:6px 10px;border:1px solid #3a607d;border-radius:9px;background:#071523;color:#fff;font-size:12px;direction:ltr}
+html,body{width:100%;min-height:100%;margin:0}
+html{scroll-behavior:smooth}
+body{padding:14px;background:radial-gradient(ellipse at 8% 4%,#28105b 0,transparent 30%),radial-gradient(ellipse at 92% 18%,#063c45 0,transparent 28%),linear-gradient(145deg,#030817,#071329 55%,#090d24);color:#f4f7ff;overflow-x:hidden;overflow-y:auto}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(#8b5cf6 1px,transparent 1px);background-size:42px 42px;opacity:.12;z-index:-1}
+main{width:100%;max-width:1180px;min-height:calc(100svh - 28px);margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:14px;overflow:visible}
+header{position:relative;min-width:0;margin:0;padding:15px 18px;text-align:center;border:1px solid #5b36bc;border-radius:20px;background:linear-gradient(115deg,#101a3d 0%,#111735 52%,#062d39 100%);box-shadow:0 0 28px #7c3aed25,inset 0 0 24px #5b21b615;overflow:hidden}
+header:before{content:"SOLANA  ✦  SMART BOT";display:block;margin-bottom:4px;color:#a78bfa;font-size:clamp(11px,2vw,16px);font-weight:900;letter-spacing:3px}
+header:after{content:"";position:absolute;left:8%;right:8%;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#8b5cf6,#00e6a0,transparent)}
+h1{margin:0;color:#fff;font-size:clamp(18px,3.6vw,30px);line-height:1.35;text-shadow:0 0 18px #8b5cf655}
+header p{margin:5px 0 0;color:#b7c5e8;font-size:12px}
+main>.panel{min-width:0;margin:0;padding:14px 16px;border:1px solid #6544d5;border-radius:19px;background:linear-gradient(135deg,#101a3b,#080f24 70%);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"heading heading" "input input" "scan discover" "discoverstatus discoverstatus" "discoverlist discoverlist" "status status";gap:9px 10px;overflow:hidden;box-shadow:0 0 24px #6d28d922,inset 0 0 22px #312e8150}
+main>.panel>h2{grid-area:heading;margin:0;padding:0;border:0;color:#e7eaff;font-size:15px}
+#mint{grid-area:input;width:100%;min-width:0;height:49px;padding:10px 14px;border:1px solid #4c438f;border-radius:13px;background:#050c1e;color:#fff;font-size:14px;direction:ltr;box-shadow:inset 0 0 12px #0008}
+#mint:focus{outline:2px solid #8b5cf6;outline-offset:1px}
 #autoDiscover{grid-area:discover}
 #scan{grid-area:scan}
-button{width:100%;min-width:0;min-height:32px;margin:0;padding:5px 8px;border:1px solid #348d9a;border-radius:9px;background:linear-gradient(110deg,#116f82,#159b8d);color:#fff;font-size:11px;font-weight:700}
-#scan{border-color:#4b9ed4;background:linear-gradient(110deg,#176fbd,#329de0)}
+button{width:100%;min-width:0;min-height:43px;margin:0;padding:8px 11px;border:1px solid #00e69a;border-radius:13px;background:linear-gradient(110deg,#008c5b,#00c878);color:#fff;font-size:13px;font-weight:800;box-shadow:0 5px 18px #00c87824;transition:transform .15s,filter .15s}
+button:active{transform:scale(.985);filter:brightness(1.12)}
+#scan{border-color:#4e9bff;background:linear-gradient(110deg,#155ee9,#168bff);box-shadow:0 5px 18px #168bff30}
 button:disabled{opacity:.5}
-#status{grid-area:status;min-width:0;margin:0;padding:2px 5px;text-align:center;color:#ffd166;font-size:9px;line-height:1.3;white-space:pre-line}
-#discoverStatus{grid-area:discoverstatus;display:block;min-width:0;font-size:9px;color:#a9c5d9;overflow-wrap:anywhere}
-#discoverList{grid-area:discoverlist;display:flex;gap:4px;max-height:54px;overflow:auto;flex-wrap:wrap}
-#discoverList button{width:auto;max-width:48%;font-size:9px}
-#result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:7px;min-width:0;min-height:0;margin:0;overflow:hidden}
-#result>.section{min-width:0;min-height:0;height:100%;margin:0;padding:9px;border:1px solid #294963;border-radius:12px;background:linear-gradient(145deg,#142b42,#0c1b2b);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;box-shadow:0 6px 16px #0003}
-#result>.section:first-child{grid-column:auto}
-#result h2{margin:0 0 5px;padding:0 0 5px;border-bottom:1px solid #29445e;color:#76e9d4;font-size:12px;line-height:1.3}
+#status{grid-area:status;min-width:0;margin:0;padding:5px;text-align:center;color:#ffd166;font-size:11px;line-height:1.45;white-space:pre-line}
+#discoverStatus{grid-area:discoverstatus;display:block;min-width:0;font-size:11px;color:#b9c9e8;overflow-wrap:anywhere}
+#discoverList{grid-area:discoverlist;display:flex;gap:7px;max-height:115px;overflow:auto;flex-wrap:wrap}
+#discoverList button{width:auto;max-width:48%;font-size:11px}
+#result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(170px,auto);gap:12px;min-width:0;min-height:0;margin:0;overflow:visible;align-items:stretch}
+#result>.section{min-width:0;min-height:0;height:auto;margin:0;padding:14px;border:1px solid #6245d0;border-radius:18px;background:linear-gradient(145deg,#111b3d 0%,#080f24 75%);overflow:visible;box-shadow:0 8px 24px #0005,inset 0 0 22px #312e8140;position:relative}
+#result>.section:first-child{grid-column:1/-1;border-color:#7c3aed;background:linear-gradient(115deg,#171344,#0b1630 55%,#062b36);box-shadow:0 0 22px #7c3aed20}
+#result h2{margin:0 0 10px;padding:0 0 9px;border-bottom:1px solid #34356d;color:#a5f3e5;font-size:15px;line-height:1.4}
+#result>.section:first-child h2{font-size:20px;color:#f5f3ff}
 #risk h2{border:0;margin:0;padding:0;color:#f3f8ff}
-#risk h3{margin:3px 0;font-size:11px}
-.item{display:flex;justify-content:space-between;align-items:flex-start;gap:5px;margin:3px 0;padding:5px 4px;border:1px solid #29445d;border-radius:7px;background:#0a1a2a;font-size:10px;line-height:1.35}
-.item span{color:#b4cadc}
-.value{max-width:62%;direction:ltr;text-align:left;overflow-wrap:anywhere;color:#f3f8ff;font-size:10px}
-.good{color:#49e6a9}.bad{color:#ff7777}.warn{color:#ffd166}
-#result p{margin:4px 0;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
-#result .small,.empty-hint{color:#9db5ca;font-size:9px;line-height:1.4}
+#risk h3{margin:5px 0;font-size:14px}
+.item{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin:6px 0;padding:8px 9px;border:1px solid #2d3a68;border-radius:10px;background:linear-gradient(110deg,#0b1830,#101b38);font-size:12px;line-height:1.45}
+.item span{color:#b8c8e6}
+.value{max-width:64%;direction:ltr;text-align:left;overflow-wrap:anywhere;color:#f3f8ff;font-size:12px}
+.good{color:#38e9a3}.bad{color:#ff6b8a}.warn{color:#ffd166}
+#result p{margin:6px 0;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+#result .small,.empty-hint{color:#a8b9d7;font-size:11px;line-height:1.5}
 #extraInfo,#liveTradingNotice,main>p.small{display:none!important}
-#demoPanel .dashboard{padding:5px;border:1px solid #315878;border-radius:8px;background:#0a1a2a}
-#demoPanel .dash-heading{display:flex;justify-content:space-between;align-items:center;gap:4px}
-#demoPanel .eyebrow{font-size:8px;color:#8bb4ce}
-#demoPanel .dash-heading h2{border:0;margin:0;padding:0;font-size:11px}
-#demoPanel .mode-pill{font-size:8px;color:#ffd166}
-#demoPanel .dash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:5px}
-#demoPanel .metric{padding:4px;border-radius:6px;background:#132b40;min-width:0}
-#demoPanel .metric span,#demoPanel .metric small{display:block;font-size:8px;color:#a9c5d9}
-#demoPanel .metric strong{display:block;font-size:12px;overflow-wrap:anywhere}
-#demoPanel .dash-foot{display:flex;justify-content:space-between;font-size:9px;margin-top:5px}
-#demoPanel .dash-note{font-size:8px!important;color:#ffd166}
-#demoPanel .bot-warning{font-size:8px!important;color:#ffd166;border:1px solid #70552b;border-radius:6px;padding:4px}
-#demoPanel #demoStatus{font-size:9px;white-space:pre-line;overflow-wrap:anywhere}
-#demoPanel #demoStats{max-height:120px;overflow:auto}
-#demoPanel #demoHistory{max-height:160px;overflow:auto}
-#result>.section#demoPanel{min-width:0;min-height:0;height:100%;overflow:auto}
-#demoPanel h2{margin:0 0 5px}
-#demoPanel button{margin:3px 0}
-#demoPanel #demoHistory{max-height:110px;overflow:auto}
-#demoPanel .section{padding:5px;margin:4px 0;background:#0a1a2a;border:1px solid #29445e;border-radius:7px}
+#demoPanel .dashboard{padding:12px;border:1px solid #6245d0;border-radius:14px;background:linear-gradient(130deg,#171344,#0b1930)}
+#demoPanel .dash-heading{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#demoPanel .eyebrow{font-size:10px;color:#a78bfa;letter-spacing:1.4px}
+#demoPanel .dash-heading h2{border:0;margin:0;padding:0;font-size:15px}
+#demoPanel .mode-pill{font-size:10px;color:#ffd166}
+#demoPanel .dash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:9px}
+#demoPanel .metric{padding:9px;border:1px solid #2d3b68;border-radius:10px;background:#0b1930;min-width:0}
+#demoPanel .metric span,#demoPanel .metric small{display:block;font-size:10px;color:#b8c8e6}
+#demoPanel .metric strong{display:block;font-size:17px;overflow-wrap:anywhere;color:#fff}
+#demoPanel .dash-foot{display:flex;justify-content:space-between;font-size:12px;margin-top:9px}
+#demoPanel .dash-note{font-size:10px!important;color:#ffd166}
+#demoPanel .bot-warning{font-size:10px!important;color:#ffd166;border:1px solid #775a31;border-radius:9px;padding:8px;background:#251d19}
+#demoPanel #demoStatus{font-size:11px;white-space:pre-line;overflow-wrap:anywhere}
+#demoPanel #demoStats{max-height:220px;overflow:auto}
+#demoPanel #demoHistory{max-height:none;overflow:visible;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#result>.section#demoPanel{grid-column:1/-1;min-width:0;min-height:0;height:auto;overflow:visible;border-color:#7c3aed;background:linear-gradient(135deg,#171344,#0a1730)}
+#demoPanel h2{margin:0 0 8px}
+#demoPanel button{margin:5px 0}
+#demoPanel #demoHistory{max-height:none;overflow:visible}
+#demoPanel .section{padding:9px;margin:6px 0;background:#0a1730;border:1px solid #34356d;border-radius:11px}
 #demoPanel .item{display:block}
 #demoPanel p{overflow-wrap:anywhere}
-@media(max-width:600px){
- body{padding:5px}
- main{height:calc(100svh - 10px);gap:5px}
- header{padding:7px 9px;border-radius:10px}
- h1{font-size:clamp(15px,4vw,20px)}
- header p{font-size:9px}
- main>.panel{padding:6px 7px;gap:4px 5px;border-radius:10px}
- main>.panel>h2{font-size:11px}
- #mint{height:31px;font-size:11px}
- button{min-height:29px;padding:4px;font-size:10px}
- #result{gap:4px}
- #result>.section{padding:6px;border-radius:9px}
- #result h2{font-size:10px}
- #result .item,#result .value{font-size:8px}
- #result p{font-size:9px}
- #result .small,.empty-hint{font-size:8px}
+#walletPanel{border-color:#2b806e!important}
+@media(min-width:900px){
+ body{padding:22px}
+ main{min-height:calc(100svh - 44px);gap:16px}
+ #result{grid-auto-rows:minmax(190px,auto);gap:14px}
+ #result>.section{padding:18px}
 }
-@media(max-height:650px){
- main{gap:4px}
- header{padding:5px 8px}
- main>.panel{padding:4px 7px;gap:3px}
- #mint{height:27px}
- button{min-height:25px}
- #result>.section{padding:5px}
- #result .item{padding:3px}
+@media(max-width:600px){
+ body{padding:8px}
+ main{min-height:calc(100svh - 16px);gap:9px}
+ header{padding:12px 10px;border-radius:15px}
+ header:before{font-size:11px;letter-spacing:2px}
+ h1{font-size:clamp(17px,4.5vw,22px)}
+ header p{font-size:10px}
+ main>.panel{padding:10px;border-radius:15px;gap:7px}
+ main>.panel>h2{font-size:13px}
+ #mint{height:42px;font-size:12px}
+ button{min-height:38px;padding:7px 5px;font-size:11px}
+ #result{gap:8px;grid-auto-rows:minmax(155px,auto)}
+ #result>.section{padding:10px;border-radius:14px}
+ #result h2{font-size:12px}
+ #result>.section:first-child h2{font-size:17px}
+ #result .item,#result .value{font-size:10px}
+ #result p{font-size:10px}
+ #result .small,.empty-hint{font-size:9px}
+ #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:360px){
+ #result{grid-template-columns:minmax(0,1fr)}
+ #result>.section:first-child,#result>.section#demoPanel{grid-column:1}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
@@ -94,7 +105,7 @@ button:disabled{opacity:.5}
 <body>
 <main>
 <header>
-<h1>🔎 پشکنەری زیرەکی کۆینی سولانا</h1>
+<h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
 </header>
 
