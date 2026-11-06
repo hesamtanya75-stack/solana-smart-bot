@@ -99,7 +99,9 @@ main>#demoPanel{grid-column:1/-1;min-width:0;min-height:0;padding:12px!important
 #walletPanel{border-color:#2b806e!important}
 @media(min-width:900px){body{padding:18px}main{min-height:calc(100vh - 36px);gap:14px}#result{gap:12px}#result>.section{padding:16px}}
 @media(max-width:600px){
- body{padding:7px}main{min-height:calc(100vh - 14px);gap:8px}
+ html,body{height:auto;min-height:100%;overflow-y:auto}
+ body{padding:7px;min-height:100dvh;overflow-x:hidden;overflow-y:auto}
+ main{height:auto;min-height:0;gap:8px}
  header{min-height:68px;padding:8px 62px 8px 10px;border-radius:15px}header:after{right:10px;width:38px;height:38px}
  h1{font-size:clamp(16px,4.5vw,21px)}header p{font-size:9px}
  main>.panel{padding:8px;gap:5px 6px;border-radius:13px}#mint{height:38px;font-size:12px}
@@ -1478,6 +1480,9 @@ async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
+  // Enable server persistence before migrating the browser's existing paper-trading
+  // state. Otherwise saveServerState() returns early and the next sync replaces
+  // the local history and balance with the empty server defaults.
   serverModeReady = true;
   if (!remote.updatedAt) {
     let old = null;
