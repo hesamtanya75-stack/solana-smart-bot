@@ -663,6 +663,16 @@ main>.panel>h2{display:none!important}
  #basic{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
 
+
+/* BOT CONTROLS: two distinct side-by-side actions */
+@media(max-width:600px), (min-width:601px){
+ #result>#demoPanel{grid-template-columns:minmax(0,.82fr) minmax(0,1fr) minmax(0,1fr)!important}
+ #demoPanel .bot-head{grid-column:2/4!important;grid-row:1!important}
+ #demoPanel #autoDemoBuy{grid-column:2!important;grid-row:2!important;align-self:center!important}
+ #demoPanel #pauseBuyBtn{grid-column:3!important;grid-row:2!important;align-self:center!important}
+ #demoPanel #demoStatus{display:none!important}
+}
+
 </style>
 </head>
 <body>
