@@ -1008,6 +1008,9 @@ row("Token-2022 Extensions",
     ).join("")+
     "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
   );
+  const largestPct=holders.length ? Math.max(...holders.map(x=>x.pct)) : 0;
+  const topTenPct=holders.reduce((sum,x)=>sum+x.pct,0);
+
   if(holders.length){
     const topTenShare=Math.min(100,Math.max(0,topTenPct));
     const restShare=100-topTenShare;
@@ -1021,8 +1024,6 @@ row("Token-2022 Extensions",
 
     const finalSells=Number(market?.txns?.h24?.sells||0);
   const finalLiquidity=Number(market?.liquidity?.usd||0);
-     const largestPct=holders.length ?Math.max(...holders.map(x=>x.pct)):0;
-  const topTenPct=holders.reduce((sum,x)=>sum+x.pct,0);
 
   if(topTenPct>50){
     notes.push("🚨 ئاگاداری: ١٠ هەژماری گەورەتر زیاتر لە 50%ی کۆینەکەیان هەیە.");
