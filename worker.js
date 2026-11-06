@@ -343,7 +343,7 @@ async function autoBuy(state, env) {
         // Keep the token eligible, but don't let an unindexed profile consume
         // every minute's scan slot. Recheck it after a short cooldown.
         state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
-        report.push({ mint, status: "deferred", reasons: ["No Solana market pair; retry in 5 minutes"] });
+        report.push({ mint, status: "deferred", reasons: ["بازاڕی Solana هێشتا نەدۆزراوەتەوە؛ دوای ٥ خولەک دووبارە پشکنین دەکرێت"] });
       } else {
         report.push({ mint, status: "blocked-error", reasons: [message] });
       }
@@ -353,7 +353,9 @@ async function autoBuy(state, env) {
   state.scannedMints = state.scannedMints.slice(-1000);
   state.deferredMints = state.deferredMints.slice(-1000);
   state.lastScanReport = report.slice(-20);
-  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + report.filter(x => x.status !== "bought-paper").length + " blocked; reasons saved in scan report.";
+  const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
+  const deferred = report.filter(x => x.status === "deferred").length;
+  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report.";
 }
 
 export default {
