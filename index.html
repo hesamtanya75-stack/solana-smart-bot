@@ -114,13 +114,11 @@ button:disabled{opacity:.5}
   <p class="dash-note">ئەم ئامارانە تەنها بۆ مامەڵە خەیاڵییەکانن؛ باڵانسی Phantom نین.</p>
 </section>
 
-<section class="section" id="walletPanel" aria-label="خوێندنەوەی وۆڵێتی Phantom">
-  <h2>👛 وۆڵێتی دووەمی Phantom</h2>
-  <div class="item"><span>ناونیشانی گشتی</span><b class="value" id="walletAddress">BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9</b></div>
-  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">هێشتا پشکنین نەکراوە</b></div>
-  <button type="button" id="checkWalletBalance">🔄 پشکنینی باڵانسی SOL</button>
-  <p class="small"><a href="https://solscan.io/account/BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9" target="_blank" rel="noopener noreferrer" style="color:#75c9ff">بینینی ناونیشان لە Solscan ↗</a></p>
-  <div id="walletStatus" role="status" aria-live="polite" class="small">ئەم بەشە تەنها زانیاریی گشتی دەخوێنێتەوە؛ وۆڵێتەکە ناگرێتەوە و هیچ مامەڵەیەک ناکات.</div>
+<section class="section" id="walletPanel" aria-label="دۆخی وۆڵێتی تایبەتی بۆت">
+  <h2>👛 وۆڵێتی تایبەتی بۆت</h2>
+  <div class="item"><span>دۆخی پەیوەندی</span><b class="value warn" id="walletAddress">هێشتا پەیوەست نەکراوە</b></div>
+  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">پشکنین نەکراوە</b></div>
+  <div id="walletStatus" role="status" aria-live="polite" class="small">هیچ وۆڵێتێک پەیوەست نییە. دوای دروستکردنی وۆڵێتی نوێی Phantom، تەنها ناونیشانی گشتییەکەی لێرە زیاد دەکرێت. Seed Phrase و Private Key مەنووسە.</div>
 </section>
 
 
@@ -395,7 +393,7 @@ async function scanToken(){
 
   if(tasks[1].status==="fulfilled")rug=tasks[1].value;
   // یەک داواکاریی AccountInfo بەکاردەهێنین بۆ کەمکردنەوەی کاتی چاوەڕوانی
-  if(tasks[2].status==="fulfilled")mintRawInfo=tasks[2].value?.value;
+  if(tasks[2].status==="fulfilled"){mintInfo=tasks[2].value;mintRawInfo=tasks[2].value?.value;}
   if(tasks[3].status==="fulfilled")holderData=tasks[3].value?.value;
   if(tasks[4].status==="fulfilled")supplyData=tasks[4].value?.value;
  let tokenExtensions=[];
@@ -832,6 +830,8 @@ demoPanel.innerHTML = `
 document.getElementById("result").appendChild(demoPanel);
 const dashboardSection = document.querySelector("#extraInfo .dashboard");
 if (dashboardSection) demoPanel.insertBefore(dashboardSection, demoPanel.children[1] || null);
+const walletPanel = document.getElementById("walletPanel");
+if (walletPanel) demoPanel.appendChild(walletPanel);
 const liveNotice = document.getElementById("liveTradingNotice");
 if (liveNotice) {
   liveNotice.className = "bot-warning";
