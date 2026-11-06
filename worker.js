@@ -59,11 +59,25 @@ async function rpc(method, params, env) {
   // Try the existing Alchemy key first, then fall back to a public Solana RPC.
   // Never expose the API key in logs or error messages.
   const endpoints = [];
-  if (env?.ALCHEMY_API_KEY && !alchemyUnauthorized) {
-    endpoints.push({
-      url: "https://solana-mainnet.g.alchemy.com/v2/" + env.ALCHEMY_API_KEY,
-      label: "Alchemy Solana RPC"
-    });
+  const alchemyConfig = String(env?.ALCHEMY_API_KEY || "").trim();
+  if (alchemyConfig && !alchemyUnauthorized) {
+    // Accept either the raw Alchemy API key or the complete HTTPS endpoint.
+    // This avoids accidental 401s caused by storing the endpoint URL as a key.
+    const alchemyUrl = /^https:\/\//i.test(alchemyConfig)
+      ? alchemyConfig.replace(/\/+$/, "")
+      : "https://solana-mainnet.g.alchemy.com/v2/" + alchemyConfig;
+    let validAlchemyUrl = false;
+    try {
+      const parsed = new URL(alchemyUrl);
+      validAlchemyUrl = parsed.protocol === "https:" &&
+        parsed.hostname === "solana-mainnet.g.alchemy.com" &&
+        parsed.pathname.startsWith("/v2/");
+    } catch {}
+    if (validAlchemyUrl) {
+      endpoints.push({ url: alchemyUrl, label: "Alchemy Solana RPC" });
+    } else {
+      errors.push("Alchemy configuration invalid: use the Solana Mainnet API key or its HTTPS endpoint");
+    }
   }
   {
     const fallback = RPCS[rpcCursor++ % RPCS.length];
