@@ -1463,6 +1463,7 @@ async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
+  serverModeReady = true;
   if (!remote.updatedAt) {
     let old = null;
     try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
