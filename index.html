@@ -673,6 +673,48 @@ main>.panel>h2{display:none!important}
  #demoPanel #demoStatus{display:none!important}
 }
 
+
+/* FIX MAIN GRID CHILD FLOW: prevent implicit rows from hiding result cards */
+@media(max-width:600px){
+ html,body{height:100%!important;min-height:0!important;overflow:hidden!important}
+ main{
+  position:relative!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  grid-template-rows:58px 91px minmax(0,1fr)!important;
+  height:calc(100dvh - 10px)!important;min-height:0!important;
+  overflow:hidden!important;gap:5px!important
+ }
+ main>header{grid-column:1!important;grid-row:1!important}
+ main>#extraInfo{display:none!important}
+ main>.panel{grid-column:1!important;grid-row:2!important;min-height:0!important}
+ main>#result{grid-column:1!important;grid-row:3!important;min-height:0!important;height:100%!important}
+ main>p.small{display:none!important}
+ #result{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  grid-template-rows:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.85fr)!important;
+  grid-auto-flow:row!important;grid-auto-rows:0!important;
+  min-height:0!important;height:100%!important;overflow:hidden!important
+ }
+ #result>.section{min-width:0!important;min-height:0!important;height:100%!important;overflow:auto!important}
+ #result>.section:first-child{grid-column:1/-1!important;grid-row:1!important}
+ #result>.section:nth-child(2){grid-column:1!important;grid-row:2!important}
+ #result>.section:nth-child(3){grid-column:2!important;grid-row:2!important}
+ #result>.section:nth-child(4){grid-column:1!important;grid-row:3!important}
+ #result>.section:nth-child(5){grid-column:2!important;grid-row:3!important}
+ #result>#demoPanel{grid-column:1/-1!important;grid-row:4!important;display:grid!important}
+}
+@media(min-width:601px){
+ main{display:grid!important;grid-template-rows:72px 112px minmax(0,1fr)!important;min-height:0!important;height:calc(100dvh - 14px)!important;overflow:hidden!important}
+ main>header{grid-row:1!important}
+ main>#extraInfo{display:none!important}
+ main>.panel{grid-row:2!important;min-height:0!important}
+ main>#result{grid-row:3!important;min-height:0!important;height:100%!important}
+ main>p.small{display:none!important}
+ #result{min-height:0!important;height:100%!important;overflow:hidden!important}
+}
+
 </style>
 </head>
 <body>
