@@ -300,7 +300,19 @@ export default {
       try {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
-        if (!expected || password !== expected) return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const loginKey = "login_fail:" + ip;
+        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
+        if (Number(failures.count || 0) >= 5) {
+          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
+        if (!expected || typeof password !== "string" || password !== expected) {
+          await env.BOT_STATE.put(loginKey, JSON.stringify({
+            count: Number(failures.count || 0) + 1
+          }), { expirationTtl: 900 });
+          return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
+        }
+        await env.BOT_STATE.delete(loginKey);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
