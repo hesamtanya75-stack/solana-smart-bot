@@ -12,12 +12,12 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
-  "https://rpc.solanatracker.io/public",
-  "https://rpc.magicblock.app/mainnet",
+  "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com",
-  "https://rpc.nodeflare.app/solana/public"
+  "https://rpc.magicblock.app/mainnet"
 ];
 let rpcCursor = 0;
+let alchemyUnauthorized = false;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -59,14 +59,17 @@ async function rpc(method, params, env) {
   // Try the existing Alchemy key first, then fall back to a public Solana RPC.
   // Never expose the API key in logs or error messages.
   const endpoints = [];
-  if (env?.ALCHEMY_API_KEY) {
+  if (env?.ALCHEMY_API_KEY && !alchemyUnauthorized) {
     endpoints.push({
       url: "https://solana-mainnet.g.alchemy.com/v2/" + env.ALCHEMY_API_KEY,
       label: "Alchemy Solana RPC"
     });
+  }
+  {
     const fallback = RPCS[rpcCursor++ % RPCS.length];
     endpoints.push({ url: fallback, label: new URL(fallback).hostname });
-  } else {
+  }
+  if (!env?.ALCHEMY_API_KEY || alchemyUnauthorized) {
     for (let i = 0; i < Math.min(2, RPCS.length); i++) {
       const fallback = RPCS[rpcCursor++ % RPCS.length];
       endpoints.push({ url: fallback, label: new URL(fallback).hostname });
@@ -87,7 +90,11 @@ async function rpc(method, params, env) {
       if (data.error) throw new Error(data.error.message || "RPC error");
       return data.result;
     } catch (error) {
-      errors.push(endpoint.label + ": " + String(error?.message || error));
+      const message = String(error?.message || error);
+      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") {
+        alchemyUnauthorized = true;
+      }
+      errors.push(endpoint.label + ": " + message);
     }
   }
   throw new Error("Solana RPC providers failed (max 2 per method) — " + errors.join(" | "));
