@@ -187,11 +187,30 @@ async function inspectMint(mint, env) {
   if (!market) throw new Error("No Solana market pair");
   const details = mintDetails(account);
   const supplyAmount = Number(supply?.value?.amount || 0);
-  const holders = (largest?.value || []).slice(0, 10);
-  if (!holders.length || !supplyAmount) throw new Error("Holder data unavailable");
-  const percentages = holders.map(h => Number(h.amount) / supplyAmount * 100);
-  const largestPct = Math.max(...percentages);
-  const topTenPct = percentages.reduce((a,b) => a+b, 0);
+  const largestAccounts = (largest?.value || []).slice(0, 20);
+  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
+  // getTokenLargestAccounts returns token accounts, not wallet owners.
+  // Resolve their parsed owner fields and aggregate balances by unique wallet.
+  const accountDetails = await rpc(
+    "getMultipleAccounts",
+    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
+    env
+  );
+  const ownerBalances = new Map();
+  for (let i = 0; i < largestAccounts.length; i++) {
+    const account = accountDetails?.value?.[i];
+    const info = account?.data?.parsed?.info;
+    const owner = info?.owner;
+    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
+    if (!owner || !Number.isFinite(amount)) continue;
+    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+  }
+  if (!ownerBalances.size) throw new Error("Token account owners unavailable");
+  const ownerPercentages = [...ownerBalances.values()]
+    .map(amount => amount / supplyAmount * 100)
+    .sort((a, b) => b - a);
+  const largestPct = ownerPercentages[0] || 0;
+  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
   const liquidity = Number(market.liquidity?.usd || 0);
   const volume = Number(market.volume?.h24 || 0);
   const sells = Number(market.txns?.h24?.sells || 0);
