@@ -1234,6 +1234,7 @@ autoBuyBtn.onclick = function() {
   if (autoDemoBuyEnabled) runAutoDemoBuy();
 };
 const pauseBuyBtn = document.createElement("button");
+pauseBuyBtn.id = "pauseBuyBtn";
 pauseBuyBtn.textContent = "⏸️ ڕاوەستاندنی بۆت";
 pauseBuyBtn.style.width = "100%";
 pauseBuyBtn.style.marginBottom = "12px";
@@ -1339,7 +1340,7 @@ setInterval(() => {
 // Analysis cards are shown only after scanToken() completes successfully.
 
 
-/* Arrange the final risk summary inside the security card, as in the reference */
+/* Keep the final risk summary inside the security card. */
 (function(){
  const securityCard=document.getElementById("security")?.closest(".section");
  const conclusionCard=document.getElementById("conclusion")?.closest(".section");
@@ -1353,8 +1354,6 @@ setInterval(() => {
    if(content) securityCard.appendChild(content);
    conclusionCard.remove();
  }
- const pause=document.querySelector("#demoPanel button:nth-of-type(2)");
- if(pause) pause.id="pauseBuyBtn";
 })();
 
 </script>
