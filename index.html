@@ -520,6 +520,66 @@ main>.dashboard{flex:0 0 auto;margin:0;padding:9px 11px;border-radius:13px}
  .bot-page>.panel,.bot-page>.section{padding:10px}
 }
 
+
+/* ===== FIX: real page scrolling on iPhone and desktop ===== */
+html,body{
+ height:auto!important;
+ min-height:100%!important;
+ overflow-x:hidden!important;
+ overflow-y:auto!important;
+}
+body{
+ min-height:100dvh!important;
+ padding:9px!important;
+}
+main{
+ height:auto!important;
+ min-height:100dvh!important;
+ max-height:none!important;
+ overflow:visible!important;
+ display:flex!important;
+ flex-direction:column!important;
+}
+#botTabs{
+ position:sticky;
+ top:0;
+ z-index:50;
+ flex:0 0 auto!important;
+ width:100%;
+ overflow-x:auto!important;
+ overflow-y:hidden!important;
+ background:#091727;
+ border:1px solid #294862;
+ border-radius:12px;
+ padding:6px!important;
+}
+#botWorkspace{
+ flex:0 0 auto!important;
+ height:auto!important;
+ min-height:0!important;
+ overflow:visible!important;
+ position:static!important;
+}
+.bot-page{
+ display:none;
+ height:auto!important;
+ min-height:0!important;
+ max-height:none!important;
+ overflow:visible!important;
+ overflow-y:visible!important;
+ overscroll-behavior:auto!important;
+ padding:0 2px 18px!important;
+}
+.bot-page.active{display:block!important}
+.bot-page>.panel,.bot-page>.section{overflow:visible!important}
+@media(max-width:680px){
+ body{padding:7px!important}
+ main{height:auto!important;min-height:100dvh!important;gap:7px!important}
+ #botTabs{scrollbar-width:thin}
+ #botWorkspace{overflow:visible!important}
+ .bot-page{height:auto!important;overflow:visible!important}
+}
+
 </style>
 </head>
 <body>
