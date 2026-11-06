@@ -285,17 +285,31 @@ export default {
   },
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
+      const startedAt = Date.now();
       const state = await readState(env);
       try {
         const sold = await refreshTrades(state);
         const message = await autoBuy(state, env);
         state.lastRunAt = new Date().toISOString();
         state.lastMessage = "Server cycle complete. Sold: " + sold + ". " + message;
+        await saveState(env, state);
+        // Safe operational log: never include secrets, wallet data, or API keys.
+        console.info("Server cycle complete", {
+          sold,
+          message,
+          openTrades: state.trades.filter(t => !t.sold).length,
+          scannedMints: state.scannedMints.length,
+          durationMs: Date.now() - startedAt
+        });
       } catch (error) {
         state.lastRunAt = new Date().toISOString();
         state.lastMessage = "Server cycle warning: " + String(error?.message || error);
+        await saveState(env, state);
+        console.error("Server cycle warning", {
+          error: String(error?.message || error),
+          durationMs: Date.now() - startedAt
+        });
       }
-      await saveState(env, state);
     })());
   }
 };
