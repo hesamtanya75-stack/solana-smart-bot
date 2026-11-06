@@ -389,6 +389,42 @@ main>.panel>h2{display:none!important}
 .legend-dot.rest{background:#34456f}
 @media(max-width:390px){.donut-wrap{gap:10px}.donut{width:112px;height:112px}.donut-hole{width:72px;height:72px}}
 </style>
+<style id="dashboard-structure-v2">
+/* Dashboard hierarchy: compact headline metrics, then detailed panels */
+#result{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;align-items:start!important}
+#result>.section{border-radius:16px!important;padding:12px!important}
+#result>.section:first-child{grid-column:1/-1!important}
+#result>.section:nth-child(2){grid-column:1/-1!important}
+#result>.section:nth-child(3),#result>.section:nth-child(4){grid-column:span 1}
+#result>.section:nth-child(5),#result>.section:nth-child(6){grid-column:span 1}
+#basic{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+#basic .item{background:linear-gradient(135deg,#0a1c36,#101b3b)!important;border:1px solid #29466c!important;border-radius:10px!important;padding:8px!important;min-width:0}
+#basic .item span{font-size:10px!important}
+#basic .value{font-size:11px!important;max-width:100%!important;text-align:left!important}
+.market-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 12px}
+#market .market-metric{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:space-between!important;gap:7px!important;min-height:76px!important;margin:0!important;padding:10px!important;border:1px solid #31547e!important;border-radius:12px!important;background:linear-gradient(145deg,#102849,#111535)!important;min-width:0}
+#market .market-metric span{font-size:10px!important;line-height:1.35;color:#a9c9e8!important}
+#market .market-metric .value{font-size:clamp(11px,2.6vw,16px)!important;max-width:100%!important;text-align:left!important;color:#f8fbff!important;overflow-wrap:anywhere}
+#market .market-metric[data-metric="3"] .value{color:#22e6a2!important}
+#market .market-metric[data-metric="4"] .value{color:#8ee7ff!important}
+#risk{border-color:#4b48a5!important;background:linear-gradient(100deg,#101c3b,#171344)!important}
+#risk h3{font-size:18px!important}
+#result>.section:nth-child(3) h2,#result>.section:nth-child(4) h2{color:#9fe9dc}
+#result>.section:nth-child(5) h2{color:#ffd18b}
+#result>.section:nth-child(6) h2{color:#ff9eae}
+@media(max-width:560px){
+ #result{gap:7px!important}
+ #result>.section{padding:9px!important}
+ .market-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ #market .market-metric{min-height:66px!important;padding:8px!important}
+ #basic{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ #result>.section:nth-child(3),#result>.section:nth-child(4),#result>.section:nth-child(5),#result>.section:nth-child(6){grid-column:span 1}
+}
+@media(max-width:350px){
+ #result{grid-template-columns:minmax(0,1fr)!important}
+ #result>.section:nth-child(n){grid-column:1!important}
+}
+</style>
 </head>
 <body>
 <main>
@@ -852,6 +888,20 @@ const pairLink = typeof market?.url === "string" && market.url.startsWith("https
   ? "<p><a href='" + safe(market.url) + "' target='_blank' rel='noopener noreferrer'>کردنەوەی Pair لە DexScreener ↗</a></p>"
   : "";
 show("market", marketRows + pairLink);
+if(market){
+  const marketBox=el("market");
+  const marketItems=Array.from(marketBox.querySelectorAll(":scope > .item")).slice(0,4);
+  if(marketItems.length){
+    const metricGrid=document.createElement("div");
+    metricGrid.className="market-metric-grid";
+    marketItems[0].before(metricGrid);
+    marketItems.forEach((item,index)=>{
+      item.classList.add("market-metric");
+      item.dataset.metric=String(index+1);
+      metricGrid.appendChild(item);
+    });
+  }
+}
 if(market){
   const trendItems=[
     ["٥ خولەک",Number(priceChanges.m5)],
