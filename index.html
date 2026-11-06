@@ -425,6 +425,109 @@ main>.panel>h2{display:none!important}
  #result>.section:nth-child(n){grid-column:1!important}
 }
 </style>
+
+<style id="final-reference-dashboard">
+/* Final compact reference layout: one-screen overview on phones */
+html,body{min-height:100%;height:100%;overflow:hidden}
+body{padding:6px;overflow:hidden}
+main{height:calc(100svh - 12px);min-height:0;max-width:980px;grid-template-rows:62px 94px minmax(0,1fr);gap:7px;overflow:hidden}
+header{min-height:0;height:62px;padding:5px 10px 5px 62px;border-radius:14px;display:flex;flex-direction:column;justify-content:center}
+header:before{font-size:clamp(14px,3.5vw,21px);line-height:1.15;margin:0 0 2px}
+header:after{left:9px;width:38px;height:38px}
+h1{font-size:clamp(12px,2.8vw,17px);line-height:1.2}
+header p{font-size:9px;margin:2px 0 0}
+main>.panel{height:94px;min-height:0;padding:7px 9px;gap:5px;border-radius:13px;grid-template-areas:"input input" "scan discover" "discoverstatus status" "discoverlist discoverlist"}
+#mint{height:34px;min-height:34px;font-size:11px;padding:5px 9px}
+#scan,#autoDiscover{min-height:30px;height:30px;font-size:10px;padding:4px 6px}
+#status,#discoverStatus{font-size:9px;line-height:1.2;max-height:22px;overflow:hidden}
+#discoverList{max-height:25px;overflow:hidden;flex-wrap:nowrap}
+#discoverList button{min-height:22px;padding:2px 5px;font-size:8px}
+#result{height:100%;min-height:0;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:minmax(92px,.8fr) minmax(112px,1fr) minmax(112px,1fr) minmax(130px,1.1fr);grid-auto-rows:unset;gap:6px;overflow:hidden;align-items:stretch}
+#result>.section{min-height:0;height:100%;padding:7px;border-radius:12px;overflow:hidden}
+#result>.section:first-child{grid-column:1/-1;grid-row:1;padding:7px 9px}
+#result>.section:nth-child(2){grid-column:1/3;grid-row:2}
+#result>.section:nth-child(3){grid-column:3/5;grid-row:2}
+#result>.section:nth-child(4){grid-column:1/3;grid-row:3}
+#result>.section:nth-child(5){grid-column:3/5;grid-row:3}
+#result>.section#demoPanel{grid-column:1/-1;grid-row:4;height:100%;padding:7px 9px;overflow:hidden}
+#result h2{font-size:10px;margin:0 0 4px;padding-bottom:3px}
+#result>.section:first-child h2{font-size:14px}
+#risk{margin:0 0 4px;padding:4px 6px}
+#risk h2{font-size:12px!important}
+#risk h3{font-size:9px;margin:1px 0}
+#basic{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}
+#basic .item{margin:0;padding:3px 5px;min-width:0;gap:1px;font-size:8px;line-height:1.2}
+#basic .value{font-size:8px;max-width:100%;text-align:right}
+#market{max-height:calc(100% - 18px);overflow:auto;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
+#market .item,#security .item,#holders .item{min-height:0;margin:2px 0;padding:4px 5px;font-size:8px;line-height:1.25;gap:4px}
+#market .value,#security .value,#holders .value{font-size:8px;max-width:70%}
+#security,#holders{max-height:calc(100% - 18px);overflow:auto}
+#selling{max-height:calc(100% - 18px);overflow:auto;font-size:9px;line-height:1.3}
+#selling p{font-size:8px!important}
+#conclusion{padding:4px}
+#conclusion p{font-size:8px!important;margin:2px 0!important}
+#demoPanel .bot-head{gap:5px;margin:0 0 4px}
+#demoPanel .bot-kicker{font-size:8px}
+#demoPanel .bot-head h2{font-size:11px}
+#demoPanel .demo-chip{font-size:8px;padding:2px 5px}
+#demoPanel .demo-metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin:3px 0}
+#demoPanel .demo-metric{padding:4px 6px}
+#demoPanel .demo-metric span{font-size:8px}
+#demoPanel .demo-metric b{font-size:12px}
+#demoPanel button{min-height:26px;height:26px;margin:2px 0;padding:3px 5px;font-size:8px}
+#demoPanel #demoStatus{font-size:8px;padding:2px;max-height:25px;overflow:auto}
+#demoPanel #demoStats{max-height:40px;overflow:auto;padding:4px;margin:3px 0}
+#demoPanel #demoStats p{font-size:8px!important;margin:1px 0!important}
+#demoPanel #demoHistory{max-height:42px;overflow:auto;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+#demoPanel #demoHistory>.section{padding:3px;margin:0}
+#demoPanel #demoHistory h2{font-size:8px}
+#demoPanel #demoHistory p{font-size:7px!important;margin:1px 0!important}
+#demoPanel .demo-disclaimer,#demoPanel .bot-warning{font-size:7px!important;padding:3px;margin:2px 0}
+#demoPanel .dashboard{padding:4px;margin:3px 0}
+#demoPanel .dash-heading h2{font-size:9px}
+#demoPanel .dash-grid{gap:3px;margin-top:3px}
+#demoPanel .metric{padding:3px}
+#demoPanel .metric strong{font-size:10px}
+#demoPanel .metric span,#demoPanel .metric small{font-size:7px}
+#demoPanel .dash-foot{font-size:8px;margin-top:2px}
+#demoPanel #walletPanel{padding:4px}
+#demoPanel #walletPanel .item{margin:2px 0;padding:3px}
+@media(max-width:600px){
+ body{padding:5px}
+ main{height:calc(100svh - 10px);grid-template-rows:58px 88px minmax(0,1fr);gap:6px}
+ header{height:58px;min-height:58px;padding:4px 7px 4px 53px}
+ header:after{left:7px;width:34px;height:34px}
+ header:before{font-size:15px}
+ h1{font-size:12px}
+ header p{font-size:8px}
+ main>.panel{height:88px;padding:6px;gap:4px}
+ #mint{height:31px;min-height:31px;font-size:10px}
+ #scan,#autoDiscover{height:27px;min-height:27px;font-size:9px}
+ #result{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(88px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(122px,1.1fr);gap:5px}
+ #result>.section{padding:6px}
+ #result>.section:first-child{grid-column:1/-1;grid-row:1}
+ #result>.section:nth-child(2){grid-column:1;grid-row:2}
+ #result>.section:nth-child(3){grid-column:2;grid-row:2}
+ #result>.section:nth-child(4){grid-column:1;grid-row:3}
+ #result>.section:nth-child(5){grid-column:2;grid-row:3}
+ #result>.section#demoPanel{grid-column:1/-1;grid-row:4;padding:6px}
+ #result>.section:first-child h2{font-size:12px}
+ #basic{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #basic .item{font-size:7px;padding:2px 4px}
+ #basic .value{font-size:7px}
+ #market .item,#security .item,#holders .item{font-size:7px;padding:3px}
+ #market .value,#security .value,#holders .value{font-size:7px}
+ #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #demoPanel #demoHistory{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-height:700px){
+ main{grid-template-rows:52px 78px minmax(0,1fr);gap:4px}
+ header{height:52px;min-height:52px}
+ main>.panel{height:78px}
+ #result{grid-template-rows:minmax(75px,.7fr) minmax(85px,1fr) minmax(85px,1fr) minmax(105px,1.1fr);gap:4px}
+}
+</style>
+
 </head>
 <body>
 <main>
