@@ -64,7 +64,7 @@ button:disabled{opacity:.5}
 #demoPanel p{overflow-wrap:anywhere}
 @media(max-width:600px){
  body{padding:5px}
- main{height:calc(100dvh - 10px);gap:5px}
+ main{height:calc(100svh - 10px);gap:5px}
  header{padding:7px 9px;border-radius:10px}
  h1{font-size:clamp(15px,4vw,20px)}
  header p{font-size:9px}
@@ -272,26 +272,7 @@ function rpc(method,params){
   return request;
 }
 
-const PUBLIC_PHANTOM_ADDRESS = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
-async function checkPublicWalletBalance(){
-  const button = document.getElementById("checkWalletBalance");
-  const balance = document.getElementById("walletSol");
-  const status = document.getElementById("walletStatus");
-  button.disabled = true;
-  status.textContent = "لە پشکنینی باڵانسی گشتی وۆڵێت دام...";
-  try{
-    const result = await rpc("getBalance", [PUBLIC_PHANTOM_ADDRESS, {commitment:"confirmed"}]);
-    const sol = Number(result?.value) / 1e9;
-    if(!Number.isFinite(sol)) throw new Error("داتای باڵانس دروست نییە.");
-    balance.textContent = sol.toLocaleString("en-US",{maximumFractionDigits:9}) + " SOL";
-    status.textContent = "✅ باڵانسی گشتی لە Solana RPC وەرگیرا. ئەمە تەنها خوێندنەوەیە. کاتی پشکنین: " + new Date().toLocaleTimeString("en-US");
-  }catch(e){
-    status.textContent = "❌ نەمانتوانی باڵانس بخوێنینەوە: " + safe(e.message) + "؛ دواتر دووبارە هەوڵ بدە.";
-  }finally{
-    button.disabled = false;
-  }
-}
-document.getElementById("checkWalletBalance").addEventListener("click", checkPublicWalletBalance);
+// وۆڵێتی گشتیی کۆن لابرا؛ هیچ ناونیشانی وۆڵێتێک بە شێوەی hard-code بەکارناهێنرێت.
 
 async function discoverTokens() {
   const btn = document.getElementById("autoDiscover");
