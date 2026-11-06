@@ -1430,6 +1430,17 @@ function applyServerState(state) {
   if (state.lastRunAt && document.getElementById("demoStatus")) {
     document.getElementById("demoStatus").textContent += "\nدوایین جار لە سێرڤەر: " + new Date(state.lastRunAt).toLocaleString();
   }
+  const scanReport = Array.isArray(state.lastScanReport) ? state.lastScanReport : [];
+  const reportNode = document.getElementById("demoStatus");
+  if (reportNode && scanReport.length) {
+    const lines = scanReport.map(item => {
+      const shortMint = item.mint ? item.mint.slice(0, 5) + "…" + item.mint.slice(-4) : "کۆین";
+      const label = item.status === "bought-paper" ? "کڕینی خەیاڵی" : "ڕەتکرایەوە";
+      const reasons = Array.isArray(item.reasons) ? item.reasons.join("؛ ") : "هۆکار نەدۆزرایەوە";
+      return label + " [" + shortMint + "]: " + reasons;
+    });
+    reportNode.textContent += "\n\nهۆکاری دوا پشکنینەکان:\n" + lines.join("\n");
+  }
 }
 async function syncServerState() {
   if (!serverModeReady) return;
