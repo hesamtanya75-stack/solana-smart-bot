@@ -581,6 +581,18 @@ main{
 }
 
 
+
+/* ===== Main screen: important token checks first; secondary info folded away ===== */
+#extraInfo{grid-column:1/-1;grid-row:4;min-width:0;margin:0;border:1px solid #34536d;border-radius:9px;background:#102238;overflow:auto}
+#extraInfo>summary{cursor:pointer;list-style:none;padding:6px 9px;color:#83e9d5;font-size:10px;font-weight:700;text-align:center}
+#extraInfo>summary::-webkit-details-marker{display:none}
+#extraInfo[open]{max-height:38dvh}
+#extraInfo .dashboard,#extraInfo #walletPanel{margin:6px;padding:8px}
+#extraInfo .dashboard .metric{padding:7px}
+#extraInfo .dashboard .metric span{font-size:10px}
+#extraInfo .dashboard .metric strong{font-size:14px}
+#extraInfo #walletPanel .item{font-size:10px}
+
 /* ===== ALL-IN-ONE VIEW: no tabs, no page scrolling ===== */
 html,body{height:100%!important;min-height:0!important;overflow:hidden!important}
 body{padding:4px!important;margin:0!important}
@@ -605,10 +617,9 @@ main>.dashboard{grid-column:1/-1!important;grid-row:2!important;margin:0!importa
 .metric strong{font-size:12px!important;margin:0!important}
 .dash-foot{margin:3px 0 0!important;padding:2px 5px!important;font-size:8px!important;flex-direction:row!important}
 .dash-foot strong{font-size:11px!important}
-main>#walletPanel{grid-column:1/3!important;grid-row:3!important;margin:0!important;padding:5px!important;overflow:hidden!important}
-main>.panel{grid-column:3/5!important;grid-row:3!important;margin:0!important;padding:5px!important;overflow:hidden!important}
+main>.panel{grid-column:1/-1!important;grid-row:2!important;margin:0!important;padding:5px!important;overflow:hidden!important}
 main>#result{
- grid-column:1/-1!important;grid-row:4!important;
+ grid-column:1/-1!important;grid-row:3!important;
  display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
  grid-template-rows:repeat(2,minmax(0,1fr))!important;
  gap:3px!important;margin:0!important;min-height:0!important;overflow:hidden!important;
@@ -627,8 +638,7 @@ main>#liveTradingNotice,main>p.small{display:none!important}
 .panel input{min-height:25px!important;padding:3px!important;font-size:8px!important}
 @media(max-width:680px){
  main{grid-template-rows:auto auto minmax(0,1fr) auto!important}
- main>#walletPanel{grid-column:1/3!important}
- main>.panel{grid-column:3/5!important}
+ main>.panel{grid-column:1/-1!important;grid-row:2!important}
  #result{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}
 }
 
@@ -641,6 +651,7 @@ main>#liveTradingNotice,main>p.small{display:none!important}
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
 </header>
 
+<details id="extraInfo"><summary>➕ بەشی زانیارییە زیادەکان (باڵانس و ئاماری تاقیکردنەوە)</summary>
 <section class="dashboard" aria-label="پوختەی داشبۆرد">
   <div class="dash-heading">
     <div><span class="eyebrow">SOLANA SMART BOT</span><h2>پوختەی بۆت</h2></div>
@@ -665,6 +676,8 @@ main>#liveTradingNotice,main>p.small{display:none!important}
   <div id="walletStatus" role="status" aria-live="polite" class="small">ئەم بەشە تەنها زانیاریی گشتی دەخوێنێتەوە؛ وۆڵێتەکە ناگرێتەوە و هیچ مامەڵەیەک ناکات.</div>
 </section>
 
+
+</details>
 
 <div class="panel">
 <h2>ناونیشانی کۆین</h2>
