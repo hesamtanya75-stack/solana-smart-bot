@@ -715,6 +715,39 @@ main>.panel>h2{display:none!important}
  #result{min-height:0!important;height:100%!important;overflow:hidden!important}
 }
 
+
+/* VISIBILITY-FIRST FIX: allow the whole dashboard to scroll instead of clipping cards */
+html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important}
+body{min-height:100dvh!important}
+main{height:auto!important;min-height:100dvh!important;overflow:visible!important;grid-template-rows:auto auto auto!important;gap:8px!important;padding-bottom:12px!important}
+main>#extraInfo{display:none!important}
+main>.panel{min-height:0!important;height:auto!important;overflow:visible!important}
+#result{height:auto!important;min-height:0!important;overflow:visible!important;grid-template-rows:none!important;grid-auto-rows:minmax(115px,auto)!important;align-content:start!important}
+#result>.section{height:auto!important;min-height:115px!important;overflow:visible!important}
+#result>.section:first-child{grid-column:1/-1!important;grid-row:auto!important}
+#result>.section:nth-child(2),#result>.section:nth-child(3),#result>.section:nth-child(4),#result>.section:nth-child(5){grid-row:auto!important}
+#result>#demoPanel{grid-column:1/-1!important;grid-row:auto!important;height:auto!important;min-height:140px!important;max-height:none!important;overflow:visible!important;display:block!important}
+@media(max-width:600px){
+ body{padding:5px!important;overflow-y:auto!important}
+ main{height:auto!important;min-height:calc(100dvh - 10px)!important;grid-template-rows:58px auto auto!important;gap:6px!important;overflow:visible!important}
+ header{height:58px!important;min-height:58px!important}
+ main>.panel{height:auto!important;min-height:0!important;grid-template-rows:36px 30px auto!important;gap:4px 6px!important;padding:6px 7px!important;overflow:visible!important}
+ #mint{height:36px!important;min-height:36px!important}
+ #scan,#autoDiscover{height:30px!important;min-height:30px!important}
+ #status{white-space:normal!important;overflow:visible!important}
+ #discoverStatus{display:block!important;min-height:0!important}
+ #discoverList{display:flex!important;position:static!important;max-height:90px!important;overflow:auto!important}
+ #result{height:auto!important;min-height:0!important;overflow:visible!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:none!important;grid-auto-rows:minmax(125px,auto)!important;gap:6px!important}
+ #result>.section{height:auto!important;min-height:125px!important;overflow:visible!important;padding:7px!important}
+ #result>.section:first-child{grid-column:1/-1!important}
+ #result>.section:nth-child(2),#result>.section:nth-child(3),#result>.section:nth-child(4),#result>.section:nth-child(5){grid-column:auto!important;grid-row:auto!important}
+ #result>#demoPanel{grid-column:1/-1!important;grid-row:auto!important;min-height:160px!important;max-height:none!important;overflow:visible!important;padding:7px!important}
+ #demoPanel #demoStats{display:block!important;max-height:100px!important;overflow:auto!important}
+ #demoPanel #demoHistory{display:grid!important;max-height:140px!important;overflow:auto!important}
+ #demoPanel .bot-warning,#demoPanel .demo-disclaimer{display:block!important}
+}
+@media(max-width:360px){#result{grid-template-columns:minmax(0,1fr)!important}#result>.section:first-child,#result>#demoPanel{grid-column:1!important}}
+
 </style>
 </head>
 <body>
