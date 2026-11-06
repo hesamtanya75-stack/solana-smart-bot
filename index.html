@@ -803,15 +803,14 @@ async function scanToken(){
   const tasks=await Promise.allSettled([
   getJSON("https://api.dexscreener.com/latest/dex/tokens/"+mint),
   getJSON("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
-  rpc("getAccountInfo",[mint,{encoding:"jsonParsed",commitment:"confirmed"}]),
+  rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}]),
   rpc("getTokenLargestAccounts",[mint,{commitment:"confirmed"}]),
-  rpc("getTokenSupply",[mint,{commitment:"confirmed"}]),
-  rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}])
+  rpc("getTokenSupply",[mint,{commitment:"confirmed"}])
 ].map(p =>
   Promise.race([
     p,
     new Promise((_,reject) =>
-      setTimeout(() => reject(new Error("کاتی پشکنین تەواو بوو")),12000)
+      setTimeout(() => reject(new Error("کاتی پشکنین تەواو بوو؛ سێرڤەر وەڵامی نەدا")),20000)
     )
   ])
 ));
@@ -823,10 +822,10 @@ async function scanToken(){
   }
 
   if(tasks[1].status==="fulfilled")rug=tasks[1].value;
-  if(tasks[2].status==="fulfilled")mintInfo=tasks[2].value?.value;
+  // یەک داواکاریی AccountInfo بەکاردەهێنین بۆ کەمکردنەوەی کاتی چاوەڕوانی
+  if(tasks[2].status==="fulfilled")mintRawInfo=tasks[2].value?.value;
   if(tasks[3].status==="fulfilled")holderData=tasks[3].value?.value;
   if(tasks[4].status==="fulfilled")supplyData=tasks[4].value?.value;
-if(tasks[5].status==="fulfilled")mintRawInfo=tasks[5].value?.value;
  let tokenExtensions=[];
 try{
   const raw=mintRawInfo?.data;
@@ -933,7 +932,7 @@ if(mintData?.parsed?.info){
   }catch(e){}
 }
 
-const programOwner=mintInfo?.owner;
+const programOwner=mintInfo?.owner || mintRawInfo?.owner;
 
 // زانیاریی بنەڕەتی کۆین
 const tokenDecimals = mintData?.parsed?.info?.decimals ?? supplyData?.decimals;
@@ -950,7 +949,9 @@ const basicRows = [
   row("کۆی دابینکراو (Supply)", supplyUi == null ? "داتا نییە" : safe(supplyUi)),
   row("Token Program", safe(programOwner || "داتا نییە")),
   row("نمرەی RugCheck", rugScore == null ? "بەردەست نییە" : number(rugScore)),
-  row("کاتی دروستبوونی Pair", safe(createdAt))
+  row("کاتی دروستبوونی Pair", safe(createdAt)),
+  row("دۆخی سەرچاوەکانی داتا", safe(sourceDiagnostic)),
+  ...(sourceErrors.length ? [row("هەڵەی سەرچاوە", safe(sourceErrors.join(" | ")))] : [])
 ];
 show("basic", basicRows.join(""));
 
@@ -987,15 +988,25 @@ const pairLink = typeof market?.url === "string" && market.url.startsWith("https
   ? "<p><a href='" + safe(market.url) + "' target='_blank' rel='noopener noreferrer'>کردنەوەی Pair لە DexScreener ↗</a></p>"
   : "";
 show("market", marketRows + pairLink);
-const rpcErrors = [2,5]
+const rpcErrors = [2,3,4]
   .filter(i => tasks[i].status === "rejected")
-  .map(i => "RPC " + i + ": " +
+  .map(i => "RPC: " +
     (tasks[i].reason?.message || "هەڵەی نەناسراو")
   );
 
+const sourceErrors = [
+  tasks[0].status === "rejected" ? "DexScreener: " + (tasks[0].reason?.message || "نەگەیشت") : "",
+  tasks[1].status === "rejected" ? "RugCheck: " + (tasks[1].reason?.message || "نەگەیشت") : ""
+].filter(Boolean);
+
 const rpcDiagnostic = rpcErrors.length
   ? rpcErrors.join(" | ")
-  : "RPC وەڵامی داوە";
+  : "داواکارییەکانی RPC وەڵامیان داوەتەوە";
+const sourceDiagnostic = [
+  tasks[0].status === "fulfilled" ? "DexScreener: OK" : "DexScreener: بەردەست نییە",
+  tasks[1].status === "fulfilled" ? "RugCheck: OK" : "RugCheck: بەردەست نییە",
+  rpcErrors.length ? "Solana RPC: هەڵە" : "Solana RPC: OK"
+].join(" | ");
 let mintStatus="داتا نییە";
 let freezeStatus="داتا نییە";
 
