@@ -7,6 +7,7 @@ const DEFAULT_STATE = {
   scannedMints: [],
   lastRunAt: null,
   lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
+  lastScanReport: [],
   updatedAt: null
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
@@ -33,7 +34,8 @@ function cleanState(value) {
     trades: Array.isArray(s.trades) ? s.trades.slice(-500) : [],
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
-    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : []
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
 async function readState(env) {
@@ -170,6 +172,7 @@ async function autoBuy(state) {
   const profiles = await getJson("https://api.dexscreener.com/token-profiles/latest/v1");
   const tokens = Array.isArray(profiles) ? profiles.filter(t => t.chainId === "solana" && t.tokenAddress) : [];
   let checked = 0, bought = 0;
+  const report = [];
   for (const token of tokens) {
     if (checked >= 5 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
@@ -178,7 +181,10 @@ async function autoBuy(state) {
     checked++;
     try {
       const result = await inspectMint(mint);
-      if (!result.ok) continue;
+      if (!result.ok) {
+        report.push({ mint, status: "rejected", reasons: result.reasons });
+        continue;
+      }
       state.balance = Number((state.balance - 5).toFixed(2));
       state.trades.push({
         mint, amount: 5, buyPrice: result.price, currentPrice: result.price,
@@ -186,12 +192,15 @@ async function autoBuy(state) {
         mode: "paper", riskChecks: "passed"
       });
       bought++;
-    } catch (_) {
+      report.push({ mint, status: "bought-paper", reasons: ["هەموو پشکنینەکان تێپەڕاند"] });
+    } catch (error) {
+      report.push({ mint, status: "blocked-error", reasons: [String(error?.message || "داتای پشکنین بەردەست نییە")] });
       // Unknown or unavailable data always means no simulated purchase.
     }
   }
   state.scannedMints = state.scannedMints.slice(-1000);
-  return "Checked " + checked + " new tokens; paper buys: " + bought + ".";
+  state.lastScanReport = report.slice(-20);
+  return "Checked " + checked + " new tokens; paper buys: " + bought + ". " + report.filter(x => x.status !== "bought-paper").length + " blocked; reasons saved in scan report.";
 }
 
 export default {
@@ -217,7 +226,8 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
-          const state = cleanState(body);
+          const current = await readState(env);
+          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
           await saveState(env, state);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
