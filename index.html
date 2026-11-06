@@ -24,7 +24,10 @@ button{width:100%;min-width:0;min-height:32px;margin:0;padding:5px 8px;border:1p
 #scan{border-color:#4b9ed4;background:linear-gradient(110deg,#176fbd,#329de0)}
 button:disabled{opacity:.5}
 #status{grid-area:status;min-width:0;margin:0;padding:2px 5px;text-align:center;color:#ffd166;font-size:9px;line-height:1.3;white-space:pre-line}
-#discoverStatus,#discoverList{display:none!important}
+#discoverStatus{grid-area:status;display:block;min-width:0;font-size:9px;color:#a9c5d9;overflow-wrap:anywhere}
+#discoverList{grid-column:1/-1;display:flex;gap:4px;max-height:54px;overflow:auto;flex-wrap:wrap}
+#discoverList button{width:auto;max-width:48%;font-size:9px}
+#result{grid-template-rows:repeat(4,minmax(0,1fr))}
 #result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:7px;min-width:0;min-height:0;margin:0;overflow:hidden}
 #result>.section{min-width:0;min-height:0;height:100%;margin:0;padding:9px;border:1px solid #294963;border-radius:12px;background:linear-gradient(145deg,#142b42,#0c1b2b);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;box-shadow:0 6px 16px #0003}
 #result>.section:first-child{grid-column:auto}
@@ -37,7 +40,14 @@ button:disabled{opacity:.5}
 .good{color:#49e6a9}.bad{color:#ff7777}.warn{color:#ffd166}
 #result p{margin:4px 0;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
 #result .small,.empty-hint{color:#9db5ca;font-size:9px;line-height:1.4}
-#extraInfo,#liveTradingNotice,main>p.small,main>.section:not(#result){display:none!important}
+#extraInfo,#liveTradingNotice,main>p.small{display:none!important}
+#result>.section#demoPanel{min-width:0;min-height:0;height:100%;overflow:auto}
+#demoPanel h2{margin:0 0 5px}
+#demoPanel button{margin:3px 0}
+#demoPanel #demoHistory{max-height:110px;overflow:auto}
+#demoPanel .section{padding:5px;margin:4px 0;background:#0a1a2a;border:1px solid #29445e;border-radius:7px}
+#demoPanel .item{display:block}
+#demoPanel p{overflow-wrap:anywhere}
 @media(max-width:600px){
  body{padding:5px}
  main{height:calc(100dvh - 10px);gap:5px}
@@ -422,6 +432,20 @@ const foundExtensions=tokenExtensions.map(
   type=>extensionNames[type]||("Extension "+type)
 ); 
 
+const rpcErrors = [2,3,4]
+  .filter(i => tasks[i].status === "rejected")
+  .map(i => "RPC: " + (tasks[i].reason?.message || "هەڵەی نەناسراو"));
+const sourceErrors = [
+  tasks[0].status === "rejected" ? "DexScreener: " + (tasks[0].reason?.message || "نەگەیشت") : "",
+  tasks[1].status === "rejected" ? "RugCheck: " + (tasks[1].reason?.message || "نەگەیشت") : ""
+].filter(Boolean);
+const rpcDiagnostic = rpcErrors.length ? rpcErrors.join(" | ") : "داواکارییەکانی RPC وەڵامیان داوەتەوە";
+const sourceDiagnostic = [
+  tasks[0].status === "fulfilled" ? "DexScreener: OK" : "DexScreener: بەردەست نییە",
+  tasks[1].status === "fulfilled" ? "RugCheck: OK" : "RugCheck: بەردەست نییە",
+  rpcErrors.length ? "Solana RPC: هەڵە" : "Solana RPC: OK"
+].join(" | ");
+
 const name=market?.baseToken?.name||"کۆینی نەناسراو";
   window.lastTokenPrice = Number(market?.priceUsd || 0);const symbol=market?.baseToken?.symbol||"---";
   el("coinName").textContent=name+" ("+symbol+")";
@@ -536,25 +560,6 @@ const pairLink = typeof market?.url === "string" && market.url.startsWith("https
   ? "<p><a href='" + safe(market.url) + "' target='_blank' rel='noopener noreferrer'>کردنەوەی Pair لە DexScreener ↗</a></p>"
   : "";
 show("market", marketRows + pairLink);
-const rpcErrors = [2,3,4]
-  .filter(i => tasks[i].status === "rejected")
-  .map(i => "RPC: " +
-    (tasks[i].reason?.message || "هەڵەی نەناسراو")
-  );
-
-const sourceErrors = [
-  tasks[0].status === "rejected" ? "DexScreener: " + (tasks[0].reason?.message || "نەگەیشت") : "",
-  tasks[1].status === "rejected" ? "RugCheck: " + (tasks[1].reason?.message || "نەگەیشت") : ""
-].filter(Boolean);
-
-const rpcDiagnostic = rpcErrors.length
-  ? rpcErrors.join(" | ")
-  : "داواکارییەکانی RPC وەڵامیان داوەتەوە";
-const sourceDiagnostic = [
-  tasks[0].status === "fulfilled" ? "DexScreener: OK" : "DexScreener: بەردەست نییە",
-  tasks[1].status === "fulfilled" ? "RugCheck: OK" : "RugCheck: بەردەست نییە",
-  rpcErrors.length ? "Solana RPC: هەڵە" : "Solana RPC: OK"
-].join(" | ");
 let mintStatus="داتا نییە";
 let freezeStatus="داتا نییە";
 
@@ -810,10 +815,7 @@ demoPanel.innerHTML = `
  <div id="demoProfit"></div> <p class="small">تەنها تاقیکردنەوەیە؛ هیچ پارەی ڕاستەقینە بەکارناهێنێت.</p>
 `;
 
-document.querySelector("main").insertBefore(
-  demoPanel,
-  document.querySelector("main").lastElementChild
-);
+document.getElementById("result").appendChild(demoPanel);
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
 
