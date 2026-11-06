@@ -354,7 +354,7 @@ export default {
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
         : "Server cycle complete. Sold: " + sold + ". " + buyMessage;
-      await saveState(env);
+      await saveState(env, state);
 
       // Safe operational log: never include secrets, wallet data, or API keys.
       console.info("Server cycle finished", {
