@@ -701,6 +701,127 @@ main>#liveTradingNotice,main>p.small{display:none!important}
  #result{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}
 }
 
+
+/* ===== COMPLETE VISUAL REDESIGN: SOLANA SMART TERMINAL ===== */
+:root{
+ --bg:#080d18;--panel:#111d30;--panel2:#15243a;--edge:#293d58;
+ --mint:#4ce0bd;--blue:#62b8ff;--ink:#f2f7ff;--muted:#a4b5cb;
+}
+*{box-sizing:border-box}
+html,body{
+ width:100%!important;height:100%!important;min-height:100%!important;
+ overflow:hidden!important;margin:0!important;
+}
+body{
+ padding:10px!important;color:var(--ink)!important;
+ background:
+  radial-gradient(ellipse at 12% 0%,#1c4960 0,transparent 38%),
+  radial-gradient(ellipse at 90% 100%,#173c3a 0,transparent 35%),
+  linear-gradient(145deg,#070b14,#0b1728 58%,#07111c)!important;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif!important;
+ line-height:1.45!important;
+}
+main{
+ width:100%!important;max-width:1240px!important;height:calc(100dvh - 20px)!important;
+ min-height:0!important;max-height:calc(100dvh - 20px)!important;
+ margin:0 auto!important;padding:0!important;overflow:hidden!important;
+ display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ grid-template-rows:auto auto auto minmax(0,1fr)!important;gap:9px!important;
+}
+main>header{
+ grid-column:1/-1!important;grid-row:1!important;position:relative!important;
+ margin:0!important;padding:12px 16px!important;text-align:right!important;
+ border:1px solid #315773!important;border-radius:17px!important;
+ background:linear-gradient(105deg,#142c45f5,#102338f5 58%,#123b39f5)!important;
+ box-shadow:0 12px 30px #0005,inset 0 1px #ffffff12!important;
+}
+main>header:before{content:"SOLANA SMART BOT  /  TOKEN INTELLIGENCE";display:block;color:#7ad9d0;font-size:9px;letter-spacing:1.8px;font-weight:800;margin-bottom:3px}
+main>header:after{display:none!important}
+main>header h1{margin:0!important;font-size:clamp(18px,4vw,27px)!important;line-height:1.3!important;color:#f5fbff!important}
+main>header p{margin:3px 0 0!important;font-size:11px!important;color:#b4c9dc!important}
+#extraInfo{
+ display:contents!important;
+}
+#extraInfo>summary{display:none!important}
+#extraInfo>.dashboard{
+ grid-column:1/-1!important;grid-row:2!important;
+ display:block!important;margin:0!important;padding:9px 12px!important;
+ border:1px solid #2d625e!important;border-radius:15px!important;
+ background:linear-gradient(110deg,#102d35,#102337 70%,#14283d)!important;
+ box-shadow:0 8px 22px #0003!important;
+}
+.dash-heading{display:flex!important;justify-content:space-between!important;align-items:center!important;margin:0 0 7px!important}
+.dash-heading h2{margin:0!important;padding:0!important;border:0!important;font-size:13px!important;color:#a9f1dc!important}
+.eyebrow{font-size:8px!important;letter-spacing:1.5px!important;color:#7bb6d1!important}
+.mode-pill{font-size:9px!important;padding:3px 8px!important;border-color:#367d6d!important;background:#103a34!important}
+.dash-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important}
+.metric{padding:7px 9px!important;border:1px solid #2c4b5d!important;border-radius:10px!important;background:#0b1d2b!important}
+.metric span,.metric small{font-size:9px!important;color:#a8bfd1!important}
+.metric strong{font-size:16px!important;margin:2px 0!important;color:#effcff!important}
+.dash-foot{margin:6px 0 0!important;padding:5px 9px!important;border:1px solid #254c4d!important;border-radius:8px!important;background:#0a2028!important;font-size:10px!important}
+.dash-foot strong{font-size:13px!important}
+.dash-note{display:none!important}
+#extraInfo>#walletPanel{display:none!important}
+main>.panel{
+ grid-column:1/-1!important;grid-row:3!important;
+ margin:0!important;padding:9px 12px!important;min-width:0!important;
+ border:1px solid #345a78!important;border-radius:15px!important;
+ background:linear-gradient(120deg,#142941,#102237)!important;
+ box-shadow:0 8px 22px #0003!important;overflow:hidden!important;
+}
+main>.panel h2{font-size:13px!important;margin:0 0 6px!important;padding:0 0 5px!important;border-bottom:1px solid #2b4760!important}
+#autoDiscover{width:auto!important;min-height:32px!important;margin:0 0 5px!important;padding:6px 11px!important;font-size:10px!important;background:linear-gradient(110deg,#176e77,#168e82)!important;border:1px solid #42b8a8!important}
+#discoverStatus{display:inline-block!important;margin:0 0 0 6px!important;padding:3px 6px!important;font-size:9px!important;line-height:1.3!important}
+#discoverList{display:none!important}
+#mint{width:100%!important;min-height:39px!important;padding:8px 11px!important;border:1px solid #3d6481!important;border-radius:9px!important;background:#081625!important;color:#f5fbff!important;font-size:12px!important}
+#scan{width:100%!important;min-height:38px!important;margin:5px 0 0!important;padding:7px!important;border:1px solid #4aafe0!important;border-radius:9px!important;background:linear-gradient(100deg,#1879c4,#319bdb)!important;color:#fff!important;font-size:12px!important}
+#status{margin:4px 0 0!important;padding:3px!important;font-size:9px!important;line-height:1.3!important}
+#result{
+ grid-column:1/-1!important;grid-row:4!important;
+ display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ grid-template-rows:repeat(3,minmax(0,1fr))!important;
+ min-width:0!important;min-height:0!important;overflow:hidden!important;
+ gap:8px!important;margin:0!important;
+}
+#result>.section{
+ min-width:0!important;min-height:0!important;height:100%!important;
+ margin:0!important;padding:9px!important;overflow:hidden!important;
+ border:1px solid #2b4560!important;border-radius:13px!important;
+ background:linear-gradient(145deg,#152941f5,#0e1b2df5)!important;
+ box-shadow:0 7px 18px #0003!important;
+}
+#result>.section:first-child{grid-column:auto!important;border-color:#3b6377!important;background:linear-gradient(145deg,#183449,#11243a)!important}
+#result h2{font-size:11px!important;line-height:1.3!important;margin:0 0 5px!important;padding:0 0 5px!important;color:#8fe9d7!important;border-bottom:1px solid #2b4961!important}
+#result h3{font-size:11px!important;margin:3px 0!important}
+#result .item{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:5px!important;margin:3px 0!important;padding:5px 6px!important;border:1px solid #263f58!important;border-radius:7px!important;background:#0b1a2a!important;font-size:10px!important;line-height:1.35!important}
+#result .item span{font-size:10px!important;color:#b5c8da!important}
+#result .value{max-width:62%!important;font-size:10px!important;color:#eff7ff!important;overflow-wrap:anywhere!important}
+#result p{font-size:10px!important;line-height:1.4!important;margin:4px 0!important}
+#result .small{font-size:9px!important;line-height:1.35!important;color:#9eb4c9!important}
+#risk h2{border:0!important}
+#liveTradingNotice,main>p.small{display:none!important}
+.panel,.section{transition:border-color .2s,box-shadow .2s!important}
+button{font-weight:750!important;cursor:pointer!important}
+button:focus-visible,input:focus-visible{outline:2px solid var(--mint)!important;outline-offset:2px!important}
+@media(min-width:700px){
+ main{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+ #result{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:390px){
+ body{padding:6px!important}
+ main{height:calc(100dvh - 12px)!important;max-height:calc(100dvh - 12px)!important;gap:6px!important}
+ main>header{padding:9px 11px!important}
+ .dash-grid{gap:4px!important}
+ .metric{padding:5px!important}
+ .metric span,.metric small{font-size:8px!important}
+ .metric strong{font-size:14px!important}
+ main>.panel{padding:7px 9px!important}
+ #result{gap:5px!important}
+ #result>.section{padding:6px!important}
+ #result .item{font-size:9px!important;padding:4px!important}
+ #result .item span,#result .value{font-size:9px!important}
+}
+
 </style>
 </head>
 <body>
