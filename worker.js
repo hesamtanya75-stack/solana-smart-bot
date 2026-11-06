@@ -18,6 +18,7 @@ const RPCS = [
   "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com"
 ];
+let rpcCursor = 0;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -56,7 +57,12 @@ async function authorized(request, env) {
 }
 async function rpc(method, params) {
   const errors = [];
-  for (const endpoint of RPCS) {
+  // Rotate through providers, but cap each RPC method to two outbound requests.
+  // This keeps a single Worker invocation below Cloudflare's subrequest ceiling.
+  const attempts = Math.min(2, RPCS.length);
+  for (let i = 0; i < attempts; i++) {
+    const endpoint = RPCS[rpcCursor % RPCS.length];
+    rpcCursor = (rpcCursor + 1) % RPCS.length;
     try {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -72,7 +78,7 @@ async function rpc(method, params) {
       errors.push(new URL(endpoint).hostname + ": " + String(error?.message || error));
     }
   }
-  throw new Error("All RPC endpoints failed — " + errors.join(" | "));
+  throw new Error("RPC providers failed (rotating, max 2 per method) — " + errors.join(" | "));
 }
 async function getJson(url) {
   const host = new URL(url).hostname;
@@ -201,7 +207,7 @@ async function autoBuy(state) {
   let checked = 0, bought = 0;
   const report = [];
   for (const token of tokens) {
-    if (checked >= 5 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
+    if (checked >= 3 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
     if (state.scannedMints.includes(mint) || state.trades.some(t => t.mint === mint)) continue;
     checked++;
@@ -229,7 +235,7 @@ async function autoBuy(state) {
   }
   state.scannedMints = state.scannedMints.slice(-1000);
   state.lastScanReport = report.slice(-20);
-  return "Checked " + checked + " new tokens; paper buys: " + bought + ". " + report.filter(x => x.status !== "bought-paper").length + " blocked; reasons saved in scan report.";
+  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + report.filter(x => x.status !== "bought-paper").length + " blocked; reasons saved in scan report.";
 }
 
 export default {
