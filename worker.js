@@ -133,13 +133,54 @@ async function getJson(url) {
     lastError = new Error(host + " HTTP " + status);
     if (status !== 429 && status < 500) throw lastError;
     if (attempt < 2) {
-      const retryAfter = Number(response.headers.get("Retry-After") || 0);
-      const delay = retryAfter > 0 ? Math.min(retryAfter * 1000, 8000) : 1500 * (attempt + 1);
+      const retryHeader = response.headers.get("Retry-After");
+      let retryAfterMs = 0;
+      if (retryHeader) {
+        const seconds = Number(retryHeader);
+        retryAfterMs = Number.isFinite(seconds) && seconds > 0
+          ? seconds * 1000
+          : Math.max(0, Date.parse(retryHeader) - Date.now());
+      }
+      // Respect long provider cooldowns instead of retrying early and extending the rate limit.
+      if (status === 429 && retryAfterMs > 10000) {
+        throw new Error(host + " HTTP 429 (provider asks to retry after " + Math.ceil(retryAfterMs / 1000) + "s)");
+      }
+      const delay = retryAfterMs > 0 ? retryAfterMs : 1500 * (attempt + 1);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw lastError || new Error(host + " request failed");
 }
+
+async function getDexJson(url, env, ttlSeconds = 30) {
+  // Reuse recent DexScreener responses across overlapping cron/API work.
+  // Cache failures are non-fatal; live data remains the fallback.
+  let cacheKey;
+  try {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
+    const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    cacheKey = "dex_cache:" + hash;
+    const cached = await env.BOT_STATE.get(cacheKey, "json");
+    if (cached && cached.savedAt && Date.now() - cached.savedAt < ttlSeconds * 1000) {
+      return cached.data;
+    }
+  } catch (error) {
+    console.warn("DexScreener cache read warning", String(error?.message || error));
+  }
+
+  const data = await getJson(url);
+  if (cacheKey) {
+    try {
+      await env.BOT_STATE.put(cacheKey, JSON.stringify({ savedAt: Date.now(), data }), {
+        expirationTtl: Math.max(60, ttlSeconds * 2)
+      });
+    } catch (error) {
+      console.warn("DexScreener cache write warning", String(error?.message || error));
+    }
+  }
+  return data;
+}
+
 function mintDetails(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account unavailable");
@@ -176,7 +217,7 @@ function mintDetails(account) {
 }
 async function inspectMint(mint, env) {
   const [dex, rug, account, largest, supply] = await Promise.all([
-    getJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint)),
+    getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 45),
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }], env),
     rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }], env),
@@ -227,11 +268,11 @@ async function inspectMint(mint, env) {
   if (!(price > 0)) reasons.push("Price unavailable");
   return { ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score, largestPct, topTenPct };
 }
-async function refreshTrades(state) {
+async function refreshTrades(state, env) {
   const open = state.trades.filter(t => !t.sold);
   if (!open.length) return 0;
   const addresses = [...new Set(open.map(t => t.mint).filter(Boolean))].slice(0, 30);
-  const data = await getJson("https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","));
+  const data = await getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","), env, 15);
   const best = new Map();
   for (const pair of (data.pairs || []).filter(p => p.chainId === "solana")) {
     const mint = pair.baseToken?.address;
@@ -254,7 +295,7 @@ async function refreshTrades(state) {
 }
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
-  const profiles = await getJson("https://api.dexscreener.com/token-profiles/latest/v1");
+  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 45);
   const tokens = Array.isArray(profiles) ? profiles.filter(t => t.chainId === "solana" && t.tokenAddress) : [];
   let checked = 0, bought = 0;
   const report = [];
@@ -356,7 +397,7 @@ export default {
 
       // A temporary price-refresh failure must not prevent discovery and paper buys.
       try {
-        sold = await refreshTrades(state);
+        sold = await refreshTrades(state, env);
       } catch (error) {
         refreshWarning = String(error?.message || error);
         console.error("Trade refresh warning", {
