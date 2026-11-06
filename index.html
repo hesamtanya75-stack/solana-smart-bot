@@ -548,6 +548,38 @@ button:active{filter:brightness(1.15);transform:scale(.99)}
   #result{height:auto!important;grid-template-rows:none!important;grid-auto-rows:minmax(190px,auto)!important;overflow:visible!important}
 }
 
+
+/* FINAL POLISH: controls, discovery and keyboard focus */
+@media(max-width:700px){
+  main>.panel{
+    grid-template-rows:auto 42px 38px auto auto auto!important;
+    grid-template-areas:
+      "heading heading"
+      "input input"
+      "scan discover"
+      "status status"
+      "discoverstatus discoverstatus"
+      "discoverlist discoverlist"!important;
+  }
+  #discoverList button{
+    border-color:#3b8fa8!important;
+    background:linear-gradient(110deg,#123a58,#174f58)!important;
+    color:#e9fbff!important;
+    box-shadow:none!important;
+  }
+  #discoverList button:active{transform:translateY(1px)!important}
+}
+button:focus-visible,#mint:focus-visible{
+  outline:3px solid #65e7df!important;
+  outline-offset:2px!important;
+}
+#result>.section{transition:border-color .18s ease,box-shadow .18s ease}
+#result>.section:focus-within{border-color:#568ac4}
+#demoPanel .demo-disclaimer{display:block!important}
+@media(prefers-reduced-motion:reduce){
+  #result>.section{transition:none!important}
+}
+
 </style>
 </head>
 <body>
