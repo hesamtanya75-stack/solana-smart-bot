@@ -1184,7 +1184,7 @@ async function scanToken(){
 
  el("scan").disabled=true;
  el("status").textContent="لە پشکنین دام... تکایە چاوەڕێ بکە";
- el("result").style.display="none";
+ el("result").style.display="grid";
 
  try{
   let risk=0,notes=[],market=null,rug=null;
@@ -1604,7 +1604,7 @@ if(riskyExtensions.length>0)
 window.demoBuyAllowed=window.demoBuyBlockReasons.length===0;
 
 el("result").style.display="grid";
-  el("status").textContent="پشکنین تەواو بوو. هەموو بەشەکان لە تابەکانی خوارەوە بەردەستن.";
+  el("status").textContent="پشکنین تەواو بوو. هەموو بەشەکان لە هەمان شاشە نیشان دراون.";
   if(typeof window.showBotTab==="function") window.showBotTab("analysis");
 updateDemoProfit();
  }catch(e){
