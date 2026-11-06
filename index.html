@@ -125,6 +125,14 @@ main>#demoPanel{grid-column:1/-1;min-width:0;min-height:0;padding:12px!important
 }
 @media(max-width:360px){#result{grid-template-columns:minmax(0,1fr)}#result>.section:first-child,main>#demoPanel{grid-column:1}#demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+#serverLogin{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;background:#020611ee;backdrop-filter:blur(8px)}
+#serverLogin .login-card{width:min(420px,100%);padding:22px;border:1px solid #5b48a8;border-radius:18px;background:linear-gradient(145deg,#17103d,#0a1b35);box-shadow:0 15px 50px #0009;text-align:right}
+#serverLogin h2{margin:0 0 10px;color:#fff;font-size:18px}
+#serverLogin p{color:#c2d6ed;font-size:12px;line-height:1.7}
+#serverLogin input{width:100%;height:44px;margin:10px 0;padding:10px;border:1px solid #315b91;border-radius:10px;background:#050d1d;color:#fff;direction:ltr;text-align:left}
+#serverLogin .login-error{min-height:18px;color:#ff9ba9;font-size:11px}
+
 </style>
 </head>
 <body>
@@ -1059,6 +1067,7 @@ if (duplicate) {
 }
 
 async function refreshDemoPrice() {
+  if (serverModeReady) return; // Prices and exits are handled by the server cron.
   if (refreshDemoPrice.running) return;
   refreshDemoPrice.running = true;
   let soldCount = 0;
@@ -1268,6 +1277,7 @@ pauseBuyBtn.onclick = function() {
 };
 
 async function runAutoDemoBuy() {
+  if (serverModeReady) return; // Auto-buy is handled by the server cron.
   if (!autoDemoBuyEnabled || autoDemoBuyPaused || autoDemoBuyRunning) return;
   autoDemoBuyRunning = true;
 
@@ -1368,6 +1378,171 @@ setInterval(() => {
    conclusionCard.remove();
  }
 })();
+
+
+
+// ===== Cloudflare server mode: persistent paper trading =====
+let serverModeReady = false;
+let serverToken = localStorage.getItem("solanaBotSession") || "";
+let serverSaveTimer = null;
+const serverLogin = document.createElement("div");
+serverLogin.id = "serverLogin";
+serverLogin.innerHTML = `
+  <div class="login-card">
+    <h2>🔐 چوونەژوورەوەی بۆتی سێرڤەر</h2>
+    <p>بۆ کارکردنی بۆت لەسەر سێرڤەر و بەردەوامبوونی تاقیکردنەوەی خەیاڵی، وشەی نهێنییەکە بنووسە.</p>
+    <input id="serverPassword" type="password" autocomplete="current-password" placeholder="وشەی نهێنی">
+    <button id="serverLoginButton">چوونەژوورەوە</button>
+    <div class="login-error" id="serverLoginError"></div>
+    <p class="small">تەنها تاقیکردنەوەی خەیاڵییە؛ هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت.</p>
+  </div>`;
+document.body.appendChild(serverLogin);
+
+async function serverRequest(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (serverToken) headers.Authorization = "Bearer " + serverToken;
+  const response = await fetch(path, { ...options, headers, cache: "no-store" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+  return data;
+}
+function renderServerControls(state) {
+  autoDemoBuyEnabled = state.autoEnabled === true;
+  autoDemoBuyPaused = state.paused === true;
+  autoBuyBtn.textContent = autoDemoBuyEnabled ? "🟢 کڕینی خۆکار: چالاک" : "🤖 کڕینی خۆکار: ناچالاک";
+  pauseBuyBtn.textContent = autoDemoBuyPaused ? "▶️ دەستپێکردنەوەی بۆت" : "⏸️ ڕاوەستاندنی بۆت";
+}
+function applyServerState(state) {
+  if (!state || !Array.isArray(state.trades)) return;
+  demoBalance = Number(state.balance);
+  demoTrades = state.trades;
+  renderServerControls(state);
+  const balanceNode = document.getElementById("demoBalance");
+  if (balanceNode) balanceNode.textContent = "$" + demoBalance.toFixed(2);
+  renderDemoHistory();
+  updateDemoProfit();
+  if (state.lastMessage && document.getElementById("demoStatus")) {
+    document.getElementById("demoStatus").textContent = state.lastMessage;
+  }
+  if (state.lastRunAt && document.getElementById("demoStatus")) {
+    document.getElementById("demoStatus").textContent += "\nدوایین جار لە سێرڤەر: " + new Date(state.lastRunAt).toLocaleString();
+  }
+}
+async function syncServerState() {
+  if (!serverModeReady) return;
+  const state = await serverRequest("/api/state");
+  applyServerState(state);
+}
+async function saveServerState() {
+  if (!serverModeReady) return;
+  await serverRequest("/api/state", {
+    method: "PUT",
+    body: JSON.stringify({
+      balance: demoBalance,
+      trades: demoTrades,
+      autoEnabled: autoDemoBuyEnabled,
+      paused: autoDemoBuyPaused,
+      scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
+    })
+  });
+}
+const localSaveDemoState = saveDemoState;
+saveDemoState = function() {
+  localSaveDemoState();
+  if (serverModeReady) {
+    clearTimeout(serverSaveTimer);
+    serverSaveTimer = setTimeout(() => {
+      saveServerState().catch(error => {
+        const status = document.getElementById("demoStatus");
+        if (status) status.textContent = "هەڵە لە پاشەکەوتکردنی سێرڤەر: " + error.message;
+      });
+    }, 500);
+  }
+};
+async function finishServerLogin(token) {
+  serverToken = token;
+  localStorage.setItem("solanaBotSession", token);
+  const remote = await serverRequest("/api/state");
+  if (!remote.updatedAt) {
+    let old = null;
+    try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
+    if (old && Array.isArray(old.trades)) {
+      demoBalance = Number.isFinite(Number(old.balance)) ? Number(old.balance) : 100;
+      demoTrades = old.trades;
+    }
+    await saveServerState();
+  } else {
+    applyServerState(remote);
+  }
+  serverModeReady = true;
+  serverLogin.style.display = "none";
+  renderServerControls(remote.updatedAt ? remote : {
+    autoEnabled: false, paused: false
+  });
+  await syncServerState();
+  setInterval(() => syncServerState().catch(() => {}), 15000);
+}
+async function submitServerLogin() {
+  const input = document.getElementById("serverPassword");
+  const error = document.getElementById("serverLoginError");
+  const button = document.getElementById("serverLoginButton");
+  button.disabled = true;
+  error.textContent = "چوونەژوورەوە...";
+  try {
+    const result = await serverRequest("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ password: input.value })
+    });
+    await finishServerLogin(result.token);
+  } catch (e) {
+    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message :
+      "نەتوانرا پەیوەندی بە سێرڤەر بکرێت: " + e.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+document.getElementById("serverLoginButton").addEventListener("click", submitServerLogin);
+document.getElementById("serverPassword").addEventListener("keydown", event => {
+  if (event.key === "Enter") submitServerLogin();
+});
+async function changeServerAutomation(enabled, paused) {
+  const result = await serverRequest("/api/automation", {
+    method: "POST",
+    body: JSON.stringify({ enabled, paused })
+  });
+  applyServerState(result.state);
+}
+autoBuyBtn.onclick = async function() {
+  if (!serverModeReady) {
+    document.getElementById("demoStatus").textContent = "سەرەتا چوونەژوورەوەی سێرڤەر تەواو بکە.";
+    return;
+  }
+  try {
+    await changeServerAutomation(!autoDemoBuyEnabled, autoDemoBuyPaused);
+    document.getElementById("demoStatus").textContent = autoDemoBuyEnabled
+      ? "کڕینی خۆکاری خەیاڵی لە سێرڤەر چالاک کرا؛ لە مۆبایلەکەت پێویست ناکات وێبسایت کراوە بێت."
+      : "کڕینی خۆکار ناچالاک کرا.";
+  } catch (e) { document.getElementById("demoStatus").textContent = e.message; }
+};
+pauseBuyBtn.onclick = async function() {
+  if (!serverModeReady) {
+    document.getElementById("demoStatus").textContent = "سەرەتا چوونەژوورەوەی سێرڤەر تەواو بکە.";
+    return;
+  }
+  try {
+    await changeServerAutomation(autoDemoBuyEnabled, !autoDemoBuyPaused);
+    document.getElementById("demoStatus").textContent = autoDemoBuyPaused
+      ? "بۆتی سێرڤەر ڕاوەستێندرا؛ فرۆشتنی مامەڵە کراوەکان بەردەوامە."
+      : "بۆتی سێرڤەر دووبارە دەستی پێکردەوە.";
+  } catch (e) { document.getElementById("demoStatus").textContent = e.message; }
+};
+if (serverToken) {
+  finishServerLogin(serverToken).catch(() => {
+    localStorage.removeItem("solanaBotSession");
+    serverToken = "";
+    serverLogin.style.display = "flex";
+  });
+}
 
 </script>
 </body>
