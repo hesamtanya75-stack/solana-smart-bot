@@ -78,26 +78,25 @@ async function getJson(url) {
   const host = new URL(url).hostname;
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
+    let response;
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-      if (response.ok) return await response.json();
-      const status = response.status;
-      if (status !== 429 && status < 500) throw new Error(host + " HTTP " + status);
-      lastError = new Error(host + " HTTP " + status);
-      if (attempt < 2) {
-        const retryAfter = Number(response.headers.get("Retry-After") || 0);
-        const delay = retryAfter > 0 ? Math.min(retryAfter * 1000, 8000) : 1500 * (attempt + 1);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      response = await fetch(url, { signal: AbortSignal.timeout(12000) });
     } catch (error) {
-      lastError = error;
-      if (attempt < 2 && !String(error?.message || "").includes("HTTP 4")) {
+      lastError = new Error(host + " network error: " + String(error?.message || error));
+      if (attempt < 2) {
         await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-      } else if (attempt < 2 && String(error?.message || "").includes("HTTP 429")) {
-        await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
-      } else if (attempt < 2) {
         continue;
       }
+      throw lastError;
+    }
+    if (response.ok) return response.json();
+    const status = response.status;
+    lastError = new Error(host + " HTTP " + status);
+    if (status !== 429 && status < 500) throw lastError;
+    if (attempt < 2) {
+      const retryAfter = Number(response.headers.get("Retry-After") || 0);
+      const delay = retryAfter > 0 ? Math.min(retryAfter * 1000, 8000) : 1500 * (attempt + 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw lastError || new Error(host + " request failed");
