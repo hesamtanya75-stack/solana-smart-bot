@@ -105,7 +105,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
   <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>ئامان و پاراستن</div>
 </header>
 <div class="box">
-  <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ناوی کۆین یان ئادرس بنووسە..."></label>
+  <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
   <div class="row">
     <button class="btn green" id="disc">🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان</button>
     <button class="btn blue" id="scan">⚡ پشکنینی کۆین</button>
@@ -118,7 +118,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
     <div class="chg none" id="chgBox"><span id="chg"></span><small>24h</small></div>
   </div>
   <div class="st">
-    <div><span class="i">👥</span><span>خاوەنەکان</span><b id="hold"></b></div>
+    <div><span class="i">👥</span><span>خاوەنە پشکنراوەکان</span><b id="hold"></b></div>
     <div><span class="i">🔁</span><span>کرین / فرۆشتن</span><b id="bs"></b></div>
     <div><span class="i">📊</span><span>حجمی 24h</span><b id="vol"></b></div>
     <div><span class="i">💎</span><span>لیکوییدیتی</span><b id="liq"></b></div>
@@ -141,16 +141,19 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
     <div class="don"><div class="ring" id="ring"><div id="ringTxt"></div></div><div class="lg" id="lg"></div></div>
   </div>
   <div class="box sell">
-    <div class="h"><span>توانای فرۆشتن</span></div>
+    <div class="h"><span>مامەڵەی فرۆشتن 24h</span></div>
     <p id="sellTxt" style="color:var(--muted)">--</p><div class="meter none" id="meter">--</div><div class="sub" id="sellSub"></div>
   </div>
 </div>
 <div class="box">
   <div class="botrow">
     <div class="bs"><div class="h"><span>🏆 ئاماری بۆت</span></div>
-      <p><span>قازانج:</span><b style="color:#4ade80">+$0.00</b></p>
-      <p><span>زیان:</span><b style="color:#fb7185">$0.00</b></p><p><span>کرینەکان:</span><b>0</b></p></div>
-    <div class="ctl"><div class="h"><span>🤖 ڕۆبۆتی ئۆتۆماتیکی</span></div>
+      <p><span>قازانجی ڕاستەقینەی دیمۆ:</span><b id="statProfit" style="color:#4ade80">+$0.00</b></p>
+      <p><span>زیانی دیمۆ:</span><b id="statLoss" style="color:#fb7185">$0.00</b></p>
+      <p><span>باڵانسی دیمۆ:</span><b id="statBalance">$100.00</b></p>
+      <p><span>مامەڵە کراوە / داخراو:</span><b id="statTrades">0 / 0</b></p>
+      <p><span>ڕێژەی بردن:</span><b id="statWin">0%</b></p></div>
+    <div class="ctl"><div class="h"><span>🤖 ڕۆبۆتی ئۆتۆماتیکی</span></div><p id="botStatus" class="sub" style="text-align:right">بارکردنی دۆخی سێرڤەر...</p>
       <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div></div>
   </div>
 </div>
@@ -185,7 +188,14 @@ async function loadState(){
  var s=await api("/api/state");
  var closed=s.trades.filter(function(t){return t.sold});
  var pnl=closed.reduce(function(a,t){return a+Number(t.saleValue||0)-Number(t.amount||0)},0);
- var stat=document.querySelector(".bs");if(stat){var ps=stat.querySelectorAll("p");if(ps.length>=3){ps[0].querySelector("b").textContent=(pnl>=0?"+":"")+fmt(pnl);ps[1].querySelector("b").textContent="$"+Math.max(0,-pnl).toFixed(2);ps[2].querySelector("b").textContent=String(s.trades.length)}}
+ var wins=closed.filter(function(t){return Number(t.saleValue||0)>Number(t.amount||0)}).length;
+ var losses=closed.filter(function(t){return Number(t.saleValue||0)<Number(t.amount||0)}).length;
+ $("statProfit").textContent=(pnl>=0?"+":"")+fmt(pnl);
+ $("statLoss").textContent="$"+Math.max(0,-pnl).toFixed(2);
+ $("statBalance").textContent=fmt(s.balance);
+ $("statTrades").textContent=s.trades.filter(function(t){return !t.sold}).length+" / "+closed.length;
+ $("statWin").textContent=(closed.length?((wins/closed.length)*100).toFixed(1):"0")+"%";
+ $("botStatus").textContent=s.lastMessage||"دۆخی سێرڤەر بەردەستە";
  $("start").disabled=!!s.autoEnabled&&!s.paused;$("stop").disabled=!s.autoEnabled||!!s.paused;
  $("start").textContent=s.autoEnabled&&!s.paused?"▶ چالاکە":"▶ دەستپێکردنەوە";
 }
@@ -199,10 +209,10 @@ function render(){
   ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="--";$(k).className=""});$("price").textContent="--";$("spark").innerHTML="";$("checks").innerHTML="";$("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").innerHTML="";$("sellTxt").textContent="--";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="";return;
  }
  var top=Array.isArray(T.top)?T.top:[];var ch=[];
- ch.push([!T.mint,"Mint Authority: "+(T.mint?"Enabled":"Disabled")]);ch.push([!T.freeze,"Freeze Authority: "+(T.freeze?"Enabled":"Disabled")]);ch.push([top.length>0&&top[0]<=50,"Top 1 holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 holders: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
  if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
  $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;$("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";$("chgBox").className="chg"+(T.chg<0?" none":"");$("chg").textContent=(T.chg>=0?"↑ +":"↓ ")+T.chg+"%";
- $("hold").textContent=T.holders==null?"--":Number(T.holders).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ $("hold").textContent=T.holderAccountsChecked==null?"--":Number(T.holderAccountsChecked).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
  var a=0,g=[],lg="";top.forEach(function(p,i){g.push(C[i%C.length]+" "+a+"% "+(a+p)+"%");a+=p;lg+='<p><i style="background:'+C[i%C.length]+'"></i>Top '+(i+1)+'<b>'+Number(p).toFixed(2)+'%</b></p>'});g.push("#2b2f66 "+a+"% 100%");$("ring").style.background="conic-gradient("+g.join(",")+")";$("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";$("lg").innerHTML=lg;
  var tot=Number(T.buys)+Number(T.sells),pct=tot?Math.round(Number(T.sells)/tot*100):0;$("sellTxt").textContent=T.sells>0?"مامەڵەی فرۆشتن تۆمار کراوە":"هیچ فرۆشتنێک تۆمار نەکراوە";$("meter").className="meter";$("meter").textContent=pct+"%";$("sellSub").textContent="ڕێژەی فرۆشتن لە مامەڵەکانی 24h";$("price").textContent=fmt(T.price||0);
 }
