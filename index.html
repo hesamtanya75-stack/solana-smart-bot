@@ -1957,12 +1957,25 @@ async function refreshServerPrices() {
   if (!serverModeReady || serverPriceRefreshBusy) return;
   serverPriceRefreshBusy = true;
   try {
-    const result = await serverRequest("/api/refresh-prices", { method: "POST" });
-    if (result?.state) applyServerState(result.state);
+    const result = await serverRequest("/api/market-prices", { method: "POST" });
+    const prices = result?.prices || {};
+    let changed = false;
+    for (const trade of demoTrades) {
+      const price = Number(prices[trade.mint] || 0);
+      if (!trade.sold && price > 0 && price !== Number(trade.currentPrice || trade.buyPrice)) {
+        trade.currentPrice = price;
+        changed = true;
+      }
+    }
+    if (changed) {
+      renderDemoHistory();
+      updateDemoProfit();
+      updateDashboard();
+    }
   } catch (error) {
     const status = document.getElementById("demoStatus");
-    if (status && String(error?.message || "").includes("Price refresh failed")) {
-      status.textContent = "نوێکردنەوەی نرخی خەیاڵی سەرکەوتوو نەبوو؛ سێرڤەر لە خولی داهاتوودا دووبارە هەوڵ دەدات.";
+    if (status && String(error?.message || "").includes("Market price lookup failed")) {
+      status.textContent = "نوێکردنەوەی نرخی بازاڕ سەرکەوتوو نەبوو؛ لە خولی داهاتوودا دووبارە هەوڵ دەدرێت.";
     }
   } finally {
     serverPriceRefreshBusy = false;
