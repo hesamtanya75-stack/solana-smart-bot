@@ -506,10 +506,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "dd6026d" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "47a9972" });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "dd6026d", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build: "47a9972", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
@@ -678,7 +678,7 @@ export default {
     if (assetUrl.pathname === "/") assetUrl.pathname = "/index.html";
     const assetResponse = await env.ASSETS.fetch(new Request(assetUrl, request));
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "dd6026d");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", "47a9972");
     if (assetUrl.pathname === "/index.html") {
       assetHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
       assetHeaders.set("Pragma", "no-cache");
