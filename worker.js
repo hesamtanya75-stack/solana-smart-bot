@@ -701,14 +701,29 @@ export default {
       return json({ error: "Not found" }, 404);
     }
     const assetUrl = new URL(request.url);
+    const isDashboardHtml = assetUrl.pathname === "/" || assetUrl.pathname === "/index.html";
     if (assetUrl.pathname === "/") assetUrl.pathname = "/index.html";
-    const assetResponse = await env.ASSETS.fetch(new Request(assetUrl, request));
+
+    // Fetch the dashboard as a clean GET and rebuild its HTML response.
+    // This avoids forwarding browser navigation headers or stale encoding/length
+    // metadata from the incoming request to the static-assets binding.
+    const assetRequest = new Request(assetUrl, { method: "GET" });
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
+    if (isDashboardHtml && assetResponse.ok) {
+      const html = await assetResponse.text();
+      return new Response(html, {
+        status: assetResponse.status,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "X-Solana-Smart-Bot-Build": "47a9972"
+        }
+      });
+    }
+
     const assetHeaders = new Headers(assetResponse.headers);
     assetHeaders.set("X-Solana-Smart-Bot-Build", "47a9972");
-    if (assetUrl.pathname === "/index.html") {
-      assetHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-      assetHeaders.set("Pragma", "no-cache");
-    }
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
