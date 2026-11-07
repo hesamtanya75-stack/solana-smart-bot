@@ -506,10 +506,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "8e5c4da" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "8e5c4da", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
@@ -717,13 +717,13 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
-          "X-Solana-Smart-Bot-Build": "8e5c4da"
+          "X-Solana-Smart-Bot-Build": "59ef112"
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "8e5c4da");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
