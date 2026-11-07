@@ -2016,6 +2016,34 @@ async function submitServerLogin() {
       method: "POST",
       body: JSON.stringify({ password: input.value })
     });
+    if (result.mfaRequired) {
+      let otp = document.getElementById("serverTotpCode");
+      if (!otp) {
+        otp = document.createElement("input");
+        otp.id = "serverTotpCode";
+        otp.inputMode = "numeric";
+        otp.autocomplete = "one-time-code";
+        otp.maxLength = 6;
+        otp.placeholder = "کۆدی ٦ ژمارەیی Google Authenticator";
+        input.insertAdjacentElement("afterend", otp);
+      }
+      error.textContent = "کۆدی Google Authenticator بنووسە.";
+      button.textContent = "پشتڕاستکردنەوە";
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          const verified = await serverRequest("/api/login/totp", {
+            method: "POST",
+            body: JSON.stringify({ challengeId: result.challengeId, code: otp.value.trim() })
+          });
+          await finishServerLogin(verified.token);
+        } catch (e) {
+          error.textContent = e.message;
+        } finally { button.disabled = false; }
+      };
+      button.disabled = false;
+      return;
+    }
     await finishServerLogin(result.token);
   } catch (e) {
     error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message :
@@ -2067,6 +2095,107 @@ if (serverToken) {
   });
 }
 
+
+/* ===== Private administrator profile ===== */
+(function(){
+  const style=document.createElement("style");
+  style.textContent=`
+    #adminProfileButton{width:auto;min-height:34px;padding:6px 12px;margin:0 0 0 auto;background:linear-gradient(135deg,#6d4be8,#286f8e);border:1px solid #8b78e8}
+    #adminProfileModal{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;padding:14px;background:#020611ed;backdrop-filter:blur(8px)}
+    #adminProfileModal .profile-card{width:min(480px,100%);max-height:88dvh;overflow:auto;padding:18px;border:1px solid #5b48a8;border-radius:18px;background:linear-gradient(145deg,#17102f,#0a1a2e);box-shadow:0 15px 50px #0009}
+    #adminProfileModal h2{margin:0 0 12px;font-size:18px}
+    #adminProfileModal label{display:block;margin:10px 0 5px;color:#b9c8dc;font-size:11px}
+    #adminProfileModal input{width:100%;height:40px;padding:9px;border:1px solid #294365;border-radius:9px;background:#070f1e;color:white;direction:ltr;text-align:left}
+    #adminProfileModal button{margin-top:9px}
+    #adminProfileModal .profile-note{color:#ffd166;font-size:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+    #adminProfileModal .profile-status{min-height:18px;color:#9cf4d4;font-size:11px;white-space:pre-wrap}
+    #adminProfileModal .profile-secret{padding:10px;margin-top:8px;border:1px dashed #7d6bd4;border-radius:9px;background:#080f20;direction:ltr;text-align:center;overflow-wrap:anywhere;font-weight:800;letter-spacing:1px}
+  `;
+  document.head.appendChild(style);
+  const button=document.createElement("button");
+  button.id="adminProfileButton";
+  button.textContent="👤 پڕۆفایل";
+  const header=document.querySelector("header");
+  if(header) header.insertAdjacentElement("afterend",button);
+  const modal=document.createElement("div");
+  modal.id="adminProfileModal";
+  modal.innerHTML=`
+    <div class="profile-card">
+      <h2>👤 پڕۆفایلی تایبەتی بەڕێوەبەر</h2>
+      <p class="profile-note">ئەم پڕۆفایلە تەنها بۆ هەژماری بەڕێوەبەرە. ئیمەیڵ و ژمارەی مۆبایل لێرە پاشەکەوت دەکرێن، بەڵام تا پەیوەستکردنی دابینکەری ناردنی کۆد پشتڕاستکراوە نین.</p>
+      <label for="profileEmail">Gmail / ئیمەیڵ</label>
+      <input id="profileEmail" type="email" autocomplete="email" placeholder="name@gmail.com">
+      <label for="profilePhone">ژمارەی مۆبایل (بە کۆدی وڵات)</label>
+      <input id="profilePhone" type="tel" autocomplete="tel" placeholder="+964...">
+      <button id="profileSave">پاشەکەوتکردنی زانیاری</button>
+      <div class="profile-status" id="profileStatus"></div>
+      <hr style="border-color:#294365;margin:14px 0">
+      <h3 style="margin:0;font-size:14px">🔐 Google Authenticator</h3>
+      <p class="profile-note" id="totpState">بارکردنی دۆخ...</p>
+      <button id="totpStart">دامەزراندنی Authenticator</button>
+      <div id="totpSetup" style="display:none">
+        <p class="profile-note">لە Google Authenticator، زیادکردنی کلیلی بە شێوەی دستی هەڵبژێرە و ئەم کلیلیە بنووسە:</p>
+        <div class="profile-secret" id="totpSecret"></div>
+        <label for="totpConfirmCode">کۆدی ٦ ژمارەیی لە ئەپەکە</label>
+        <input id="totpConfirmCode" inputmode="numeric" maxlength="6" placeholder="000000">
+        <button id="totpConfirm">چالاککردنی پاراستنی دوو هەنگاوی</button>
+      </div>
+      <div id="totpBackup" style="display:none">
+        <p class="profile-note">ئەم کۆدە تەنها یەکجار پیشان دەدرێت. لە شوێنێکی پارێزراودا بیپارێزە:</p>
+        <div class="profile-secret" id="totpBackupCode"></div>
+      </div>
+      <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
+    </div>`;
+  document.body.appendChild(modal);
+  const status=()=>document.getElementById("profileStatus");
+  async function loadProfile(){
+    if(!serverModeReady) { status().textContent="سەرەتا بە وشەی نهێنی بچۆ ژوورەوە."; return; }
+    try{
+      const p=await serverRequest("/api/profile");
+      document.getElementById("profileEmail").value=p.email||"";
+      document.getElementById("profilePhone").value=p.phone||"";
+      document.getElementById("totpState").textContent=p.totpEnabled
+        ?"Google Authenticator چالاکە؛ لە چوونەژوورەوەدا کۆدی ٦ ژمارەیی داوا دەکرێت."
+        :"Google Authenticator هێشتا چالاک نییە.";
+      document.getElementById("totpStart").style.display=p.totpEnabled?"none":"block";
+    }catch(e){status().textContent=e.message;}
+  }
+  button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
+  document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
+  document.getElementById("profileSave").onclick=async()=>{
+    status().textContent="پاشەکەوت دەکرێت...";
+    try{
+      const p=await serverRequest("/api/profile",{method:"PUT",body:JSON.stringify({
+        email:document.getElementById("profileEmail").value.trim(),
+        phone:document.getElementById("profilePhone").value.trim()
+      })});
+      status().textContent=p.message;
+    }catch(e){status().textContent=e.message;}
+  };
+  document.getElementById("totpStart").onclick=async()=>{
+    status().textContent="کلیلی پاراستن دروست دەکرێت...";
+    try{
+      const p=await serverRequest("/api/totp/setup",{method:"POST",body:"{}"});
+      document.getElementById("totpSecret").textContent=p.secret;
+      document.getElementById("totpSetup").style.display="block";
+      status().textContent=p.message;
+    }catch(e){status().textContent=e.message;}
+  };
+  document.getElementById("totpConfirm").onclick=async()=>{
+    status().textContent="پشتڕاستکردنەوە...";
+    try{
+      const p=await serverRequest("/api/totp/confirm",{method:"POST",body:JSON.stringify({code:document.getElementById("totpConfirmCode").value.trim()})});
+      document.getElementById("totpSetup").style.display="none";
+      document.getElementById("totpBackupCode").textContent=p.backupCode;
+      document.getElementById("totpBackup").style.display="block";
+      document.getElementById("totpState").textContent="Google Authenticator چالاک کرا.";
+      document.getElementById("totpStart").style.display="none";
+      status().textContent=p.message;
+    }catch(e){status().textContent=e.message;}
+  };
+})();
 </script>
 </body>
 </html>
