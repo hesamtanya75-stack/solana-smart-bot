@@ -755,6 +755,83 @@ main>#demoPanel{
   #demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{grid-column:1/-1!important}
 }
 
+
+/* ===== Reference-inspired premium dashboard polish (CSS only) ===== */
+:root{
+  --ref-purple:#9945ff;
+  --ref-green:#14f195;
+  --ref-blue:#3b82f6;
+  --ref-card:#0c1424;
+}
+body{
+  background-image:
+    radial-gradient(ellipse 75% 38% at 50% -12%,rgba(153,69,255,.18),transparent 72%),
+    radial-gradient(ellipse 55% 32% at 100% 92%,rgba(20,241,149,.075),transparent 72%),
+    linear-gradient(155deg,#050811 0%,#081426 58%,#07151d 100%)!important;
+}
+header{
+  border-color:rgba(153,69,255,.5)!important;
+  background:linear-gradient(110deg,#190d3d 0%,#0b1930 58%,#06312e 100%)!important;
+  box-shadow:0 8px 24px rgba(0,0,0,.24),0 0 20px rgba(153,69,255,.13)!important;
+}
+header:before{color:#b8ffe1!important}
+.safety-strip{
+  border-color:rgba(20,241,149,.3)!important;
+  background:linear-gradient(100deg,rgba(20,185,129,.13),rgba(59,130,246,.08))!important;
+}
+main>.panel{
+  border-color:rgba(89,112,190,.35)!important;
+  background:linear-gradient(125deg,#151039 0%,#0b1930 62%,#062b30 100%)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.22),inset 0 0 18px rgba(153,69,255,.045)!important;
+}
+#scan{background:linear-gradient(135deg,#438cff,#2454dc)!important}
+#autoDiscover{background:linear-gradient(135deg,#10b981,#047857)!important}
+#result>.section{
+  border-color:rgba(91,123,174,.3)!important;
+  background:linear-gradient(145deg,#101b30 0%,#0a1424 78%,#0a2025 100%)!important;
+  box-shadow:0 7px 18px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.025)!important;
+}
+#result>.section:first-child{
+  border-color:rgba(153,69,255,.5)!important;
+  background:linear-gradient(115deg,#1b1040 0%,#0d1b34 62%,#06312f 100%)!important;
+}
+#result h2{color:#c5d9f5!important}
+#result>.section:first-child h2{color:#fff!important}
+#risk,.visual-card,#conclusion{
+  border-radius:12px!important;
+}
+#demoPanel{
+  border-color:rgba(20,241,149,.32)!important;
+  background:linear-gradient(130deg,#111638 0%,#0a192e 68%,#062c2a 100%)!important;
+}
+#demoPanel .dashboard{
+  border-color:rgba(153,69,255,.34)!important;
+  background:linear-gradient(120deg,#1a123d,#0b1a30 72%,#082b29)!important;
+}
+#demoPanel .metric,#demoPanel .demo-metric,
+#demoPanel #demoStats,#demoPanel #demoHistory .section{
+  border-color:rgba(105,132,184,.25)!important;
+  background:#091628!important;
+}
+#adminProfileButton{
+  border:1px solid rgba(153,69,255,.55)!important;
+  background:linear-gradient(135deg,#7546d9,#176d79)!important;
+  box-shadow:0 4px 14px rgba(95,67,210,.18)!important;
+}
+@media(max-width:600px){
+  body{overflow-y:auto!important;overscroll-behavior-y:auto}
+  main{max-width:480px!important}
+  #result{grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:stretch}
+  #result>.section{min-width:0!important;overflow-wrap:anywhere}
+  #result>.section:first-child{grid-column:1/-1!important}
+  #demoPanel{grid-column:1/-1!important}
+  #adminProfileButton{min-height:34px!important;margin:0 0 0 auto!important}
+}
+@media(max-width:370px){
+  #result{grid-template-columns:minmax(0,1fr)!important}
+  #result>.section:first-child,#demoPanel{grid-column:1!important}
+}
+
 </style>
 </head>
 <body>
