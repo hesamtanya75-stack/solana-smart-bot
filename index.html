@@ -832,6 +832,112 @@ main>.panel{
   #result>.section:first-child,#demoPanel{grid-column:1!important}
 }
 
+
+/* ===== Final responsive reference design layer: preserve all app logic ===== */
+:root{
+  --dashboard-bg:#050914;
+  --dashboard-panel:#0b1527;
+  --dashboard-line:rgba(123,105,220,.34);
+  --dashboard-purple:#9945ff;
+  --dashboard-green:#14f195;
+  --dashboard-cyan:#19c9ef;
+}
+html,body{height:auto!important;min-height:100%!important}
+body{
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  background:
+    radial-gradient(ellipse 70% 34% at 8% 0%,rgba(119,54,225,.19),transparent 72%),
+    radial-gradient(ellipse 55% 32% at 100% 18%,rgba(0,177,165,.12),transparent 72%),
+    linear-gradient(155deg,#030611 0%,#071326 58%,#061b20 100%)!important;
+}
+main{width:100%!important;max-width:1180px!important;height:auto!important;min-height:0!important;margin:0 auto!important;gap:13px!important}
+header{
+  min-width:0!important;min-height:96px!important;padding:15px 90px 15px 18px!important;
+  border:1px solid rgba(145,91,255,.62)!important;border-radius:19px!important;
+  background:linear-gradient(112deg,#160d38 0%,#0b1931 58%,#06302e 100%)!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.28),0 0 22px rgba(128,65,255,.14)!important;
+}
+header:after{right:20px!important;width:54px!important;height:54px!important;filter:drop-shadow(0 0 11px #884aff)!important}
+h1{font-size:clamp(20px,2.8vw,29px)!important;line-height:1.35!important}
+header p{font-size:12px!important;line-height:1.6!important}
+.safety-strip{
+  min-width:0!important;padding:10px 13px!important;border-radius:13px!important;
+  border:1px solid rgba(20,241,149,.32)!important;
+  background:linear-gradient(100deg,rgba(16,185,129,.13),rgba(59,130,246,.09))!important;
+}
+main>.panel{
+  min-width:0!important;padding:14px!important;gap:9px!important;border-radius:17px!important;
+  border:1px solid rgba(113,105,205,.42)!important;
+  background:linear-gradient(125deg,rgba(20,15,51,.98),rgba(8,25,42,.98))!important;
+  box-shadow:0 9px 24px rgba(0,0,0,.22)!important;
+}
+#mint{min-width:0!important;height:47px!important;border-radius:12px!important}
+#scan,#autoDiscover{min-height:43px!important;border-radius:12px!important}
+#result{
+  display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  grid-auto-rows:auto!important;align-items:stretch!important;gap:11px!important;
+  min-width:0!important;overflow:visible!important;
+}
+#result>.section{
+  min-width:0!important;min-height:0!important;height:auto!important;
+  padding:14px!important;border-radius:15px!important;overflow:visible!important;
+  border:1px solid rgba(103,129,181,.28)!important;
+  background:linear-gradient(145deg,#101b30 0%,#091525 82%,#092326 100%)!important;
+  box-shadow:0 7px 19px rgba(0,0,0,.22)!important;
+}
+#result>.section:first-child{
+  grid-column:1/-1!important;border-color:rgba(153,69,255,.58)!important;
+  background:linear-gradient(115deg,#1b1040 0%,#0c1a32 63%,#06312f 100%)!important;
+}
+#result h2{line-height:1.5!important}
+#basic,#market{min-width:0!important}
+#demoPanel{
+  min-width:0!important;width:100%!important;grid-column:1/-1!important;
+  border-radius:17px!important;border:1px solid rgba(20,241,149,.34)!important;
+  background:linear-gradient(130deg,#111638 0%,#0a192e 68%,#062c2a 100%)!important;
+  box-shadow:0 9px 24px rgba(0,0,0,.22)!important;
+}
+#demoPanel .dashboard{
+  border:1px solid rgba(153,69,255,.34)!important;border-radius:14px!important;
+  background:linear-gradient(120deg,#1a123d,#0b1a30 72%,#082b29)!important;
+}
+#demoPanel .metric,#demoPanel .demo-metric,#demoPanel #demoStats,
+#demoPanel #demoHistory .section{
+  min-width:0!important;border:1px solid rgba(105,132,184,.25)!important;
+  border-radius:11px!important;background:#091628!important;
+}
+#adminProfileButton{border-radius:11px!important;min-height:38px!important}
+#serverLogin{overflow-y:auto!important}
+#serverLogin .login-card{max-height:calc(100dvh - 28px)!important;overflow-y:auto!important}
+@media(max-width:700px){
+  body{padding:8px!important;overflow-y:auto!important}
+  main{max-width:490px!important;gap:9px!important}
+  header{min-height:76px!important;padding:11px 66px 11px 12px!important;border-radius:16px!important}
+  header:after{right:12px!important;width:42px!important;height:42px!important}
+  h1{font-size:18px!important}
+  header p{font-size:9px!important}
+  main>.panel{padding:9px!important;gap:7px!important}
+  #mint{height:42px!important;font-size:12px!important}
+  #scan,#autoDiscover{min-height:39px!important;font-size:10px!important}
+  #result{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  #result>.section{padding:10px!important;border-radius:13px!important}
+  #result>.section:first-child{grid-column:1/-1!important}
+  #result h2{font-size:11px!important}
+  #result>.section:first-child h2{font-size:15px!important}
+  #demoPanel{padding:10px!important;gap:8px!important}
+  #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)!important}
+}
+@media(max-width:390px){
+  #result{grid-template-columns:minmax(0,1fr)!important}
+  #result>.section:first-child,#demoPanel{grid-column:1!important}
+  #demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{grid-column:1/-1!important}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
+
 </style>
 </head>
 <body>
