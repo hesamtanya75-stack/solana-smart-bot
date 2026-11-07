@@ -506,7 +506,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "dd6026d" });
+    }
+    if (url.pathname === "/version" && request.method === "GET") {
+      return json({ ok: true, build: "dd6026d", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
@@ -671,7 +674,20 @@ export default {
       }
       return json({ error: "Not found" }, 404);
     }
-    return env.ASSETS.fetch(request);
+    const assetUrl = new URL(request.url);
+    if (assetUrl.pathname === "/") assetUrl.pathname = "/index.html";
+    const assetResponse = await env.ASSETS.fetch(new Request(assetUrl, request));
+    const assetHeaders = new Headers(assetResponse.headers);
+    assetHeaders.set("X-Solana-Smart-Bot-Build", "dd6026d");
+    if (assetUrl.pathname === "/index.html") {
+      assetHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+      assetHeaders.set("Pragma", "no-cache");
+    }
+    return new Response(assetResponse.body, {
+      status: assetResponse.status,
+      statusText: assetResponse.statusText,
+      headers: assetHeaders
+    });
   },
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
