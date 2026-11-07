@@ -274,8 +274,12 @@ function mintDetails(account) {
   let mintAuthority = null, freezeAuthority = null, extensions = [];
   const parsed = value.data?.parsed?.info;
   if (parsed) {
-    mintAuthority = !!parsed.mintAuthority;
-    freezeAuthority = !!parsed.freezeAuthority;
+    // Null means the authority was explicitly revoked. Missing or malformed
+    // fields remain unknown and must never be treated as safe.
+    mintAuthority = parsed.mintAuthority === null ? false :
+      typeof parsed.mintAuthority === "string" ? true : null;
+    freezeAuthority = parsed.freezeAuthority === null ? false :
+      typeof parsed.freezeAuthority === "string" ? true : null;
   }
   const raw = value.data;
   if (Array.isArray(raw) && typeof raw[0] === "string") {
