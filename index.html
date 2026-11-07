@@ -938,6 +938,86 @@ main>.panel{
   *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
 
+
+/* ===== Visible premium dashboard: mobile-first final pass ===== */
+#extraInfo{
+  display:block!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:10px!important;
+  border:1px solid rgba(153,69,255,.48)!important;
+  border-radius:17px!important;
+  background:linear-gradient(130deg,rgba(20,13,48,.98),rgba(7,28,43,.98))!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.24)!important;
+}
+#extraInfo>summary{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:8px!important;
+  min-height:38px!important;
+  padding:7px 10px!important;
+  border:1px solid rgba(20,241,149,.30)!important;
+  border-radius:11px!important;
+  color:#e8e7ff!important;
+  background:linear-gradient(100deg,rgba(153,69,255,.17),rgba(20,241,149,.08))!important;
+  font-size:12px!important;
+  font-weight:850!important;
+  cursor:pointer!important;
+  list-style:none!important;
+}
+#extraInfo>summary::-webkit-details-marker{display:none!important}
+#extraInfo>summary:after{content:"⌄";color:#14f195;font-size:18px;line-height:1}
+#extraInfo[open]>summary:after{content:"⌃"}
+#extraInfo>.dashboard{
+  display:block!important;
+  margin-top:9px!important;
+  padding:12px!important;
+  border:1px solid rgba(153,69,255,.35)!important;
+  border-radius:14px!important;
+  background:linear-gradient(120deg,#17123b,#0b1a30 72%,#082b29)!important;
+}
+#extraInfo .dash-heading{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;flex-wrap:wrap!important}
+#extraInfo .dash-heading h2{margin:3px 0 0!important;color:#fff!important;font-size:16px!important}
+#extraInfo .eyebrow{color:#b99aff!important;font-size:9px!important;letter-spacing:1.4px!important}
+#extraInfo .mode-pill{padding:5px 8px!important;border:1px solid rgba(20,241,149,.28)!important;border-radius:20px!important;color:#14f195!important;background:#0b302b!important;font-size:10px!important}
+#extraInfo .dash-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important;margin-top:10px!important}
+#extraInfo .metric{min-width:0!important;padding:9px 7px!important;border:1px solid rgba(115,135,185,.25)!important;border-radius:11px!important;background:linear-gradient(145deg,#0b1a30,#10152f)!important}
+#extraInfo .metric span,#extraInfo .metric small{display:block!important;color:#b9cbe5!important;font-size:9px!important;line-height:1.45!important}
+#extraInfo .metric strong{display:block!important;margin:3px 0!important;color:#fff!important;font-size:clamp(14px,3.5vw,20px)!important;overflow-wrap:anywhere!important}
+#extraInfo .dash-foot{display:flex!important;justify-content:space-between!important;gap:8px!important;margin-top:9px!important;padding-top:8px!important;border-top:1px solid rgba(125,143,190,.2)!important;font-size:11px!important}
+#extraInfo .dash-foot strong{color:#14f195!important}
+#extraInfo .dash-note{margin:8px 0 0!important;color:#aebbd3!important;font-size:9px!important;line-height:1.5!important}
+#extraInfo #walletPanel{display:block!important;margin-top:9px!important;padding:11px!important;border-radius:13px!important;background:linear-gradient(130deg,#0b1d2c,#10152f)!important}
+#extraInfo #walletPanel h2{font-size:13px!important}
+#liveTradingNotice{display:block!important;min-width:0!important;margin:0!important;padding:11px!important;border-radius:13px!important}
+main>p.small{display:block!important;margin:0!important;padding:0 4px!important;color:#aebbd3!important;font-size:10px!important;line-height:1.5!important}
+#demoPanel{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#demoPanel .bot-head{min-width:0!important}
+#demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#demoPanel #demoHistory{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#adminProfileButton{border:1px solid rgba(153,69,255,.5)!important;background:linear-gradient(110deg,#5426a8,#087f75)!important;box-shadow:0 0 13px rgba(153,69,255,.16)!important}
+@media(max-width:700px){
+  #extraInfo{padding:8px!important}
+  #extraInfo .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #extraInfo .metric{padding:8px!important}
+  #extraInfo .metric span,#extraInfo .metric small{font-size:9px!important}
+  #extraInfo .metric strong{font-size:17px!important}
+  #extraInfo #walletPanel{padding:9px!important}
+  #liveTradingNotice{padding:9px!important}
+  #demoPanel{grid-template-columns:minmax(0,1fr)!important}
+  #demoPanel .bot-head,#demoPanel .dashboard,#demoPanel #demoStats,
+  #demoPanel #demoHistory,#demoPanel .bot-warning,#demoPanel .demo-disclaimer,
+  #demoPanel #demoStatus{grid-column:1!important}
+  #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)!important}
+}
+@media(max-width:360px){
+  body{padding:6px!important}
+  header{padding-right:58px!important}
+  #extraInfo .metric strong{font-size:15px!important}
+  #result{grid-template-columns:minmax(0,1fr)!important}
+}
 </style>
 </head>
 <body>
@@ -948,7 +1028,7 @@ main>.panel{
 </header>
 <div class="safety-strip"><span class="safety-dot"></span><strong>پشکنینی سەلامەتیی Solana</strong><span>تەنها تاقیکردنەوەی خەیاڵی</span></div>
 
-<details id="extraInfo"><summary>➕ بەشی زانیارییە زیادەکان (باڵانس و ئاماری تاقیکردنەوە)</summary>
+<details id="extraInfo" open><summary>➕ بەشی زانیارییە زیادەکان (باڵانس و ئاماری تاقیکردنەوە)</summary>
 <section class="dashboard" aria-label="پوختەی داشبۆرد">
   <div class="dash-heading">
     <div><span class="eyebrow">SOLANA SMART BOT</span><h2>پوختەی بۆت</h2></div>
