@@ -452,7 +452,7 @@ main>#demoPanel{
  #basic .item,#market .item{padding:7px!important}
  main>#demoPanel{padding:10px!important;gap:8px!important;border-radius:15px!important}
  #demoPanel .bot-head h2{font-size:14px!important}
- #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+ #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
  #demoPanel .metric{padding:8px!important}
  #demoPanel .metric strong{font-size:16px!important}
  #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)!important}
@@ -569,22 +569,25 @@ main>#demoPanel{
  grid-column:1/-1!important;padding:13px!important;border:1px solid #6b42d4!important;
  border-radius:15px!important;background:linear-gradient(120deg,#1a1243,#09182e)!important;
 }
-#demoPanel .dash-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
-#demoPanel .metric,#demoPanel .demo-metric{
+#demoPanel .demo-metrics{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+#demoPanel .demo-metric{
  padding:10px!important;border:1px solid rgba(90,119,190,.4)!important;
- border-radius:12px!important;background:#08152d!important;
+ border-radius:12px!important;background:#08152d!important;min-width:0!important;
 }
-#demoPanel .metric span,#demoPanel .demo-metric span{font-size:10px!important;color:#c2cbe4!important}
-#demoPanel .metric strong,#demoPanel .demo-metric b{font-size:clamp(14px,1.8vw,20px)!important}
+#demoPanel .demo-metric span{font-size:10px!important;color:#c2cbe4!important}
+#demoPanel .demo-metric b{font-size:clamp(14px,1.8vw,20px)!important}
 #demoPanel #autoDemoBuy{grid-column:1!important;background:linear-gradient(110deg,#00a94f,#00d56b)!important}
 #demoPanel #pauseBuyBtn{grid-column:2!important;background:linear-gradient(110deg,#d51e43,#ed3155)!important}
 #demoPanel #demoBuy{grid-column:1/-1!important;background:linear-gradient(110deg,#1766ed,#087bff)!important}
 #demoPanel #demoStatus,#demoPanel #demoStats,#demoPanel #demoHistory,
-#demoPanel .bot-warning,#demoPanel .demo-disclaimer{grid-column:1/-1!important}
-#demoPanel #demoStats,#demoPanel #demoHistory .section{
- border:1px solid rgba(105,74,220,.4)!important;border-radius:13px!important;background:#08152d!important;
+#demoPanel #demoProfit,#demoPanel .bot-warning,#demoPanel .demo-disclaimer{grid-column:1/-1!important}
+#demoPanel #demoStats,#demoPanel #demoHistory,#demoPanel #demoProfit{
+ min-width:0!important;padding:10px!important;border:1px solid rgba(105,74,220,.4)!important;
+ border-radius:13px!important;background:#08152d!important;overflow-wrap:anywhere!important;
 }
-#demoPanel #demoHistory{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#demoPanel #demoHistory{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+#demoPanel #demoHistory .section{min-width:0!important;background:#0b1932!important;border:1px solid #354d7a!important;border-radius:11px!important;padding:8px!important}
+#demoPanel #demoStats p,#demoPanel #demoHistory p{font-size:11px!important;line-height:1.5!important}
 #demoPanel .bot-warning{border-color:#80602a!important;background:#241d20!important}
 #serverLogin{background:rgba(1,3,12,.96)!important;backdrop-filter:blur(12px)}
 #serverLogin .login-card{border:1px solid #9451ff!important;border-radius:20px!important;box-shadow:0 0 30px #672cff55!important}
@@ -620,9 +623,9 @@ main>#demoPanel{
  main>#demoPanel{padding:10px!important;gap:7px!important;border-radius:15px!important}
  #demoPanel .bot-head h2{font-size:13px!important}
  #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
- #demoPanel .metric,#demoPanel .demo-metric{padding:7px!important}
- #demoPanel .metric strong,#demoPanel .demo-metric b{font-size:14px!important}
- #demoPanel .metric span,#demoPanel .demo-metric span{font-size:8px!important}
+ #demoPanel .demo-metric{padding:7px!important}
+ #demoPanel .demo-metric b{font-size:14px!important}
+ #demoPanel .demo-metric span{font-size:8px!important}
  #demoPanel button{min-height:39px!important;font-size:9px!important}
  #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)!important}
 }
