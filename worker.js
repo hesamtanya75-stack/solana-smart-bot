@@ -630,7 +630,7 @@ export default {
           const addresses = [...new Set(open.map(t => t.mint).filter(Boolean))].slice(0, 30);
           const data = await getDexJson(
             "https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","),
-            env, 5
+            env, 30
           );
           const best = new Map();
           for (const pair of (data.pairs || []).filter(p => p.chainId === "solana")) {
