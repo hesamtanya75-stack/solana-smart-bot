@@ -115,6 +115,51 @@ async function rpc(method, params, env) {
   }
   throw new Error("Solana RPC providers failed (max 2 per method) — " + errors.join(" | "));
 }
+
+async function rpcBatch(calls, env) {
+  const errors = [];
+  const endpoints = [];
+  const config = String(env?.ALCHEMY_API_KEY || "").trim();
+  if (config && !alchemyUnauthorized) {
+    const url = /^https:\/\//i.test(config)
+      ? config.replace(/\/+$/, "")
+      : "https://solana-mainnet.g.alchemy.com/v2/" + config;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" && parsed.hostname === "solana-mainnet.g.alchemy.com" && parsed.pathname.startsWith("/v2/")) {
+        endpoints.push({ url, label: "Alchemy Solana RPC" });
+      }
+    } catch {}
+  }
+  endpoints.push({ url: RPCS[rpcCursor++ % RPCS.length], label: "Public Solana RPC" });
+  for (const endpoint of endpoints.slice(0, 2)) {
+    try {
+      const response = await fetch(endpoint.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(calls.map((call, index) => ({
+          jsonrpc: "2.0", id: index + 1, method: call.method, params: call.params
+        }))),
+        signal: AbortSignal.timeout(12000)
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
+      const byId = new Map(data.map(item => [item.id, item]));
+      return calls.map((_, index) => {
+        const item = byId.get(index + 1);
+        if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
+        return item.result;
+      });
+    } catch (error) {
+      const message = String(error?.message || error);
+      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") alchemyUnauthorized = true;
+      errors.push(endpoint.label + ": " + message);
+    }
+  }
+  throw new Error("Solana RPC batch providers failed — " + errors.join(" | "));
+}
+
 async function getJson(url) {
   const host = new URL(url).hostname;
   let lastError;
@@ -260,12 +305,15 @@ async function inspectMint(mint, env) {
     .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
   if (!market) throw new Error("No Solana market pair");
 
-  const [rug, account, largest, supply] = await Promise.all([
+  const [rug, rpcResults] = await Promise.all([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
-    rpc("getAccountInfo", [mint, { encoding: "base64", commitment: "confirmed" }], env),
-    rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }], env),
-    rpc("getTokenSupply", [mint, { commitment: "confirmed" }], env)
+    rpcBatch([
+      { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
+      { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
+      { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
+    ], env)
   ]);
+  const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
   const supplyAmount = Number(supply?.value?.amount || 0);
   const largestAccounts = (largest?.value || []).slice(0, 20);
@@ -335,7 +383,7 @@ async function refreshTrades(state, env) {
 }
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
-  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 90);
+  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 15);
   const seen = new Set();
   const tokens = Array.isArray(profiles) ? profiles.filter(t => {
     const mint = String(t?.tokenAddress || "");
@@ -343,12 +391,14 @@ async function autoBuy(state, env) {
     seen.add(mint);
     return true;
   }) : [];
-  let checked = 0, bought = 0;
+  let checked = 0, bought = 0, skippedExisting = 0;
   const report = [];
+  const scanned = new Set(state.scannedMints);
+  const traded = new Set(state.trades.map(t => t.mint));
   for (const token of tokens) {
-    if (checked >= 3 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
+    if (checked >= 10 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
-    if (state.scannedMints.includes(mint) || state.trades.some(t => t.mint === mint)) continue;
+    if (scanned.has(mint) || traded.has(mint)) { skippedExisting++; continue; }
     const deferred = state.deferredMints.find(item => item.mint === mint);
     if (deferred && Number(deferred.retryAt) > Date.now()) continue;
     state.deferredMints = state.deferredMints.filter(item => item.mint !== mint);
@@ -388,7 +438,10 @@ async function autoBuy(state, env) {
   state.lastScanReport = report.slice(-20);
   const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
   const deferred = report.filter(x => x.status === "deferred").length;
-  return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report.";
+  const noNewTokens = checked === 0
+    ? " No unscanned new Solana tokens were available in the latest profile list; " + skippedExisting + " already-seen tokens skipped."
+    : "";
+  return "Checked " + checked + " new tokens (max 10 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
 }
 
 
@@ -561,6 +614,16 @@ export default {
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+      }
+      if (url.pathname === "/api/refresh-prices" && request.method === "POST") {
+        try {
+          const state = await readState(env);
+          const sold = await refreshTrades(state, env);
+          await saveState(env, state);
+          return json({ ok: true, sold, state });
+        } catch (error) {
+          return json({ error: "Price refresh failed: " + String(error?.message || error) }, 503);
+        }
       }
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
       if (url.pathname === "/api/state" && request.method === "PUT") {
