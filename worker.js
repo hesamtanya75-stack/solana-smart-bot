@@ -521,6 +521,17 @@ export default {
         return json({ ok: false, error: String(error?.message || error) }, 500);
       }
     }
+    if (url.pathname === "/dashboard-test" && request.method === "GET") {
+      const assetUrl = new URL("/index.html", request.url);
+      const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+      if (!asset.ok) return new Response("Dashboard asset unavailable", { status: 502 });
+      let html = await asset.text();
+      const probe = `<div id="sb-page-probe" style="position:fixed;z-index:2147483647;left:8px;right:8px;bottom:8px;padding:12px;border:2px solid #27e7d3;border-radius:12px;background:#07152b;color:#fff;font:13px/1.5 system-ui;direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">DASHBOARD TEST: HTML loaded; checking browser rendering…</div><script>(function(){var p=document.getElementById("sb-page-probe");function update(extra){try{var m=document.querySelector("main"),h=document.querySelector("header"),l=document.getElementById("serverLogin");var s=getComputedStyle(document.body);p.textContent="DASHBOARD TEST: HTML loaded\\nMain: "+!!m+" | Header: "+!!h+" | Login: "+!!l+"\\nBody background: "+s.backgroundColor+" | Display: "+s.display+"\\nHeader display: "+(h?getComputedStyle(h).display:"missing")+" | Main display: "+(m?getComputedStyle(m).display:"missing")+"\\n"+(extra||"Waiting for page scripts…");}catch(e){p.textContent="PROBE ERROR: "+e.message;}}window.addEventListener("error",function(e){update("JAVASCRIPT ERROR: "+e.message+" @ "+e.lineno+":"+e.colno);});window.addEventListener("unhandledrejection",function(e){update("PROMISE ERROR: "+String(e.reason&&e.reason.message||e.reason));});setTimeout(function(){update("Page scripts had time to run.");},1500);})();</script>`;
+      html = html.replace(/<body[^>]*>/i, match => match + probe);
+      return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+      });
+    }
     if (url.pathname === "/screen-test" && request.method === "GET") {
       return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Screen Test</title><style>html,body{margin:0;min-height:100%;background:#10152b;color:#fff;font:18px system-ui}main{margin:24px auto;padding:24px;max-width:520px;border:2px solid #27e7d3;border-radius:18px;background:linear-gradient(135deg,#24104d,#063b43);text-align:center}h1{color:#27e7d3}p{line-height:1.6}</style></head><body><main><h1>SCREEN TEST OK</h1><p>If you can read this, your browser can display a page from this Worker.</p><p>HTTP route: /screen-test</p></main></body></html>", {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
