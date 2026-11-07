@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "solana-smart-bot",
+  "name": "solana-smart-bot-new",
   "main": "worker.js",
   "compatibility_date": "2026-11-06",
   "assets": {
@@ -17,17 +17,9 @@
   "kv_namespaces": [
     {
       "binding": "BOT_STATE",
-      "id": "2e205fdb0eff44f78786e7500ae401a1"
+      "id": "e1c54bd4247d47ebba9c1db1fa7082e0"
     }
   ],
-  "previews": {
-    "kv_namespaces": [
-      {
-        "binding": "BOT_STATE",
-        "id": "e1c54bd4247d47ebba9c1db1fa7082e0"
-      }
-    ]
-  },
   "triggers": {
     "crons": [
       "* * * * *"
