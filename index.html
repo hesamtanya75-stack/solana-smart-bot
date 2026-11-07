@@ -462,6 +462,177 @@ main>#demoPanel{
  #result>.section:first-child,main>#demoPanel{grid-column:1}
 }
 
+
+
+/* ===== Reference-inspired SOLANA SMART BOT dashboard v3 ===== */
+:root{
+ --ref-bg:#03040c;--ref-panel:#090e25;--ref-line:rgba(130,82,255,.72);
+ --ref-purple:#8b35ff;--ref-blue:#176bff;--ref-green:#00d878;
+ --ref-cyan:#19c9ef;--ref-muted:#b8c2df;
+}
+html,body{height:auto!important;min-height:100%!important;background:#02030a!important}
+body{
+ padding:12px!important;color:#f8f9ff!important;
+ background:
+  radial-gradient(ellipse at 12% 18%,rgba(85,20,190,.22),transparent 35%),
+  radial-gradient(ellipse at 90% 48%,rgba(0,110,105,.13),transparent 34%),
+  #02030a!important;
+ overflow-x:hidden!important;overflow-y:auto!important;
+ font-family:Inter,"Noto Sans Arabic",system-ui,sans-serif!important;
+}
+main{width:100%;max-width:1180px;min-height:0!important;height:auto!important;margin:0 auto;gap:12px!important}
+header{
+ min-height:104px!important;padding:14px 92px 14px 18px!important;
+ border:1px solid rgba(111,68,255,.8)!important;border-radius:20px!important;
+ background:linear-gradient(110deg,#080d25 0%,#080d22 55%,#031a28 100%)!important;
+ box-shadow:0 0 26px rgba(112,39,255,.25),inset 0 0 24px rgba(31,125,255,.08)!important;
+}
+header:before{font-size:clamp(17px,3vw,28px)!important;letter-spacing:1px!important;color:#fff!important}
+header:after{
+ right:20px!important;width:58px!important;height:58px!important;border-radius:16px!important;
+ background:linear-gradient(145deg,#14e8d0,#8b35ff)!important;
+ clip-path:polygon(0 18%,100% 0,75% 33%,0 40%,75% 57%,100% 78%,0 100%,24% 70%,72% 54%,24% 36%)!important;
+ filter:drop-shadow(0 0 12px #7e35ff)!important;
+}
+h1{font-size:clamp(20px,3vw,30px)!important;font-weight:900!important}
+header p{font-size:clamp(11px,1.6vw,15px)!important;color:#e0e6ff!important}
+main>.panel{
+ padding:13px!important;gap:9px 11px!important;
+ border:1px solid rgba(126,72,255,.8)!important;border-radius:19px!important;
+ background:linear-gradient(120deg,rgba(15,13,47,.97),rgba(4,20,43,.97))!important;
+ box-shadow:0 0 22px rgba(104,42,255,.23),inset 0 0 20px rgba(26,120,255,.08)!important;
+}
+#mint{
+ height:54px!important;padding:12px 17px!important;border:1px solid #7544dc!important;
+ border-radius:16px!important;background:#070b20!important;
+ font-size:clamp(13px,1.7vw,17px)!important;text-align:right!important;direction:rtl!important;
+ box-shadow:inset 0 0 14px rgba(100,55,255,.16)!important;
+}
+#mint::placeholder{color:#9ca8c8!important}
+button{
+ min-height:48px!important;padding:10px 13px!important;border-radius:14px!important;
+ font-size:clamp(11px,1.5vw,15px)!important;font-weight:900!important;
+ box-shadow:0 0 13px rgba(0,210,130,.17)!important;
+}
+#scan{background:linear-gradient(110deg,#1766ed,#087bff)!important;border-color:#4099ff!important}
+#autoDiscover{background:linear-gradient(110deg,#00a94f,#00d56b)!important;border-color:#00f58b!important}
+#status,#discoverStatus{font-size:11px!important;line-height:1.55!important}
+#discoverList{max-height:125px!important}
+#discoverList button{min-height:34px!important;font-size:10px!important}
+#result{
+ display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ grid-auto-rows:minmax(0,auto)!important;gap:12px!important;overflow:visible!important;
+}
+#result>.section{
+ min-width:0!important;min-height:0!important;padding:15px!important;margin:0!important;
+ border:1px solid rgba(105,74,220,.82)!important;border-radius:19px!important;
+ background:linear-gradient(145deg,#111638 0%,#071329 75%,#061a2a 100%)!important;
+ box-shadow:0 0 16px rgba(90,43,255,.16),inset 0 0 18px rgba(37,100,255,.06)!important;
+}
+#result>.section:first-child{
+ grid-column:1/-1!important;padding:17px!important;
+ border-color:#9451ff!important;
+ background:linear-gradient(110deg,#1b0c4b,#0b1737 58%,#00343b)!important;
+ box-shadow:0 0 22px rgba(123,49,255,.3)!important;
+}
+#result h2{font-size:clamp(13px,1.8vw,18px)!important;color:#f0eaff!important;border-color:#35416c!important}
+#result>.section:first-child h2{font-size:clamp(18px,2.4vw,24px)!important}
+#basic{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important}
+#basic .item,#market .item{
+ padding:10px!important;border:1px solid rgba(75,115,190,.4)!important;
+ border-radius:12px!important;background:rgba(6,15,38,.82)!important;
+}
+.item{border-color:rgba(89,113,185,.4)!important;background:rgba(6,16,39,.78)!important}
+#market{gap:8px!important}
+.market-metric-grid{gap:8px!important}
+.visual-card{border:1px solid rgba(110,77,228,.55)!important;border-radius:14px!important;background:#08152e!important}
+.visual-title{font-size:13px!important;color:#d9c7ff!important}
+.donut{width:120px!important;height:120px!important}
+.donut-hole{background:#08152e!important}
+#result p{font-size:12px!important;line-height:1.55!important}
+#result .small,.empty-hint{font-size:10px!important}
+.value{font-size:12px!important}
+#risk{border:1px solid rgba(151,81,255,.5)!important;border-radius:13px!important;background:#090f29!important}
+#conclusion{border-color:rgba(255,190,50,.5)!important;background:rgba(35,26,17,.55)!important}
+#extraInfo,#liveTradingNotice,main>p.small{display:none!important}
+main>#demoPanel{
+ grid-column:1/-1!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ gap:11px!important;padding:16px!important;border:1px solid #8a42ff!important;
+ border-radius:20px!important;background:linear-gradient(125deg,#150d3d,#08172d 70%,#062c2c)!important;
+ box-shadow:0 0 23px rgba(121,45,255,.28)!important;
+}
+#demoPanel .bot-head{grid-column:1/-1!important}
+#demoPanel .bot-head h2{font-size:clamp(16px,2vw,21px)!important}
+#demoPanel .bot-kicker{color:#b98aff!important}
+#demoPanel .demo-chip{padding:5px 10px;border:1px solid #147b68;border-radius:20px;background:#063c34;color:#7dffd2!important}
+#demoPanel .dashboard{
+ grid-column:1/-1!important;padding:13px!important;border:1px solid #6b42d4!important;
+ border-radius:15px!important;background:linear-gradient(120deg,#1a1243,#09182e)!important;
+}
+#demoPanel .dash-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+#demoPanel .metric,#demoPanel .demo-metric{
+ padding:10px!important;border:1px solid rgba(90,119,190,.4)!important;
+ border-radius:12px!important;background:#08152d!important;
+}
+#demoPanel .metric span,#demoPanel .demo-metric span{font-size:10px!important;color:#c2cbe4!important}
+#demoPanel .metric strong,#demoPanel .demo-metric b{font-size:clamp(14px,1.8vw,20px)!important}
+#demoPanel #autoDemoBuy{grid-column:1!important;background:linear-gradient(110deg,#00a94f,#00d56b)!important}
+#demoPanel #pauseBuyBtn{grid-column:2!important;background:linear-gradient(110deg,#d51e43,#ed3155)!important}
+#demoPanel #demoBuy{grid-column:1/-1!important;background:linear-gradient(110deg,#1766ed,#087bff)!important}
+#demoPanel #demoStatus,#demoPanel #demoStats,#demoPanel #demoHistory,
+#demoPanel .bot-warning,#demoPanel .demo-disclaimer{grid-column:1/-1!important}
+#demoPanel #demoStats,#demoPanel #demoHistory .section{
+ border:1px solid rgba(105,74,220,.4)!important;border-radius:13px!important;background:#08152d!important;
+}
+#demoPanel #demoHistory{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#demoPanel .bot-warning{border-color:#80602a!important;background:#241d20!important}
+#serverLogin{background:rgba(1,3,12,.96)!important;backdrop-filter:blur(12px)}
+#serverLogin .login-card{border:1px solid #9451ff!important;border-radius:20px!important;box-shadow:0 0 30px #672cff55!important}
+@media(max-width:650px){
+ body{padding:7px!important}
+ main{gap:8px!important}
+ header{min-height:82px!important;padding:10px 68px 10px 10px!important;border-radius:16px!important}
+ header:after{right:10px!important;width:44px!important;height:44px!important;border-radius:12px!important}
+ header:before{font-size:16px!important;letter-spacing:.5px!important}
+ h1{font-size:clamp(17px,4.7vw,22px)!important}
+ header p{font-size:10px!important}
+ main>.panel{padding:8px!important;gap:6px!important;border-radius:15px!important}
+ #mint{height:43px!important;padding:9px 11px!important;font-size:12px!important}
+ button{min-height:40px!important;padding:7px 5px!important;font-size:10px!important}
+ #result{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important}
+ #result>.section{padding:9px!important;border-radius:13px!important}
+ #result>.section:first-child{padding:11px!important}
+ #result h2{font-size:11px!important}
+ #result>.section:first-child h2{font-size:15px!important}
+ #result p{font-size:9px!important}
+ #result .small,.empty-hint{font-size:8px!important}
+ .item{font-size:9px!important;padding:6px!important;gap:4px!important}
+ .value{font-size:9px!important;max-width:70%!important}
+ #basic{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+ #basic .item,#market .item{padding:6px!important;font-size:8px!important}
+ #basic .value,#market .value{font-size:8px!important}
+ #security .item,#holders .item{font-size:8px!important;padding:5px!important}
+ #security .value,#holders .value{font-size:8px!important}
+ .donut{width:92px!important;height:92px!important}
+ .donut-hole{width:60px!important;height:60px!important}
+ .donut-hole b{font-size:13px!important}
+ .donut-legend{font-size:8px!important}
+ main>#demoPanel{padding:10px!important;gap:7px!important;border-radius:15px!important}
+ #demoPanel .bot-head h2{font-size:13px!important}
+ #demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+ #demoPanel .metric,#demoPanel .demo-metric{padding:7px!important}
+ #demoPanel .metric strong,#demoPanel .demo-metric b{font-size:14px!important}
+ #demoPanel .metric span,#demoPanel .demo-metric span{font-size:8px!important}
+ #demoPanel button{min-height:39px!important;font-size:9px!important}
+ #demoPanel #demoHistory{grid-template-columns:minmax(0,1fr)!important}
+}
+@media(max-width:370px){
+ #result{grid-template-columns:minmax(0,1fr)!important}
+ #result>.section:first-child,main>#demoPanel{grid-column:1!important}
+ #demoPanel #autoDemoBuy,#demoPanel #pauseBuyBtn{grid-column:1/-1!important}
+ #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+
 </style>
 </head>
 <body>
