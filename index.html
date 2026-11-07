@@ -486,6 +486,100 @@ button:disabled{opacity:.45!important}
   #result{grid-template-columns:1fr!important}
   #result>.section:first-child,#demoPanel{grid-column:1!important}
 }
+
+/* ===== USER DESIGN ADAPTATION: purple glass / compact mobile ===== */
+:root{
+  --sb-card:rgba(14,16,46,.88);
+  --sb-line:rgba(99,102,241,.5);
+  --sb-text:#f5f5ff;
+  --sb-muted:#a9aed6;
+}
+html{background:#070816!important}
+body{
+  font-family:"Noto Sans Arabic",-apple-system,system-ui,sans-serif!important;
+  background:
+    radial-gradient(ellipse 80% 30% at 100% 0,rgba(124,58,237,.35),transparent),
+    radial-gradient(ellipse 70% 30% at 0 55%,rgba(37,99,235,.22),transparent),
+    radial-gradient(ellipse 80% 30% at 100% 100%,rgba(124,58,237,.3),transparent),
+    #070816!important;
+}
+main{max-width:440px!important;gap:10px!important}
+main>header{
+  display:grid!important;
+  grid-template-columns:38px minmax(0,1fr) 38px!important;
+  grid-template-rows:auto auto!important;
+  align-items:center!important;
+  gap:2px 8px!important;
+  min-height:72px!important;
+  padding:9px 10px!important;
+  text-align:center!important;
+  border:1px solid var(--sb-line)!important;
+  border-radius:18px!important;
+  background:linear-gradient(135deg,rgba(30,20,75,.96),rgba(10,19,54,.96) 60%,rgba(3,48,52,.94))!important;
+  box-shadow:0 0 18px rgba(99,102,241,.2),inset 0 0 18px rgba(99,102,241,.06)!important;
+}
+main>header:before{
+  content:"≋"!important;
+  grid-column:1!important;grid-row:1/3!important;
+  display:grid!important;place-items:center!important;
+  width:36px!important;height:36px!important;
+  margin:0!important;border-radius:11px!important;
+  color:#14f195!important;font-size:31px!important;font-weight:900!important;
+  background:linear-gradient(145deg,rgba(153,69,255,.35),rgba(20,241,149,.12))!important;
+}
+main>header h1{grid-column:2!important;grid-row:1!important;margin:0!important;font-size:clamp(15px,4.4vw,20px)!important;direction:ltr!important}
+main>header p{grid-column:2!important;grid-row:2!important;margin:0!important;font-size:10px!important}
+main>header:after{
+  content:"✓"!important;grid-column:3!important;grid-row:1/3!important;
+  position:static!important;display:grid!important;place-items:center!important;
+  width:34px!important;height:34px!important;margin:0!important;
+  clip-path:none!important;border:1px solid rgba(34,197,94,.5)!important;
+  border-radius:50%!important;background:rgba(34,197,94,.18)!important;
+  color:#4ade80!important;font-size:20px!important;font-weight:900!important;
+  box-shadow:0 0 12px rgba(34,197,94,.22)!important;
+}
+main>.panel{
+  padding:12px!important;gap:9px!important;
+  border:1px solid var(--sb-line)!important;border-radius:18px!important;
+  background:var(--sb-card)!important;
+  box-shadow:0 0 16px rgba(99,102,241,.2),inset 0 0 18px rgba(99,102,241,.06)!important;
+}
+#mint{height:49px!important;font-size:14px!important;border-radius:15px!important;background:rgba(10,12,36,.82)!important}
+#autoDiscover,#scan{min-height:48px!important;border-radius:14px!important;font-size:11px!important}
+#result{gap:10px!important;grid-auto-rows:minmax(120px,auto)!important}
+#result>.section{
+  padding:12px!important;border-radius:17px!important;
+  border:1px solid var(--sb-line)!important;
+  background:var(--sb-card)!important;
+  box-shadow:0 0 16px rgba(99,102,241,.17),inset 0 0 18px rgba(99,102,241,.05)!important;
+}
+#result>.section:first-child{
+  border-color:rgba(168,85,247,.65)!important;
+  background:linear-gradient(135deg,rgba(31,19,75,.96),rgba(11,20,51,.96))!important;
+}
+#result h2{font-size:13px!important;margin-bottom:10px!important;color:#e2dcff!important}
+#risk,#conclusion{border-radius:12px!important}
+#demoPanel{
+  border-color:var(--sb-line)!important;border-radius:18px!important;
+  background:var(--sb-card)!important;
+  box-shadow:0 0 16px rgba(99,102,241,.2)!important;
+}
+#demoPanel .dashboard,#demoPanel .metric,#demoPanel .demo-metric{
+  border-radius:12px!important;
+}
+#serverLogin .login-card{
+  border-color:var(--sb-line)!important;
+  background:linear-gradient(145deg,#17103d,#0a1028)!important;
+}
+@media(max-width:390px){
+  main{max-width:100%!important}
+  main>header{grid-template-columns:32px minmax(0,1fr) 32px!important;padding:8px!important}
+  main>header:before{width:30px!important;height:30px!important;font-size:27px!important}
+  main>header:after{width:29px!important;height:29px!important;font-size:17px!important}
+  #result{gap:7px!important}
+  #result>.section{padding:8px!important}
+}
+
 </style>
 </head>
 <body>
