@@ -321,6 +321,16 @@ main>#demoPanel{
 </style>
 </head>
 <body>
+<div id="serverLogin" role="dialog" aria-modal="true" aria-label="چوونەژوورەوە">
+  <div class="login-card">
+    <h2>🔐 چوونەژوورەوەی بۆتی سێرڤەر</h2>
+    <p>بۆ کارکردنی بۆت لەسەر سێرڤەر و بەردەوامبوونی تاقیکردنەوەی خەیاڵی، وشەی نهێنییەکە بنووسە.</p>
+    <input id="serverPassword" type="password" autocomplete="current-password" placeholder="وشەی نهێنی">
+    <button id="serverLoginButton">چوونەژوورەوە</button>
+    <div class="login-error" id="serverLoginError"></div>
+    <p class="small">تەنها تاقیکردنەوەی خەیاڵییە؛ هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت.</p>
+  </div>
+</div>
 <main>
 <header>
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
@@ -1572,7 +1582,7 @@ setInterval(() => {
 let serverModeReady = false;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
-const serverLogin = document.createElement("div");
+const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
 serverLogin.innerHTML = `
   <div class="login-card">
@@ -1583,7 +1593,7 @@ serverLogin.innerHTML = `
     <div class="login-error" id="serverLoginError"></div>
     <p class="small">تەنها تاقیکردنەوەی خەیاڵییە؛ هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت.</p>
   </div>`;
-document.body.appendChild(serverLogin);
+if (!serverLogin.isConnected) document.body.appendChild(serverLogin);
 
 async function serverRequest(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
