@@ -14,6 +14,14 @@
       "id": "2e205fdb0eff44f78786e7500ae401a1"
     }
   ],
+  "previews": {
+    "kv_namespaces": [
+      {
+        "binding": "BOT_STATE",
+        "id": "e1c54bd4247d47ebba9c1db1fa7082e0"
+      }
+    ]
+  },
   "triggers": {
     "crons": ["* * * * *"]
   }
