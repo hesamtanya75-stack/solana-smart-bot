@@ -1,0 +1,98 @@
+<!doctype html><html lang="ckb" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard HTML only test</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#101827;color:#fff;font-family:Arial,sans-serif}body{padding:12px}main{display:block;max-width:1200px;margin:auto}section,header,.dashboard,.section{display:block;margin:8px;padding:12px;border:1px solid #52617a;border-radius:10px;background:#1c2940}h1,h2,h3,p{color:#fff}</style></head><body>
+<body>
+
+<div id="serverLogin" role="dialog" aria-modal="true" aria-label="چوونەژوورەوە">
+  <div class="login-card">
+    <h2>🔐 چوونەژوورەوەی بۆتی سێرڤەر</h2>
+    <p>بۆ کارکردنی بۆت لەسەر سێرڤەر و بەردەوامبوونی تاقیکردنەوەی خەیاڵی، وشەی نهێنییەکە بنووسە.</p>
+    <input id="serverPassword" type="password" autocomplete="current-password" placeholder="وشەی نهێنی">
+    <button id="serverLoginButton">چوونەژوورەوە</button>
+    <div class="login-error" id="serverLoginError"></div>
+    <p class="small">تەنها تاقیکردنەوەی خەیاڵییە؛ هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت.</p>
+  </div>
+</div>
+<main>
+<header>
+<h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
+<p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
+</header>
+<div class="safety-strip"><span class="safety-dot"></span><strong>پشکنینی سەلامەتیی Solana</strong><span>تەنها تاقیکردنەوەی خەیاڵی</span></div>
+
+<details id="extraInfo" open><summary>➕ بەشی زانیارییە زیادەکان (باڵانس و ئاماری تاقیکردنەوە)</summary>
+<section class="dashboard" aria-label="پوختەی داشبۆرد">
+  <div class="dash-heading">
+    <div><span class="eyebrow">SOLANA SMART BOT</span><h2>پوختەی بۆت</h2></div>
+    <span class="mode-pill"><i></i> دۆخی تاقیکردنەوە</span>
+  </div>
+  <div class="dash-grid">
+    <article class="metric"><span>باڵانسی خەیاڵی</span><strong id="dashBalance">$100.00</strong><small>دۆخی خەیاڵی · دۆلار</small></article>
+    <article class="metric"><span>مامەڵە کراوەکان</span><strong id="dashOpen">0</strong><small>مامەڵەی کراوە</small></article>
+    <article class="metric"><span>مامەڵە تەواوبووەکان</span><strong id="dashClosed">0</strong><small>مامەڵەی تەواوبوو</small></article>
+    <article class="metric"><span>ڕێژەی بردن</span><strong id="dashWinRate">0%</strong><small>لە مامەڵە تەواوبووەکان</small></article>
+  </div>
+  <div class="dash-foot"><span>قازانج / زیانی تەواوکراو</span><strong id="dashPnl">$0.00</strong></div>
+  <p class="dash-note">ئەم ئامارانە خەیاڵین؛ قازانج/زیان تەنها مامەڵە تۆمارکراوەکان دەژمێرێت. ئەگەر مێژووی کۆن سڕابێتەوە، باڵانس دەتوانێت لە کۆی قازانج/زیان جیاواز بێت. باڵانسی Phantom نین.</p>
+</section>
+
+<section class="section" id="walletPanel" aria-label="دۆخی وۆڵێتی تایبەتی بۆت">
+  <h2>👛 وۆڵێتی تایبەتی بۆت</h2>
+  <div class="item"><span>دۆخی پەیوەندی</span><b class="value warn" id="walletAddress">هێشتا پەیوەست نەکراوە</b></div>
+  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">پشکنین نەکراوە</b></div>
+  <div id="walletStatus" role="status" aria-live="polite" class="small">هیچ وۆڵێتێک پەیوەست نییە. دوای دروستکردنی وۆڵێتی نوێی Phantom، تەنها ناونیشانی گشتییەکەی لێرە زیاد دەکرێت. Seed Phrase و Private Key مەنووسە.</div>
+</section>
+
+
+</details>
+
+<div class="panel">
+<h2>ناونیشانی کۆین</h2>
+<button id="autoDiscover">🔎 دۆزینەوەی خۆکاری کۆینە نوێیەکان</button>
+<div id="discoverStatus"></div>
+<div id="discoverList"></div><input id="mint" placeholder="ناونیشانی Mint لێرە دابنێ" autocomplete="off">
+<button id="scan" onclick="scanToken()">پشکنینی کۆین</button>
+<div id="status"></div>
+</div>
+
+<div id="result">
+<div class="section">
+<h2 id="coinName">زانیاری کۆین</h2>
+<div id="risk"><p class="empty-hint">دوای پشکنینی کۆین، نمرەی مەترسی لێرە دەردەکەوێت.</p></div>
+<div id="basic"><p class="empty-hint">ناو، ناونیشان و زانیاریی سەرەکی کۆین لێرە دەردەکەوێت.</p></div>
+</div>
+
+<div class="section">
+<h2>📊 دۆخی بازاڕ</h2>
+<div id="market"><p class="empty-hint">نرخ، لیکوییدیتی و قەبارەی مامەڵەکان لێرە دەردەکەون.</p></div>
+</div>
+
+<div class="section">
+<h2>🛡️ پشکنینی سەلامەتی</h2>
+<div id="security"><p class="empty-hint">دۆخی Mint و Freeze و نیشانەکانی مەترسی لێرە دەردەکەون.</p></div>
+</div>
+
+<div class="section">
+<h2>👥 دابەشبوونی خاوەنەکان</h2>
+<div id="holders"><p class="empty-hint">دابەشبوونی خاوەنەکان لێرە دەردەکەوێت.</p></div>
+</div>
+
+<div class="section">
+<h2>💱 توانای فرۆشتن</h2>
+<div id="selling"><p class="empty-hint">داتای فرۆشتن و توانای فرۆشتن لێرە دەردەکەوێت.</p></div>
+</div>
+
+<div class="section">
+<h2>⚠️ کۆتایی هەڵسەنگاندن</h2>
+<div id="conclusion"><p class="empty-hint">کۆتایی هەڵسەنگاندن دوای پشکنین لێرە دەردەکەوێت.</p></div>
+</div>
+</div>
+
+<div class="section" id="liveTradingNotice" style="border-color:#a66a35;background:#302417">
+  <h2 style="color:#ffd166">🔒 مامەڵەی ڕاستەقینە ناچالاکە</h2>
+  <p>ئەم بۆتە لە Cloudflare Workers کار دەکات. پشکنین و کڕین و فرۆشتن تەنها بە شێوەی خەیاڵی (Paper Trading) ئەنجام دەدرێن؛ دەتوانێت لە سێرڤەرەوە بەبێ کراوەبوونی مۆبایل کار بکات. هیچ پارەی ڕاستەقینە بەکارناهێنێت و هیچ مامەڵەیەکی ئۆن‌چەین ناکات.</p>
+  <p class="small">هیچ کلیلی نهێنی، Seed Phrase یان Private Key لێرە مەنووسە. بۆت تەنها ناونیشانی گشتی وۆڵێت دەخوێنێتەوە.</p>
+</div>
+<p class="small">تێبینی: هیچ پشکنینێک دڵنیایی تەواو نادات. ئەم بۆتە هیچ مامەڵەیەک ناکات و هیچ واژۆیەکت ناوێت.</p>
+</main>
+
+
+</body></html>
