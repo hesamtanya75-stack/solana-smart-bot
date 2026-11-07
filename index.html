@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ckb" dir="ltr">
+<html lang="ckb" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -209,12 +209,12 @@ function render(){
   ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="--";$(k).className=""});$("price").textContent="--";$("spark").innerHTML="";$("checks").innerHTML="";$("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").innerHTML="";$("sellTxt").textContent="--";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="";return;
  }
  var top=Array.isArray(T.top)?T.top:[];var ch=[];
- ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 holders: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 holders: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
  if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
  $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;$("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";$("chgBox").className="chg"+(T.chg<0?" none":"");$("chg").textContent=(T.chg>=0?"↑ +":"↓ ")+T.chg+"%";
  $("hold").textContent=T.holderAccountsChecked==null?"--":Number(T.holderAccountsChecked).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
  var a=0,g=[],lg="";top.forEach(function(p,i){g.push(C[i%C.length]+" "+a+"% "+(a+p)+"%");a+=p;lg+='<p><i style="background:'+C[i%C.length]+'"></i>Top '+(i+1)+'<b>'+Number(p).toFixed(2)+'%</b></p>'});g.push("#2b2f66 "+a+"% 100%");$("ring").style.background="conic-gradient("+g.join(",")+")";$("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";$("lg").innerHTML=lg;
- var tot=Number(T.buys)+Number(T.sells),pct=tot?Math.round(Number(T.sells)/tot*100):0;$("sellTxt").textContent=T.sells>0?"مامەڵەی فرۆشتن تۆمار کراوە":"هیچ فرۆشتنێک تۆمار نەکراوە";$("meter").className="meter";$("meter").textContent=pct+"%";$("sellSub").textContent="ڕێژەی فرۆشتن لە مامەڵەکانی 24h";$("price").textContent=fmt(T.price||0);
+ var tot=Number(T.buys)+Number(T.sells),pct=tot?Math.round(Number(T.sells)/tot*100):0;$("sellTxt").textContent=T.sells>0?"مامەڵەی فرۆشتن تۆمار کراوە":"هیچ فرۆشتنێک تۆمار نەکراوە";$("meter").className="meter";$("meter").textContent=pct+"%";$("sellSub").textContent="ڕێژەی فرۆشتن لە مامەڵەکانی 24h";$("price").textContent=(T.price==null||!Number.isFinite(Number(T.price))||Number(T.price)<=0)?"--":fmt(T.price);
 }
 window.setData=function(d){T=d;render()};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
