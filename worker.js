@@ -391,6 +391,57 @@ async function autoBuy(state, env) {
   return "Checked " + checked + " new tokens (max 3 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report.";
 }
 
+
+function base32Encode(bytes) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0, out = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte; bits += 8;
+    while (bits >= 5) { out += alphabet[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits) out += alphabet[(value << (5 - bits)) & 31];
+  return out;
+}
+function base32Decode(input) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0; const out = [];
+  for (const char of String(input || "").toUpperCase().replace(/=|\s/g, "")) {
+    const n = alphabet.indexOf(char);
+    if (n < 0) throw new Error("Invalid authenticator secret");
+    value = (value << 5) | n; bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return new Uint8Array(out);
+}
+async function totpCode(secret, time = Date.now()) {
+  const key = await crypto.subtle.importKey("raw", base32Decode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const counter = Math.floor(time / 30000);
+  const msg = new Uint8Array(8);
+  let n = counter;
+  for (let i = 7; i >= 0; i--) { msg[i] = n & 255; n = Math.floor(n / 256); }
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, msg));
+  const offset = mac[mac.length - 1] & 15;
+  const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
+  return String(binary % 1000000).padStart(6, "0");
+}
+async function verifyTotp(secret, code) {
+  if (!/^\d{6}$/.test(String(code || ""))) return false;
+  for (const drift of [-30000, 0, 30000]) {
+    if (await totpCode(secret, Date.now() + drift) === String(code)) return true;
+  }
+  return false;
+}
+async function hashText(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function readProfile(env) {
+  return await env.BOT_STATE.get("admin_profile", "json") || {
+    email: "", phone: "", emailVerified: false, phoneVerified: false,
+    totpEnabled: false, totpSecret: null, backupHash: null
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -414,14 +465,103 @@ export default {
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
         await env.BOT_STATE.delete(loginKey);
+        const profile = await readProfile(env);
+        if (profile.totpEnabled && profile.totpSecret) {
+          const challengeId = crypto.randomUUID();
+          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          return json({ ok: true, mfaRequired: true, challengeId });
+        }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
     }
+    if (url.pathname === "/api/login/totp" && request.method === "POST") {
+      try {
+        const { challengeId, code } = await request.json();
+        if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const key = "mfa_challenge:" + challengeId;
+        const challenge = await env.BOT_STATE.get(key, "json");
+        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
+        const profile = await readProfile(env);
+        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        if (!valid && profile.backupHash) {
+          const submittedHash = await hashText(String(code).trim().toUpperCase());
+          if (submittedHash === profile.backupHash) {
+            valid = true;
+            profile.backupHash = null;
+            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          }
+        }
+        if (!valid) {
+          challenge.attempts = Number(challenge.attempts || 0) + 1;
+          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
+          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        }
+        await env.BOT_STATE.delete(key);
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + SESSION_MS;
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return json({ ok: true, token });
+      } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
+    }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/profile" && request.method === "GET") {
+        const p = await readProfile(env);
+        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
+      }
+      if (url.pathname === "/api/profile" && request.method === "PUT") {
+        try {
+          const body = await request.json();
+          const p = await readProfile(env);
+          if (typeof body.email === "string") {
+            const email = body.email.trim().slice(0, 254);
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "ئیمەیڵەکە دروست نییە" }, 400);
+            if (email !== p.email) p.emailVerified = false;
+            p.email = email;
+          }
+          if (typeof body.phone === "string") {
+            const phone = body.phone.trim().slice(0, 24);
+            if (phone && !/^\+?[0-9\s()-]{7,20}$/.test(phone)) return json({ error: "ژمارەی مۆبایل دروست نییە" }, 400);
+            if (phone !== p.phone) p.phoneVerified = false;
+            p.phone = phone;
+          }
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
+        } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
+      }
+      if (url.pathname === "/api/totp/setup" && request.method === "POST") {
+        const p = await readProfile(env);
+        if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
+        const secretBytes = crypto.getRandomValues(new Uint8Array(20));
+        const secret = base32Encode(secretBytes);
+        p.pendingTotpSecret = secret;
+        p.pendingTotpAt = Date.now();
+        await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+        const label = encodeURIComponent("Solana Smart Bot Admin");
+        const issuer = encodeURIComponent("Solana Smart Bot");
+        const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
+        return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
+      }
+      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        try {
+          const { code } = await request.json();
+          const p = await readProfile(env);
+          if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
+          p.totpSecret = p.pendingTotpSecret;
+          p.totpEnabled = true;
+          p.backupHash = await hashText(backupCode);
+          delete p.pendingTotpSecret;
+          delete p.pendingTotpAt;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
+        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+      }
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
