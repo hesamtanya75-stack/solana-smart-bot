@@ -656,6 +656,20 @@ export default {
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
       }
+      if (url.pathname === "/api/discover" && request.method === "GET") {
+        try {
+          const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 15);
+          const seen = new Set();
+          const tokens = (Array.isArray(profiles) ? profiles : []).filter(item => {
+            const mint = String(item?.tokenAddress || "");
+            if (item?.chainId !== "solana" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || seen.has(mint)) return false;
+            seen.add(mint); return true;
+          }).slice(0, 10).map(item => ({ mint: item.tokenAddress, name: item.description || "Solana token", url: item.url || null }));
+          return json({ ok: true, tokens });
+        } catch (error) {
+          return json({ error: "نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + String(error?.message || error) }, 503);
+        }
+      }
       if (url.pathname === "/api/scan" && request.method === "POST") {
         try {
           const body = await request.json();
@@ -665,7 +679,7 @@ export default {
           const market = result.market;
           const tx = market.txns?.h24 || {};
           const data = {
-            mint, ok: result.ok, reasons: result.reasons,
+            tokenAddress: mint, ok: result.ok, reasons: result.reasons,
             name: market.baseToken?.name || "Unknown token",
             tick: market.baseToken?.symbol || "", price: result.price,
             chg: Number(market.priceChange?.h24 || 0), holders: null,
