@@ -2005,6 +2005,7 @@ async function finishServerLogin(token) {
   await syncServerState();
   setInterval(() => syncServerState().catch(() => {}), 15000);
 }
+let serverMfaChallenge = "";
 async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
@@ -2012,42 +2013,39 @@ async function submitServerLogin() {
   button.disabled = true;
   error.textContent = "چوونەژوورەوە...";
   try {
+    if (serverMfaChallenge) {
+      const otp = document.getElementById("serverTotpCode");
+      const verified = await serverRequest("/api/login/totp", {
+        method: "POST",
+        body: JSON.stringify({ challengeId: serverMfaChallenge, code: otp.value.trim() })
+      });
+      serverMfaChallenge = "";
+      await finishServerLogin(verified.token);
+      return;
+    }
     const result = await serverRequest("/api/login", {
       method: "POST",
       body: JSON.stringify({ password: input.value })
     });
     if (result.mfaRequired) {
+      serverMfaChallenge = result.challengeId;
       let otp = document.getElementById("serverTotpCode");
       if (!otp) {
         otp = document.createElement("input");
         otp.id = "serverTotpCode";
-        otp.inputMode = "numeric";
         otp.autocomplete = "one-time-code";
-        otp.maxLength = 6;
-        otp.placeholder = "کۆدی ٦ ژمارەیی Google Authenticator";
+        otp.maxLength = 16;
+        otp.placeholder = "کۆدی Authenticator یان کۆدی گەڕاندنەوە";
         input.insertAdjacentElement("afterend", otp);
       }
-      error.textContent = "کۆدی Google Authenticator بنووسە.";
+      otp.value = "";
+      error.textContent = "کۆدی Google Authenticator بنووسە و دووبارە دوگمەی چوونەژوورەوە دابگرە.";
       button.textContent = "پشتڕاستکردنەوە";
-      button.onclick = async () => {
-        button.disabled = true;
-        try {
-          const verified = await serverRequest("/api/login/totp", {
-            method: "POST",
-            body: JSON.stringify({ challengeId: result.challengeId, code: otp.value.trim() })
-          });
-          await finishServerLogin(verified.token);
-        } catch (e) {
-          error.textContent = e.message;
-        } finally { button.disabled = false; }
-      };
-      button.disabled = false;
       return;
     }
     await finishServerLogin(result.token);
   } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message :
-      "نەتوانرا پەیوەندی بە سێرڤەر بکرێت: " + e.message;
+    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
   } finally {
     button.disabled = false;
   }
