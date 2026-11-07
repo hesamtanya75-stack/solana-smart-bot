@@ -740,6 +740,30 @@ export default {
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
       }
+      if (url.pathname === "/api/paper-buy" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const mint = String(body.mint || "").trim();
+          if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) return json({ error: "ئادرەسی کۆین دروست نییە" }, 400);
+          const state = await readState(env);
+          if (state.balance < 5) return json({ error: "باڵانسی دیمۆ بۆ کڕینی $5 بەس نییە" }, 409);
+          if (state.trades.filter(t => !t.sold).length >= 10) return json({ error: "زۆرترین ژمارەی پۆزیشنی کراوە ١٠ دانەیە" }, 409);
+          if (state.trades.some(t => t.mint === mint)) return json({ error: "ئەم کۆینە پێشتر لە تاقیکردنەوەدا کڕدراوە" }, 409);
+          const result = await inspectMint(mint, env);
+          if (!result.ok) return json({ error: "کڕینی دیمۆ ڕێگەپێنەدرا؛ پشکنینی سەلامەتی تێنەپەڕاند: " + result.reasons.join("؛ "), reasons: result.reasons }, 409);
+          state.balance = Number((state.balance - 5).toFixed(2));
+          const trade = {
+            mint, amount: 5, buyPrice: result.price, currentPrice: result.price,
+            tokens: 5 / result.price, sold: false, boughtAt: new Date().toISOString(),
+            mode: "paper", riskChecks: "passed"
+          };
+          state.trades.push(trade);
+          await saveState(env, state);
+          return json({ ok: true, trade, state });
+        } catch (error) {
+          return json({ error: "کڕینی دیمۆ سەرکەوتوو نەبوو: " + String(error?.message || error) }, 503);
+        }
+      }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
