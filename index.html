@@ -128,12 +128,9 @@ main>#demoPanel{grid-column:1/-1;min-width:0;min-height:0;padding:12px!important
 @media(max-width:360px){#result{grid-template-columns:minmax(0,1fr)}#result>.section:first-child,main>#demoPanel{grid-column:1}#demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
-#serverLogin{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;background:#020611ee;backdrop-filter:blur(8px)}
-#serverLogin .login-card{width:min(420px,100%);padding:22px;border:1px solid #5b48a8;border-radius:18px;background:linear-gradient(145deg,#17103d,#0a1b35);box-shadow:0 15px 50px #0009;text-align:right}
-#serverLogin h2{margin:0 0 10px;color:#fff;font-size:18px}
-#serverLogin p{color:#c2d6ed;font-size:12px;line-height:1.7}
-#serverLogin input{width:100%;height:44px;margin:10px 0;padding:10px;border:1px solid #315b91;border-radius:10px;background:#050d1d;color:#fff;direction:ltr;text-align:left}
-#serverLogin .login-error{min-height:18px;color:#ff9ba9;font-size:11px}
+
+
+
 
 
 /* ===== SOLANA SMART BOT · refreshed compact dashboard ===== */
@@ -252,9 +249,9 @@ main>#demoPanel{
 #demoPanel #pauseBuyBtn{background:linear-gradient(135deg,#b94a53,#8d2638)}
 #demoPanel #demoHistory .section{border-color:rgba(92,125,170,.2);background:#091628}
 #demoPanel #demoStats{border-color:rgba(92,125,170,.2);background:#091628}
-#serverLogin{padding:14px;background:rgba(2,6,17,.94)}
-#serverLogin .login-card{border-color:rgba(139,92,246,.45);background:linear-gradient(145deg,#17102f,#0a1a2e)}
-#serverLogin input{border-color:#294365;background:#070f1e}
+
+
+
 @media(max-width:600px){
   html,body{height:auto;min-height:100%;overflow-y:auto}
   body{min-height:100dvh;padding:8px;overflow-x:hidden;overflow-y:auto}
@@ -589,8 +586,8 @@ main>#demoPanel{
 #demoPanel #demoHistory .section{min-width:0!important;background:#0b1932!important;border:1px solid #354d7a!important;border-radius:11px!important;padding:8px!important}
 #demoPanel #demoStats p,#demoPanel #demoHistory p{font-size:11px!important;line-height:1.5!important}
 #demoPanel .bot-warning{border-color:#80602a!important;background:#241d20!important}
-#serverLogin{background:rgba(1,3,12,.96)!important;backdrop-filter:blur(12px)}
-#serverLogin .login-card{border:1px solid #9451ff!important;border-radius:20px!important;box-shadow:0 0 30px #672cff55!important}
+
+
 @media(max-width:650px){
  body{padding:7px!important}
  main{gap:8px!important}
@@ -1888,24 +1885,10 @@ setInterval(() => {
 
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
-let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
-const serverLogin = document.createElement("div");
-serverLogin.id = "serverLogin";
-serverLogin.innerHTML = `
-  <div class="login-card">
-    <h2>🔐 چوونەژوورەوەی بۆتی سێرڤەر</h2>
-    <p>بۆ کارکردنی بۆت لەسەر سێرڤەر و بەردەوامبوونی تاقیکردنەوەی خەیاڵی، وشەی نهێنییەکە بنووسە.</p>
-    <input id="serverPassword" type="password" autocomplete="current-password" placeholder="وشەی نهێنی">
-    <button id="serverLoginButton">چوونەژوورەوە</button>
-    <div class="login-error" id="serverLoginError"></div>
-    <p class="small">تەنها تاقیکردنەوەی خەیاڵییە؛ هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت.</p>
-  </div>`;
-document.body.appendChild(serverLogin);
 
 async function serverRequest(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (serverToken) headers.Authorization = "Bearer " + serverToken;
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
@@ -1933,7 +1916,7 @@ function applyServerState(state) {
     document.getElementById("demoStatus").textContent = state.lastMessage;
   }
   if (state.lastRunAt && document.getElementById("demoStatus")) {
-    document.getElementById("demoStatus").textContent += "\nدوایین جار لە سێرڤەر: " + new Date(state.lastRunAt).toLocaleString();
+    document.getElementById("demoStatus").textContent += "\\nدوایین جار لە سێرڤەر: " + new Date(state.lastRunAt).toLocaleString();
   }
   const scanReport = Array.isArray(state.lastScanReport) ? state.lastScanReport : [];
   const reportNode = document.getElementById("demoStatus");
@@ -1944,7 +1927,7 @@ function applyServerState(state) {
       const reasons = Array.isArray(item.reasons) ? item.reasons.join("؛ ") : "هۆکار نەدۆزرایەوە";
       return label + " [" + shortMint + "]: " + reasons;
     });
-    reportNode.textContent += "\n\nهۆکاری دوا پشکنینەکان:\n" + lines.join("\n");
+    reportNode.textContent += "\\n\\nهۆکاری دوا پشکنینەکان:\\n" + lines.join("\\n");
   }
 }
 async function syncServerState() {
@@ -1978,13 +1961,8 @@ saveDemoState = function() {
     }, 500);
   }
 };
-async function finishServerLogin(token) {
-  serverToken = token;
-  localStorage.setItem("solanaBotSession", token);
+async function initializeServerMode() {
   const remote = await serverRequest("/api/state");
-  // Enable server persistence before migrating the browser's existing paper-trading
-  // state. Otherwise saveServerState() returns early and the next sync replaces
-  // the local history and balance with the empty server defaults.
   serverModeReady = true;
   if (!remote.updatedAt) {
     let old = null;
@@ -1997,37 +1975,10 @@ async function finishServerLogin(token) {
   } else {
     applyServerState(remote);
   }
-  serverModeReady = true;
-  serverLogin.style.display = "none";
-  renderServerControls(remote.updatedAt ? remote : {
-    autoEnabled: false, paused: false
-  });
+  renderServerControls(remote.updatedAt ? remote : { autoEnabled: false, paused: false });
   await syncServerState();
   setInterval(() => syncServerState().catch(() => {}), 15000);
 }
-async function submitServerLogin() {
-  const input = document.getElementById("serverPassword");
-  const error = document.getElementById("serverLoginError");
-  const button = document.getElementById("serverLoginButton");
-  button.disabled = true;
-  error.textContent = "چوونەژوورەوە...";
-  try {
-    const result = await serverRequest("/api/login", {
-      method: "POST",
-      body: JSON.stringify({ password: input.value })
-    });
-    await finishServerLogin(result.token);
-  } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message :
-      "نەتوانرا پەیوەندی بە سێرڤەر بکرێت: " + e.message;
-  } finally {
-    button.disabled = false;
-  }
-}
-document.getElementById("serverLoginButton").addEventListener("click", submitServerLogin);
-document.getElementById("serverPassword").addEventListener("keydown", event => {
-  if (event.key === "Enter") submitServerLogin();
-});
 async function changeServerAutomation(enabled, paused) {
   const result = await serverRequest("/api/automation", {
     method: "POST",
@@ -2059,13 +2010,10 @@ pauseBuyBtn.onclick = async function() {
       : "بۆتی سێرڤەر دووبارە دەستی پێکردەوە.";
   } catch (e) { document.getElementById("demoStatus").textContent = e.message; }
 };
-if (serverToken) {
-  finishServerLogin(serverToken).catch(() => {
-    localStorage.removeItem("solanaBotSession");
-    serverToken = "";
-    serverLogin.style.display = "flex";
-  });
-}
+initializeServerMode().catch(error => {
+  const status = document.getElementById("demoStatus");
+  if (status) status.textContent = "نەتوانرا داتاکانی سێرڤەر وەربگیرێت: " + error.message;
+});
 
 </script>
 </body>
