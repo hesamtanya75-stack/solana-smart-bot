@@ -321,6 +321,24 @@ main>#demoPanel{
 </style>
 </head>
 <body>
+<script id="SB_RUNTIME_DIAGNOSTICS">
+(function(){
+  function report(kind, message, detail){
+    try{
+      var box=document.getElementById("sbRuntimeError");
+      if(!box){
+        box=document.createElement("div");
+        box.id="sbRuntimeError";
+        box.style.cssText="position:fixed;z-index:2147483647;inset:12px 12px auto;padding:14px;border:2px solid #ff647c;border-radius:12px;background:#240b18;color:#fff;font:14px/1.6 system-ui;direction:rtl;text-align:right;white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto";
+        document.body.appendChild(box);
+      }
+      box.textContent="هەڵەی ناوخۆی پەڕە ("+kind+"):\n"+String(message||"هەڵەی نەناسراو")+"\n"+String(detail||"");
+    }catch(_){}
+  }
+  window.addEventListener("error",function(e){report("JavaScript",e.message,(e.filename||"")+" "+(e.lineno||"")+":"+(e.colno||""));},true);
+  window.addEventListener("unhandledrejection",function(e){var r=e.reason;report("Promise",r&&r.message?r.message:String(r||""));});
+})();
+</script>
 <div id="serverLogin" role="dialog" aria-modal="true" aria-label="چوونەژوورەوە">
   <div class="login-card">
     <h2>🔐 چوونەژوورەوەی بۆتی سێرڤەر</h2>
