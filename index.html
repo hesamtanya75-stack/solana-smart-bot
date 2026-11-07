@@ -169,7 +169,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
-var apiToken=null, mfaChallenge=null;
+var apiToken=null, mfaChallenge=null, stateRefreshTimer=null;
 async function api(path,method,body){
  const headers={"Content-Type":"application/json"};if(apiToken)headers.Authorization="Bearer "+apiToken;
  const res=await fetch(path,{method:method||"GET",headers,body:body?JSON.stringify(body):undefined,cache:"no-store"});
@@ -188,7 +188,7 @@ $("loginForm").addEventListener("submit",async function(e){
    if(result.mfaRequired){mfaChallenge=result.challengeId;$("totpCode").style.display="block";$("loginPassword").style.display="none";loginMessage("کۆدی ٦ ژمارەیی Authenticator بنووسە");button.disabled=false;return}
    apiToken=result.token;
   }
-  $("serverLogin").style.display="none";await loadState();toast("چوونەژوورەوە سەرکەوتوو بوو");
+  $("serverLogin").style.display="none";await loadState();if(stateRefreshTimer)clearInterval(stateRefreshTimer);stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);toast("چوونەژوورەوە سەرکەوتوو بوو");
  }catch(err){loginMessage(err.message)}finally{button.disabled=false}
 });
 async function loadState(){
