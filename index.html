@@ -187,11 +187,11 @@ $("loginForm").addEventListener("submit",async function(e){
 async function loadState(){
  var s=await api("/api/state");
  var closed=s.trades.filter(function(t){return t.sold});
- var pnl=closed.reduce(function(a,t){return a+Number(t.saleValue||0)-Number(t.amount||0)},0);
+ var profit=closed.reduce(function(a,t){return a+Math.max(0,Number(t.saleValue||0)-Number(t.amount||0))},0);var loss=closed.reduce(function(a,t){return a+Math.max(0,Number(t.amount||0)-Number(t.saleValue||0))},0);
  var wins=closed.filter(function(t){return Number(t.saleValue||0)>Number(t.amount||0)}).length;
  var losses=closed.filter(function(t){return Number(t.saleValue||0)<Number(t.amount||0)}).length;
- $("statProfit").textContent=(pnl>=0?"+":"")+fmt(pnl);
- $("statLoss").textContent="$"+Math.max(0,-pnl).toFixed(2);
+ $("statProfit").textContent="+"+fmt(profit);
+ $("statLoss").textContent="$"+loss.toFixed(2);
  $("statBalance").textContent=fmt(s.balance);
  $("statTrades").textContent=s.trades.filter(function(t){return !t.sold}).length+" / "+closed.length;
  $("statWin").textContent=(closed.length?((wins/closed.length)*100).toFixed(1):"0")+"%";
