@@ -19,6 +19,7 @@ const RPCS = [
 ];
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
+let rpcDiagnostics = { successes: [], errors: [] };
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -81,29 +82,26 @@ async function rpc(method, params, env) {
       errors.push("Alchemy configuration invalid: use the Solana Mainnet API key or its HTTPS endpoint");
     }
   }
-  {
+  // Try every configured public fallback, not just the first one. Rotate the
+  // starting provider between calls to avoid repeatedly favoring one endpoint.
+  for (let i = 0; i < RPCS.length; i++) {
     const fallback = RPCS[rpcCursor++ % RPCS.length];
     endpoints.push({ url: fallback, label: new URL(fallback).hostname });
   }
-  if (!env?.ALCHEMY_API_KEY || alchemyUnauthorized) {
-    for (let i = 0; i < Math.min(2, RPCS.length); i++) {
-      const fallback = RPCS[rpcCursor++ % RPCS.length];
-      endpoints.push({ url: fallback, label: new URL(fallback).hostname });
-    }
-  }
 
-  // Keep each RPC method to at most two outbound requests per Worker invocation.
-  for (const endpoint of endpoints.slice(0, 2)) {
+  // Each provider has a bounded timeout; continue to the next provider on failure.
+  for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(7000)
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       if (data.error) throw new Error(data.error.message || "RPC error");
+      rpcDiagnostics.successes.push(endpoint.label);
       return data.result;
     } catch (error) {
       const message = String(error?.message || error);
@@ -111,9 +109,10 @@ async function rpc(method, params, env) {
         alchemyUnauthorized = true;
       }
       errors.push(endpoint.label + ": " + message);
+      rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
   }
-  throw new Error("Solana RPC providers failed (max 2 per method) — " + errors.join(" | "));
+  throw new Error("Solana RPC providers failed — " + errors.join(" | "));
 }
 
 async function rpcBatch(calls, env) {
@@ -131,12 +130,13 @@ async function rpcBatch(calls, env) {
       }
     } catch {}
   }
-  const publicFallbacks = endpoints.length ? 1 : 2;
-  for (let i = 0; i < publicFallbacks; i++) {
+  // Always make all public providers available as fallbacks, even when
+  // Alchemy is configured or returns HTTP 401/403.
+  for (let i = 0; i < RPCS.length; i++) {
     const url = RPCS[rpcCursor++ % RPCS.length];
-    endpoints.push({ url, label: "Public Solana RPC" });
+    endpoints.push({ url, label: new URL(url).hostname });
   }
-  for (const endpoint of endpoints.slice(0, 2)) {
+  for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint.url, {
         method: "POST",
@@ -144,21 +144,24 @@ async function rpcBatch(calls, env) {
         body: JSON.stringify(calls.map((call, index) => ({
           jsonrpc: "2.0", id: index + 1, method: call.method, params: call.params
         }))),
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(7000)
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
       const byId = new Map(data.map(item => [item.id, item]));
-      return calls.map((_, index) => {
+      const results = calls.map((_, index) => {
         const item = byId.get(index + 1);
         if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
         return item.result;
       });
+      rpcDiagnostics.successes.push(endpoint.label);
+      return results;
     } catch (error) {
       const message = String(error?.message || error);
       if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") alchemyUnauthorized = true;
       errors.push(endpoint.label + ": " + message);
+      rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
   }
   throw new Error("Solana RPC batch providers failed — " + errors.join(" | "));
@@ -673,6 +676,7 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
+      rpcDiagnostics = { successes: [], errors: [] };
       const state = await readState(env);
       let sold = 0;
       let refreshWarning = "";
@@ -706,10 +710,16 @@ export default {
         refreshWarning ? "Price refresh warning: " + refreshWarning : "",
         buyWarning ? "Auto-buy warning: " + buyWarning : ""
       ].filter(Boolean);
-      state.lastMessage = warnings.length
+      const rpcSummary = rpcDiagnostics.successes.length
+        ? " RPC responded: " + [...new Set(rpcDiagnostics.successes)].join(", ") + "."
+        : " No successful RPC response was confirmed in this cycle.";
+      const rpcErrors = rpcDiagnostics.errors.length
+        ? " RPC errors: " + [...new Set(rpcDiagnostics.errors)].join(" | ") + "."
+        : "";
+      state.lastMessage = (warnings.length
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
-        : "Server cycle complete. Sold: " + sold + ". " + buyMessage;
+        : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
       await saveState(env, state);
 
       // Safe operational log: never include secrets, wallet data, or API keys.
@@ -717,6 +727,8 @@ export default {
         sold,
         message: buyMessage,
         warnings,
+        rpcResponded: [...new Set(rpcDiagnostics.successes)],
+        rpcErrors: [...new Set(rpcDiagnostics.errors)],
         openTrades: state.trades.filter(t => !t.sold).length,
         scannedMints: state.scannedMints.length,
         durationMs: Date.now() - startedAt
