@@ -88,7 +88,16 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="serverLogin" style="position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,6,20,.96)">
+  <form id="loginForm" style="width:min(100%,380px);padding:24px;border:1px solid rgba(139,92,246,.65);border-radius:22px;background:#10112f;box-shadow:0 20px 70px #0009;text-align:center">
+    <h2 style="font-size:22px;margin-bottom:8px">🔐 چوونەژوورەوە</h2>
+    <p style="font-size:13px;color:#a9aed6;margin-bottom:16px">بۆ بەکارهێنانی داشبۆرد وشەی نهێنی بنووسە</p>
+    <input id="loginPassword" type="password" autocomplete="current-password" placeholder="وشەی نهێنی" required style="width:100%;height:48px;border-radius:12px;border:1px solid #6366f1;background:#080a24;color:white;padding:0 14px;font:inherit;margin-bottom:12px">
+    <input id="totpCode" inputmode="numeric" autocomplete="one-time-code" placeholder="کۆدی Authenticator (ئەگەر داواکرا)" style="display:none;width:100%;height:48px;border-radius:12px;border:1px solid #6366f1;background:#080a24;color:white;padding:0 14px;font:inherit;margin-bottom:12px">
+    <button class="btn blue" id="loginButton" type="submit" style="width:100%">چوونەژوورەوە</button>
+    <p id="loginMessage" style="font-size:12px;color:#fda4af;margin-top:12px"></p>
+  </form>
+</div>\n<div class="wrap">
 <header>
   <svg class="sol" viewBox="0 0 40 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs>
   <path d="M7 1h31l-5 7H2z" fill="url(#sg)"/><path d="M7 13h31l-5 7H2z" fill="url(#sg)" transform="translate(0 0)"/><path d="M2 25h31l5 7H7z" fill="url(#sg)"/></svg>
@@ -150,6 +159,37 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
+var apiToken=null, mfaChallenge=null;
+async function api(path,method,body){
+ const headers={"Content-Type":"application/json"};if(apiToken)headers.Authorization="Bearer "+apiToken;
+ const res=await fetch(path,{method:method||"GET",headers,body:body?JSON.stringify(body):undefined,cache:"no-store"});
+ const data=await res.json().catch(function(){return {}});
+ if(!res.ok)throw new Error(data.error||("HTTP "+res.status));return data;
+}
+function loginMessage(t){$("loginMessage").textContent=t}
+$("loginForm").addEventListener("submit",async function(e){
+ e.preventDefault();var button=$("loginButton");button.disabled=true;loginMessage("تکایە چاوەڕێ بکە...");
+ try{
+  if(mfaChallenge){
+   var res=await fetch("/api/login/totp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({challengeId:mfaChallenge,code:$("totpCode").value.trim()})});
+   var verified=await res.json();if(!res.ok)throw new Error(verified.error||"کۆدی پشتڕاستکردنەوە هەڵەیە");apiToken=verified.token;mfaChallenge=null;
+  }else{
+   var result=await api("/api/login","POST",{password:$("loginPassword").value});
+   if(result.mfaRequired){mfaChallenge=result.challengeId;$("totpCode").style.display="block";$("loginPassword").style.display="none";loginMessage("کۆدی ٦ ژمارەیی Authenticator بنووسە");button.disabled=false;return}
+   apiToken=result.token;
+  }
+  $("serverLogin").style.display="none";await loadState();toast("چوونەژوورەوە سەرکەوتوو بوو");
+ }catch(err){loginMessage(err.message)}finally{button.disabled=false}
+});
+async function loadState(){
+ var s=await api("/api/state");
+ var closed=s.trades.filter(function(t){return t.sold});
+ var pnl=closed.reduce(function(a,t){return a+Number(t.saleValue||0)-Number(t.amount||0)},0);
+ var stat=document.querySelector(".bs");if(stat){var ps=stat.querySelectorAll("p");if(ps.length>=3){ps[0].querySelector("b").textContent=(pnl>=0?"+":"")+fmt(pnl);ps[1].querySelector("b").textContent="$"+Math.max(0,-pnl).toFixed(2);ps[2].querySelector("b").textContent=String(s.trades.length)}}
+ $("start").disabled=!!s.autoEnabled&&!s.paused;$("stop").disabled=!s.autoEnabled||!!s.paused;
+ $("start").textContent=s.autoEnabled&&!s.paused?"▶ چالاکە":"▶ دەستپێکردنەوە";
+}
+
 var C=["#8b5cf6","#3b82f6","#f59e0b","#22c55e","#64748b"];
 function $(i){return document.getElementById(i)}
 function fmt(n){return "$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
@@ -168,10 +208,24 @@ function render(){
 }
 window.setData=function(d){T=d;render()};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
-$("scan").onclick=function(){var q=$("q").value.trim();toast(q?"ئامادەیە بۆ بەستنەوەی داتا":"ناو یان ئادرسێک بنووسە")};
-$("disc").onclick=function(){toast("ئامادەیە بۆ بەستنەوەی داتا")};
-$("start").onclick=function(){this.disabled=true;$("stop").disabled=false;toast("ڕۆبۆت دەستی پێکرد (تاقیکردنەوە)")};
-$("stop").onclick=function(){this.disabled=true;$("start").disabled=false;toast("ڕۆبۆت ڕاوەستا")};
+$("scan").onclick=async function(){
+ var mint=$("q").value.trim();if(!mint){toast("ئادرەسی کۆین بنووسە");return}if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}
+ this.disabled=true;toast("پشکنین دەکرێت...");
+ try{var r=await api("/api/scan","POST",{mint});window.setData(r.data);toast(r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی")}
+ catch(e){toast(e.message)}finally{this.disabled=false}
+};
+$("disc").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}
+ try{var s=await api("/api/state");var n=(s.lastScanReport||[]).length;toast(n?"دوایین ڕاپۆرت: "+n+" پشکنین":"هێشتا ڕاپۆرتی پشکنین نییە")}catch(e){toast(e.message)}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
 render();
 </script>
 </body>
