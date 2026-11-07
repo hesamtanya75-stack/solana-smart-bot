@@ -1952,6 +1952,22 @@ async function syncServerState() {
   const state = await serverRequest("/api/state");
   applyServerState(state);
 }
+let serverPriceRefreshBusy = false;
+async function refreshServerPrices() {
+  if (!serverModeReady || serverPriceRefreshBusy) return;
+  serverPriceRefreshBusy = true;
+  try {
+    const result = await serverRequest("/api/refresh-prices", { method: "POST" });
+    if (result?.state) applyServerState(result.state);
+  } catch (error) {
+    const status = document.getElementById("demoStatus");
+    if (status && String(error?.message || "").includes("Price refresh failed")) {
+      status.textContent = "نوێکردنەوەی نرخی خەیاڵی سەرکەوتوو نەبوو؛ سێرڤەر لە خولی داهاتوودا دووبارە هەوڵ دەدات.";
+    }
+  } finally {
+    serverPriceRefreshBusy = false;
+  }
+}
 async function saveServerState() {
   if (!serverModeReady) return;
   await serverRequest("/api/state", {
@@ -2003,7 +2019,9 @@ async function finishServerLogin(token) {
     autoEnabled: false, paused: false
   });
   await syncServerState();
+  refreshServerPrices().catch(() => {});
   setInterval(() => syncServerState().catch(() => {}), 15000);
+  setInterval(() => refreshServerPrices().catch(() => {}), 5000);
 }
 let serverMfaChallenge = "";
 async function submitServerLogin() {
