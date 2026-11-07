@@ -361,7 +361,12 @@ async function inspectMint(mint, env) {
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
   if (!(price > 0)) reasons.push("Price unavailable");
-  return { ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score, largestPct, topTenPct };
+  return {
+    ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score,
+    largestPct, topTenPct, top: ownerPercentages.slice(0, 5),
+    mintAuthority: details.mintAuthority, freezeAuthority: details.freezeAuthority,
+    holderAccountsChecked: ownerBalances.size
+  };
 }
 async function refreshTrades(state, env) {
   const open = state.trades.filter(t => !t.sold);
@@ -650,6 +655,35 @@ export default {
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+      }
+      if (url.pathname === "/api/scan" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const mint = String(body.mint || "").trim();
+          if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) return json({ error: "ئادرەسی کۆین دروست نییە" }, 400);
+          const result = await inspectMint(mint, env);
+          const market = result.market;
+          const tx = market.txns?.h24 || {};
+          const data = {
+            mint, ok: result.ok, reasons: result.reasons,
+            name: market.baseToken?.name || "Unknown token",
+            tick: market.baseToken?.symbol || "", price: result.price,
+            chg: Number(market.priceChange?.h24 || 0), holders: null,
+            holderAccountsChecked: result.holderAccountsChecked,
+            buys: Number(tx.buys || 0), sells: Number(tx.sells || 0),
+            vol: Number(market.volume?.h24 || 0), liq: Number(market.liquidity?.usd || 0),
+            top: result.top, mint: result.mintAuthority, freeze: result.freezeAuthority,
+            largestPct: result.largestPct, topTenPct: result.topTenPct,
+            rugScore: result.rugScore, pairAddress: market.pairAddress || null,
+            dexUrl: market.url || null
+          };
+          const state = await readState(env);
+          state.lastScanReport = [{ mint, status: result.ok ? "passed" : "rejected", reasons: result.reasons, scannedAt: new Date().toISOString() }, ...state.lastScanReport].slice(0, 20);
+          await saveState(env, state);
+          return json({ ok: true, data });
+        } catch (error) {
+          return json({ error: "پشکنینی کۆین سەرکەوتوو نەبوو: " + String(error?.message || error) }, 503);
+        }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
