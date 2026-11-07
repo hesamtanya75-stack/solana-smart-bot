@@ -131,7 +131,11 @@ async function rpcBatch(calls, env) {
       }
     } catch {}
   }
-  endpoints.push({ url: RPCS[rpcCursor++ % RPCS.length], label: "Public Solana RPC" });
+  const publicFallbacks = endpoints.length ? 1 : 2;
+  for (let i = 0; i < publicFallbacks; i++) {
+    const url = RPCS[rpcCursor++ % RPCS.length];
+    endpoints.push({ url, label: "Public Solana RPC" });
+  }
   for (const endpoint of endpoints.slice(0, 2)) {
     try {
       const response = await fetch(endpoint.url, {
@@ -615,14 +619,31 @@ export default {
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
       }
-      if (url.pathname === "/api/refresh-prices" && request.method === "POST") {
+      if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
           const state = await readState(env);
-          const sold = await refreshTrades(state, env);
-          await saveState(env, state);
-          return json({ ok: true, sold, state });
+          const open = state.trades.filter(t => !t.sold);
+          if (!open.length) return json({ ok: true, prices: {} });
+          const addresses = [...new Set(open.map(t => t.mint).filter(Boolean))].slice(0, 30);
+          const data = await getDexJson(
+            "https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","),
+            env, 5
+          );
+          const best = new Map();
+          for (const pair of (data.pairs || []).filter(p => p.chainId === "solana")) {
+            const mint = pair.baseToken?.address;
+            if (!mint) continue;
+            if (!best.has(mint) || Number(pair.liquidity?.usd || 0) > Number(best.get(mint).liquidity?.usd || 0)) best.set(mint, pair);
+          }
+          const prices = {};
+          for (const trade of open) {
+            const price = Number(best.get(trade.mint)?.priceUsd || 0);
+            if (price > 0) prices[trade.mint] = price;
+          }
+          // Display-only prices: never change balance or close trades from a browser poll.
+          return json({ ok: true, prices });
         } catch (error) {
-          return json({ error: "Price refresh failed: " + String(error?.message || error) }, 503);
+          return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
