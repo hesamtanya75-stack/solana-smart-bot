@@ -237,6 +237,19 @@ $("stop").onclick=async function(){
  try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
 };
 render();
+
+// Public visual preview only: bypass the login screen on HTMLPreview.
+// Backend endpoints and real server authentication remain unchanged.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
 </script>
 </body>
 </html>
