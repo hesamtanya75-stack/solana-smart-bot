@@ -202,7 +202,7 @@ function render(){
  ch.push([!T.mint,"Mint Authority: "+(T.mint?"Enabled":"Disabled")]);ch.push([!T.freeze,"Freeze Authority: "+(T.freeze?"Enabled":"Disabled")]);ch.push([top.length>0&&top[0]<=50,"Top 1 holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
  var bad=ch.filter(function(c){return !c[0]}).length;var lv=bad>=2?"high":bad===1?"mid":"low";var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
  $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;$("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";$("chgBox").className="chg"+(T.chg<0?" none":"");$("chg").textContent=(T.chg>=0?"↑ +":"↓ ")+T.chg+"%";
- $("hold").textContent=Number(T.holders||0).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ $("hold").textContent=T.holders==null?"--":Number(T.holders).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
  var a=0,g=[],lg="";top.forEach(function(p,i){g.push(C[i%C.length]+" "+a+"% "+(a+p)+"%");a+=p;lg+='<p><i style="background:'+C[i%C.length]+'"></i>Top '+(i+1)+'<b>'+Number(p).toFixed(2)+'%</b></p>'});g.push("#2b2f66 "+a+"% 100%");$("ring").style.background="conic-gradient("+g.join(",")+")";$("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";$("lg").innerHTML=lg;
  var tot=Number(T.buys)+Number(T.sells),pct=tot?Math.round(Number(T.sells)/tot*100):0;$("sellTxt").textContent=T.sells>0?"مامەڵەی فرۆشتن تۆمار کراوە":"هیچ فرۆشتنێک تۆمار نەکراوە";$("meter").className="meter";$("meter").textContent=pct+"%";$("sellSub").textContent="ڕێژەی فرۆشتن لە مامەڵەکانی 24h";$("price").textContent=fmt(T.price||0);
 }
@@ -216,7 +216,7 @@ $("scan").onclick=async function(){
 };
 $("disc").onclick=async function(){
  if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}
- try{var s=await api("/api/state");var n=(s.lastScanReport||[]).length;toast(n?"دوایین ڕاپۆرت: "+n+" پشکنین":"هێشتا ڕاپۆرتی پشکنین نییە")}catch(e){toast(e.message)}
+ this.disabled=true;try{var r=await api("/api/discover");if(r.tokens&&r.tokens.length){$("q").value=r.tokens[0].mint;toast("کۆینی نوێ دۆزرایەوە؛ ئێستا پشکنینی بکە")}else toast("کۆینی نوێ نەدۆزرایەوە")}catch(e){toast(e.message)}finally{this.disabled=false}
 };
 $("start").onclick=async function(){
  if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
