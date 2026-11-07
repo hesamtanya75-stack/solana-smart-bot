@@ -1018,6 +1018,113 @@ main>p.small{display:block!important;margin:0!important;padding:0 4px!important;
   #extraInfo .metric strong{font-size:15px!important}
   #result{grid-template-columns:minmax(0,1fr)!important}
 }
+
+/* ===== Claude artifact visual refresh; preserve all existing app markup and logic ===== */
+:root{
+  --card:rgba(14,16,46,.88);--line:rgba(99,102,241,.42);
+  --text:#f5f5ff;--muted:#a9aed6;--ok:#22c55e;--bad:#f43f5e;--warn:#f59e0b;
+}
+html{background:#070816}
+body{
+  font-family:'Noto Sans Arabic',-apple-system,system-ui,sans-serif;
+  color:var(--text);min-height:100vh;padding:calc(10px + env(safe-area-inset-top,0px)) 12px calc(20px + env(safe-area-inset-bottom,0px));
+  background:radial-gradient(ellipse 80% 30% at 100% 0,rgba(124,58,237,.35),transparent),
+    radial-gradient(ellipse 70% 30% at 0 55%,rgba(37,99,235,.22),transparent),
+    radial-gradient(ellipse 80% 30% at 100% 100%,rgba(124,58,237,.3),transparent),#070816;
+  overflow-x:hidden;overflow-y:auto;
+}
+main{width:100%;max-width:440px;min-height:0;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+header{
+  min-height:74px;padding:9px 62px 9px 10px;text-align:center;align-items:center;
+  border:1px solid rgba(99,102,241,.5);border-radius:18px;
+  background:linear-gradient(120deg,rgba(35,18,78,.96),rgba(10,23,56,.96) 60%,rgba(4,48,55,.96));
+  box-shadow:0 0 16px rgba(99,102,241,.22),inset 0 0 18px rgba(99,102,241,.07);
+}
+header:before{content:"SOLANA SMART BOT";color:#a855f7;font-size:10px;font-weight:900;letter-spacing:2px;margin-bottom:2px}
+header:after{right:10px;width:40px;height:40px;border-radius:12px;clip-path:none;background:linear-gradient(135deg,#9945ff,#14f195);filter:drop-shadow(0 0 8px rgba(139,92,246,.55))}
+h1{font-size:clamp(16px,4.5vw,21px);line-height:1.25;letter-spacing:0}
+header p{font-size:10px;color:#e2e4ff;margin-top:3px}
+.safety-strip{
+  display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;
+  padding:7px 10px;border:1px solid rgba(34,197,94,.35);border-radius:999px;
+  background:rgba(14,60,48,.45);color:#d4fbe9;font-size:10px;
+}
+.safety-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px #22c55e}
+main>.panel{
+  display:grid;grid-template-columns:1fr 1fr;
+  grid-template-areas:"mint mint" "discover scan" "discoverstatus discoverstatus" "discoverlist discoverlist" "status status";
+  gap:8px;padding:12px;border:1px solid var(--line);border-radius:18px;
+  background:var(--card);box-shadow:0 0 16px rgba(99,102,241,.18),inset 0 0 18px rgba(99,102,241,.06);
+}
+main>.panel>h2{display:none}
+#mint{grid-area:mint;width:100%;height:48px;padding:10px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(10,12,36,.8);color:var(--text);font:inherit;font-size:14px;direction:ltr;text-align:left}
+#mint::placeholder{color:#7f84b4;direction:rtl;text-align:right}
+#autoDiscover{grid-area:discover}
+#scan{grid-area:scan}
+button{min-height:46px;padding:8px;border:0;border-radius:14px;font:inherit;font-size:11px;font-weight:800;color:#fff;line-height:1.35}
+#autoDiscover{background:linear-gradient(135deg,#22c55e,#15803d);box-shadow:0 0 13px rgba(34,197,94,.3)}
+#scan{background:linear-gradient(135deg,#3b82f6,#1d4ed8);box-shadow:0 0 13px rgba(59,130,246,.35)}
+#status{grid-area:status;margin:0;padding:3px;color:#fbd38d;font-size:10px;text-align:center;white-space:pre-line}
+#discoverStatus{grid-area:discoverstatus;font-size:10px;color:#c5c9e8}
+#discoverList{grid-area:discoverlist;max-height:100px;overflow:auto}
+#discoverList button{min-height:32px;width:auto;max-width:48%;font-size:9px;background:#20244f;border:1px solid var(--line)}
+#result{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,auto);gap:9px;min-width:0;overflow:visible}
+#result>.section{
+  min-width:0;min-height:0;margin:0;padding:11px;border:1px solid var(--line);border-radius:17px;
+  background:var(--card);box-shadow:0 0 14px rgba(99,102,241,.16),inset 0 0 15px rgba(99,102,241,.05);overflow:hidden;
+}
+#result>.section:first-child{grid-column:1/-1;border-color:rgba(139,92,246,.6);background:linear-gradient(125deg,rgba(32,18,75,.96),rgba(12,20,49,.96) 60%,rgba(4,48,52,.96))}
+#result h2{margin:0 0 8px;padding:0 0 7px;border-bottom:1px solid rgba(99,102,241,.25);color:#d9dcff;font-size:12px}
+#result>.section:first-child h2{font-size:16px;color:#fff}
+#risk{margin:0 0 8px;padding:8px;border:1px solid rgba(99,102,241,.3);border-radius:12px;background:rgba(8,10,32,.65)}
+#risk h2{font-size:13px}
+#basic{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#basic .item,#market .item{
+  min-width:0;margin:0;padding:7px;display:flex;flex-direction:column;gap:4px;
+  border:1px solid rgba(99,102,241,.22);border-radius:10px;background:rgba(8,13,36,.65);font-size:9px;
+}
+.item{min-width:0;border-color:rgba(99,102,241,.22);border-radius:10px;background:rgba(8,13,36,.65);font-size:10px}
+.value{max-width:100%;font-size:10px;overflow-wrap:anywhere}
+#market{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#market .value,#basic .value{text-align:right;font-size:10px}
+#security .item,#holders .item{margin:5px 0;padding:7px;font-size:9px}
+#selling{font-size:10px;line-height:1.55}
+#conclusion{padding:8px;border:1px solid rgba(245,158,11,.25);border-radius:10px;background:rgba(38,29,17,.45)}
+#result p{font-size:10px;line-height:1.5}
+#result .small,.empty-hint{font-size:9px;color:var(--muted)}
+#demoPanel{
+  grid-column:1/-1;min-width:0;margin:0;padding:12px!important;
+  border:1px solid rgba(20,185,165,.38)!important;border-radius:18px!important;
+  background:var(--card)!important;box-shadow:0 0 16px rgba(99,102,241,.18)!important;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;overflow:visible;
+}
+#demoPanel .bot-head{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap}
+#demoPanel .bot-head h2{font-size:14px;color:#fff}
+#demoPanel .bot-kicker,#demoPanel .eyebrow{color:#c4a5fd;font-size:9px}
+#demoPanel .demo-chip,#demoPanel .mode-pill{color:#fcd34d;font-size:9px}
+#demoPanel .dashboard,#demoPanel #demoStats,#demoPanel .section{
+  padding:9px;border:1px solid rgba(99,102,241,.25);border-radius:12px;background:rgba(8,13,36,.7);
+}
+#demoPanel .dashboard,#demoPanel #demoStats,#demoPanel #demoHistory,#demoPanel .bot-warning,#demoPanel .demo-disclaimer,#demoPanel #demoStatus{grid-column:1/-1}
+#demoPanel .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#demoPanel .metric,#demoPanel .demo-metric{min-width:0;padding:7px;border:1px solid rgba(99,102,241,.22);border-radius:9px;background:rgba(8,13,36,.8)}
+#demoPanel .metric span,#demoPanel .metric small,#demoPanel .demo-metric span{font-size:9px;color:#b8c3e4}
+#demoPanel .metric strong,#demoPanel .demo-metric b{font-size:15px;overflow-wrap:anywhere}
+#demoPanel button{min-height:42px;font-size:10px}
+#demoPanel #demoBuy{grid-column:1/-1}
+#demoPanel #autoDemoBuy{grid-column:1}
+#demoPanel #pauseBuyBtn{grid-column:2}
+#demoPanel #demoHistory{grid-template-columns:1fr;gap:7px}
+#demoPanel .bot-warning{font-size:10px!important;line-height:1.55}
+#serverLogin{background:rgba(2,6,17,.96)}
+#serverLogin .login-card{border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#17103d,#0a1b35)}
+@media(max-width:360px){
+  body{padding-left:7px;padding-right:7px}
+  #result{grid-template-columns:minmax(0,1fr)}
+  #result>.section:first-child,#demoPanel{grid-column:1}
+  #demoPanel .demo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
 </style>
 </head>
 <body>
