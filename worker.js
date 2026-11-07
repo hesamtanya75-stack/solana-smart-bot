@@ -511,6 +511,16 @@ export default {
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: "47a9972", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
+    if (url.pathname === "/asset-check" && request.method === "GET") {
+      try {
+        const assetUrl = new URL("/index.html", request.url);
+        const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+        const html = await asset.clone().text();
+        return json({ ok: asset.ok, status: asset.status, contentType: asset.headers.get("Content-Type"), bytes: new TextEncoder().encode(html).length, hasDashboardTitle: html.includes("پشکنەری زیرەکی کۆینی سولانا"), hasPremiumDesign: html.includes("SOLANA SMART BOT · FINAL PREMIUM DASHBOARD V2"), hasLoginPanel: html.includes("serverLogin") });
+      } catch (error) {
+        return json({ ok: false, error: String(error?.message || error) }, 500);
+      }
+    }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
         const { password } = await request.json();
