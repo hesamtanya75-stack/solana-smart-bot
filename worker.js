@@ -516,7 +516,7 @@ export default {
         const assetUrl = new URL("/index.html", request.url);
         const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
         const html = await asset.clone().text();
-        return json({ ok: asset.ok, status: asset.status, contentType: asset.headers.get("Content-Type"), bytes: new TextEncoder().encode(html).length, hasDashboardTitle: html.includes("پشکنەری زیرەکی کۆینی سولانا"), hasPremiumDesign: html.includes("SOLANA SMART BOT · FINAL PREMIUM DASHBOARD V2"), hasLoginPanel: html.includes("serverLogin") });
+        return json({ ok: asset.ok, status: asset.status, contentType: asset.headers.get("Content-Type"), bytes: new TextEncoder().encode(html).length, hasDashboardTitle: html.includes("پشکنەری زیرەکی کۆینی سولانا"), hasPremiumDesign: html.includes("SOLANA SMART BOT · FINAL PREMIUM DASHBOARD V2"), hasFinalPurpleGlass: html.includes('id="SB_FINAL_PURPLE_GLASS"'), hasOldClaudeSkin: html.includes("SB_CLAUDE_SKIN"), hasLegacyPremiumSection: html.includes("FINAL PREMIUM DASHBOARD V2"), styleTags: [...html.matchAll(/<style\\b[^>]*>/gi)].map(match => match[0]), hasLoginPanel: html.includes("serverLogin") });
       } catch (error) {
         return json({ ok: false, error: String(error?.message || error) }, 500);
       }
