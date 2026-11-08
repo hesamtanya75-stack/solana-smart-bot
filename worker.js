@@ -520,6 +520,31 @@ export default {
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
+    if (url.pathname === "/login-diagnostics" && request.method === "GET") {
+      const result = {
+        worker: true,
+        passwordSecretConfigured: typeof env.BOT_LOGIN_PASSWORD === "string" && env.BOT_LOGIN_PASSWORD.length > 0,
+        kvBindingConfigured: !!env.BOT_STATE,
+        kvRead: false,
+        kvWrite: false,
+        kvDelete: false
+      };
+      if (env.BOT_STATE) {
+        const key = "login_diagnostic:" + crypto.randomUUID();
+        try {
+          await env.BOT_STATE.get(key);
+          result.kvRead = true;
+          await env.BOT_STATE.put(key, "ok", { expirationTtl: 60 });
+          result.kvWrite = true;
+          await env.BOT_STATE.delete(key);
+          result.kvDelete = true;
+        } catch (error) {
+          console.error("Login diagnostics KV error", String(error?.message || error));
+          result.kvError = "KV operation failed";
+        }
+      }
+      return json(result);
+    }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
         const assetUrl = new URL("/index.html", request.url);
@@ -573,7 +598,7 @@ export default {
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch (error) { console.error("Login handler error", String(error?.message || error)); return json({ error: "داواکاری هەڵەیە" }, 400); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
