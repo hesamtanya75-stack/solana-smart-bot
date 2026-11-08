@@ -20,6 +20,9 @@ const RPCS = [
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
+// Per-isolate DexScreener cache: avoid spending Workers KV daily write quota on API caching.
+const dexMemoryCache = new Map();
+let dexCooldownUntil = 0;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -207,33 +210,19 @@ async function getJson(url) {
 }
 
 async function getDexJson(url, env, ttlSeconds = 30) {
-  // Cache responses and enforce a shared cooldown after HTTP 429.
-  // Stale cached discovery profiles are allowed during cooldown, but stale
-  // market data is never used for safety checks or simulated purchases.
-  let cacheKey, cached = null;
+  // Cache DexScreener responses in the Worker isolate instead of Workers KV.
+  // This avoids consuming the Free plan's daily KV write quota for temporary API data.
+  const now = Date.now();
   const discoveryOnly = url.includes("/token-profiles/latest/v1");
-  try {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url));
-    const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
-    cacheKey = "dex_cache:" + hash;
-    cached = await env.BOT_STATE.get(cacheKey, "json");
-    if (cached?.savedAt && Date.now() - cached.savedAt < ttlSeconds * 1000) {
-      return cached.data;
-    }
-  } catch (error) {
-    console.warn("DexScreener cache read warning", String(error?.message || error));
+  const cached = dexMemoryCache.get(url) || null;
+  if (cached && now - cached.savedAt < ttlSeconds * 1000) {
+    return cached.data;
   }
 
-  try {
-    const cooldown = await env.BOT_STATE.get("dex_cooldown", "json");
-    if (cooldown?.until > Date.now()) {
-      if (discoveryOnly && cached?.data) return cached.data;
-      throw new Error("DexScreener cooldown active; retry in " +
-        Math.ceil((cooldown.until - Date.now()) / 1000) + "s");
-    }
-  } catch (error) {
-    if (String(error?.message || error).includes("cooldown active")) throw error;
-    console.warn("DexScreener cooldown read warning", String(error?.message || error));
+  if (dexCooldownUntil > now) {
+    if (discoveryOnly && cached?.data) return cached.data;
+    throw new Error("DexScreener cooldown active; retry in " +
+      Math.ceil((dexCooldownUntil - now) / 1000) + "s");
   }
 
   const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
@@ -244,26 +233,16 @@ async function getDexJson(url, env, ttlSeconds = 30) {
       ? seconds * 1000
       : Math.max(0, Date.parse(retryHeader || "") - Date.now());
     const cooldownMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, retryAfterMs));
-    try {
-      await env.BOT_STATE.put("dex_cooldown", JSON.stringify({ until: Date.now() + cooldownMs }), {
-        expirationTtl: Math.ceil(cooldownMs / 1000) + 30
-      });
-    } catch (error) {
-      console.warn("DexScreener cooldown write warning", String(error?.message || error));
-    }
+    dexCooldownUntil = Date.now() + cooldownMs;
     if (discoveryOnly && cached?.data) return cached.data;
     throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
   }
   if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
   const data = await response.json();
-  if (cacheKey) {
-    try {
-      await env.BOT_STATE.put(cacheKey, JSON.stringify({ savedAt: Date.now(), data }), {
-        expirationTtl: Math.max(60, ttlSeconds * 2)
-      });
-    } catch (error) {
-      console.warn("DexScreener cache write warning", String(error?.message || error));
-    }
+  dexMemoryCache.set(url, { savedAt: Date.now(), data });
+  // Bound isolate memory use; remove oldest entries first.
+  while (dexMemoryCache.size > 100) {
+    dexMemoryCache.delete(dexMemoryCache.keys().next().value);
   }
   return data;
 }
