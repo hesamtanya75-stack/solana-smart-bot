@@ -531,16 +531,22 @@ export default {
       };
       if (env.BOT_STATE) {
         const key = "login_diagnostic:" + crypto.randomUUID();
+        let stage = "read";
         try {
           await env.BOT_STATE.get(key);
           result.kvRead = true;
+          stage = "write";
           await env.BOT_STATE.put(key, "ok", { expirationTtl: 60 });
           result.kvWrite = true;
+          stage = "delete";
           await env.BOT_STATE.delete(key);
           result.kvDelete = true;
         } catch (error) {
-          console.error("Login diagnostics KV error", String(error?.message || error));
-          result.kvError = "KV operation failed";
+          const message = String(error?.message || error || "Unknown KV error");
+          console.error("Login diagnostics KV error", { stage, name: String(error?.name || "Error"), message });
+          result.kvErrorStage = stage;
+          result.kvErrorName = String(error?.name || "Error").slice(0, 80);
+          result.kvErrorMessage = message.slice(0, 240);
         }
       }
       return json(result);
