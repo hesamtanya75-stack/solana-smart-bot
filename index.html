@@ -244,20 +244,21 @@ html[lang="ckb"] .wrap .st span,
 html[lang="ckb"] .wrap .bs p span,
 html[lang="ckb"] .wrap .warn span{text-align:right}
 
-/* Token identity row: larger logo and keep token name beside safety status. */
-.av{width:96px;height:96px;font-size:48px}
-.tm{min-width:0}
-.tm-head{display:flex;flex-wrap:nowrap;align-items:center;gap:8px}
-.tm h2{font-size:22px;line-height:1.2;overflow-wrap:anywhere}
-.tag{white-space:nowrap;font-size:12px;padding:5px 9px}
-.av i{width:24px;height:24px;font-size:11px}
+/* Token identity row: prominent logo; token name and safety badge share one line. */
+.av{width:108px;height:108px;font-size:54px}
+.tm{flex:1;min-width:0}
+.tm-head{display:flex;flex-wrap:nowrap;align-items:center;gap:7px;min-width:0;width:100%}
+.tm h2{flex:1;min-width:0;font-size:22px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-head .tag{flex:none;white-space:nowrap;font-size:12px;padding:5px 8px}
+.av i{width:26px;height:26px;font-size:12px}
 @media(max-width:699px){
- .wrap .tok{gap:9px}
- .wrap .av{width:80px;height:80px;font-size:40px}
- .wrap .tm-head{flex-wrap:nowrap;gap:5px}
- .wrap .tm h2{font-size:clamp(14px,4vw,18px);line-height:1.2}
- .wrap .tag{font-size:10px;padding:3px 6px;white-space:nowrap}
- .wrap .av i{width:20px;height:20px;font-size:9px}
+ .wrap .tok{gap:8px}
+ .wrap .av{width:88px;height:88px;font-size:44px}
+ .wrap .tm{flex:1;min-width:0}
+ .wrap .tm-head{flex-wrap:nowrap;gap:4px;width:100%}
+ .wrap .tm h2{flex:1;min-width:0;font-size:clamp(13px,3.8vw,17px);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .wrap .tm-head .tag{flex:none;font-size:9.5px;padding:3px 5px;white-space:nowrap}
+ .wrap .av i{width:22px;height:22px;font-size:10px}
 }
 
 </style>
