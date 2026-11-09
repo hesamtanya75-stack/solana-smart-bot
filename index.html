@@ -344,7 +344,7 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
-var apiToken="public", mfaChallenge=null, stateRefreshTimer=null, lastMarketPollAt=0;
+var apiToken=null, mfaChallenge=null, stateRefreshTimer=null, lastMarketPollAt=0;
 async function api(path,method,body){
  const headers={"Content-Type":"application/json"};if(apiToken)headers.Authorization="Bearer "+apiToken;
  const res=await fetch(path,{method:method||"GET",headers,body:body?JSON.stringify(body):undefined,cache:"no-store"});
@@ -552,17 +552,22 @@ $("detailModal").addEventListener("click",function(e){if(e.target===$("detailMod
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
 render();
 
-// Public paper-trading dashboard: no password or saved session is required.
-(async function startPublicDashboard(){
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
   if(location.hostname==="htmlpreview.github.io")return;
-  $("serverLogin").style.display="none";
-  try{await loadState()}catch(error){console.warn("Dashboard initial load failed",error)}
-  if(stateRefreshTimer)clearInterval(stateRefreshTimer);
-  stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await loadState();
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
 })();
 
-// Public visual preview only: bypass the login screen on HTMLPreview.
-// Public paper-trading API is available; this preview only disables interactions.
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
 if (location.hostname === "htmlpreview.github.io") {
   $("serverLogin").style.display = "none";
   $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
