@@ -718,7 +718,7 @@ function setDesignControls(input){
  var s=normalizeDesignSettings(input);
  $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;
  Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
- applyDesignSettings();
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
 }
 function loadDesignSettings(){
  var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
