@@ -196,6 +196,26 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
 html[lang="ckb"] body{direction:rtl;font-family:'Noto Sans Arabic','Noto Naskh Arabic','Geeza Pro',-apple-system,system-ui,sans-serif}
 .wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap button,.wrap li,.toast{unicode-bidi:plaintext}
 
+
+/* Mobile text-fit correction: preserve the compact card design without clipping content. */
+@media(max-width:699px){
+ html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+ body{min-height:100dvh}
+ .wrap{
+  height:auto;
+  min-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 12px);
+  grid-template-rows:auto auto auto minmax(130px,auto) auto auto auto;
+  overflow:visible;
+  align-content:start;
+ }
+ .wrap>.box{overflow:visible}
+ .wrap .chk{max-height:none;overflow:visible}
+ .wrap .botrow{height:auto;min-height:0}
+ .wrap .bs p{align-items:flex-start}
+ .wrap .bs p span{min-width:0;overflow-wrap:anywhere;line-height:1.4}
+ .wrap .bs p b{white-space:normal;text-align:left;overflow-wrap:anywhere}
+ .wrap .warn{min-height:34px}
+}
 </style>
 </head>
 <body>
