@@ -881,7 +881,10 @@ async function autoBuy(state, env) {
       }
       state.balance = Number((state.balance - 5).toFixed(2));
       state.trades.push({
-        mint, amount: 5, buyPrice: result.price, currentPrice: result.price,
+        mint, name: result.market?.baseToken?.name || "Unknown token",
+        symbol: result.market?.baseToken?.symbol || "",
+        imageUrl: result.market?.imageUrl || result.market?.info?.imageUrl || null,
+        amount: 5, buyPrice: result.price, currentPrice: result.price,
         tokens: 5 / result.price, sold: false, boughtAt: new Date().toISOString(),
         mode: "paper", riskChecks: "passed"
       });
@@ -1420,7 +1423,10 @@ export default {
           if (!result.ok) return json({ error: "کڕینی دیمۆ ڕێگەپێنەدرا؛ پشکنینی سەلامەتی تێنەپەڕاند: " + result.reasons.join("؛ "), reasons: result.reasons }, 409);
           state.balance = Number((state.balance - 5).toFixed(2));
           const trade = {
-            mint, amount: 5, buyPrice: result.price, currentPrice: result.price,
+            mint, name: result.market?.baseToken?.name || "Unknown token",
+            symbol: result.market?.baseToken?.symbol || "",
+            imageUrl: result.market?.imageUrl || result.market?.info?.imageUrl || null,
+            amount: 5, buyPrice: result.price, currentPrice: result.price,
             tokens: 5 / result.price, sold: false, boughtAt: new Date().toISOString(),
             mode: "paper", riskChecks: "passed"
           };
