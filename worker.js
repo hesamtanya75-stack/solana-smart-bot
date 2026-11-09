@@ -573,7 +573,10 @@ async function inspectMint(mint, env) {
   if (rugResult.status === "rejected" || rugSummaryResult.status === "rejected") {
     console.warn("RugCheck unavailable; token remains ineligible for paper buy", {
       mint,
-      error: String(rugResult.reason?.message || rugResult.reason || "Unknown RugCheck error")
+      error: [
+        rugResult.status === "rejected" ? "full report: " + String(rugResult.reason?.message || rugResult.reason) : "",
+        rugSummaryResult.status === "rejected" ? "summary: " + String(rugSummaryResult.reason?.message || rugSummaryResult.reason) : ""
+      ].filter(Boolean).join("; ")
     });
   }
   if (rpcResult.status !== "fulfilled") {
