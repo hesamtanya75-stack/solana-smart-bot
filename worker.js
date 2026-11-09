@@ -728,6 +728,18 @@ export default {
           return json({ error: "کڕینی دیمۆ سەرکەوتوو نەبوو: " + String(error?.message || error) }, 503);
         }
       }
+      if (url.pathname === "/api/clear-closed-trades" && request.method === "POST") {
+        try {
+          const state = await readState(env);
+          const before = state.trades.length;
+          state.trades = state.trades.filter(trade => !trade.sold);
+          const removed = before - state.trades.length;
+          await saveState(env, state);
+          return json({ ok: true, removed, balance: state.balance, state });
+        } catch {
+          return json({ error: "نەتوانرا مامەڵە داخراوەکان پاک بکرێنەوە" }, 500);
+        }
+      }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
