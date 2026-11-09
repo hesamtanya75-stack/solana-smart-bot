@@ -13,10 +13,11 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
+  "https://public.rpc.solanavibestation.com",
   "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com"
 ];
-let rpcCursor = 0;
+let rpcNextAt = 0;
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
 // Per-isolate DexScreener cache: avoid spending Workers KV daily write quota on API caching.
@@ -85,14 +86,18 @@ async function rpc(method, params, env) {
   }
   // Try every configured public fallback, not just the first one. Rotate the
   // starting provider between calls to avoid repeatedly favoring one endpoint.
-  for (let i = 0; i < RPCS.length; i++) {
-    const fallback = RPCS[rpcCursor++ % RPCS.length];
-    endpoints.push({ url: fallback, label: new URL(fallback).hostname });
+  for (const fallback of RPCS) {
+    endpoints.push({ url: fallback, label: fallback.includes("solanavibestation") ? "Solana Vibe Station" : new URL(fallback).hostname });
   }
 
   // Each provider has a bounded timeout; continue to the next provider on failure.
   for (const endpoint of endpoints) {
     try {
+      if (endpoint.label === "Solana Vibe Station") {
+        const waitMs = Math.max(0, rpcNextAt - Date.now());
+        rpcNextAt = Date.now() + 1100;
+        if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
       const response = await fetch(endpoint.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,12 +138,16 @@ async function rpcBatch(calls, env) {
   }
   // Always make all public providers available as fallbacks, even when
   // Alchemy is configured or returns HTTP 401/403.
-  for (let i = 0; i < RPCS.length; i++) {
-    const url = RPCS[rpcCursor++ % RPCS.length];
-    endpoints.push({ url, label: new URL(url).hostname });
+  for (const url of RPCS) {
+    endpoints.push({ url, label: url.includes("solanavibestation") ? "Solana Vibe Station" : new URL(url).hostname });
   }
   for (const endpoint of endpoints) {
     try {
+      if (endpoint.label === "Solana Vibe Station") {
+        const waitMs = Math.max(0, rpcNextAt - Date.now());
+        rpcNextAt = Date.now() + 1100;
+        if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
       const response = await fetch(endpoint.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -335,6 +344,7 @@ async function inspectMint(mint, env) {
   if (liquidity < 10000) reasons.push("Liquidity below $10,000");
   if (volume < 1000) reasons.push("24h volume below $1,000");
   if (sells <= 0) reasons.push("No 24h sells");
+  if (sells > Number(market.txns?.h24?.buys || 0) * 3) reasons.push("24h sells exceed 3x buys");
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
   if (largestPct > 30) reasons.push("Largest holder above 30%");
   if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
@@ -389,7 +399,7 @@ async function autoBuy(state, env) {
   const scanned = new Set(state.scannedMints);
   const traded = new Set(state.trades.map(t => t.mint));
   for (const token of tokens) {
-    if (checked >= 3 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
+    if (checked >= 2 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
     if (scanned.has(mint) || traded.has(mint)) { skippedExisting++; continue; }
     const deferred = state.deferredMints.find(item => item.mint === mint);
@@ -434,7 +444,7 @@ async function autoBuy(state, env) {
   const noNewTokens = checked === 0
     ? " No unscanned new Solana tokens were available in the latest profile list; " + skippedExisting + " already-seen tokens skipped."
     : "";
-  return "Checked " + checked + " new tokens (max 3 per cycle to stay within Worker request limits); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
+  return "Checked " + checked + " new tokens (max 2 per cycle to protect RPC and Worker limits); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
 }
 
 
@@ -615,58 +625,9 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
-      if (url.pathname === "/api/profile" && request.method === "GET") {
-        const p = await readProfile(env);
-        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
-      }
-      if (url.pathname === "/api/profile" && request.method === "PUT") {
-        try {
-          const body = await request.json();
-          const p = await readProfile(env);
-          if (typeof body.email === "string") {
-            const email = body.email.trim().slice(0, 254);
-            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "ئیمەیڵەکە دروست نییە" }, 400);
-            if (email !== p.email) p.emailVerified = false;
-            p.email = email;
-          }
-          if (typeof body.phone === "string") {
-            const phone = body.phone.trim().slice(0, 24);
-            if (phone && !/^\+?[0-9\s()-]{7,20}$/.test(phone)) return json({ error: "ژمارەی مۆبایل دروست نییە" }, 400);
-            if (phone !== p.phone) p.phoneVerified = false;
-            p.phone = phone;
-          }
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-          return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
-        } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
-      }
-      if (url.pathname === "/api/totp/setup" && request.method === "POST") {
-        const p = await readProfile(env);
-        if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
-        const secretBytes = crypto.getRandomValues(new Uint8Array(20));
-        const secret = base32Encode(secretBytes);
-        p.pendingTotpSecret = secret;
-        p.pendingTotpAt = Date.now();
-        await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-        const label = encodeURIComponent("Solana Smart Bot Admin");
-        const issuer = encodeURIComponent("Solana Smart Bot");
-        const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
-        return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
-      }
-      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
-        try {
-          const { code } = await request.json();
-          const p = await readProfile(env);
-          if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-          const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
-          p.totpSecret = p.pendingTotpSecret;
-          p.totpEnabled = true;
-          p.backupHash = await hashText(backupCode);
-          delete p.pendingTotpSecret;
-          delete p.pendingTotpAt;
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-          return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
-        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+      // Profile and authenticator management are disabled in public paper-trading mode.
+      if (url.pathname === "/api/profile" || url.pathname.startsWith("/api/totp/")) {
+        return json({ error: "This endpoint is disabled in public paper-trading mode" }, 404);
       }
       if (url.pathname === "/api/discover" && request.method === "GET") {
         try {
@@ -741,15 +702,7 @@ export default {
         }
       }
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
-      if (url.pathname === "/api/state" && request.method === "PUT") {
-        try {
-          const body = await request.json();
-          const current = await readState(env);
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
-      }
+      // State mutations are limited to validated paper-buy and automation routes.
       if (url.pathname === "/api/paper-buy" && request.method === "POST") {
         try {
           const body = await request.json();
