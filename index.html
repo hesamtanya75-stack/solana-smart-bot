@@ -449,6 +449,52 @@ html[lang="ckb"] .toast {
  .wrap .detail-links button{min-width:0;overflow-wrap:anywhere}
 }
 
+
+/* Mobile layout hard reset: stack every dashboard panel in normal document flow. */
+@media(max-width:699px){
+ html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important}
+ body{min-height:100dvh!important}
+ .wrap{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+  width:100%!important;
+  max-width:560px!important;
+  height:auto!important;
+  min-height:0!important;
+  overflow:visible!important;
+  gap:8px!important;
+ }
+ .wrap>header,
+ .wrap>.box,
+ .wrap>.row,
+ .wrap>.warn{
+  position:static!important;
+  grid-column:auto!important;
+  grid-row:auto!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  flex:0 0 auto!important;
+  margin:0!important;
+ }
+ .wrap>.row{display:contents!important}
+ .wrap>.row>.box{
+  display:block!important;
+  width:100%!important;
+  min-height:0!important;
+  overflow:visible!important;
+ }
+ .wrap>.box{overflow:visible!important}
+ .wrap>.detail-source{display:none!important}
+ .wrap>.warn{margin-top:0!important}
+ .wrap .don{min-height:0!important}
+ .wrap .lg{max-height:160px!important;overflow-y:auto!important}
+ .wrap .botrow{height:auto!important;min-height:0!important;grid-template-columns:minmax(0,1fr)!important}
+ .wrap .bs,.wrap .ctl{min-width:0!important;min-height:0!important}
+ .wrap #botStatus{max-height:120px!important;overflow:auto!important}
+}
+
 </style>
 </head>
 <body>
