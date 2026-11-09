@@ -123,7 +123,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
     <div class="chg none" id="chgBox"><span id="chg"></span><small>24h</small></div>
   </div>
   <div class="st">
-    <div><span class="i">👥</span><span>خاوەنە پشکنراوەکان</span><b id="hold"></b></div>
+    <div><span class="i">👥</span><span>خاوەنە ناوازە پشکنراوەکان (لە ٢٠ هەژماری گەورەتر)</span><b id="hold"></b></div>
     <div><span class="i">🔁</span><span>کرین / فرۆشتن</span><b id="bs"></b></div>
     <div><span class="i">📊</span><span>حجمی 24h</span><b id="vol"></b></div>
     <div><span class="i">💎</span><span>لیکوییدیتی</span><b id="liq"></b></div>
@@ -202,6 +202,7 @@ async function loadState(){
  $("statTrades").textContent=s.trades.filter(function(t){return !t.sold}).length+" / "+closed.length;
  $("statWin").textContent=(closed.length?((wins/closed.length)*100).toFixed(1):"0")+"%";
  renderTrades(s.trades);
+ if(s.lastScanData&&typeof s.lastScanData==="object"&&typeof window.setData==="function")window.setData(s.lastScanData);
  $("botStatus").textContent=s.lastMessage||"دۆخی سێرڤەر بەردەستە";
  $("start").disabled=!!s.autoEnabled&&!s.paused;$("stop").disabled=!s.autoEnabled||!!s.paused;
  $("start").textContent=s.autoEnabled&&!s.paused?"▶ چالاکە":"▶ دەستپێکردنەوە";
