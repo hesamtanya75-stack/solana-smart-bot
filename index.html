@@ -98,89 +98,95 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .search input{direction:rtl}
 button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
 
-/* One-screen compact dashboard: keep the page fixed; only long lists scroll internally. */
+/* Corrected single-screen dashboard: fixed grid tracks prevent card overlap. */
 html,body{height:100%;height:100dvh;overflow:hidden}
-body{min-height:0;padding:calc(5px + env(safe-area-inset-top,0px)) 6px calc(5px + env(safe-area-inset-bottom,0px))}
-.wrap{width:100%;max-width:1100px;height:100%;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 10px);margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,auto);gap:5px;align-content:stretch;overflow:hidden}
-.wrap>header{grid-column:1/-1;margin:0;min-height:38px;gap:6px}
+body{min-height:0;padding:calc(4px + env(safe-area-inset-top,0px)) 5px calc(4px + env(safe-area-inset-bottom,0px))}
+.wrap{width:100%;max-width:1100px;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px);margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:38px 86px 76px minmax(90px,1fr) minmax(90px,1fr) 112px minmax(90px,1fr) 22px;gap:4px;align-content:stretch;overflow:hidden}
+.wrap>header{grid-column:1/-1;grid-row:1;margin:0;min-height:0;gap:6px}
 .wrap .sol{width:32px;height:28px}
 .wrap .ttl h1{font-size:clamp(13px,3.6vw,18px)}
 .wrap .ttl p{font-size:10px}
 .wrap .shield{font-size:8px}
-.wrap>.box{min-width:0;min-height:0;margin:0;padding:7px;border-radius:12px;overflow:hidden}
-.wrap>.box:nth-child(2),.wrap>.box:nth-child(3),.wrap>.box:nth-child(6),.wrap>.box:nth-child(9){grid-column:1/-1}
+.wrap>.box{min-width:0;min-height:0;margin:0;padding:6px;border-radius:12px;overflow:hidden}
+.wrap>.box:nth-child(2){grid-column:1/-1;grid-row:2}
+.wrap>.box:nth-child(3){grid-column:1/-1;grid-row:3}
 .wrap>.row{display:contents}
-.wrap .search{height:34px;margin-bottom:5px;padding:0 9px}
-.wrap .search input{font-size:13px}
-.wrap .row .btn,.wrap>.box .btn{height:auto;min-height:34px;padding:5px 6px;font-size:10px;border-radius:9px}
-.wrap .row{gap:5px}
-.wrap .discover-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:4px;max-height:54px;overflow:auto}
-.wrap .discover-item{min-width:0;padding:4px 6px;font-size:9px;gap:4px}
-.wrap .discover-item small{font-size:8px;max-width:48%}
-.wrap .scan-status{margin-top:4px;padding:4px 6px;font-size:9px}
-.wrap .tok{gap:7px}
-.wrap .av{width:37px;height:37px;font-size:20px;border-width:2px}
-.wrap .av i{width:15px;height:15px;font-size:8px}
-.wrap .tm h2{font-size:16px}
-.wrap .tm small{font-size:10px}
-.wrap .tag{font-size:10px;padding:2px 7px;margin-top:2px}
-.wrap .chg{font-size:14px;padding:5px 7px}
-.wrap .chg small{font-size:9px}
-.wrap .st{margin-top:6px;padding-top:6px}
-.wrap .st .i{font-size:14px}
-.wrap .st span{font-size:8px;line-height:1.25}
-.wrap .st b{font-size:11px}
-.wrap .h{font-size:11px;margin-bottom:5px}
-.wrap .price{font-size:15px}
-.wrap .sub{font-size:9px}
-.wrap .chk{font-size:9px}
-.wrap .chk li{gap:4px;margin-bottom:3px;line-height:1.25}
-.wrap .chk em{width:14px;height:14px;font-size:9px}
-.wrap .pill{font-size:9px;padding:4px;margin-top:3px}
-.wrap .don{gap:5px}
-.wrap .ring{width:56px;height:56px}
-.wrap .ring div{inset:8px;font-size:11px}
-.wrap .lg{font-size:8px}
-.wrap .lg p{gap:3px;margin-bottom:2px}
-.wrap .lg i{width:7px;height:7px}
-.wrap .sell p{font-size:9px;margin-bottom:5px}
-.wrap .meter{height:18px;font-size:10px}
-.wrap .sell .sub{font-size:9px;margin-top:5px}
-.wrap .botrow{grid-template-columns:1fr 1fr;gap:6px}
-.wrap .bs{padding:6px;border-radius:9px;font-size:9px}
-.wrap .bs .h{font-size:10px;margin-bottom:4px}
-.wrap .bs p{gap:4px;margin-bottom:2px;line-height:1.25}
-.wrap .bs p span{font-size:8px}
-.wrap .bs p b{font-size:9px;white-space:nowrap}
-.wrap .ctl{gap:4px}
-.wrap .ctl .h{font-size:10px}
-.wrap #botStatus{font-size:8px;line-height:1.25;white-space:pre-line;max-height:42px;overflow:auto}
-.wrap .tradeItem{padding:5px;margin-top:4px;font-size:8px}
-.wrap .tradeItem .tradeMeta{font-size:8px}
-.wrap #tradeList,.wrap #scanReport{max-height:58px;overflow:auto}
-.wrap .tradeEmpty{font-size:9px;padding:3px}
-.wrap .report-item{font-size:8px;padding:3px 0;line-height:1.3}
+.wrap>.row:nth-child(4)>.box:first-child{grid-column:1;grid-row:4}
+.wrap>.row:nth-child(4)>.box:last-child{grid-column:2;grid-row:4}
+.wrap>.row:nth-child(5)>.box:first-child{grid-column:1;grid-row:5}
+.wrap>.row:nth-child(5)>.box:last-child{grid-column:2;grid-row:5}
+.wrap>.box:nth-child(6){grid-column:1/-1;grid-row:6}
+.wrap>.box:nth-child(7){grid-column:1;grid-row:7}
+.wrap>.box:nth-child(8){grid-column:2;grid-row:7}
+.wrap>.box:nth-child(9){grid-column:1/-1;grid-row:8}
+.wrap .search{height:32px;margin-bottom:4px;padding:0 8px}
+.wrap .search input{font-size:12px}
+.wrap .row .btn,.wrap>.box .btn{height:auto;min-height:30px;padding:4px 5px;font-size:9px;border-radius:9px}
+.wrap .row{gap:4px}
+.wrap .discover-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:3px;max-height:30px;overflow:auto}
+.wrap .discover-item{min-width:0;padding:3px 5px;font-size:8px;gap:3px}
+.wrap .discover-item small{font-size:7px;max-width:48%}
+.wrap .scan-status{margin-top:3px;padding:3px 5px;font-size:8px}
+.wrap .tok{gap:6px}
+.wrap .av{width:34px;height:34px;font-size:18px;border-width:2px}
+.wrap .av i{width:14px;height:14px;font-size:7px}
+.wrap .tm h2{font-size:15px}
+.wrap .tm small{font-size:9px}
+.wrap .tag{font-size:9px;padding:2px 6px;margin-top:2px}
+.wrap .chg{font-size:13px;padding:4px 6px}
+.wrap .chg small{font-size:8px}
+.wrap .st{margin-top:5px;padding-top:5px}
+.wrap .st .i{font-size:12px}
+.wrap .st span{font-size:7px;line-height:1.2}
+.wrap .st b{font-size:10px}
+.wrap .h{font-size:10px;margin-bottom:4px}
+.wrap .price{font-size:13px}
+.wrap .sub{font-size:8px}
+.wrap .chk{font-size:8px}
+.wrap .chk li{gap:3px;margin-bottom:2px;line-height:1.2}
+.wrap .chk em{width:12px;height:12px;font-size:8px}
+.wrap .pill{font-size:8px;padding:3px;margin-top:2px}
+.wrap .don{gap:4px}
+.wrap .ring{width:48px;height:48px}
+.wrap .ring div{inset:7px;font-size:9px}
+.wrap .lg{font-size:7px}
+.wrap .lg p{gap:2px;margin-bottom:1px}
+.wrap .lg i{width:6px;height:6px}
+.wrap .sell p{font-size:8px;margin-bottom:4px}
+.wrap .meter{height:15px;font-size:9px}
+.wrap .sell .sub{font-size:8px;margin-top:3px}
+.wrap .botrow{grid-template-columns:1fr 1fr;gap:5px;height:100%}
+.wrap .bs{padding:5px;border-radius:8px;font-size:8px}
+.wrap .bs .h{font-size:9px;margin-bottom:3px}
+.wrap .bs p{gap:3px;margin-bottom:2px;line-height:1.2}
+.wrap .bs p span{font-size:7px}
+.wrap .bs p b{font-size:8px;white-space:nowrap}
+.wrap .ctl{gap:3px;min-width:0}
+.wrap .ctl .h{font-size:9px}
+.wrap #botStatus{font-size:7px;line-height:1.2;white-space:pre-line;max-height:38px;overflow:auto}
+.wrap .ctl .row{gap:3px}
+.wrap .tradeItem{padding:4px;margin-top:3px;font-size:7px}
+.wrap .tradeItem .tradeMeta{font-size:7px}
+.wrap #tradeList,.wrap #scanReport{max-height:100%;overflow:auto}
+.wrap .tradeEmpty{font-size:8px;padding:2px}
+.wrap .report-item{font-size:7px;padding:2px 0;line-height:1.2}
 .wrap .report-item b{margin-bottom:1px}
-.wrap .warn{font-size:8px;line-height:1.25;gap:5px}
+.wrap .warn{font-size:7px;line-height:1.15;gap:4px;padding:3px 6px}
 @media (min-width:700px){
- .wrap{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:5px}
- .wrap>header{grid-column:1/-1}
- .wrap>.box:nth-child(2){grid-column:span 2}
- .wrap>.box:nth-child(3){grid-column:span 2}
- .wrap>.box:nth-child(6){grid-column:span 2}
- .wrap>.box:nth-child(9){grid-column:1/-1}
- .wrap .discover-list{max-height:80px}
- .wrap #tradeList,.wrap #scanReport{max-height:100px}
+ .wrap{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:44px 92px 84px minmax(100px,1fr) minmax(100px,1fr) 120px minmax(100px,1fr) 24px;gap:7px;padding:3px}
+ .wrap>.row:nth-child(4)>.box:first-child{grid-column:1/3}
+ .wrap>.row:nth-child(4)>.box:last-child{grid-column:3/5}
+ .wrap>.row:nth-child(5)>.box:first-child{grid-column:1/3}
+ .wrap>.row:nth-child(5)>.box:last-child{grid-column:3/5}
+ .wrap>.box:nth-child(7){grid-column:1/3}
+ .wrap>.box:nth-child(8){grid-column:3/5}
 }
 @media (max-height:700px){
- .wrap{gap:3px}
- .wrap>.box{padding:5px}
- .wrap .discover-list{max-height:38px}
- .wrap #tradeList,.wrap #scanReport{max-height:42px}
- .wrap .botrow{gap:4px}
- .wrap .warn{font-size:7px}
+ .wrap{grid-template-rows:30px 70px 62px minmax(75px,1fr) minmax(75px,1fr) 94px minmax(75px,1fr) 18px;gap:3px}
+ .wrap>.box{padding:4px}
+ .wrap #botStatus{max-height:28px}
+ .wrap .discover-list{max-height:22px}
 }
-
 </style>
 </head>
 <body>
