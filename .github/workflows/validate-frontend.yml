@@ -2,9 +2,10 @@ name: Validate frontend
 
 on:
   push:
-    branches: [main]
+    branches: [main, new-bot-design]
     paths:
       - "index.html"
+      - "worker.js"
       - ".github/workflows/validate-frontend.yml"
   pull_request:
     branches: [main]
@@ -39,3 +40,5 @@ jobs:
           print(f"Found {len(scripts)} inline JavaScript block(s)")
           PY
           node --check /tmp/frontend-check.js
+          cp worker.js /tmp/worker-check.mjs
+          node --check /tmp/worker-check.mjs
