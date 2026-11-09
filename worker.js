@@ -14,10 +14,10 @@ const DEFAULT_STATE = {
   updatedAt: null
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
+// Keep only the provider that has recently succeeded from this Worker.
+ // The two public endpoints below repeatedly returned HTTP 403 in production.
 const RPCS = [
-  "https://public.rpc.solanavibestation.com",
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com"
+  "https://public.rpc.solanavibestation.com"
 ];
 let rpcNextAt = 0;
 let rpcStartIndex = 0;
@@ -208,12 +208,47 @@ async function getJson(url) {
   throw lastError || new Error(host + " request failed");
 }
 
+async function readProviderCooldown(env, name) {
+  try {
+    const item = await env?.BOT_STATE?.get("provider_cooldown:" + name, "json");
+    return Number(item?.until || 0);
+  } catch {
+    return 0;
+  }
+}
+async function writeProviderCooldown(env, name, until) {
+  const ttl = Math.max(60, Math.ceil((until - Date.now()) / 1000));
+  try {
+    await env?.BOT_STATE?.put("provider_cooldown:" + name, JSON.stringify({ until }), {
+      expirationTtl: ttl
+    });
+  } catch (error) {
+    console.warn("Could not persist provider cooldown", name, String(error?.message || error));
+  }
+}
+async function readDexCache(url, env) {
+  const memory = dexMemoryCache.get(url) || null;
+  if (memory) return memory;
+  try {
+    const key = "provider_cache:dex:" + await hashText(url);
+    const stored = await env?.BOT_STATE?.get(key, "json");
+    if (stored?.data && Number.isFinite(Number(stored.savedAt))) {
+      dexMemoryCache.set(url, stored);
+      return stored;
+    }
+  } catch (error) {
+    console.warn("DexScreener cache read failed", String(error?.message || error));
+  }
+  return null;
+}
 async function getDexJson(url, env, ttlSeconds = 30) {
-  // Reuse fresh results, share in-flight requests, and serve stale data during
-  // provider cooldowns rather than multiplying HTTP 429 failures.
+  // Reuse fresh isolate/KV results, share in-flight requests, and honor
+  // provider-wide cooldowns across separate Cloudflare Worker isolates.
   const now = Date.now();
-  const cached = dexMemoryCache.get(url) || null;
+  const cached = await readDexCache(url, env);
   if (cached && now - cached.savedAt < ttlSeconds * 1000) return cached.data;
+  const storedCooldown = await readProviderCooldown(env, "dexscreener");
+  dexCooldownUntil = Math.max(dexCooldownUntil, storedCooldown);
   if (dexCooldownUntil > now) {
     if (cached?.data) return cached.data;
     throw new Error("DexScreener cooldown active; retry in " +
@@ -232,13 +267,23 @@ async function getDexJson(url, env, ttlSeconds = 30) {
           : Math.max(0, Date.parse(retryHeader || "") - Date.now());
         const cooldownMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, retryAfterMs));
         dexCooldownUntil = Date.now() + cooldownMs;
+        await writeProviderCooldown(env, "dexscreener", dexCooldownUntil);
         if (cached?.data) return cached.data;
         throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
       }
       if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
       const data = await response.json();
-      dexMemoryCache.set(url, { savedAt: Date.now(), data });
+      const cacheEntry = { savedAt: Date.now(), data };
+      dexMemoryCache.set(url, cacheEntry);
       while (dexMemoryCache.size > 100) dexMemoryCache.delete(dexMemoryCache.keys().next().value);
+      try {
+        await env?.BOT_STATE?.put("provider_cache:dex:" + await hashText(url),
+          JSON.stringify(cacheEntry), { expirationTtl: 300 });
+      } catch (error) {
+        console.warn("DexScreener cache write failed", String(error?.message || error));
+      }
+      await env?.BOT_STATE?.delete("provider_cooldown:dexscreener").catch(() => {});
+      dexCooldownUntil = 0;
       return data;
     } finally {
       dexInFlight.delete(url);
@@ -277,6 +322,16 @@ async function getLatestSolanaProfiles(env) {
     (async () => {
       const cached = geckoDiscoveryCache;
       if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
+      const stored = await env?.BOT_STATE?.get("provider_cache:gecko_discovery", "json");
+      if (stored?.data && Date.now() - Number(stored.savedAt || 0) < 5 * 60 * 1000) {
+        geckoDiscoveryCache = stored;
+        return stored.data;
+      }
+      const geckoCooldown = await readProviderCooldown(env, "geckoterminal");
+      if (geckoCooldown > Date.now()) {
+        if (stored?.data) return stored.data;
+        throw new Error("HTTP 429 cooldown; retry in " + Math.ceil((geckoCooldown - Date.now()) / 1000) + "s");
+      }
       const response = await fetch(
         "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token,quote_token",
         {
@@ -284,6 +339,11 @@ async function getLatestSolanaProfiles(env) {
           signal: AbortSignal.timeout(12000)
         }
       );
+      if (response.status === 429) {
+        const until = Date.now() + 5 * 60 * 1000;
+        await writeProviderCooldown(env, "geckoterminal", until);
+        throw new Error("HTTP 429; cooldown 300s");
+      }
       if (!response.ok) throw new Error("HTTP " + response.status);
       const payload = await response.json();
       const included = new Map((payload.included || []).map(item => [item.id, item]));
@@ -303,6 +363,9 @@ async function getLatestSolanaProfiles(env) {
       const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
       if (!unique.length) throw new Error("returned no usable Solana tokens");
       geckoDiscoveryCache = { savedAt: Date.now(), data: unique };
+      await env?.BOT_STATE?.put("provider_cache:gecko_discovery",
+        JSON.stringify(geckoDiscoveryCache), { expirationTtl: 300 }).catch(() => {});
+      await env?.BOT_STATE?.delete("provider_cooldown:geckoterminal").catch(() => {});
       return unique;
     })(),
     (async () => {
@@ -682,13 +745,41 @@ async function refreshTrades(state, env) {
   const open = state.trades.filter(t => !t.sold);
   if (!open.length) return 0;
   const addresses = [...new Set(open.map(t => t.mint).filter(Boolean))].slice(0, 30);
-  const data = await getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","), env, 15);
   const best = new Map();
-  for (const pair of (data.pairs || []).filter(p => p.chainId === "solana")) {
-    const mint = pair.baseToken?.address;
-    if (!mint) continue;
-    if (!best.has(mint) || Number(pair.liquidity?.usd || 0) > Number(best.get(mint).liquidity?.usd || 0)) best.set(mint, pair);
+  let dexFailure = null;
+  try {
+    const data = await getDexJson("https://api.dexscreener.com/latest/dex/tokens/" + addresses.map(encodeURIComponent).join(","), env, 15);
+    for (const pair of (data.pairs || []).filter(p => p.chainId === "solana")) {
+      const mint = pair.baseToken?.address;
+      if (!mint) continue;
+      if (!best.has(mint) || Number(pair.liquidity?.usd || 0) > Number(best.get(mint).liquidity?.usd || 0)) best.set(mint, pair);
+    }
+  } catch (error) {
+    dexFailure = error;
   }
+
+  // If DexScreener is throttled, use Jupiter's exact-mint token lookup rather
+  // than leaving all open paper positions with stale prices. Requests are
+  // paced by getJupiterMarketForMint and cached per mint.
+  let fallbackSuccesses = 0;
+  if (dexFailure) {
+    for (const trade of open) {
+      try {
+        const market = await getJupiterMarketForMint(trade.mint, env);
+        if (Number(market?.priceUsd) > 0) {
+          best.set(trade.mint, market);
+          fallbackSuccesses++;
+        }
+      } catch (error) {
+        console.warn("Jupiter price fallback failed", trade.mint, String(error?.message || error));
+      }
+    }
+    if (!fallbackSuccesses) {
+      throw new Error("DexScreener price refresh failed (" + String(dexFailure?.message || dexFailure) +
+        "); Jupiter fallback returned no usable prices");
+    }
+  }
+
   let sold = 0;
   for (const trade of open) {
     const price = Number(best.get(trade.mint)?.priceUsd || 0);
@@ -701,6 +792,8 @@ async function refreshTrades(state, env) {
       sold++;
     }
   }
+  if (fallbackSuccesses) state.lastPriceProvider = "Jupiter fallback (" + fallbackSuccesses + "/" + open.length + ")";
+  else state.lastPriceProvider = "DexScreener";
   return sold;
 }
 async function autoBuy(state, env) {
