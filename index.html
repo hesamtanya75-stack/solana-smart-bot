@@ -275,6 +275,58 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 .profile-status{font-size:12px;line-height:1.7;color:#a5f3fc;white-space:pre-wrap;margin-top:8px}
 @media(max-width:520px){.profile-dialog{padding:12px}.profile-button{font-size:10px;padding:6px 8px}}
 
+
+/* User-controlled profile design settings */
+html{--design-radius:14px;--design-gap:6px;--design-pad:8px}
+html[data-design-theme="blue"]{--line:rgba(59,130,246,.55);--accent-a:#2563eb;--accent-b:#1d4ed8}
+html[data-design-theme="green"]{--line:rgba(16,185,129,.55);--accent-a:#059669;--accent-b:#047857}
+html[data-design-theme="rose"]{--line:rgba(244,63,94,.55);--accent-a:#e11d48;--accent-b:#be123c}
+html[data-design-theme="purple"]{--line:rgba(139,92,246,.55);--accent-a:#7c3aed;--accent-b:#5b21b6}
+html[data-design-density="compact"]{--design-radius:10px;--design-gap:4px;--design-pad:6px}
+html[data-design-density="comfortable"]{--design-radius:14px;--design-gap:6px;--design-pad:8px}
+html[data-design-density="spacious"]{--design-radius:18px;--design-gap:9px;--design-pad:11px}
+html[data-design-theme] .profile-button,
+html[data-design-theme] .profile-action{border-color:var(--line)}
+html[data-design-theme] .profile-action{background:linear-gradient(135deg,var(--accent-a),var(--accent-b))}
+html[data-design-theme] .detail-close{border-color:var(--line)}
+html[data-design-theme="blue"] .box,
+html[data-design-theme="green"] .box,
+html[data-design-theme="rose"] .box,
+html[data-design-theme="purple"] .box{border-color:var(--line)}
+html[data-design-density] .wrap{gap:var(--design-gap)}
+html[data-design-density] .wrap>.box{padding:var(--design-pad);border-radius:var(--design-radius)}
+html[data-design-mode="light"]{color-scheme:light;--card:rgba(255,255,255,.96);--text:#172033;--muted:#58647a;--line:rgba(100,116,139,.35)}
+html[data-design-mode="light"] body{background:#eef2f8;color:var(--text)}
+html[data-design-mode="light"] .box{background:var(--card);color:var(--text);box-shadow:0 3px 14px rgba(15,23,42,.08)}
+html[data-design-mode="light"] .search,
+html[data-design-mode="light"] .profile-dialog,
+html[data-design-mode="light"] .detail-dialog,
+html[data-design-mode="light"] .testnet-dialog{background:#fff;color:var(--text)}
+html[data-design-mode="light"] .search input,
+html[data-design-mode="light"] .profile-field input{background:#f8fafc;color:#172033}
+html[data-design-mode="light"] .discover-item,
+html[data-design-mode="light"] .scan-status,
+html[data-design-mode="light"] .tradeItem,
+html[data-design-mode="light"] .profile-secret{background:#f1f5f9;color:#172033}
+html[data-design-mode="light"] .detail-head,
+html[data-design-mode="light"] .profile-field,
+html[data-design-mode="light"] .warn,
+html[data-design-mode="light"] .wrap .warn span{color:#172033}
+html[data-design-mode="light"] .profile-note,
+html[data-design-mode="light"] .sub,
+html[data-design-mode="light"] .tradeMeta{color:#58647a}
+html[data-design-mode="light"] .ring div{background:#fff;color:#172033}
+html[data-design-mode="light"] .testnet-status,
+html[data-design-mode="light"] .testnet-balance{background:#f1f5f9;color:#172033}
+html[data-design-mode="light"] .testnet-address{color:#58647a}
+.design-panel{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:13px;background:rgba(99,102,241,.08)}
+.design-panel h3{font-size:14px;margin-bottom:8px}
+.design-field{display:block;margin:10px 0;font-size:12px;font-weight:700}
+.design-field select{display:block;width:100%;height:40px;margin-top:5px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:#080a24;color:#fff;font:inherit}
+html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#172033}
+.design-actions{display:flex;gap:8px}
+.design-actions button{flex:1;min-height:38px;border:1px solid var(--line);border-radius:9px;background:linear-gradient(135deg,var(--accent-a,#7c3aed),var(--accent-b,#5b21b6));color:white;font:inherit;font-size:12px;font-weight:800}
+
 </style>
 </head>
 <body>
@@ -400,6 +452,21 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
    <label class="profile-field">کۆدی ئێستا<input id="totpDisableCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
    <button class="profile-action" id="disableTotp" type="button">ناچالاککردنی Authenticator</button>
   </div>
+  <section class="design-panel" aria-label="ڕێکخستنی دیزاین">
+   <h3>🎨 ڕێکخستنی دیزاین</h3>
+   <p class="profile-note">شێوازی بۆتەکە بگۆڕە؛ گۆڕانکارییەکان لەسەر ئەم ئامێرە پاشەکەوت دەکرێن.</p>
+   <label class="design-field">🎨 ڕەنگی دیزاین
+    <select id="designTheme"><option value="purple">مۆر</option><option value="blue">شین</option><option value="green">سەوز</option><option value="rose">پەمەیی</option></select>
+   </label>
+   <label class="design-field">🌗 شێوازی ڕووناکی
+    <select id="designMode"><option value="dark">تاریک</option><option value="light">ڕوون</option></select>
+   </label>
+   <label class="design-field">📐 قەبارە و بۆشایی
+    <select id="designDensity"><option value="compact">کۆمپاکت</option><option value="comfortable">ئاسایی</option><option value="spacious">فراوان</option></select>
+   </label>
+   <div class="design-actions"><button id="saveDesign" type="button">💾 پاشەکەوت</button><button id="resetDesign" type="button">↩ گەڕاندنەوەی بنەڕەت</button></div>
+   <p class="profile-note" id="designMessage" aria-live="polite"></p>
+  </section>
   <p class="profile-status" id="profileMessage" aria-live="polite"></p>
  </div>
 </div>
@@ -573,6 +640,34 @@ function render(){
  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+function applyDesignSettings(showMessage){
+ var root=document.documentElement;
+ var settings={theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value};
+ root.setAttribute("data-design-theme",settings.theme);
+ root.setAttribute("data-design-mode",settings.mode);
+ root.setAttribute("data-design-density",settings.density);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(settings))}catch(error){}
+ if(showMessage)$("designMessage").textContent="ڕێکخستنەکان پاشەکەوت کران.";
+}
+function loadDesignSettings(){
+ var settings={theme:"purple",mode:"dark",density:"comfortable"};
+ try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")settings=Object.assign(settings,saved)}catch(error){}
+ if(!["purple","blue","green","rose"].includes(settings.theme))settings.theme="purple";
+ if(!["dark","light"].includes(settings.mode))settings.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(settings.density))settings.density="comfortable";
+ $("designTheme").value=settings.theme;$("designMode").value=settings.mode;$("designDensity").value=settings.density;
+ var root=document.documentElement;
+ root.setAttribute("data-design-theme",settings.theme);root.setAttribute("data-design-mode",settings.mode);root.setAttribute("data-design-density",settings.density);
+}
+loadDesignSettings();
+["designTheme","designMode","designDensity"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings(false);$("designMessage").textContent="پێشبینینی گۆڕانکارییەکان — پاشەکەوت بکە بۆ هەمیشەییبوون.")})});
+$("saveDesign").onclick=function(){applyDesignSettings(true)};
+$("resetDesign").onclick=function(){
+ $("designTheme").value="purple";$("designMode").value="dark";$("designDensity").value="comfortable";applyDesignSettings(false);
+ $("designMessage").textContent="دیزاینی بنەڕەت گەڕێندرایەوە.";
+};
+
 function profileMessage(message){$("profileMessage").textContent=message||""}
 function renderProfileSecurity(profile){
  $("profileEmail").value=profile.email||"";
