@@ -496,7 +496,10 @@ function renderScanReport(items){
  items.slice(0,6).forEach(function(item){
   var row=document.createElement("div");row.className="report-item";
   var title=document.createElement("b");
-  title.textContent=(item.status==="bought-paper"?"🟢 کڕینی دیمۆ":item.status==="passed"?"🟢 پشکنین سەرکەوتوو":item.status==="deferred"?"🕒 چاوەڕوانی بازاڕ":item.status==="rejected"?"🔴 ڕەتکرایەوە":"⚠ کێشەی پشکنین")+" · "+String(item.mint||"").slice(0,8)+"…"+String(item.mint||"").slice(-6);
+  var isSource=item.status==="discovery-source"||item.status==="discovery-error";
+  title.textContent=isSource
+   ? (item.status==="discovery-source"?"📡 سەرچاوەی دۆزینەوە":"⚠ هەڵەی سەرچاوە")+" · "+String(item.mint||"")
+   : (item.status==="bought-paper"?"🟢 کڕینی دیمۆ":item.status==="passed"?"🟢 پشکنین سەرکەوتوو":item.status==="deferred"?"🕒 چاوەڕوانی بازاڕ":item.status==="rejected"?"🔴 ڕەتکرایەوە":"⚠ کێشەی پشکنین")+" · "+String(item.mint||"").slice(0,8)+"…"+String(item.mint||"").slice(-6);
   var detail=document.createElement("div");detail.textContent=Array.isArray(item.reasons)?item.reasons.join("؛ "):"هۆکاری زیاتر نییە";
   row.append(title,detail);box.appendChild(row);
  });
