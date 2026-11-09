@@ -493,8 +493,8 @@ html[data-design-scale="large"] body{zoom:1.08}
     <label class="design-check"><input type="checkbox" id="showHolders" checked> خاوەنەکان</label>
     <label class="design-check"><input type="checkbox" id="showSelling" checked> فرۆشتن</label>
     <label class="design-check"><input type="checkbox" id="showBotStats" checked> ئاماری بۆت</label>
-    <label class="design-check"><input type="checkbox" id="showTrades" checked> مامەڵەکان</label>
-    <label class="design-check"><input type="checkbox" id="showReports" checked> ڕاپۆرتەکان</label>
+    <label class="design-check"><input type="checkbox" id="showTradesPanel" checked> مامەڵەکان</label>
+    <label class="design-check"><input type="checkbox" id="showReportsPanel" checked> ڕاپۆرتەکان</label>
     <label class="design-check"><input type="checkbox" id="showNotice" checked> تێبینی پاراستن</label>
    </div>
    <div class="design-actions"><button id="saveDesign" type="button">💾 پاشەکەوت</button><button id="resetDesign" type="button">↩ گەڕاندنەوەی بنەڕەت</button></div>
@@ -676,8 +676,9 @@ window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&
 
 var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true}};
 var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
 function readDesignControls(){
- var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$("show"+key.charAt(0).toUpperCase()+key.slice(1)).checked});
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
  return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,visible:visible};
 }
 function normalizeDesignSettings(input){
@@ -699,7 +700,7 @@ function applyDesignSettings(){
 function setDesignControls(input){
  var s=normalizeDesignSettings(input);
  $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;
- Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$("show"+k.charAt(0).toUpperCase()+k.slice(1)).checked=s.visible[k]});
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
  applyDesignSettings();
 }
 function loadDesignSettings(){
@@ -717,7 +718,7 @@ async function saveCloudDesignSettings(){
 }
 loadDesignSettings();
 ["designTheme","designMode","designDensity","designScale","designLayout"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
-Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$("show"+k.charAt(0).toUpperCase()+k.slice(1)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
 $("saveDesign").onclick=saveCloudDesignSettings;
 $("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
 
