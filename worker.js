@@ -465,7 +465,9 @@ async function getMarketForMint(mint, env) {
 async function inspectMint(mint, env) {
   const market = await getMarketForMint(mint, env);
 
-  const [rug, rpcResults] = await Promise.all([
+  // RugCheck is an independent safety signal: its outage must not abort
+  // the scan. RPC holder/mint data is still mandatory and fails closed.
+  const [rugResult, rpcResult] = await Promise.allSettled([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpcBatch([
       { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
@@ -473,6 +475,17 @@ async function inspectMint(mint, env) {
       { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
     ], env)
   ]);
+  const rug = rugResult.status === "fulfilled" ? rugResult.value : null;
+  if (rugResult.status === "rejected") {
+    console.warn("RugCheck unavailable; token remains ineligible for paper buy", {
+      mint,
+      error: String(rugResult.reason?.message || rugResult.reason || "Unknown RugCheck error")
+    });
+  }
+  if (rpcResult.status !== "fulfilled") {
+    throw rpcResult.reason instanceof Error ? rpcResult.reason : new Error(String(rpcResult.reason || "Solana RPC inspection failed"));
+  }
+  const rpcResults = rpcResult.value;
   const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
   const supplyAmount = Number(supply?.value?.amount || 0);
