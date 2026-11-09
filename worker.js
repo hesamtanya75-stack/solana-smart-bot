@@ -258,13 +258,19 @@ async function getDexJson(url, env, ttlSeconds = 30) {
 let geckoDiscoveryCache = { savedAt: 0, data: null };
 
 async function getLatestSolanaProfiles(env) {
+  const errors = [];
   try {
     const profiles = await getDexJson(
       "https://api.dexscreener.com/token-profiles/latest/v1", env, 60
     );
-    if (Array.isArray(profiles)) return profiles;
-  } catch (dexError) {
-    // Fall through to GeckoTerminal when DexScreener is rate-limited or unavailable.
+    if (Array.isArray(profiles) && profiles.some(t => t?.chainId === "solana" && t?.tokenAddress)) return profiles;
+    errors.push("DexScreener returned no Solana profiles");
+  } catch (error) {
+    errors.push("DexScreener: " + String(error?.message || error));
+  }
+
+  // Second source: GeckoTerminal newly-created Solana pools.
+  try {
     const cached = geckoDiscoveryCache;
     if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
     const response = await fetch(
@@ -274,10 +280,7 @@ async function getLatestSolanaProfiles(env) {
         signal: AbortSignal.timeout(12000)
       }
     );
-    if (!response.ok) {
-      throw new Error("DexScreener: " + String(dexError?.message || dexError) +
-        "; GeckoTerminal HTTP " + response.status);
-    }
+    if (!response.ok) throw new Error("HTTP " + response.status);
     const payload = await response.json();
     const included = new Map((payload.included || []).map(item => [item.id, item]));
     const profiles = (payload.data || []).map(pool => {
@@ -294,11 +297,40 @@ async function getLatestSolanaProfiles(env) {
       };
     }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
     const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
-    if (!unique.length) throw new Error("GeckoTerminal returned no usable Solana tokens");
+    if (!unique.length) throw new Error("returned no usable Solana tokens");
     geckoDiscoveryCache = { savedAt: Date.now(), data: unique };
     return unique;
+  } catch (error) {
+    errors.push("GeckoTerminal: " + String(error?.message || error));
   }
-  return [];
+
+  // Third source: Jupiter's recent first-pool feed. It is independent of both
+  // DexScreener and GeckoTerminal and needs no wallet or transaction signing.
+  try {
+    const response = await fetch("https://api.jup.ag/tokens/v2/recent", {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const payload = await response.json();
+    const rows = Array.isArray(payload) ? payload : (payload.tokens || payload.data || []);
+    const profiles = rows.map(token => {
+      const mint = String(token.id || token.address || token.mint || "");
+      if (!mint) return null;
+      return {
+        chainId: "solana",
+        tokenAddress: mint,
+        description: [token.name, token.symbol].filter(Boolean).join(" "),
+        url: "https://jup.ag/tokens/" + encodeURIComponent(mint)
+      };
+    }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
+    const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
+    if (!unique.length) throw new Error("returned no usable Solana tokens");
+    return unique;
+  } catch (error) {
+    errors.push("Jupiter: " + String(error?.message || error));
+  }
+  throw new Error("نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + errors.join("; "));
 }
 
 function mintDetails(account) {
