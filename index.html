@@ -243,6 +243,23 @@ html[lang="ckb"] .wrap .tm small{direction:ltr;unicode-bidi:isolate}
 html[lang="ckb"] .wrap .st span,
 html[lang="ckb"] .wrap .bs p span,
 html[lang="ckb"] .wrap .warn span{text-align:right}
+
+/* Token identity row: larger logo and keep token name beside safety status. */
+.av{width:96px;height:96px;font-size:48px}
+.tm{min-width:0}
+.tm-head{display:flex;flex-wrap:nowrap;align-items:center;gap:8px}
+.tm h2{font-size:22px;line-height:1.2;overflow-wrap:anywhere}
+.tag{white-space:nowrap;font-size:12px;padding:5px 9px}
+.av i{width:24px;height:24px;font-size:11px}
+@media(max-width:699px){
+ .wrap .tok{gap:9px}
+ .wrap .av{width:80px;height:80px;font-size:40px}
+ .wrap .tm-head{flex-wrap:nowrap;gap:5px}
+ .wrap .tm h2{font-size:clamp(14px,4vw,18px);line-height:1.2}
+ .wrap .tag{font-size:10px;padding:3px 6px;white-space:nowrap}
+ .wrap .av i{width:20px;height:20px;font-size:9px}
+}
+
 </style>
 </head>
 <body>
