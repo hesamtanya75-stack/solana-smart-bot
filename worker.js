@@ -7,6 +7,7 @@ const DEFAULT_STATE = {
   paused: false,
   scannedMints: [],
   deferredMints: [],
+  pendingMints: [],
   lastRunAt: null,
   lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
   lastScanReport: [],
@@ -45,6 +46,7 @@ function cleanState(value) {
     paused: s.paused === true,
     scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
     deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
+    pendingMints: Array.isArray(s.pendingMints) ? [...new Set(s.pendingMints.filter(m => typeof m === "string"))].slice(-100) : [],
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : [],
     lastScanData: s.lastScanData && typeof s.lastScanData === "object" ? s.lastScanData : null
   };
@@ -559,12 +561,30 @@ async function autoBuy(state, env) {
   const report = [];
   const scanned = new Set(state.scannedMints);
   const traded = new Set(state.trades.map(t => t.mint));
+  const queued = new Set(state.pendingMints);
+  // Persist newly discovered candidates so the full batch is processed safely
+  // over multiple cron runs instead of dropping tokens beyond this cycle's cap.
   for (const token of tokens) {
-    if (checked >= 2 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
+    if (!scanned.has(mint) && !traded.has(mint) && !queued.has(mint)) {
+      state.pendingMints.push(mint);
+      queued.add(mint);
+    }
+  }
+  state.pendingMints = state.pendingMints.slice(-100);
+  // Two full inspections per five-minute cron run protects RPC and Worker limits.
+  // A batch of up to ten newly discovered candidates is therefore processed
+  // over several runs, while the queue can safely retain a larger backlog.
+  let queueChecksRemaining = state.pendingMints.length;
+  while (checked < 2 && queueChecksRemaining-- > 0 && state.balance >= 5 &&
+         state.trades.filter(t => !t.sold).length < 10 && state.pendingMints.length) {
+    const mint = state.pendingMints.shift();
     if (scanned.has(mint) || traded.has(mint)) { skippedExisting++; continue; }
     const deferred = state.deferredMints.find(item => item.mint === mint);
-    if (deferred && Number(deferred.retryAt) > Date.now()) continue;
+    if (deferred && Number(deferred.retryAt) > Date.now()) {
+      state.pendingMints.push(mint);
+      continue;
+    }
     state.deferredMints = state.deferredMints.filter(item => item.mint !== mint);
     checked++;
     try {
@@ -572,6 +592,7 @@ async function autoBuy(state, env) {
       // Only mark a mint as scanned after a complete inspection.
       // Temporary RPC/API failures remain eligible for a later retry.
       state.scannedMints.push(mint);
+      scanned.add(mint);
       if (!result.ok) {
         report.push({ mint, status: "rejected", reasons: result.reasons });
         continue;
@@ -582,30 +603,32 @@ async function autoBuy(state, env) {
         tokens: 5 / result.price, sold: false, boughtAt: new Date().toISOString(),
         mode: "paper", riskChecks: "passed"
       });
+      traded.add(mint);
       bought++;
       report.push({ mint, status: "bought-paper", reasons: ["هەموو پشکنینەکان تێپەڕاند"] });
     } catch (error) {
       const message = String(error?.message || "داتای پشکنین بەردەست نییە");
+      // Keep temporary market/RPC failures in the persistent queue for retry.
+      state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
+      state.pendingMints.push(mint);
       if (message === "No Solana market pair") {
-        // Keep the token eligible, but don't let an unindexed profile consume
-        // every minute's scan slot. Recheck it after a short cooldown.
-        state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
         report.push({ mint, status: "deferred", reasons: ["بازاڕی Solana هێشتا نەدۆزراوەتەوە؛ دوای ٥ خولەک دووبارە پشکنین دەکرێت"] });
       } else {
-        report.push({ mint, status: "blocked-error", reasons: [message] });
+        report.push({ mint, status: "blocked-error", reasons: [message, "دوای ٥ خولەک دووبارە پشکنین دەکرێت"] });
       }
       // Unknown or unavailable data always means no simulated purchase.
     }
   }
   state.scannedMints = state.scannedMints.slice(-1000);
-  state.deferredMints = state.deferredMints.slice(-1000);
+  state.deferredMints = [...new Map(state.deferredMints.map(item => [item.mint, item])).values()].slice(-1000);
+  state.pendingMints = [...new Set(state.pendingMints)].slice(-100);
   state.lastScanReport = report.slice(-20);
   const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
   const deferred = report.filter(x => x.status === "deferred").length;
   const noNewTokens = checked === 0
-    ? " No unscanned new Solana tokens were available in the latest profile list; " + skippedExisting + " already-seen tokens skipped."
+    ? " No unscanned candidates were processed; " + skippedExisting + " already-seen tokens skipped."
     : "";
-  return "Checked " + checked + " new tokens (max 2 per cycle to protect RPC and Worker limits); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
+  return "Checked " + checked + " new tokens (max 2 per 5-minute cycle; up to 10 candidates are processed across five cycles); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for retry; " + state.pendingMints.length + " candidates queued; reasons saved in scan report." + noNewTokens;
 }
 
 
