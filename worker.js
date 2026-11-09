@@ -611,6 +611,35 @@ async function inspectMint(mint, env) {
   if (largestPct > 30) reasons.push("Largest holder above 30%");
   if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
   if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
+
+  // Additional fail-closed checks from RugCheck's structured report.
+  // Missing LP-lock data is unknown, never treated as locked/safe.
+  const lpLockedPct = Number(rug?.lpLockedPct);
+  if (!Number.isFinite(lpLockedPct)) {
+    reasons.push("LP lock status unavailable");
+  } else if (lpLockedPct < 80) {
+    reasons.push("Less than 80% of liquidity is locked (" + lpLockedPct.toFixed(2) + "%)");
+  }
+
+  const rugRisks = Array.isArray(rug?.risks) ? rug.risks : [];
+  const severeRugRisks = rugRisks.filter(item =>
+    ["danger", "critical"].includes(String(item?.level || "").toLowerCase())
+  );
+  for (const risk of severeRugRisks) {
+    const label = String(risk?.name || risk?.description || "Unspecified severe RugCheck risk");
+    reasons.push("RugCheck severe risk: " + label.slice(0, 120));
+  }
+
+  const riskText = rugRisks.map(item =>
+    String(item?.name || "") + " " + String(item?.description || "")
+  ).join(" ");
+  if (/honeypot|high\\s*tax|transfer\\s*tax|blacklist|transfer\\s*hook|permanent\\s*delegate|rug\\s*pull|fake\\s*token/i.test(riskText)) {
+    reasons.push("RugCheck detected a honeypot, transfer restriction, or token-control warning");
+  }
+  if (rug?.tokenMeta?.mutable === true) {
+    reasons.push("Token metadata is mutable");
+  }
+
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
   if (!(price > 0)) reasons.push("Price unavailable");
