@@ -661,7 +661,7 @@ function loadDesignSettings(){
  root.setAttribute("data-design-theme",settings.theme);root.setAttribute("data-design-mode",settings.mode);root.setAttribute("data-design-density",settings.density);
 }
 loadDesignSettings();
-["designTheme","designMode","designDensity"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings(false);$("designMessage").textContent="پێشبینینی گۆڕانکارییەکان — پاشەکەوت بکە بۆ هەمیشەییبوون.")})});
+["designTheme","designMode","designDensity"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings(false);$("designMessage").textContent="پێشبینینی گۆڕانکارییەکان — پاشەکەوت بکە بۆ هەمیشەییبوون."})});
 $("saveDesign").onclick=function(){applyDesignSettings(true)};
 $("resetDesign").onclick=function(){
  $("designTheme").value="purple";$("designMode").value="dark";$("designDensity").value="comfortable";applyDesignSettings(false);
