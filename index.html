@@ -244,17 +244,17 @@ html[lang="ckb"] .wrap .st span,
 html[lang="ckb"] .wrap .bs p span,
 html[lang="ckb"] .wrap .warn span{text-align:right}
 
-/* Token identity: logo on the left; coin name beside it and safety directly below the name. */
-.wrap .tok{display:flex;align-items:center;gap:10px;direction:ltr}
+/* Keep the token name close to the logo; stack the safety badge immediately below it. */
+.wrap .tok{display:flex;align-items:center;gap:6px;direction:ltr}
 .wrap .av{width:96px;height:96px;flex:none;font-size:48px}
-.wrap .tm{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;direction:rtl;text-align:right}
-.wrap .tm-head{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;flex-wrap:nowrap;min-width:0;width:100%}
-.wrap .tm h2{width:100%;min-width:0;font-size:20px;line-height:1.25;white-space:normal;overflow-wrap:anywhere;text-align:right}
+.wrap .tm{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;direction:ltr;text-align:left}
+.wrap .tm-head{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;flex-wrap:nowrap;min-width:0;width:auto;max-width:100%}
+.wrap .tm h2{width:auto;max-width:100%;min-width:0;font-size:20px;line-height:1.25;white-space:normal;overflow-wrap:anywhere;text-align:left}
 .wrap .tm-head .tag{display:inline-flex;align-self:flex-start;flex:none;margin:0;white-space:nowrap;font-size:11px;padding:4px 8px}
-.wrap .tm small{display:block;margin-top:3px;font-size:11px;text-align:right}
+.wrap .tm small{display:block;margin-top:3px;font-size:11px;text-align:left}
 .wrap .av i{width:23px;height:23px;font-size:11px}
 @media(max-width:699px){
- .wrap .tok{gap:9px}
+ .wrap .tok{gap:5px}
  .wrap .av{width:76px;height:76px;font-size:38px}
  .wrap .tm h2{font-size:clamp(14px,4vw,17px)}
  .wrap .tm-head .tag{font-size:10px;padding:3px 6px}
