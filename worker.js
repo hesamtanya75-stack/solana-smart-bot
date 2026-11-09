@@ -1,4 +1,4 @@
-const BUILD_ID = "rugcheck-lp-safety-v2";
+const BUILD_ID = "provider-resilience-v1";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
