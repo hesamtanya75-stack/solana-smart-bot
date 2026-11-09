@@ -708,10 +708,30 @@ $("disconnectPhantom").onclick=async function(){
  try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
  renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
 };
-$("requestDevnetAirdrop").onclick=function(){
+$("requestDevnetAirdrop").onclick=async function(){
  if(!devnetWallet)return;
- testnetMessage("فەوسێتی خۆڕایی QuickNode دەکرێتەوە. ناونیشانی Wallet ـەکەت لەوێ دابنێ و داوای Devnet SOL بکە.");
- window.open("https://faucet.quicknode.com/solana/devnet","_blank","noopener");
+ var button=this;
+ button.disabled=true;
+ testnetMessage("داوای 0.5 SOL ـی تاقیکردنەوە لە Devnet دەکرێت...");
+ try{
+  var signature=await devnetRpc("requestAirdrop",[devnetWallet,500000000,{commitment:"confirmed"}]);
+  testnetMessage("داواکاری نێردرا. چاوەڕێی پشتڕاستکردنەوەی Devnet بە...");
+  var confirmed=false;
+  for(var attempt=0;attempt<8;attempt++){
+   await new Promise(function(resolve){setTimeout(resolve,2000)});
+   var status=await devnetRpc("getSignatureStatuses",[[signature],{searchTransactionHistory:true}]);
+   var value=status&&status.value&&status.value[0];
+   if(value&&value.err)throw new Error("داواکاری لە Devnet ڕەتکرایەوە");
+   if(value&&value.confirmationStatus&&value.confirmationStatus!=="processed"){confirmed=true;break}
+  }
+  await refreshDevnetBalance();
+  if(confirmed)testnetMessage("0.5 SOL ـی Devnet بە سەرکەوتوویی وەرگیرا. هیچ پارەیەکی Mainnet بەکارنەهاتووە.");
+  else testnetMessage("داواکاری نێردرا، بەڵام پشتڕاستکردنەوەی هێشتا نەگەیشتووە. Signature: "+signature);
+ }catch(error){
+  testnetMessage("داواکاری Devnet سەرکەوتوو نەبوو: "+(error&&error.message?error.message:String(error)),true);
+ }finally{
+  button.disabled=!devnetWallet;
+ }
 };
 (function watchPhantom(){
  var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
