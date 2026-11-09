@@ -377,6 +377,78 @@ html[lang="ckb"] .toast {
  font-feature-settings:"ccmp" 1,"rlig" 1,"liga" 1,"calt" 1;
 }
 
+
+/* Mobile overlap fix: let cards size to their content and scroll as one page. */
+@media(max-width:699px){
+ html,body{
+  height:auto;
+  min-height:100%;
+  overflow-x:hidden;
+  overflow-y:auto;
+ }
+ body{
+  min-height:100dvh;
+  padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(12px + env(safe-area-inset-bottom,0px));
+ }
+ .wrap{
+  height:auto;
+  min-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 18px);
+  grid-template-rows:44px 124px 136px minmax(120px,auto) minmax(132px,auto) minmax(184px,auto) 30px;
+  grid-auto-rows:minmax(min-content,auto);
+  align-content:start;
+  overflow:visible;
+ }
+ .wrap>.box{
+  min-width:0;
+  min-height:0;
+  overflow:hidden;
+ }
+ .wrap>.row:nth-child(5)>.box:first-child,
+ .wrap>.row:nth-child(5)>.box:last-child{
+  min-height:132px;
+ }
+ .wrap .don{
+  min-width:0;
+  min-height:0;
+  align-items:center;
+  gap:8px;
+ }
+ .wrap .ring{flex:0 0 62px}
+ .wrap .lg{
+  min-width:0;
+  max-height:112px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-wrap:anywhere;
+ }
+ .wrap .lg p{min-width:0;gap:5px}
+ .wrap .lg b{white-space:nowrap}
+ .wrap>.box:nth-child(6){
+  min-height:184px;
+ }
+ .wrap .botrow{
+  height:auto;
+  min-height:0;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  align-items:stretch;
+  gap:7px;
+ }
+ .wrap .bs,.wrap .ctl{min-width:0;min-height:0}
+ .wrap .bs p{align-items:flex-start;flex-wrap:wrap;overflow-wrap:anywhere}
+ .wrap .bs p span{min-width:0;overflow-wrap:anywhere}
+ .wrap .bs p b{white-space:normal;overflow-wrap:anywhere}
+ .wrap #botStatus{
+  max-height:64px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-wrap:anywhere;
+ }
+ .wrap .ctl .row{min-width:0}
+ .wrap .ctl .row .btn{min-width:0;white-space:normal}
+ .wrap .detail-links{min-width:0}
+ .wrap .detail-links button{min-width:0;overflow-wrap:anywhere}
+}
+
 </style>
 </head>
 <body>
