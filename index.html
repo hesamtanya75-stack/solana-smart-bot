@@ -364,6 +364,10 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
   <div class="testnet-balance"><span>باڵانسی Devnet SOL</span><b id="testnetBalance">— SOL</b></div>
   <div class="row"><button class="btn blue" id="connectPhantom" type="button">🔗 بەستنەوەی Phantom</button><button class="btn red" id="disconnectPhantom" type="button" disabled>دابڕین</button></div>
   <button class="btn green" id="requestDevnetAirdrop" type="button" disabled style="width:100%;margin-top:9px">💧 داواکردنی 0.5 SOL ـی تاقیکردنەوە</button>
+  <div class="row" style="margin-top:8px">
+   <button class="btn blue" id="copyDevnetAddress" type="button" disabled>📋 کۆپیکردنی ناونیشان</button>
+   <a href="https://faucet.solana.com/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;min-height:38px;padding:6px 9px;border:1px solid #22c55e;border-radius:10px;background:#102b25;color:#86efac;text-decoration:none;font-size:12px;font-weight:800">🌐 Faucet ـی فەرمی</a>
+  </div>
   <p class="sub" id="testnetMessage" style="margin-top:8px;line-height:1.6">تەنها SOL ـی Devnet ـە و نرخی ڕاستەقینەی نییە.</p>
  </div>
 </div>
@@ -678,6 +682,7 @@ function renderDevnetWallet(publicKey){
  $("connectPhantom").disabled=!!devnetWallet;
  $("disconnectPhantom").disabled=!devnetWallet;
  $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
  $("testnetBalance").textContent="— SOL";
  if(devnetWallet)refreshDevnetBalance();
 }
@@ -708,6 +713,14 @@ $("disconnectPhantom").onclick=async function(){
  try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
  renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
 };
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
 $("requestDevnetAirdrop").onclick=async function(){
  if(!devnetWallet)return;
  var button=this;
@@ -728,7 +741,14 @@ $("requestDevnetAirdrop").onclick=async function(){
   if(confirmed)testnetMessage("0.5 SOL ـی Devnet بە سەرکەوتوویی وەرگیرا. هیچ پارەیەکی Mainnet بەکارنەهاتووە.");
   else testnetMessage("داواکاری نێردرا، بەڵام پشتڕاستکردنەوەی هێشتا نەگەیشتووە. Signature: "+signature);
  }catch(error){
-  testnetMessage("داواکاری Devnet سەرکەوتوو نەبوو: "+(error&&error.message?error.message:String(error)),true);
+  var airdropError=error&&error.message?error.message:String(error);
+  if(/HTTP 410|faucet is closed/i.test(airdropError)){
+   testnetMessage("RPC ـی داواکاری داخراوە. ناونیشانەکەت کۆپی بکە و لە Faucet ـی فەرمی دایبنێ؛ ئەگەر هەڵبژاردەی 0.5 SOL هەبوو هەڵیبژێرە.",true);
+  }else if(/HTTP 429|Too Many Requests|rate limit/i.test(airdropError)){
+   testnetMessage("RPC سنووری داواکارییەکانی گەیشتووە. دووبارە داوا مەکە؛ Faucet ـی فەرمی بەکاربهێنە یان دواتر هەوڵ بدەرەوە.",true);
+  }else{
+   testnetMessage("داواکاری Devnet سەرکەوتوو نەبوو: "+airdropError,true);
+  }
  }finally{
   button.disabled=!devnetWallet;
  }
