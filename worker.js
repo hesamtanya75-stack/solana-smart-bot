@@ -894,10 +894,10 @@ export default {
           const body = await request.json();
           const email = String(body.email || "").trim().toLowerCase();
           const phone = String(body.phone || "").trim();
-          if (email.length > 254 || (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) {
+          if (email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
             return json({ error: "ناونیشانی Gmail دروست نییە" }, 400);
           }
-          if (phone.length > 20 || (phone && !/^\\+[1-9]\\d{7,14}$/.test(phone))) {
+          if (phone.length > 20 || (phone && !/^\+[1-9]\d{7,14}$/.test(phone))) {
             return json({ error: "ژمارەی مۆبایل بە شێوەی نێودەوڵەتی بنووسە؛ نموونە +9647xxxxxxxxx" }, 400);
           }
           const profile = await readProfile(env);
