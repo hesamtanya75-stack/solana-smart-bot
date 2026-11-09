@@ -581,7 +581,7 @@ $("loginForm").addEventListener("submit",async function(e){
    if(result.mfaRequired){mfaChallenge=result.challengeId;$("totpCode").style.display="block";$("loginPassword").style.display="none";loginMessage("کۆدی ٦ ژمارەیی Authenticator بنووسە");button.disabled=false;return}
    apiToken=result.token;try{localStorage.setItem("solanaSmartBotSession",apiToken)}catch(e){}
   }
-  $("serverLogin").style.display="none";await Promise.all([loadState(),loadCloudDesignSettings()]);if(stateRefreshTimer)clearInterval(stateRefreshTimer);stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);toast("چوونەژوورەوە سەرکەوتوو بوو");
+  $("serverLogin").style.display="none";await Promise.all([loadState(),loadCloudDesignSettings()]);if(stateRefreshTimer)clearInterval(stateRefreshTimer);stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);toast("چوونەژوورەوە سەرکەوتوو بوو");
  }catch(err){loginMessage(err.message)}finally{button.disabled=false}
 });
 $("logout").addEventListener("click",async function(){
@@ -672,6 +672,7 @@ function renderDiscovery(tokens){
   box.appendChild(button);
  });
 }
+function escapeTradeText(value){return String(value==null?"":value).replace(/[&<>"']/g,function(ch){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]})}
 function renderTrades(trades){
  var list=$("tradeList");var items=Array.isArray(trades)?trades.slice().reverse():[];
  $("tradeCount").textContent=items.length+" مامەڵە";
@@ -682,7 +683,2310 @@ function renderTrades(trades){
   var current=Number(t.currentPrice||t.buyPrice||0);
   var value=t.sold?Number(t.saleValue||0):Number(t.tokens||0)*current;
   var pnl=value-Number(t.amount||5);
-  return '<div class="tradeItem"><div class="tradeTop"><b>'+status+'</b><b style="color:'+(pnl>=0?'#4ade80':'#fb7185')+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</b></div><div>'+t.mint+'</div><div class="tradeMeta">کڕین: $'+Number(t.buyPrice||0).toPrecision(6)+' · ئێستا/فرۆشتن: $'+current.toPrecision(6)+' · بەهای مامەڵە: $'+value.toFixed(2)+'</div></div>';
+  var logo="";try{var u=new URL(String(t.imageUrl||""));if(u.protocol==="https:")logo='<img src="'+escapeTradeText(u.href)+'" alt="" loading="lazy" style="width:30px;height:30px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'}catch(e){}
+  var title=escapeTradeText(t.name&&t.name!=="Unknown token"?t.name:"کۆینی پشکنراو");
+  var symbol=escapeTradeText(t.symbol||"");
+  return '<div class="tradeItem"><div class="tradeTop"><b>'+status+'</b><b style="color:'+(pnl>=0?'#4ade80':'#fb7185')+'">'+(pnl>=0?'+':'')+'
+function render(){
+ if(!T){
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
+ }
+ var top=Array.isArray(T.top)?T.top:[];var ch=[];
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=fmtPrice(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
+}
+window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+var VISUAL_ITEM_IDS=Object.assign({header:"dashboardHeader"},DESIGN_PANEL_IDS);
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(k==="header"?0:48,Math.min(1320,Number(g.y)||0)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});var head=$("dashboardHeader");if(s.geometry&&s.geometry.header){var hg=s.geometry.header;head.style.left=hg.x+"%";head.style.top=hg.y+"px";head.style.width=hg.w+"%";head.style.height=hg.h+"px"}else{head.style.left="";head.style.top="";head.style.width="";head.style.height=""}wrap.classList.toggle("custom-layout",!!s.geometry);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
+}
+function loadDesignSettings(){
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
+}
+
+var VISUAL_DEFAULT_GEOMETRY={header:{x:0,y:0,w:100,h:70},scan:{x:0,y:54,w:100,h:145},token:{x:0,y:207,w:100,h:135},market:{x:0,y:350,w:49,h:145},security:{x:51,y:350,w:49,h:145},holders:{x:0,y:503,w:49,h:145},selling:{x:51,y:503,w:49,h:145},botStats:{x:0,y:656,w:100,h:175},trades:{x:0,y:839,w:100,h:210},reports:{x:0,y:1055,w:100,h:210},notice:{x:0,y:1271,w:100,h:75}};
+var visualSelected="scan",visualEditing=false;
+function visualGeometry(){var s=normalizeDesignSettings(readDesignControls());return s.geometry||JSON.parse(JSON.stringify(VISUAL_DEFAULT_GEOMETRY))}
+function applyVisualGeometry(){var g=visualGeometry();Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]),v=g[k];if(p&&v){p.style.left=v.x+"%";p.style.top=v.y+"px";p.style.width=v.w+"%";p.style.height=v.h+"px"}})}
+function selectVisualPanel(k){visualSelected=k;$("visualPanelSelect").value=k;Object.keys(VISUAL_ITEM_IDS).forEach(function(id){$(VISUAL_ITEM_IDS[id]).classList.toggle("visual-selected",id===k)})}
+function visualResize(f){var g=visualGeometry(),v=g[visualSelected];v.w=Math.max(18,Math.min(100,v.w*f));v.h=Math.max(55,Math.min(500,v.h*f));window.__sbDesignGeometry=g;applyVisualGeometry();$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}
+function visualAttach(){
+ Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]);if(!p||p.dataset.visualReady)return;p.dataset.visualReady="1";
+ var h=document.createElement("div");h.className="visual-move";h.innerHTML="<span>↕ "+k+"</span><span>ڕایبکێشە بۆ گواستنەوە</span>";p.insertBefore(h,p.firstChild);
+ var z=document.createElement("button");z.type="button";z.className="visual-resize";z.textContent="↘";z.setAttribute("aria-label","گۆڕینی قەبارە");p.appendChild(z);
+ h.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=v.x,oy=v.y;h.setPointerCapture(e.pointerId);function mv(ev){v.x=Math.max(0,Math.min(100-v.w,ox+(ev.clientX-sx)/rect.width*100));v.y=Math.max(k==="header"?0:48,Math.min(1320,oy+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){h.removeEventListener("pointermove",mv);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);$("designMessage").textContent="شوێنی بەش گۆڕا؛ پاشەکەوتی بکە."}h.addEventListener("pointermove",mv);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end)});
+ z.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();e.stopPropagation();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ow=v.w,oh=v.h;z.setPointerCapture(e.pointerId);function mv(ev){v.w=Math.max(18,Math.min(100-v.x,ow+(ev.clientX-sx)/rect.width*100));v.h=Math.max(55,Math.min(500,oh+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){z.removeEventListener("pointermove",mv);z.removeEventListener("pointerup",end);z.removeEventListener("pointercancel",end);$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}z.addEventListener("pointermove",mv);z.addEventListener("pointerup",end);z.addEventListener("pointercancel",end)});
+ });
+}
+function openVisualEditor(){var bar=document.getElementById("visualEditorToolbar");if(!bar){bar=document.createElement("div");bar.id="visualEditorToolbar";bar.className="visual-editor-toolbar";bar.innerHTML='<select id="visualPanelSelect" aria-label="بەش"></select><button id="visualSmaller" type="button">− بچووک</button><button id="visualLarger" type="button">+ گەورە</button><button id="visualEditorSave" class="editor-save" type="button">💾 پاشەکەوت</button><button id="visualEditorDone" type="button">تەواو ✕</button>';document.body.appendChild(bar);var names={header:"سەرپەڕە (پرۆفایل/دەرچوون/Testnet)",scan:"پشکنین",token:"کۆین",market:"بازاڕ",security:"سەلامەتی",holders:"خاوەنەکان",selling:"فرۆشتن",botStats:"ئاماری بۆت",trades:"مامەڵەکان",reports:"ڕاپۆرتەکان",notice:"تێبینی"};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var o=document.createElement("option");o.value=k;o.textContent=names[k];$("visualPanelSelect").appendChild(o)});$("visualPanelSelect").onchange=function(){selectVisualPanel(this.value)};$("visualSmaller").onclick=function(){visualResize(.9)};$("visualLarger").onclick=function(){visualResize(1.1)};$("visualEditorSave").onclick=async function(){window.__sbDesignGeometry=visualGeometry();await saveCloudDesignSettings()};$("visualEditorDone").onclick=closeVisualEditor}
+ window.__sbDesignGeometry=visualGeometry();visualEditing=true;document.body.classList.add("visual-editing");document.querySelector(".wrap").classList.add("custom-layout");Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(DESIGN_PANEL_IDS[k]).classList.remove("design-hidden")});applyVisualGeometry();visualAttach();bar.classList.add("open");selectVisualPanel(visualSelected);$("profileModal").classList.remove("open");$("designMessage").textContent="سەرەوەی کارت ڕابکێشە بۆ گواستنەوە؛ گۆشەی خوارەوە بۆ قەبارە."}
+function closeVisualEditor(){visualEditing=false;document.body.classList.remove("visual-editing");$("visualEditorToolbar").classList.remove("open");applyDesignSettings()}
+$("openVisualEditor").onclick=openVisualEditor;
+
+loadDesignSettings();
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
+
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
+async function devnetRpc(method,params){
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+$("requestDevnetAirdrop").onclick=function(){
+ if(!devnetWallet)return;
+ testnetMessage("Faucet ـی Devnet دەکرێتەوە. ناونیشانی Wallet ـەکەت کۆپی بکە و لە خانەی Wallet address دایبنێ. بڕی داواکراو 0.025 SOL ـە.");
+ window.open("https://faucet.zalalena.com/solana/","_blank","noopener");
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
+ }
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
+})();
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
+$("paperBuy").onclick=async function(){
+ if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
+ this.disabled=true;
+ try{await api("/api/paper-buy","POST",{mint:T.tokenAddress});await loadState();toast("کڕینی دیمۆ بە $5 ئەنجام درا")}catch(e){toast(e.message)}finally{this.disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)}
+};
+$("disc").onclick=async function(){
+ this.disabled=true;this.textContent="⏳ دۆزینەوە...";
+ try{var r=await api("/api/discover");renderDiscovery(r.tokens||[]);toast(r.tokens&&r.tokens.length?"کۆینە نوێیەکان دۆزرایەوەن؛ یەکێک هەڵبژێرە":"کۆینی نوێ نەدۆزرایەوە")}
+ catch(e){$("discoverResults").textContent=e.message;toast(e.message)}
+ finally{this.disabled=false;this.textContent="🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان"}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
+render();
+
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
+  if(location.hostname==="htmlpreview.github.io")return;
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
+})();
+
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
+</script>
+</body>
+</html>+pnl.toFixed(2)+'</b></div><div style="display:flex;align-items:center;gap:9px">'+logo+'<span><b>'+title+(symbol?' · 
+function render(){
+ if(!T){
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
+ }
+ var top=Array.isArray(T.top)?T.top:[];var ch=[];
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=fmtPrice(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
+}
+window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+var VISUAL_ITEM_IDS=Object.assign({header:"dashboardHeader"},DESIGN_PANEL_IDS);
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(k==="header"?0:48,Math.min(1320,Number(g.y)||0)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});var head=$("dashboardHeader");if(s.geometry&&s.geometry.header){var hg=s.geometry.header;head.style.left=hg.x+"%";head.style.top=hg.y+"px";head.style.width=hg.w+"%";head.style.height=hg.h+"px"}else{head.style.left="";head.style.top="";head.style.width="";head.style.height=""}wrap.classList.toggle("custom-layout",!!s.geometry);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
+}
+function loadDesignSettings(){
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
+}
+
+var VISUAL_DEFAULT_GEOMETRY={header:{x:0,y:0,w:100,h:70},scan:{x:0,y:54,w:100,h:145},token:{x:0,y:207,w:100,h:135},market:{x:0,y:350,w:49,h:145},security:{x:51,y:350,w:49,h:145},holders:{x:0,y:503,w:49,h:145},selling:{x:51,y:503,w:49,h:145},botStats:{x:0,y:656,w:100,h:175},trades:{x:0,y:839,w:100,h:210},reports:{x:0,y:1055,w:100,h:210},notice:{x:0,y:1271,w:100,h:75}};
+var visualSelected="scan",visualEditing=false;
+function visualGeometry(){var s=normalizeDesignSettings(readDesignControls());return s.geometry||JSON.parse(JSON.stringify(VISUAL_DEFAULT_GEOMETRY))}
+function applyVisualGeometry(){var g=visualGeometry();Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]),v=g[k];if(p&&v){p.style.left=v.x+"%";p.style.top=v.y+"px";p.style.width=v.w+"%";p.style.height=v.h+"px"}})}
+function selectVisualPanel(k){visualSelected=k;$("visualPanelSelect").value=k;Object.keys(VISUAL_ITEM_IDS).forEach(function(id){$(VISUAL_ITEM_IDS[id]).classList.toggle("visual-selected",id===k)})}
+function visualResize(f){var g=visualGeometry(),v=g[visualSelected];v.w=Math.max(18,Math.min(100,v.w*f));v.h=Math.max(55,Math.min(500,v.h*f));window.__sbDesignGeometry=g;applyVisualGeometry();$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}
+function visualAttach(){
+ Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]);if(!p||p.dataset.visualReady)return;p.dataset.visualReady="1";
+ var h=document.createElement("div");h.className="visual-move";h.innerHTML="<span>↕ "+k+"</span><span>ڕایبکێشە بۆ گواستنەوە</span>";p.insertBefore(h,p.firstChild);
+ var z=document.createElement("button");z.type="button";z.className="visual-resize";z.textContent="↘";z.setAttribute("aria-label","گۆڕینی قەبارە");p.appendChild(z);
+ h.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=v.x,oy=v.y;h.setPointerCapture(e.pointerId);function mv(ev){v.x=Math.max(0,Math.min(100-v.w,ox+(ev.clientX-sx)/rect.width*100));v.y=Math.max(k==="header"?0:48,Math.min(1320,oy+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){h.removeEventListener("pointermove",mv);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);$("designMessage").textContent="شوێنی بەش گۆڕا؛ پاشەکەوتی بکە."}h.addEventListener("pointermove",mv);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end)});
+ z.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();e.stopPropagation();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ow=v.w,oh=v.h;z.setPointerCapture(e.pointerId);function mv(ev){v.w=Math.max(18,Math.min(100-v.x,ow+(ev.clientX-sx)/rect.width*100));v.h=Math.max(55,Math.min(500,oh+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){z.removeEventListener("pointermove",mv);z.removeEventListener("pointerup",end);z.removeEventListener("pointercancel",end);$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}z.addEventListener("pointermove",mv);z.addEventListener("pointerup",end);z.addEventListener("pointercancel",end)});
+ });
+}
+function openVisualEditor(){var bar=document.getElementById("visualEditorToolbar");if(!bar){bar=document.createElement("div");bar.id="visualEditorToolbar";bar.className="visual-editor-toolbar";bar.innerHTML='<select id="visualPanelSelect" aria-label="بەش"></select><button id="visualSmaller" type="button">− بچووک</button><button id="visualLarger" type="button">+ گەورە</button><button id="visualEditorSave" class="editor-save" type="button">💾 پاشەکەوت</button><button id="visualEditorDone" type="button">تەواو ✕</button>';document.body.appendChild(bar);var names={header:"سەرپەڕە (پرۆفایل/دەرچوون/Testnet)",scan:"پشکنین",token:"کۆین",market:"بازاڕ",security:"سەلامەتی",holders:"خاوەنەکان",selling:"فرۆشتن",botStats:"ئاماری بۆت",trades:"مامەڵەکان",reports:"ڕاپۆرتەکان",notice:"تێبینی"};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var o=document.createElement("option");o.value=k;o.textContent=names[k];$("visualPanelSelect").appendChild(o)});$("visualPanelSelect").onchange=function(){selectVisualPanel(this.value)};$("visualSmaller").onclick=function(){visualResize(.9)};$("visualLarger").onclick=function(){visualResize(1.1)};$("visualEditorSave").onclick=async function(){window.__sbDesignGeometry=visualGeometry();await saveCloudDesignSettings()};$("visualEditorDone").onclick=closeVisualEditor}
+ window.__sbDesignGeometry=visualGeometry();visualEditing=true;document.body.classList.add("visual-editing");document.querySelector(".wrap").classList.add("custom-layout");Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(DESIGN_PANEL_IDS[k]).classList.remove("design-hidden")});applyVisualGeometry();visualAttach();bar.classList.add("open");selectVisualPanel(visualSelected);$("profileModal").classList.remove("open");$("designMessage").textContent="سەرەوەی کارت ڕابکێشە بۆ گواستنەوە؛ گۆشەی خوارەوە بۆ قەبارە."}
+function closeVisualEditor(){visualEditing=false;document.body.classList.remove("visual-editing");$("visualEditorToolbar").classList.remove("open");applyDesignSettings()}
+$("openVisualEditor").onclick=openVisualEditor;
+
+loadDesignSettings();
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
+
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
+async function devnetRpc(method,params){
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+$("requestDevnetAirdrop").onclick=function(){
+ if(!devnetWallet)return;
+ testnetMessage("Faucet ـی Devnet دەکرێتەوە. ناونیشانی Wallet ـەکەت کۆپی بکە و لە خانەی Wallet address دایبنێ. بڕی داواکراو 0.025 SOL ـە.");
+ window.open("https://faucet.zalalena.com/solana/","_blank","noopener");
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
+ }
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
+})();
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
+$("paperBuy").onclick=async function(){
+ if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
+ this.disabled=true;
+ try{await api("/api/paper-buy","POST",{mint:T.tokenAddress});await loadState();toast("کڕینی دیمۆ بە $5 ئەنجام درا")}catch(e){toast(e.message)}finally{this.disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)}
+};
+$("disc").onclick=async function(){
+ this.disabled=true;this.textContent="⏳ دۆزینەوە...";
+ try{var r=await api("/api/discover");renderDiscovery(r.tokens||[]);toast(r.tokens&&r.tokens.length?"کۆینە نوێیەکان دۆزرایەوەن؛ یەکێک هەڵبژێرە":"کۆینی نوێ نەدۆزرایەوە")}
+ catch(e){$("discoverResults").textContent=e.message;toast(e.message)}
+ finally{this.disabled=false;this.textContent="🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان"}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
+render();
+
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
+  if(location.hostname==="htmlpreview.github.io")return;
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
+})();
+
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
+</script>
+</body>
+</html>+symbol:'')+'</b><br><small>'+escapeTradeText(t.mint)+'</small></span></div><div class="tradeMeta">کڕین: 
+function render(){
+ if(!T){
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
+ }
+ var top=Array.isArray(T.top)?T.top:[];var ch=[];
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=fmtPrice(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
+}
+window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+var VISUAL_ITEM_IDS=Object.assign({header:"dashboardHeader"},DESIGN_PANEL_IDS);
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(k==="header"?0:48,Math.min(1320,Number(g.y)||0)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});var head=$("dashboardHeader");if(s.geometry&&s.geometry.header){var hg=s.geometry.header;head.style.left=hg.x+"%";head.style.top=hg.y+"px";head.style.width=hg.w+"%";head.style.height=hg.h+"px"}else{head.style.left="";head.style.top="";head.style.width="";head.style.height=""}wrap.classList.toggle("custom-layout",!!s.geometry);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
+}
+function loadDesignSettings(){
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
+}
+
+var VISUAL_DEFAULT_GEOMETRY={header:{x:0,y:0,w:100,h:70},scan:{x:0,y:54,w:100,h:145},token:{x:0,y:207,w:100,h:135},market:{x:0,y:350,w:49,h:145},security:{x:51,y:350,w:49,h:145},holders:{x:0,y:503,w:49,h:145},selling:{x:51,y:503,w:49,h:145},botStats:{x:0,y:656,w:100,h:175},trades:{x:0,y:839,w:100,h:210},reports:{x:0,y:1055,w:100,h:210},notice:{x:0,y:1271,w:100,h:75}};
+var visualSelected="scan",visualEditing=false;
+function visualGeometry(){var s=normalizeDesignSettings(readDesignControls());return s.geometry||JSON.parse(JSON.stringify(VISUAL_DEFAULT_GEOMETRY))}
+function applyVisualGeometry(){var g=visualGeometry();Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]),v=g[k];if(p&&v){p.style.left=v.x+"%";p.style.top=v.y+"px";p.style.width=v.w+"%";p.style.height=v.h+"px"}})}
+function selectVisualPanel(k){visualSelected=k;$("visualPanelSelect").value=k;Object.keys(VISUAL_ITEM_IDS).forEach(function(id){$(VISUAL_ITEM_IDS[id]).classList.toggle("visual-selected",id===k)})}
+function visualResize(f){var g=visualGeometry(),v=g[visualSelected];v.w=Math.max(18,Math.min(100,v.w*f));v.h=Math.max(55,Math.min(500,v.h*f));window.__sbDesignGeometry=g;applyVisualGeometry();$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}
+function visualAttach(){
+ Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]);if(!p||p.dataset.visualReady)return;p.dataset.visualReady="1";
+ var h=document.createElement("div");h.className="visual-move";h.innerHTML="<span>↕ "+k+"</span><span>ڕایبکێشە بۆ گواستنەوە</span>";p.insertBefore(h,p.firstChild);
+ var z=document.createElement("button");z.type="button";z.className="visual-resize";z.textContent="↘";z.setAttribute("aria-label","گۆڕینی قەبارە");p.appendChild(z);
+ h.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=v.x,oy=v.y;h.setPointerCapture(e.pointerId);function mv(ev){v.x=Math.max(0,Math.min(100-v.w,ox+(ev.clientX-sx)/rect.width*100));v.y=Math.max(k==="header"?0:48,Math.min(1320,oy+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){h.removeEventListener("pointermove",mv);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);$("designMessage").textContent="شوێنی بەش گۆڕا؛ پاشەکەوتی بکە."}h.addEventListener("pointermove",mv);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end)});
+ z.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();e.stopPropagation();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ow=v.w,oh=v.h;z.setPointerCapture(e.pointerId);function mv(ev){v.w=Math.max(18,Math.min(100-v.x,ow+(ev.clientX-sx)/rect.width*100));v.h=Math.max(55,Math.min(500,oh+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){z.removeEventListener("pointermove",mv);z.removeEventListener("pointerup",end);z.removeEventListener("pointercancel",end);$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}z.addEventListener("pointermove",mv);z.addEventListener("pointerup",end);z.addEventListener("pointercancel",end)});
+ });
+}
+function openVisualEditor(){var bar=document.getElementById("visualEditorToolbar");if(!bar){bar=document.createElement("div");bar.id="visualEditorToolbar";bar.className="visual-editor-toolbar";bar.innerHTML='<select id="visualPanelSelect" aria-label="بەش"></select><button id="visualSmaller" type="button">− بچووک</button><button id="visualLarger" type="button">+ گەورە</button><button id="visualEditorSave" class="editor-save" type="button">💾 پاشەکەوت</button><button id="visualEditorDone" type="button">تەواو ✕</button>';document.body.appendChild(bar);var names={header:"سەرپەڕە (پرۆفایل/دەرچوون/Testnet)",scan:"پشکنین",token:"کۆین",market:"بازاڕ",security:"سەلامەتی",holders:"خاوەنەکان",selling:"فرۆشتن",botStats:"ئاماری بۆت",trades:"مامەڵەکان",reports:"ڕاپۆرتەکان",notice:"تێبینی"};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var o=document.createElement("option");o.value=k;o.textContent=names[k];$("visualPanelSelect").appendChild(o)});$("visualPanelSelect").onchange=function(){selectVisualPanel(this.value)};$("visualSmaller").onclick=function(){visualResize(.9)};$("visualLarger").onclick=function(){visualResize(1.1)};$("visualEditorSave").onclick=async function(){window.__sbDesignGeometry=visualGeometry();await saveCloudDesignSettings()};$("visualEditorDone").onclick=closeVisualEditor}
+ window.__sbDesignGeometry=visualGeometry();visualEditing=true;document.body.classList.add("visual-editing");document.querySelector(".wrap").classList.add("custom-layout");Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(DESIGN_PANEL_IDS[k]).classList.remove("design-hidden")});applyVisualGeometry();visualAttach();bar.classList.add("open");selectVisualPanel(visualSelected);$("profileModal").classList.remove("open");$("designMessage").textContent="سەرەوەی کارت ڕابکێشە بۆ گواستنەوە؛ گۆشەی خوارەوە بۆ قەبارە."}
+function closeVisualEditor(){visualEditing=false;document.body.classList.remove("visual-editing");$("visualEditorToolbar").classList.remove("open");applyDesignSettings()}
+$("openVisualEditor").onclick=openVisualEditor;
+
+loadDesignSettings();
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
+
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
+async function devnetRpc(method,params){
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+$("requestDevnetAirdrop").onclick=function(){
+ if(!devnetWallet)return;
+ testnetMessage("Faucet ـی Devnet دەکرێتەوە. ناونیشانی Wallet ـەکەت کۆپی بکە و لە خانەی Wallet address دایبنێ. بڕی داواکراو 0.025 SOL ـە.");
+ window.open("https://faucet.zalalena.com/solana/","_blank","noopener");
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
+ }
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
+})();
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
+$("paperBuy").onclick=async function(){
+ if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
+ this.disabled=true;
+ try{await api("/api/paper-buy","POST",{mint:T.tokenAddress});await loadState();toast("کڕینی دیمۆ بە $5 ئەنجام درا")}catch(e){toast(e.message)}finally{this.disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)}
+};
+$("disc").onclick=async function(){
+ this.disabled=true;this.textContent="⏳ دۆزینەوە...";
+ try{var r=await api("/api/discover");renderDiscovery(r.tokens||[]);toast(r.tokens&&r.tokens.length?"کۆینە نوێیەکان دۆزرایەوەن؛ یەکێک هەڵبژێرە":"کۆینی نوێ نەدۆزرایەوە")}
+ catch(e){$("discoverResults").textContent=e.message;toast(e.message)}
+ finally{this.disabled=false;this.textContent="🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان"}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
+render();
+
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
+  if(location.hostname==="htmlpreview.github.io")return;
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
+})();
+
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
+</script>
+</body>
+</html>+Number(t.buyPrice||0).toPrecision(6)+' · ئێستا/فرۆشتن: 
+function render(){
+ if(!T){
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
+ }
+ var top=Array.isArray(T.top)?T.top:[];var ch=[];
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=fmtPrice(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
+}
+window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+var VISUAL_ITEM_IDS=Object.assign({header:"dashboardHeader"},DESIGN_PANEL_IDS);
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(k==="header"?0:48,Math.min(1320,Number(g.y)||0)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});var head=$("dashboardHeader");if(s.geometry&&s.geometry.header){var hg=s.geometry.header;head.style.left=hg.x+"%";head.style.top=hg.y+"px";head.style.width=hg.w+"%";head.style.height=hg.h+"px"}else{head.style.left="";head.style.top="";head.style.width="";head.style.height=""}wrap.classList.toggle("custom-layout",!!s.geometry);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
+}
+function loadDesignSettings(){
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
+}
+
+var VISUAL_DEFAULT_GEOMETRY={header:{x:0,y:0,w:100,h:70},scan:{x:0,y:54,w:100,h:145},token:{x:0,y:207,w:100,h:135},market:{x:0,y:350,w:49,h:145},security:{x:51,y:350,w:49,h:145},holders:{x:0,y:503,w:49,h:145},selling:{x:51,y:503,w:49,h:145},botStats:{x:0,y:656,w:100,h:175},trades:{x:0,y:839,w:100,h:210},reports:{x:0,y:1055,w:100,h:210},notice:{x:0,y:1271,w:100,h:75}};
+var visualSelected="scan",visualEditing=false;
+function visualGeometry(){var s=normalizeDesignSettings(readDesignControls());return s.geometry||JSON.parse(JSON.stringify(VISUAL_DEFAULT_GEOMETRY))}
+function applyVisualGeometry(){var g=visualGeometry();Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]),v=g[k];if(p&&v){p.style.left=v.x+"%";p.style.top=v.y+"px";p.style.width=v.w+"%";p.style.height=v.h+"px"}})}
+function selectVisualPanel(k){visualSelected=k;$("visualPanelSelect").value=k;Object.keys(VISUAL_ITEM_IDS).forEach(function(id){$(VISUAL_ITEM_IDS[id]).classList.toggle("visual-selected",id===k)})}
+function visualResize(f){var g=visualGeometry(),v=g[visualSelected];v.w=Math.max(18,Math.min(100,v.w*f));v.h=Math.max(55,Math.min(500,v.h*f));window.__sbDesignGeometry=g;applyVisualGeometry();$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}
+function visualAttach(){
+ Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]);if(!p||p.dataset.visualReady)return;p.dataset.visualReady="1";
+ var h=document.createElement("div");h.className="visual-move";h.innerHTML="<span>↕ "+k+"</span><span>ڕایبکێشە بۆ گواستنەوە</span>";p.insertBefore(h,p.firstChild);
+ var z=document.createElement("button");z.type="button";z.className="visual-resize";z.textContent="↘";z.setAttribute("aria-label","گۆڕینی قەبارە");p.appendChild(z);
+ h.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=v.x,oy=v.y;h.setPointerCapture(e.pointerId);function mv(ev){v.x=Math.max(0,Math.min(100-v.w,ox+(ev.clientX-sx)/rect.width*100));v.y=Math.max(k==="header"?0:48,Math.min(1320,oy+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){h.removeEventListener("pointermove",mv);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);$("designMessage").textContent="شوێنی بەش گۆڕا؛ پاشەکەوتی بکە."}h.addEventListener("pointermove",mv);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end)});
+ z.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();e.stopPropagation();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ow=v.w,oh=v.h;z.setPointerCapture(e.pointerId);function mv(ev){v.w=Math.max(18,Math.min(100-v.x,ow+(ev.clientX-sx)/rect.width*100));v.h=Math.max(55,Math.min(500,oh+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){z.removeEventListener("pointermove",mv);z.removeEventListener("pointerup",end);z.removeEventListener("pointercancel",end);$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}z.addEventListener("pointermove",mv);z.addEventListener("pointerup",end);z.addEventListener("pointercancel",end)});
+ });
+}
+function openVisualEditor(){var bar=document.getElementById("visualEditorToolbar");if(!bar){bar=document.createElement("div");bar.id="visualEditorToolbar";bar.className="visual-editor-toolbar";bar.innerHTML='<select id="visualPanelSelect" aria-label="بەش"></select><button id="visualSmaller" type="button">− بچووک</button><button id="visualLarger" type="button">+ گەورە</button><button id="visualEditorSave" class="editor-save" type="button">💾 پاشەکەوت</button><button id="visualEditorDone" type="button">تەواو ✕</button>';document.body.appendChild(bar);var names={header:"سەرپەڕە (پرۆفایل/دەرچوون/Testnet)",scan:"پشکنین",token:"کۆین",market:"بازاڕ",security:"سەلامەتی",holders:"خاوەنەکان",selling:"فرۆشتن",botStats:"ئاماری بۆت",trades:"مامەڵەکان",reports:"ڕاپۆرتەکان",notice:"تێبینی"};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var o=document.createElement("option");o.value=k;o.textContent=names[k];$("visualPanelSelect").appendChild(o)});$("visualPanelSelect").onchange=function(){selectVisualPanel(this.value)};$("visualSmaller").onclick=function(){visualResize(.9)};$("visualLarger").onclick=function(){visualResize(1.1)};$("visualEditorSave").onclick=async function(){window.__sbDesignGeometry=visualGeometry();await saveCloudDesignSettings()};$("visualEditorDone").onclick=closeVisualEditor}
+ window.__sbDesignGeometry=visualGeometry();visualEditing=true;document.body.classList.add("visual-editing");document.querySelector(".wrap").classList.add("custom-layout");Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(DESIGN_PANEL_IDS[k]).classList.remove("design-hidden")});applyVisualGeometry();visualAttach();bar.classList.add("open");selectVisualPanel(visualSelected);$("profileModal").classList.remove("open");$("designMessage").textContent="سەرەوەی کارت ڕابکێشە بۆ گواستنەوە؛ گۆشەی خوارەوە بۆ قەبارە."}
+function closeVisualEditor(){visualEditing=false;document.body.classList.remove("visual-editing");$("visualEditorToolbar").classList.remove("open");applyDesignSettings()}
+$("openVisualEditor").onclick=openVisualEditor;
+
+loadDesignSettings();
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
+
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
+async function devnetRpc(method,params){
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+$("requestDevnetAirdrop").onclick=function(){
+ if(!devnetWallet)return;
+ testnetMessage("Faucet ـی Devnet دەکرێتەوە. ناونیشانی Wallet ـەکەت کۆپی بکە و لە خانەی Wallet address دایبنێ. بڕی داواکراو 0.025 SOL ـە.");
+ window.open("https://faucet.zalalena.com/solana/","_blank","noopener");
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
+ }
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
+})();
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
+$("paperBuy").onclick=async function(){
+ if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
+ this.disabled=true;
+ try{await api("/api/paper-buy","POST",{mint:T.tokenAddress});await loadState();toast("کڕینی دیمۆ بە $5 ئەنجام درا")}catch(e){toast(e.message)}finally{this.disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)}
+};
+$("disc").onclick=async function(){
+ this.disabled=true;this.textContent="⏳ دۆزینەوە...";
+ try{var r=await api("/api/discover");renderDiscovery(r.tokens||[]);toast(r.tokens&&r.tokens.length?"کۆینە نوێیەکان دۆزرایەوەن؛ یەکێک هەڵبژێرە":"کۆینی نوێ نەدۆزرایەوە")}
+ catch(e){$("discoverResults").textContent=e.message;toast(e.message)}
+ finally{this.disabled=false;this.textContent="🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان"}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
+render();
+
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
+  if(location.hostname==="htmlpreview.github.io")return;
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
+})();
+
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
+</script>
+</body>
+</html>+current.toPrecision(6)+' · بەهای مامەڵە: 
+function render(){
+ if(!T){
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
+ }
+ var top=Array.isArray(T.top)?T.top:[];var ch=[];
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=fmtPrice(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
+}
+window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+var VISUAL_ITEM_IDS=Object.assign({header:"dashboardHeader"},DESIGN_PANEL_IDS);
+function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(k==="header"?0:48,Math.min(1320,Number(g.y)||0)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});var head=$("dashboardHeader");if(s.geometry&&s.geometry.header){var hg=s.geometry.header;head.style.left=hg.x+"%";head.style.top=hg.y+"px";head.style.width=hg.w+"%";head.style.height=hg.h+"px"}else{head.style.left="";head.style.top="";head.style.width="";head.style.height=""}wrap.classList.toggle("custom-layout",!!s.geometry);
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
+ window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
+}
+function loadDesignSettings(){
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
+}
+
+var VISUAL_DEFAULT_GEOMETRY={header:{x:0,y:0,w:100,h:70},scan:{x:0,y:54,w:100,h:145},token:{x:0,y:207,w:100,h:135},market:{x:0,y:350,w:49,h:145},security:{x:51,y:350,w:49,h:145},holders:{x:0,y:503,w:49,h:145},selling:{x:51,y:503,w:49,h:145},botStats:{x:0,y:656,w:100,h:175},trades:{x:0,y:839,w:100,h:210},reports:{x:0,y:1055,w:100,h:210},notice:{x:0,y:1271,w:100,h:75}};
+var visualSelected="scan",visualEditing=false;
+function visualGeometry(){var s=normalizeDesignSettings(readDesignControls());return s.geometry||JSON.parse(JSON.stringify(VISUAL_DEFAULT_GEOMETRY))}
+function applyVisualGeometry(){var g=visualGeometry();Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]),v=g[k];if(p&&v){p.style.left=v.x+"%";p.style.top=v.y+"px";p.style.width=v.w+"%";p.style.height=v.h+"px"}})}
+function selectVisualPanel(k){visualSelected=k;$("visualPanelSelect").value=k;Object.keys(VISUAL_ITEM_IDS).forEach(function(id){$(VISUAL_ITEM_IDS[id]).classList.toggle("visual-selected",id===k)})}
+function visualResize(f){var g=visualGeometry(),v=g[visualSelected];v.w=Math.max(18,Math.min(100,v.w*f));v.h=Math.max(55,Math.min(500,v.h*f));window.__sbDesignGeometry=g;applyVisualGeometry();$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}
+function visualAttach(){
+ Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var p=$(VISUAL_ITEM_IDS[k]);if(!p||p.dataset.visualReady)return;p.dataset.visualReady="1";
+ var h=document.createElement("div");h.className="visual-move";h.innerHTML="<span>↕ "+k+"</span><span>ڕایبکێشە بۆ گواستنەوە</span>";p.insertBefore(h,p.firstChild);
+ var z=document.createElement("button");z.type="button";z.className="visual-resize";z.textContent="↘";z.setAttribute("aria-label","گۆڕینی قەبارە");p.appendChild(z);
+ h.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=v.x,oy=v.y;h.setPointerCapture(e.pointerId);function mv(ev){v.x=Math.max(0,Math.min(100-v.w,ox+(ev.clientX-sx)/rect.width*100));v.y=Math.max(k==="header"?0:48,Math.min(1320,oy+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){h.removeEventListener("pointermove",mv);h.removeEventListener("pointerup",end);h.removeEventListener("pointercancel",end);$("designMessage").textContent="شوێنی بەش گۆڕا؛ پاشەکەوتی بکە."}h.addEventListener("pointermove",mv);h.addEventListener("pointerup",end);h.addEventListener("pointercancel",end)});
+ z.addEventListener("pointerdown",function(e){if(!visualEditing)return;e.preventDefault();e.stopPropagation();selectVisualPanel(k);var all=visualGeometry(),v=all[k],rect=document.querySelector(".wrap").getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ow=v.w,oh=v.h;z.setPointerCapture(e.pointerId);function mv(ev){v.w=Math.max(18,Math.min(100-v.x,ow+(ev.clientX-sx)/rect.width*100));v.h=Math.max(55,Math.min(500,oh+ev.clientY-sy));window.__sbDesignGeometry=all;applyVisualGeometry()}function end(){z.removeEventListener("pointermove",mv);z.removeEventListener("pointerup",end);z.removeEventListener("pointercancel",end);$("designMessage").textContent="قەبارە گۆڕا؛ پاشەکەوتی بکە."}z.addEventListener("pointermove",mv);z.addEventListener("pointerup",end);z.addEventListener("pointercancel",end)});
+ });
+}
+function openVisualEditor(){var bar=document.getElementById("visualEditorToolbar");if(!bar){bar=document.createElement("div");bar.id="visualEditorToolbar";bar.className="visual-editor-toolbar";bar.innerHTML='<select id="visualPanelSelect" aria-label="بەش"></select><button id="visualSmaller" type="button">− بچووک</button><button id="visualLarger" type="button">+ گەورە</button><button id="visualEditorSave" class="editor-save" type="button">💾 پاشەکەوت</button><button id="visualEditorDone" type="button">تەواو ✕</button>';document.body.appendChild(bar);var names={header:"سەرپەڕە (پرۆفایل/دەرچوون/Testnet)",scan:"پشکنین",token:"کۆین",market:"بازاڕ",security:"سەلامەتی",holders:"خاوەنەکان",selling:"فرۆشتن",botStats:"ئاماری بۆت",trades:"مامەڵەکان",reports:"ڕاپۆرتەکان",notice:"تێبینی"};Object.keys(VISUAL_ITEM_IDS).forEach(function(k){var o=document.createElement("option");o.value=k;o.textContent=names[k];$("visualPanelSelect").appendChild(o)});$("visualPanelSelect").onchange=function(){selectVisualPanel(this.value)};$("visualSmaller").onclick=function(){visualResize(.9)};$("visualLarger").onclick=function(){visualResize(1.1)};$("visualEditorSave").onclick=async function(){window.__sbDesignGeometry=visualGeometry();await saveCloudDesignSettings()};$("visualEditorDone").onclick=closeVisualEditor}
+ window.__sbDesignGeometry=visualGeometry();visualEditing=true;document.body.classList.add("visual-editing");document.querySelector(".wrap").classList.add("custom-layout");Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(DESIGN_PANEL_IDS[k]).classList.remove("design-hidden")});applyVisualGeometry();visualAttach();bar.classList.add("open");selectVisualPanel(visualSelected);$("profileModal").classList.remove("open");$("designMessage").textContent="سەرەوەی کارت ڕابکێشە بۆ گواستنەوە؛ گۆشەی خوارەوە بۆ قەبارە."}
+function closeVisualEditor(){visualEditing=false;document.body.classList.remove("visual-editing");$("visualEditorToolbar").classList.remove("open");applyDesignSettings()}
+$("openVisualEditor").onclick=openVisualEditor;
+
+loadDesignSettings();
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
+
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
+async function devnetRpc(method,params){
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("copyDevnetAddress").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("copyDevnetAddress").onclick=async function(){
+ if(!devnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە؛ ناونیشانەکە لە سەرەوە کۆپی بکە.");
+  await navigator.clipboard.writeText(devnetWallet);
+  testnetMessage("ناونیشانی Phantom کۆپی کرا. لە Faucet ـی فەرمی دایبنێ.");
+ }catch(error){testnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+$("requestDevnetAirdrop").onclick=function(){
+ if(!devnetWallet)return;
+ testnetMessage("Faucet ـی Devnet دەکرێتەوە. ناونیشانی Wallet ـەکەت کۆپی بکە و لە خانەی Wallet address دایبنێ. بڕی داواکراو 0.025 SOL ـە.");
+ window.open("https://faucet.zalalena.com/solana/","_blank","noopener");
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
+ }
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
+})();
+function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
+$("paperBuy").onclick=async function(){
+ if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
+ this.disabled=true;
+ try{await api("/api/paper-buy","POST",{mint:T.tokenAddress});await loadState();toast("کڕینی دیمۆ بە $5 ئەنجام درا")}catch(e){toast(e.message)}finally{this.disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)}
+};
+$("disc").onclick=async function(){
+ this.disabled=true;this.textContent="⏳ دۆزینەوە...";
+ try{var r=await api("/api/discover");renderDiscovery(r.tokens||[]);toast(r.tokens&&r.tokens.length?"کۆینە نوێیەکان دۆزرایەوەن؛ یەکێک هەڵبژێرە":"کۆینی نوێ نەدۆزرایەوە")}
+ catch(e){$("discoverResults").textContent=e.message;toast(e.message)}
+ finally{this.disabled=false;this.textContent="🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان"}
+};
+$("start").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
+};
+$("stop").onclick=async function(){
+ if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
+ try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
+render();
+
+// Require an authenticated owner session before loading private dashboard state.
+(async function startProtectedDashboard(){
+  if(location.hostname==="htmlpreview.github.io")return;
+  try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
+  if(!apiToken){$("serverLogin").style.display="flex";return}
+  try{
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
+    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
+  }catch(error){
+    console.warn("Dashboard initial load failed",error);
+    if(!apiToken)$("serverLogin").style.display="flex";
+  }
+})();
+
+// HTMLPreview is a visual-only preview and does not connect to the protected API.
+if (location.hostname === "htmlpreview.github.io") {
+  $("serverLogin").style.display = "none";
+  $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
+  ["scan","disc","start","stop"].forEach(function(id){
+    $(id).disabled = true;
+    $(id).title = "ئەم کردارە لە پێشبینینی دیزاین کار ناکات";
+  });
+  $("q").disabled = true;
+  $("q").placeholder = "پێشبینینی دیزاین — پشکنین لێرە کار ناکات";
+}
+</script>
+</body>
+</html>+value.toFixed(2)+'</div></div>';
  }).join("");
 }
 function render(){
@@ -1124,7 +3428,7 @@ render();
   try{
     await Promise.all([loadState(),loadCloudDesignSettings()]);
     if(stateRefreshTimer)clearInterval(stateRefreshTimer);
-    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
+    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},5000);
   }catch(error){
     console.warn("Dashboard initial load failed",error);
     if(!apiToken)$("serverLogin").style.display="flex";
