@@ -873,9 +873,93 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
-      // Profile and authenticator management are disabled in public paper-trading mode.
-      if (url.pathname === "/api/profile" || url.pathname.startsWith("/api/totp/")) {
-        return json({ error: "This endpoint is disabled in public paper-trading mode" }, 404);
+      const authHeader = request.headers.get("Authorization") || "";
+      const sessionMatch = authHeader.match(/^Bearer ([0-9a-f-]{36})$/i);
+      const sessionId = sessionMatch ? sessionMatch[1] : null;
+      if (url.pathname === "/api/profile" && request.method === "GET") {
+        const profile = await readProfile(env);
+        return json({
+          ok: true,
+          profile: {
+            email: String(profile.email || ""),
+            phone: String(profile.phone || ""),
+            emailVerified: profile.emailVerified === true,
+            phoneVerified: profile.phoneVerified === true,
+            totpEnabled: profile.totpEnabled === true
+          }
+        });
+      }
+      if (url.pathname === "/api/profile" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const email = String(body.email || "").trim().toLowerCase();
+          const phone = String(body.phone || "").trim();
+          if (email.length > 254 || (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) {
+            return json({ error: "ناونیشانی Gmail دروست نییە" }, 400);
+          }
+          if (phone.length > 20 || (phone && !/^\\+[1-9]\\d{7,14}$/.test(phone))) {
+            return json({ error: "ژمارەی مۆبایل بە شێوەی نێودەوڵەتی بنووسە؛ نموونە +9647xxxxxxxxx" }, 400);
+          }
+          const profile = await readProfile(env);
+          profile.emailVerified = email === String(profile.email || "").toLowerCase() && profile.emailVerified === true;
+          profile.phoneVerified = phone === String(profile.phone || "") && profile.phoneVerified === true;
+          profile.email = email;
+          profile.phone = phone;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          return json({ ok: true, profile: {
+            email: profile.email, phone: profile.phone,
+            emailVerified: profile.emailVerified, phoneVerified: profile.phoneVerified,
+            totpEnabled: profile.totpEnabled === true
+          }});
+        } catch { return json({ error: "زانیارییەکانی پرۆفایل پاشەکەوت نەکران" }, 400); }
+      }
+      if (url.pathname === "/api/totp/setup" && request.method === "POST") {
+        try {
+          const profile = await readProfile(env);
+          if (profile.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاکە" }, 409);
+          const bytes = crypto.getRandomValues(new Uint8Array(20));
+          const secret = base32Encode(bytes);
+          await env.BOT_STATE.put("totp_pending:" + sessionId, JSON.stringify({ secret, createdAt: Date.now() }), { expirationTtl: 300 });
+          const account = encodeURIComponent(profile.email || "owner");
+          const issuer = encodeURIComponent("Solana Smart Bot");
+          const uri = "otpauth://totp/" + issuer + ":" + account +
+            "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
+          return json({ ok: true, secret, uri, expiresIn: 300 });
+        } catch { return json({ error: "نەیتوانی کلیلی Authenticator دروست بکات" }, 500); }
+      }
+      if (url.pathname === "/api/totp/verify" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const pendingKey = "totp_pending:" + sessionId;
+          const pending = await env.BOT_STATE.get(pendingKey, "json");
+          if (!pending || Date.now() - Number(pending.createdAt || 0) > 300000) {
+            return json({ error: "کاتی دامەزراندن تەواو بوو؛ دووبارە دەست پێبکە" }, 410);
+          }
+          if (!(await verifyTotp(pending.secret, String(body.code || "").trim()))) {
+            return json({ error: "کۆدی Google Authenticator هەڵەیە" }, 401);
+          }
+          const profile = await readProfile(env);
+          profile.totpSecret = pending.secret;
+          profile.totpEnabled = true;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          await env.BOT_STATE.delete(pendingKey);
+          return json({ ok: true, totpEnabled: true });
+        } catch { return json({ error: "چالاککردنی Authenticator سەرکەوتوو نەبوو" }, 400); }
+      }
+      if (url.pathname === "/api/totp/disable" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const profile = await readProfile(env);
+          if (!profile.totpEnabled || !profile.totpSecret ||
+              !(await verifyTotp(profile.totpSecret, String(body.code || "").trim()))) {
+            return json({ error: "کۆدی ئێستای Authenticator هەڵەیە" }, 401);
+          }
+          profile.totpEnabled = false;
+          profile.totpSecret = null;
+          profile.backupHash = null;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          return json({ ok: true, totpEnabled: false });
+        } catch { return json({ error: "ناچالاککردنی Authenticator سەرکەوتوو نەبوو" }, 400); }
       }
       if (url.pathname === "/api/discover" && request.method === "GET") {
         try {
