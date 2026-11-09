@@ -711,7 +711,7 @@ function applyDesignSettings(){
  var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
  root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);
  wrap.setAttribute("data-dashboard-layout",s.layout);
- Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});wrap.classList.toggle("custom-layout",!!s.geometry);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});wrap.classList.toggle("custom-layout",!!s.geometry);
  try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
 }
 function setDesignControls(input){
