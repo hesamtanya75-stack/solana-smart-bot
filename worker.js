@@ -44,7 +44,8 @@ function cleanState(value) {
     paused: s.paused === true,
     scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
     deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : [],
+    lastScanData: s.lastScanData && typeof s.lastScanData === "object" ? s.lastScanData : null
   };
 }
 async function readState(env) {
@@ -707,6 +708,8 @@ export default {
           };
           const state = await readState(env);
           state.lastScanReport = [{ mint, status: result.ok ? "passed" : "rejected", reasons: result.reasons, scannedAt: new Date().toISOString() }, ...state.lastScanReport].slice(0, 20);
+          // Persist the most recent complete scan so the four dashboard metrics survive refreshes.
+          state.lastScanData = data;
           await saveState(env, state);
           return json({ ok: true, data });
         } catch (error) {
