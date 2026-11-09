@@ -251,6 +251,8 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 .wrap .tm h2{display:block;width:auto;max-width:100%;min-width:0;text-align:right;line-height:1.2;overflow-wrap:anywhere}
 .wrap .tm-head .tag{display:inline-flex;align-self:flex-start;margin:0;white-space:nowrap}
 .wrap .tm small{display:block;text-align:right}
+/* Keep the 24h percentage at the far right, away from the token name. */
+.wrap .tok .chg{margin-left:auto;flex:none}
 @media(max-width:699px){
  .wrap .tok{gap:5px}
  .wrap .tm{max-width:calc(100% - 68px)}
