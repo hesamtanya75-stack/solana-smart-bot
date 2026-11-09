@@ -85,6 +85,7 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .tradeItem .tradeMeta{color:var(--muted);line-height:1.7}
 .tradeEmpty{color:var(--muted);font-size:12px;text-align:center;padding:8px}
 .discover-list{display:grid;grid-template-columns:1fr;gap:6px;margin-top:9px}
+.scan-status{display:none;margin-top:9px;padding:10px 12px;border:1px solid rgba(99,102,241,.4);border-radius:12px;background:rgba(10,12,36,.8);font-size:12px;line-height:1.6;overflow-wrap:anywhere}.scan-status.show{display:block}.scan-status.error{border-color:rgba(244,63,94,.65);color:#fda4af}.scan-status.ok{border-color:rgba(34,197,94,.55);color:#86efac}
 .discover-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:9px 11px;border:1px solid rgba(99,102,241,.35);border-radius:11px;background:rgba(20,24,65,.72);color:var(--text);font:inherit;text-align:start;cursor:pointer}
 .discover-item small{max-width:58%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10px;direction:ltr}
 .report-item{padding:8px 0;border-bottom:1px solid rgba(99,102,241,.2);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
@@ -123,6 +124,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
   </div>
   <button class="btn green" id="paperBuy" disabled style="width:100%;margin-top:9px">🪙 کڕینی دیمۆ بە $5 (تەنها دوای پشکنینی سەلامەتی)</button>
   <div id="discoverResults" class="discover-list" aria-live="polite"></div>
+  <div id="scanStatus" class="scan-status" role="status" aria-live="polite"></div>
 </div>
 <div class="box">
   <div class="tok">
@@ -249,7 +251,7 @@ function renderDiscovery(tokens){
   var label=document.createElement("span");label.textContent=(index+1)+". "+String(token.name||"کۆینی نوێ").slice(0,48);
   var mint=document.createElement("small");mint.textContent=token.mint;
   button.append(label,mint);
-  button.onclick=function(){$("q").value=token.mint;toast("کۆین هەڵبژێردرا؛ پشکنین دەست پێدەکات...");$("scan").click()};
+  button.addEventListener("click",function(){var mint=String(token.mint||"").trim();$("q").value=mint;scanMint(mint)});
   box.appendChild(button);
  });
 }
@@ -281,12 +283,34 @@ function render(){
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
-$("scan").onclick=async function(){
- var mint=$("q").value.trim();if(!mint){toast("ئادرەسی کۆین بنووسە");return}if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}
- this.disabled=true;toast("پشکنین دەکرێت...");
- try{var r=await api("/api/scan","POST",{mint});window.setData(r.data);await loadState();toast(r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی")}
- catch(e){toast(e.message)}finally{this.disabled=false}
-};
+async function scanMint(mint){
+ mint=String(mint||"").trim();
+ if(!mint){showScanStatus("ئادرەسی کۆین بنووسە","error");toast("ئادرەسی کۆین بنووسە");return}
+ if(!apiToken){showScanStatus("سەرەتا بچۆ ژوورەوە","error");toast("سەرەتا بچۆ ژوورەوە");return}
+ var scanButton=$("scan");
+ if(scanButton.disabled){showScanStatus("پشکنینێکی تر لە جێبەجێکردندایە؛ تکایە چاوەڕێ بکە");return}
+ scanButton.disabled=true;
+ showScanStatus("پشکنینی "+mint.slice(0,8)+"… دەستی پێکرد؛ تکایە چاوەڕێ بکە");
+ toast("پشکنین دەکرێت...");
+ try{
+  var r=await api("/api/scan","POST",{mint:mint});
+  if(!r||!r.data)throw new Error("سێرڤەر داتای پشکنینی نەگەڕاندەوە");
+  window.setData(r.data);
+  await loadState();
+  var message=r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی";
+  showScanStatus(message);
+  toast(message);
+ }catch(e){
+  showScanStatus("پشکنین سەرکەوتوو نەبوو: "+(e&&e.message?e.message:String(e)),"error");
+  toast(e&&e.message?e.message:"هەڵەیەک ڕوویدا");
+ }finally{scanButton.disabled=false}
+}
+function showScanStatus(message,type){
+ var box=$("scanStatus");
+ box.textContent=message;
+ box.className="scan-status show"+(type?" "+type:"");
+}
+$("scan").onclick=function(){scanMint($("q").value)};
 $("paperBuy").onclick=async function(){
  if(!apiToken||!T||T.ok!==true||!T.tokenAddress){toast("سەرەتا کۆینێک پشکنین بکە و دەبێت پشکنینی سەلامەتی تێپەڕێنێت");return}
  this.disabled=true;
