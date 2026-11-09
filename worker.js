@@ -1,4 +1,4 @@
-const BUILD_ID = "provider-resilience-v2";
+const BUILD_ID = "provider-resilience-v3";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -339,9 +339,19 @@ async function getLatestSolanaProfiles(env) {
         }
       );
       if (response.status === 429) {
-        const until = Date.now() + 30 * 60 * 1000;
-        await writeProviderCooldown(env, "geckoterminal", until);
-        throw new Error("HTTP 429; cooldown 1800s");
+        // GeckoTerminal can keep rate-limiting after a normal cooldown.
+        // Increase only this provider's backoff gradually, up to six hours.
+        const cooldownKey = "provider_cooldown:geckoterminal";
+        const previous = await env?.BOT_STATE?.get(cooldownKey, "json").catch(() => null);
+        const failures = Math.max(0, Number(previous?.failures) || 0) + 1;
+        const cooldownMs = Math.min(6 * 60 * 60 * 1000,
+          30 * 60 * 1000 * Math.pow(2, Math.min(failures - 1, 4)));
+        const until = Date.now() + cooldownMs;
+        const ttl = Math.max(60, Math.ceil(cooldownMs / 1000));
+        await env?.BOT_STATE?.put(cooldownKey, JSON.stringify({ until, failures }), {
+          expirationTtl: ttl
+        });
+        throw new Error("HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
       }
       if (!response.ok) throw new Error("HTTP " + response.status);
       const payload = await response.json();
