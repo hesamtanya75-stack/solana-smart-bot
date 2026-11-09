@@ -358,6 +358,18 @@ html[data-design-scale="large"] body{zoom:1.08}
 body.visual-editing{overflow:auto!important;height:auto!important;min-height:100vh}
 body.visual-editing .wrap{margin-bottom:100px}
 @media(max-width:520px){.wrap.custom-layout{max-width:100%}}
+
+/* Fine-grained visual styling controls */
+html[data-design-bg="aurora"] body{background:radial-gradient(ellipse 80% 30% at 100% 0,rgba(124,58,237,.35),transparent),radial-gradient(ellipse 70% 30% at 0 55%,rgba(37,99,235,.22),transparent),radial-gradient(ellipse 80% 30% at 100% 100%,rgba(124,58,237,.3),transparent),#070816}
+html[data-design-bg="midnight"] body{background:linear-gradient(145deg,#020617,#111827 55%,#172554)}
+html[data-design-bg="slate"] body{background:linear-gradient(145deg,#334155,#0f172a 70%,#1e293b)}
+html[data-design-bg="black"] body{background:#000}
+html[data-design-bg="midnight"] .box,html[data-design-bg="slate"] .box,html[data-design-bg="black"] .box{background:var(--card)}
+html[data-design-theme] .box{border-color:color-mix(in srgb,var(--accent-a),transparent 48%)}
+html[data-design-theme] .btn.blue,html[data-design-theme] .profile-action{background:linear-gradient(135deg,var(--accent-a),color-mix(in srgb,var(--accent-a),#000 30%))}
+html[data-design-theme] .search{border-color:color-mix(in srgb,var(--accent-a),transparent 40%)}
+html[data-design-theme] .box,html[data-design-theme] .design-panel{border-radius:var(--custom-radius,18px)}
+html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)}
 </style>
 </head>
 <body>
@@ -488,6 +500,20 @@ body.visual-editing .wrap{margin-bottom:100px}
    <p class="profile-note">شێوازی بۆتەکە بگۆڕە؛ گۆڕانکارییەکان لەسەر ئەم ئامێرە پاشەکەوت دەکرێن.</p>
    <label class="design-field">🎨 ڕەنگی دیزاین
     <select id="designTheme"><option value="purple">مۆر</option><option value="blue">شین</option><option value="green">سەوز</option><option value="rose">پەمەیی</option></select>
+   </label>
+
+   <div class="profile-note">🧰 ڕێکخستنی وردی دیزاین</div>
+   <label class="design-field">🌈 ڕەنگی سەرەکی تایبەت
+    <input id="designAccent" type="color" value="#8b5cf6" style="width:100%;height:42px;padding:4px;border-radius:9px">
+   </label>
+   <label class="design-field">🖼️ پاشبنەما
+    <select id="designBackground"><option value="aurora">شەپۆلی ڕەنگاوڕەنگ</option><option value="midnight">شەوی تاریک</option><option value="slate">خۆڵەمێشی</option><option value="black">ڕەشی تەواو</option></select>
+   </label>
+   <label class="design-field">🔤 فۆنت
+    <select id="designFont"><option value="noto">Noto Sans Arabic</option><option value="system">فۆنتی سیستەم</option><option value="arial">Arial</option><option value="serif">Serif</option></select>
+   </label>
+   <label class="design-field">▢ گۆشەی کارت: <span id="designRadiusValue">18</span> px
+    <input id="designRadius" type="range" min="4" max="30" step="1" value="18" style="width:100%">
    </label>
    <label class="design-field">🌗 شێوازی ڕووناکی
     <select id="designMode"><option value="dark">تاریک</option><option value="light">ڕوون</option></select>
@@ -691,12 +717,12 @@ function render(){
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
 
-var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",accent:"#8b5cf6",background:"aurora",font:"noto",radius:18,visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true},geometry:null};
 var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
 function designControlId(key){if(key==="trades")return "showTradesPanel";if(key==="reports")return "showReportsPanel";return "show"+key.charAt(0).toUpperCase()+key.slice(1)}
 function readDesignControls(){
  var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$(designControlId(key)).checked});
- return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,visible:visible,geometry:window.__sbDesignGeometry||null};
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,accent:$("designAccent").value,background:$("designBackground").value,font:$("designFont").value,radius:Number($("designRadius").value),visible:visible,geometry:window.__sbDesignGeometry||null};
 }
 function normalizeDesignSettings(input){
  var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
@@ -704,19 +730,19 @@ function normalizeDesignSettings(input){
  if(!["dark","light"].includes(s.mode))s.mode="dark";
  if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
  if(!["small","normal","large"].includes(s.scale))s.scale="normal";
- if(!["grid","single","wide"].includes(s.layout))s.layout="grid";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";if(!/^#[0-9a-f]{6}$/i.test(s.accent||""))s.accent="#8b5cf6";if(!["aurora","midnight","slate","black"].includes(s.background))s.background="aurora";if(!["noto","system","arial","serif"].includes(s.font))s.font="noto";s.radius=Math.max(4,Math.min(30,Number(s.radius)||18));
  Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});if(s.geometry&&typeof s.geometry==="object"){var clean={};Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var g=s.geometry[k];if(g&&typeof g==="object")clean[k]={x:Math.max(0,Math.min(95,Number(g.x)||0)),y:Math.max(48,Math.min(1320,Number(g.y)||48)),w:Math.max(18,Math.min(100,Number(g.w)||40)),h:Math.max(55,Math.min(500,Number(g.h)||120))}});s.geometry=clean}else{s.geometry=null}return s;
 }
 function applyDesignSettings(){
  var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
- root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);root.setAttribute("data-design-bg",s.background);root.style.setProperty("--accent-a",s.accent);root.style.setProperty("--design-font",s.font==="noto"?"Noto Sans Arabic, system-ui, sans-serif":s.font==="system"?"system-ui, sans-serif":s.font==="arial"?"Arial, sans-serif":"Georgia, serif");root.style.setProperty("--custom-radius",s.radius+"px");
  wrap.setAttribute("data-dashboard-layout",s.layout);
  Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel){panel.classList.toggle("design-hidden",!s.visible[k]&&!visualEditing);if(s.geometry&&s.geometry[k]){var g=s.geometry[k];panel.style.left=g.x+"%";panel.style.top=g.y+"px";panel.style.width=g.w+"%";panel.style.height=g.h+"px"}}});wrap.classList.toggle("custom-layout",!!s.geometry);
  try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
 }
 function setDesignControls(input){
  var s=normalizeDesignSettings(input);
- $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;$("designAccent").value=s.accent;$("designBackground").value=s.background;$("designFont").value=s.font;$("designRadius").value=s.radius;$("designRadiusValue").textContent=s.radius;
  Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).checked=s.visible[k]});
  window.__sbDesignGeometry=s.geometry?JSON.parse(JSON.stringify(s.geometry)):null;applyDesignSettings();
 }
@@ -754,7 +780,7 @@ function closeVisualEditor(){visualEditing=false;document.body.classList.remove(
 $("openVisualEditor").onclick=openVisualEditor;
 
 loadDesignSettings();
-["designTheme","designMode","designDensity","designScale","designLayout"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
 Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
 $("saveDesign").onclick=saveCloudDesignSettings;
 $("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
