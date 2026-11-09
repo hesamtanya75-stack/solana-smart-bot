@@ -255,6 +255,52 @@ async function getDexJson(url, env, ttlSeconds = 30) {
   return data;
 }
 
+let geckoDiscoveryCache = { savedAt: 0, data: null };
+
+async function getLatestSolanaProfiles(env) {
+  try {
+    const profiles = await getDexJson(
+      "https://api.dexscreener.com/token-profiles/latest/v1", env, 60
+    );
+    if (Array.isArray(profiles)) return profiles;
+  } catch (dexError) {
+    // Fall through to GeckoTerminal when DexScreener is rate-limited or unavailable.
+    const cached = geckoDiscoveryCache;
+    if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
+    const response = await fetch(
+      "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token,quote_token",
+      {
+        headers: { "Accept": "application/json;version=20230302" },
+        signal: AbortSignal.timeout(12000)
+      }
+    );
+    if (!response.ok) {
+      throw new Error("DexScreener: " + String(dexError?.message || dexError) +
+        "; GeckoTerminal HTTP " + response.status);
+    }
+    const payload = await response.json();
+    const included = new Map((payload.included || []).map(item => [item.id, item]));
+    const profiles = (payload.data || []).map(pool => {
+      const tokenId = pool.relationships?.base_token?.data?.id;
+      const token = tokenId ? included.get(tokenId) : null;
+      const attrs = token?.attributes || {};
+      const mint = String(attrs.address || (tokenId || "").replace(/^solana_/, ""));
+      if (!mint) return null;
+      return {
+        chainId: "solana",
+        tokenAddress: mint,
+        description: [attrs.name, attrs.symbol].filter(Boolean).join(" "),
+        url: "https://www.geckoterminal.com/solana/pools/" + encodeURIComponent(pool.attributes?.address || "")
+      };
+    }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
+    const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
+    if (!unique.length) throw new Error("GeckoTerminal returned no usable Solana tokens");
+    geckoDiscoveryCache = { savedAt: Date.now(), data: unique };
+    return unique;
+  }
+  return [];
+}
+
 function mintDetails(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account unavailable");
@@ -387,7 +433,7 @@ async function refreshTrades(state, env) {
 }
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
-  const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 15);
+  const profiles = await getLatestSolanaProfiles(env);
   const seen = new Set();
   const tokens = Array.isArray(profiles) ? profiles.filter(t => {
     const mint = String(t?.tokenAddress || "");
@@ -632,7 +678,7 @@ export default {
       }
       if (url.pathname === "/api/discover" && request.method === "GET") {
         try {
-          const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 15);
+          const profiles = await getLatestSolanaProfiles(env);
           const seen = new Set();
           const tokens = (Array.isArray(profiles) ? profiles : []).filter(item => {
             const mint = String(item?.tokenAddress || "");
