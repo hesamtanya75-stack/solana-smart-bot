@@ -116,8 +116,8 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
 .wrap>.row:nth-child(5)>.box:first-child{grid-column:1;grid-row:5}
 .wrap>.row:nth-child(5)>.box:last-child{grid-column:2;grid-row:5}
 .wrap>.box:nth-child(6){grid-column:1/-1;grid-row:6}
-.wrap>.box:nth-child(7),.wrap>.box:nth-child(8){display:none}
-.wrap>.box:nth-child(9){grid-column:1/-1;grid-row:7}
+.wrap>.detail-source{display:none}
+.wrap>.warn{grid-column:1/-1;grid-row:7}
 .wrap .search{height:40px;margin-bottom:6px;padding:0 10px}
 .wrap .search input{font-size:15px}
 .wrap .row .btn,.wrap>.box .btn{min-height:36px;padding:6px 8px;font-size:12px;border-radius:10px}
@@ -265,8 +265,8 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
       <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div><div class="detail-links"><button id="showTrades" type="button">📒 مامەڵەکان</button><button id="showReports" type="button">🧾 ڕاپۆرتەکان</button></div></div>
   </div>
 </div>
-<div class="box"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
-<div class="box"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
+<div class="box detail-source"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
+<div class="box detail-source"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
 <div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
 <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-label="وردەکارییەکان"><div class="detail-dialog"><div class="detail-head"><span id="detailTitle">وردەکاری</span><button class="detail-close" id="detailClose" type="button">داخستن ✕</button></div><div id="detailContent"></div></div></div>
