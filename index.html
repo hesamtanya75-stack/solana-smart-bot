@@ -265,7 +265,7 @@ function render(){
   ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="--";$(k).className=""});$("price").textContent="--";$("spark").innerHTML="";$("checks").innerHTML="";$("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").innerHTML="";$("sellTxt").textContent="--";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="";return;
  }
  var top=Array.isArray(T.top)?T.top:[];var ch=[];
- ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 holders: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 wallets (from 20 largest accounts): "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
  if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
  $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;$("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";$("chgBox").className="chg"+(T.chg<0?" none":"");$("chg").textContent=(T.chg>=0?"↑ +":"↓ ")+T.chg+"%";
  $("hold").textContent=T.holderAccountsChecked==null?"--":Number(T.holderAccountsChecked).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
@@ -277,7 +277,7 @@ function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTi
 $("scan").onclick=async function(){
  var mint=$("q").value.trim();if(!mint){toast("ئادرەسی کۆین بنووسە");return}if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}
  this.disabled=true;toast("پشکنین دەکرێت...");
- try{var r=await api("/api/scan","POST",{mint});window.setData(r.data);toast(r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی")}
+ try{var r=await api("/api/scan","POST",{mint});window.setData(r.data);await loadState();toast(r.data.ok?"پشکنین تەواو بوو؛ مەترسی کەمە":"پشکنین تەواو بوو؛ ئاگاداری مەترسی")}
  catch(e){toast(e.message)}finally{this.disabled=false}
 };
 $("paperBuy").onclick=async function(){
@@ -311,7 +311,7 @@ render();
 })();
 
 // Public visual preview only: bypass the login screen on HTMLPreview.
-// Backend endpoints and real server authentication remain unchanged.
+// Public paper-trading API is available; this preview only disables interactions.
 if (location.hostname === "htmlpreview.github.io") {
   $("serverLogin").style.display = "none";
   $("botStatus").textContent = "پێشبینینی دیزاین — تەنها بینین، بەبێ چوونەژوورەوە";
