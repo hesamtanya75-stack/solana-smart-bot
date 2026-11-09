@@ -683,10 +683,14 @@ function renderTrades(trades){
   var current=Number(t.currentPrice||t.buyPrice||0);
   var value=t.sold?Number(t.saleValue||0):Number(t.tokens||0)*current;
   var pnl=value-Number(t.amount||5);
-  var logo="";try{var u=new URL(String(t.imageUrl||""));if(u.protocol==="https:")logo='<img src="'+escapeTradeText(u.href)+'" alt="" loading="lazy" style="width:30px;height:30px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'">'}catch(e){}
+  var logo="";
+  try{var u=new URL(String(t.imageUrl||""));if(u.protocol==="https:")logo='<img src="'+escapeTradeText(u.href)+'" alt="" loading="lazy" style="width:30px;height:30px;border-radius:50%;object-fit:cover" onerror="this.style.display=&#39;none&#39;">'}catch(e){}
   var title=escapeTradeText(t.name&&t.name!=="Unknown token"?t.name:"کۆینی پشکنراو");
   var symbol=escapeTradeText(t.symbol||"");
-  return '<div class="tradeItem"><div class="tradeTop"><b>'+status+'</b><b style="color:'+(pnl>=0?'#4ade80':'#fb7185')+'">'+(pnl>=0?'+':'')+'
+  var mint=escapeTradeText(t.mint||"");
+  return '<div class="tradeItem"><div class="tradeTop"><b>'+status+'</b><b style="color:'+(pnl>=0?'#4ade80':'#fb7185')+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</b></div><div style="display:flex;align-items:center;gap:9px;margin:8px 0">'+logo+'<span><b>'+title+(symbol?' ('+symbol+')':'')+'</b><br><small>'+mint+'</small></span></div><div class="tradeMeta">کڕین: $'+Number(t.buyPrice||0).toPrecision(6)+' · ئێستا/فرۆشتن: $'+current.toPrecision(6)+' · بەهای مامەڵە: $'+value.toFixed(2)+'</div></div>';
+ }).join("");
+}
 function render(){
  if(!T){
   $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
