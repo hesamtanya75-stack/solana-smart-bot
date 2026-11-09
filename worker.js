@@ -13,9 +13,8 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com",
-  "https://rpc.magicblock.app/mainnet"
+  "https://api.mainnet.solana.com",
+  "https://solana-rpc.publicnode.com"
 ];
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
@@ -392,7 +391,7 @@ async function autoBuy(state, env) {
   const scanned = new Set(state.scannedMints);
   const traded = new Set(state.trades.map(t => t.mint));
   for (const token of tokens) {
-    if (checked >= 10 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
+    if (checked >= 3 || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) break;
     const mint = token.tokenAddress;
     if (scanned.has(mint) || traded.has(mint)) { skippedExisting++; continue; }
     const deferred = state.deferredMints.find(item => item.mint === mint);
@@ -437,7 +436,7 @@ async function autoBuy(state, env) {
   const noNewTokens = checked === 0
     ? " No unscanned new Solana tokens were available in the latest profile list; " + skippedExisting + " already-seen tokens skipped."
     : "";
-  return "Checked " + checked + " new tokens (max 10 per cycle); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
+  return "Checked " + checked + " new tokens (max 3 per cycle to stay within Worker request limits); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for a Solana market; reasons saved in scan report." + noNewTokens;
 }
 
 
