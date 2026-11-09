@@ -9,6 +9,7 @@
 <title>Solana Smart Bot</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+
 :root{--card:rgba(14,16,46,.86);--line:rgba(99,102,241,.5);--text:#f5f5ff;--muted:#a9aed6;--ok:#22c55e;--bad:#f43f5e;--warn:#f59e0b;color-scheme:dark;box-sizing:border-box}
 *{margin:0;padding:0;box-sizing:inherit;-webkit-tap-highlight-color:transparent}
 html{background:#070816}
@@ -94,7 +95,7 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 
 .toast{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:#252a6b;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:13px;z-index:9;opacity:0;pointer-events:none;transition:opacity .2s;max-width:92%;text-align:center}
 .toast.show{opacity:1}
-.wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap li,.toast{unicode-bidi:plaintext}
+.wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap button,.wrap li,.toast{unicode-bidi:plaintext}
 .search input{direction:rtl}
 button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
 
@@ -116,8 +117,8 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
 .wrap>.row:nth-child(5)>.box:first-child{grid-column:1;grid-row:5}
 .wrap>.row:nth-child(5)>.box:last-child{grid-column:2;grid-row:5}
 .wrap>.box:nth-child(6){grid-column:1/-1;grid-row:6}
-.wrap>.detail-source{display:none}
-.wrap>.warn{grid-column:1/-1;grid-row:7}
+.wrap>.box:nth-child(7),.wrap>.box:nth-child(8){display:none}
+.wrap>.box:nth-child(9){grid-column:1/-1;grid-row:7}
 .wrap .search{height:40px;margin-bottom:6px;padding:0 10px}
 .wrap .search input{font-size:15px}
 .wrap .row .btn,.wrap>.box .btn{min-height:36px;padding:6px 8px;font-size:12px;border-radius:10px}
@@ -191,308 +192,15 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
  .wrap #botStatus{max-height:36px}
 }
 
-/* Visual polish v3: clearer hierarchy, true RTL reading, calmer premium styling. */
-:root{
- --card:rgba(15,20,48,.94);
- --line:rgba(112,128,255,.34);
- --text:#f4f7ff;
- --muted:#aeb9d7;
-}
-body{
- background:
-  radial-gradient(ellipse 65% 35% at 100% 0,rgba(124,58,237,.22),transparent 72%),
-  radial-gradient(ellipse 60% 40% at 0 65%,rgba(20,241,149,.09),transparent 72%),
-  #070b19;
-}
-.wrap>.box{
- background:linear-gradient(145deg,rgba(20,26,61,.97),rgba(11,15,39,.96));
- border:1px solid rgba(116,132,255,.28);
- box-shadow:0 8px 22px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.035);
-}
-.wrap>header{padding:2px 5px}
-.ttl h1{letter-spacing:.7px;text-shadow:0 2px 14px rgba(139,92,246,.24)}
-.ttl p{color:#c8d2f4}
-.shield{color:#b8c8e8}
-.search{
- border-color:rgba(125,145,255,.42);
- background:rgba(5,10,31,.76);
- box-shadow:inset 0 1px 5px rgba(0,0,0,.25);
-}
-.search:focus-within{border-color:#8b9cff;box-shadow:0 0 0 2px rgba(99,102,241,.16)}
-.btn{letter-spacing:0;font-size:12px}
-.btn.blue{background:linear-gradient(135deg,#5865f2,#3547bd);box-shadow:0 5px 14px rgba(59,82,220,.22)}
-.btn.green{background:linear-gradient(135deg,#16b981,#087f62);box-shadow:0 5px 14px rgba(16,185,129,.18)}
-.btn.red{background:linear-gradient(135deg,#f05a78,#be2348);box-shadow:0 5px 14px rgba(244,63,94,.18)}
-.av{border-color:#8c79ff;background:linear-gradient(145deg,#292f70,#141a42);box-shadow:0 0 18px rgba(139,92,246,.28)}
-.tm{direction:rtl;text-align:right}
-.chg{background:rgba(20,184,129,.12);border-color:rgba(52,211,153,.32);color:#6ee7b7}
-.st{
- display:grid;
- grid-template-columns:repeat(2,minmax(0,1fr));
- row-gap:7px;
- column-gap:4px;
-}
-.st div{
- border-inline-start:0;
- border-bottom:1px solid rgba(112,128,255,.16);
- padding:3px 5px 5px;
-}
-.st div:nth-child(even){border-inline-start:1px solid rgba(112,128,255,.16)}
-.st div:nth-last-child(-n+2){border-bottom:0}
-.st div:first-child{border-inline-start:0}
-.st span{font-size:10px;line-height:1.35;color:#b7c2e0}
-.st b{font-size:13px;color:#f4f7ff}
-.st .i{font-size:14px}
-.h{color:#e6ebff;letter-spacing:.1px}
-.price{color:#6ee7b7;text-shadow:0 0 14px rgba(52,211,153,.12)}
-.chk{direction:rtl;text-align:right}
-.chk li{justify-content:flex-start;line-height:1.35}
-.chk em{order:0}
-.chk li{gap:7px}
-.chk li>*{unicode-bidi:plaintext}
-.pill{letter-spacing:.1px}
-.don{direction:rtl}
-.lg{direction:rtl;text-align:right}
-.lg p{direction:rtl}
-.lg b{direction:ltr}
-.sell p{color:#b9c8e8}
-.meter{background:linear-gradient(90deg,#0d966c,#34d399);box-shadow:0 0 12px rgba(52,211,153,.22)}
-.bs{background:rgba(5,10,31,.32);border-color:rgba(112,128,255,.24)}
-.bs p{align-items:center}
-.bs p span{color:#c0c9e4}
-.bs p b{direction:ltr}
-.ctl .h{color:#dce5ff}
-#botStatus{color:#b9c8e8!important;text-align:right!important;direction:rtl;overflow-wrap:anywhere}
-.detail-links button{background:rgba(79,98,220,.14);border-color:rgba(125,145,255,.3)}
-.warn{background:rgba(9,14,35,.78)!important;border-color:rgba(52,211,153,.22)!important;color:#c7d3ee}
-.detail-dialog{background:linear-gradient(145deg,#151b42,#0d1230);border-color:rgba(125,145,255,.42)}
-.detail-close{background:#303c8a}
-@media(max-width:699px){
- .wrap{
-  grid-template-rows:44px 124px 136px minmax(120px,1fr) 110px 138px 30px;
-  gap:6px;
- }
- .wrap>.box{border-radius:14px;padding:8px}
- .wrap>.box:nth-child(3) .tok{min-height:44px}
- .wrap .st{margin-top:6px;padding-top:5px}
- .wrap .st div{padding:2px 5px 4px}
- .wrap .st span{font-size:10px}
- .wrap .st b{font-size:13px}
- .wrap .chk{font-size:10.5px;max-height:calc(100% - 34px)}
- .wrap .chk li{margin-bottom:5px}
- .wrap .lg{font-size:10.5px}
- .wrap .botrow{gap:7px}
- .wrap .bs{padding:8px}
- .wrap .bs p{margin-bottom:5px}
- .wrap .bs p span{font-size:10px}
- .wrap .bs p b{font-size:11px}
- .wrap #botStatus{font-size:9.5px;line-height:1.35;max-height:49px}
- .wrap .warn{font-size:9.5px}
-}
-@media(min-width:700px){
- .wrap .st{grid-template-columns:repeat(4,minmax(0,1fr))}
- .wrap .st div{border-bottom:0;border-inline-start:1px solid rgba(112,128,255,.16)}
- .wrap .st div:first-child{border-inline-start:0}
- .wrap .st div:nth-child(even){border-inline-start:1px solid rgba(112,128,255,.16)}
-}
-@media(max-height:740px){
- .wrap{grid-template-rows:40px 104px 116px minmax(92px,1fr) 94px 116px 28px;gap:4px}
- .wrap .st span{font-size:9px}
- .wrap .st b{font-size:12px}
- .wrap .chk li{margin-bottom:3px}
- .wrap #botStatus{max-height:38px}
-}
 
-
-/* Button typography repair: keep Kurdish labels readable on narrow screens. */
-.wrap button,
-.detail-modal button {
+/* Preserve Kurdish RTL shaping while restoring the original compact dashboard design. */
+html[lang="ckb"] body{
  direction:rtl;
- unicode-bidi:isolate;
- text-align:center;
- white-space:normal;
- word-break:normal;
- overflow-wrap:break-word;
- line-height:1.5;
- writing-mode:horizontal-tb;
-}
-.wrap .btn,
-.detail-modal .detail-close {
- height:auto;
- min-height:40px;
- padding:7px 10px;
-}
-.wrap .row .btn,
-.wrap>.box .btn,
-.wrap .ctl .row .btn {
- min-height:38px;
- height:auto;
- line-height:1.45;
- padding:6px 8px;
-}
-.wrap .detail-links button {
- min-height:36px;
- height:auto;
- line-height:1.4;
- padding:6px 5px;
-}
-.wrap .discover-item {
- direction:rtl;
- text-align:right;
- min-height:34px;
- line-height:1.4;
-}
-
-
-/* Kurdish text readability: preserve Arabic-script shaping and clear word separation everywhere. */
-html[lang="ckb"], html[lang="ckb"] body,
-html[lang="ckb"] body button, html[lang="ckb"] body input,
-html[lang="ckb"] body textarea, html[lang="ckb"] body select {
  font-family:'Noto Naskh Arabic','Noto Sans Arabic','Geeza Pro',-apple-system,system-ui,sans-serif;
- font-kerning:normal;
- font-variant-ligatures:normal;
- font-feature-settings:"ccmp" 1,"rlig" 1,"liga" 1,"calt" 1;
-}
-html[lang="ckb"] body {
- direction:rtl;
  text-rendering:optimizeLegibility;
 }
-html[lang="ckb"] .wrap,
-html[lang="ckb"] .detail-dialog,
-html[lang="ckb"] .toast {
- word-spacing:.12em;
- letter-spacing:normal;
-}
-html[lang="ckb"] .wrap button,
-html[lang="ckb"] .detail-dialog button,
-html[lang="ckb"] .wrap p,
-html[lang="ckb"] .wrap span,
-html[lang="ckb"] .wrap b,
-html[lang="ckb"] .wrap small,
-html[lang="ckb"] .wrap li,
-html[lang="ckb"] .detail-dialog,
-html[lang="ckb"] .toast {
- font-kerning:normal;
- font-variant-ligatures:normal;
- font-feature-settings:"ccmp" 1,"rlig" 1,"liga" 1,"calt" 1;
-}
-
-
-/* Mobile overlap fix: let cards size to their content and scroll as one page. */
-@media(max-width:699px){
- html,body{
-  height:auto;
-  min-height:100%;
-  overflow-x:hidden;
-  overflow-y:auto;
- }
- body{
-  min-height:100dvh;
-  padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(12px + env(safe-area-inset-bottom,0px));
- }
- .wrap{
-  height:auto;
-  min-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 18px);
-  grid-template-rows:44px 124px 136px minmax(120px,auto) minmax(132px,auto) minmax(184px,auto) 30px;
-  grid-auto-rows:minmax(min-content,auto);
-  align-content:start;
-  overflow:visible;
- }
- .wrap>.box{
-  min-width:0;
-  min-height:0;
-  overflow:hidden;
- }
- .wrap>.row:nth-child(5)>.box:first-child,
- .wrap>.row:nth-child(5)>.box:last-child{
-  min-height:132px;
- }
- .wrap .don{
-  min-width:0;
-  min-height:0;
-  align-items:center;
-  gap:8px;
- }
- .wrap .ring{flex:0 0 62px}
- .wrap .lg{
-  min-width:0;
-  max-height:112px;
-  overflow-y:auto;
-  overflow-x:hidden;
-  overflow-wrap:anywhere;
- }
- .wrap .lg p{min-width:0;gap:5px}
- .wrap .lg b{white-space:nowrap}
- .wrap>.box:nth-child(6){
-  min-height:184px;
- }
- .wrap .botrow{
-  height:auto;
-  min-height:0;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-  align-items:stretch;
-  gap:7px;
- }
- .wrap .bs,.wrap .ctl{min-width:0;min-height:0}
- .wrap .bs p{align-items:flex-start;flex-wrap:wrap;overflow-wrap:anywhere}
- .wrap .bs p span{min-width:0;overflow-wrap:anywhere}
- .wrap .bs p b{white-space:normal;overflow-wrap:anywhere}
- .wrap #botStatus{
-  max-height:64px;
-  overflow-y:auto;
-  overflow-x:hidden;
-  overflow-wrap:anywhere;
- }
- .wrap .ctl .row{min-width:0}
- .wrap .ctl .row .btn{min-width:0;white-space:normal}
- .wrap .detail-links{min-width:0}
- .wrap .detail-links button{min-width:0;overflow-wrap:anywhere}
-}
-
-
-/* Mobile layout: preserve the compact two-column dashboard while allowing rows to grow. */
-@media(max-width:699px){
- html,body{height:auto!important;min-height:100%!important;overflow-x:hidden!important;overflow-y:auto!important}
- body{min-height:100dvh!important}
- .wrap{
-  display:grid!important;
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  grid-template-rows:44px 124px 136px minmax(120px,auto) minmax(132px,auto) minmax(184px,auto) 30px!important;
-  grid-auto-rows:minmax(min-content,auto)!important;
-  align-content:start!important;
-  width:100%!important;
-  max-width:760px!important;
-  height:auto!important;
-  min-height:0!important;
-  overflow:visible!important;
-  gap:6px!important;
- }
- .wrap>header{grid-column:1/-1!important;grid-row:1!important}
- .wrap>.box:nth-child(2){grid-column:1/-1!important;grid-row:2!important}
- .wrap>.box:nth-child(3){grid-column:1/-1!important;grid-row:3!important}
- .wrap>.row{display:contents!important}
- .wrap>.row:nth-child(4)>.box:first-child{grid-column:1!important;grid-row:4!important}
- .wrap>.row:nth-child(4)>.box:last-child{grid-column:2!important;grid-row:4!important}
- .wrap>.row:nth-child(5)>.box:first-child{grid-column:1!important;grid-row:5!important}
- .wrap>.row:nth-child(5)>.box:last-child{grid-column:2!important;grid-row:5!important}
- .wrap>.box:nth-child(6){grid-column:1/-1!important;grid-row:6!important}
- .wrap>.warn{grid-column:1/-1!important;grid-row:7!important}
- .wrap>.box{min-width:0!important;min-height:0!important;overflow:hidden!important}
- .wrap>.row:nth-child(5)>.box:first-child,
- .wrap>.row:nth-child(5)>.box:last-child{min-height:132px!important}
- .wrap .don{min-width:0!important;min-height:0!important;align-items:center!important;gap:8px!important}
- .wrap .ring{flex:0 0 62px!important}
- .wrap .lg{min-width:0!important;max-height:112px!important;overflow-y:auto!important;overflow-x:hidden!important;overflow-wrap:anywhere!important}
- .wrap>.box:nth-child(6){min-height:184px!important}
- .wrap .botrow{height:auto!important;min-height:0!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;align-items:stretch!important;gap:7px!important}
- .wrap .bs,.wrap .ctl{min-width:0!important;min-height:0!important}
- .wrap .bs p{align-items:flex-start!important;flex-wrap:wrap!important;overflow-wrap:anywhere!important}
- .wrap .bs p span{min-width:0!important;overflow-wrap:anywhere!important}
- .wrap .bs p b{white-space:normal!important;overflow-wrap:anywhere!important}
- .wrap #botStatus{max-height:64px!important;overflow-y:auto!important;overflow-x:hidden!important;overflow-wrap:anywhere!important}
- .wrap .ctl .row,.wrap .detail-links{min-width:0!important}
- .wrap .ctl .row .btn,.wrap .detail-links button{min-width:0!important;white-space:normal!important;overflow-wrap:anywhere!important}
-}
+html[lang="ckb"] .wrap,html[lang="ckb"] .detail-dialog,html[lang="ckb"] .toast{word-spacing:.12em;letter-spacing:normal}
+.wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap button,.wrap li,.toast{unicode-bidi:plaintext}
 
 </style>
 </head>
