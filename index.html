@@ -633,15 +633,41 @@ $("disableTotp").onclick=async function(){
 };
 // Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
 var devnetWallet=null;
-// Official Solana Devnet RPC only. No paid-provider endpoint and no Mainnet.
-var DEVNET_RPC="https://api.devnet.solana.com";
+// Devnet-only public RPC failover. Each endpoint is verified against the official Devnet genesis hash.
+var DEVNET_RPC_ENDPOINTS=[
+ {url:"https://api.devnet.solana.com",label:"Solana Foundation Devnet"},
+ {url:"https://solana-devnet.api.onfinality.io/public",label:"OnFinality Devnet"}
+];
+var DEVNET_GENESIS_HASH="EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+var verifiedDevnetRpcs=new Set();
+var activeDevnetRpcLabel="";
+async function devnetRpcRequest(url,method,params){
+ var controller=new AbortController();
+ var timeout=setTimeout(function(){controller.abort()},9000);
+ try{
+  var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]}),signal:controller.signal});
+  var body=await response.text();
+  if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,140):""));
+  var data=JSON.parse(body);
+  if(data.error)throw new Error(data.error.message||"RPC error");
+  return data.result;
+ }finally{clearTimeout(timeout)}
+}
 async function devnetRpc(method,params){
- var response=await fetch(DEVNET_RPC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
- var body=await response.text();
- if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,180):""));
- var data=JSON.parse(body);
- if(data.error)throw new Error(data.error.message||"RPC error");
- return data.result;
+ var errors=[];
+ for(var endpoint of DEVNET_RPC_ENDPOINTS){
+  try{
+   if(!verifiedDevnetRpcs.has(endpoint.url)){
+    var genesis=await devnetRpcRequest(endpoint.url,"getGenesisHash",[]);
+    if(genesis!==DEVNET_GENESIS_HASH)throw new Error("RPC endpoint is not Solana Devnet; rejected for safety");
+    verifiedDevnetRpcs.add(endpoint.url);
+   }
+   var result=await devnetRpcRequest(endpoint.url,method,params);
+   activeDevnetRpcLabel=endpoint.label;
+   return result;
+  }catch(error){errors.push(endpoint.label+": "+(error&&error.message?error.message:String(error)))}
+ }
+ throw new Error(errors.join(" | ")||"No Devnet RPC endpoint responded");
 }
 function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
 function renderDevnetWallet(publicKey){
@@ -657,8 +683,11 @@ function renderDevnetWallet(publicKey){
 }
 async function refreshDevnetBalance(){
  if(!devnetWallet)return;
- try{var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);$("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL"}
- catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+ try{
+  var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);
+  $("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL";
+  testnetMessage("باڵانسی Devnet نوێکرایەوە — "+activeDevnetRpcLabel+".");
+ }catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
 }
 $("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
 $("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
