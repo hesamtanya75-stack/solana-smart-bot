@@ -983,10 +983,28 @@ export default {
           const body = await request.json();
           const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
           const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"] };
+          const panelKeys = ["scan", "token", "market", "security", "holders", "selling", "botStats", "trades", "reports", "notice"];
           const settings = {};
           for (const [key, values] of Object.entries(allowed)) settings[key] = values.includes(body[key]) ? body[key] : defaults[key];
           settings.visible = {};
           for (const key of Object.keys(defaults.visible)) settings.visible[key] = body.visible && body.visible[key] === false ? false : true;
+          if (body.geometry && typeof body.geometry === "object" && !Array.isArray(body.geometry)) {
+            settings.geometry = {};
+            for (const key of panelKeys) {
+              const g = body.geometry[key];
+              if (!g || typeof g !== "object" || Array.isArray(g)) continue;
+              const clamp = (value, min, max, fallback) => {
+                const n = Number(value);
+                return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+              };
+              settings.geometry[key] = {
+                x: clamp(g.x, 0, 95, 0),
+                y: clamp(g.y, 48, 1320, 48),
+                w: clamp(g.w, 18, 100, 40),
+                h: clamp(g.h, 55, 500, 120)
+              };
+            }
+          }
           settings.updatedAt = new Date().toISOString();
           await env.BOT_STATE.put("owner_design_settings", JSON.stringify(settings));
           return json({ ok: true, settings });
