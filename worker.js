@@ -973,6 +973,28 @@ export default {
       const authHeader = request.headers.get("Authorization") || "";
       const sessionMatch = authHeader.match(/^Bearer ([0-9a-f-]{36})$/i);
       const sessionId = sessionMatch ? sessionMatch[1] : null;
+      if (url.pathname === "/api/design-settings" && request.method === "GET") {
+        const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
+        const saved = await env.BOT_STATE.get("owner_design_settings", "json");
+        return json({ ok: true, settings: { ...defaults, ...(saved && typeof saved === "object" ? saved : {}), visible: { ...defaults.visible, ...(saved?.visible && typeof saved.visible === "object" ? saved.visible : {}) } } });
+      }
+      if (url.pathname === "/api/design-settings" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
+          const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"] };
+          const settings = {};
+          for (const [key, values] of Object.entries(allowed)) settings[key] = values.includes(body[key]) ? body[key] : defaults[key];
+          settings.visible = {};
+          for (const key of Object.keys(defaults.visible)) settings.visible[key] = body.visible && body.visible[key] === false ? false : true;
+          settings.updatedAt = new Date().toISOString();
+          await env.BOT_STATE.put("owner_design_settings", JSON.stringify(settings));
+          return json({ ok: true, settings });
+        } catch (error) {
+          console.error("Design settings save failed", String(error?.message || error));
+          return json({ error: "پاشەکەوتکردنی ڕێکخستنەکانی دیزاین سەرکەوتوو نەبوو" }, 400);
+        }
+      }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const profile = await readProfile(env);
         return json({
