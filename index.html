@@ -98,16 +98,16 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .search input{direction:rtl}
 button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
 
-/* Corrected single-screen dashboard: fixed grid tracks prevent card overlap. */
+/* Mobile-first dashboard: readable summary cards, detailed lists in an overlay. */
 html,body{height:100%;height:100dvh;overflow:hidden}
-body{min-height:0;padding:calc(4px + env(safe-area-inset-top,0px)) 5px calc(4px + env(safe-area-inset-bottom,0px))}
-.wrap{width:100%;max-width:1100px;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px);margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:38px 86px 76px minmax(90px,1fr) minmax(90px,1fr) 112px minmax(90px,1fr) 22px;gap:4px;align-content:stretch;overflow:hidden}
-.wrap>header{grid-column:1/-1;grid-row:1;margin:0;min-height:0;gap:6px}
-.wrap .sol{width:32px;height:28px}
-.wrap .ttl h1{font-size:clamp(13px,3.6vw,18px)}
-.wrap .ttl p{font-size:10px}
-.wrap .shield{font-size:8px}
-.wrap>.box{min-width:0;min-height:0;margin:0;padding:6px;border-radius:12px;overflow:hidden}
+body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px + env(safe-area-inset-bottom,0px))}
+.wrap{width:100%;max-width:760px;height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 12px);margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:48px 132px 108px minmax(130px,1fr) 118px 154px 34px;gap:6px;overflow:hidden}
+.wrap>header{grid-column:1/-1;grid-row:1;margin:0;min-height:0;gap:8px}
+.wrap .sol{width:34px;height:30px}
+.wrap .ttl h1{font-size:clamp(15px,4vw,20px)}
+.wrap .ttl p{font-size:12px}
+.wrap .shield{font-size:10px}
+.wrap>.box{min-width:0;min-height:0;margin:0;padding:8px;border-radius:13px;overflow:hidden}
 .wrap>.box:nth-child(2){grid-column:1/-1;grid-row:2}
 .wrap>.box:nth-child(3){grid-column:1/-1;grid-row:3}
 .wrap>.row{display:contents}
@@ -116,76 +116,79 @@ body{min-height:0;padding:calc(4px + env(safe-area-inset-top,0px)) 5px calc(4px 
 .wrap>.row:nth-child(5)>.box:first-child{grid-column:1;grid-row:5}
 .wrap>.row:nth-child(5)>.box:last-child{grid-column:2;grid-row:5}
 .wrap>.box:nth-child(6){grid-column:1/-1;grid-row:6}
-.wrap>.box:nth-child(7){grid-column:1;grid-row:7}
-.wrap>.box:nth-child(8){grid-column:2;grid-row:7}
-.wrap>.box:nth-child(9){grid-column:1/-1;grid-row:8}
-.wrap .search{height:32px;margin-bottom:4px;padding:0 8px}
-.wrap .search input{font-size:12px}
-.wrap .row .btn,.wrap>.box .btn{height:auto;min-height:30px;padding:4px 5px;font-size:9px;border-radius:9px}
-.wrap .row{gap:4px}
-.wrap .discover-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:3px;max-height:30px;overflow:auto}
-.wrap .discover-item{min-width:0;padding:3px 5px;font-size:8px;gap:3px}
-.wrap .discover-item small{font-size:7px;max-width:48%}
-.wrap .scan-status{margin-top:3px;padding:3px 5px;font-size:8px}
-.wrap .tok{gap:6px}
-.wrap .av{width:34px;height:34px;font-size:18px;border-width:2px}
-.wrap .av i{width:14px;height:14px;font-size:7px}
-.wrap .tm h2{font-size:15px}
-.wrap .tm small{font-size:9px}
-.wrap .tag{font-size:9px;padding:2px 6px;margin-top:2px}
-.wrap .chg{font-size:13px;padding:4px 6px}
-.wrap .chg small{font-size:8px}
-.wrap .st{margin-top:5px;padding-top:5px}
-.wrap .st .i{font-size:12px}
-.wrap .st span{font-size:7px;line-height:1.2}
-.wrap .st b{font-size:10px}
-.wrap .h{font-size:10px;margin-bottom:4px}
-.wrap .price{font-size:13px}
-.wrap .sub{font-size:8px}
-.wrap .chk{font-size:8px}
-.wrap .chk li{gap:3px;margin-bottom:2px;line-height:1.2}
-.wrap .chk em{width:12px;height:12px;font-size:8px}
-.wrap .pill{font-size:8px;padding:3px;margin-top:2px}
-.wrap .don{gap:4px}
-.wrap .ring{width:48px;height:48px}
-.wrap .ring div{inset:7px;font-size:9px}
-.wrap .lg{font-size:7px}
-.wrap .lg p{gap:2px;margin-bottom:1px}
-.wrap .lg i{width:6px;height:6px}
-.wrap .sell p{font-size:8px;margin-bottom:4px}
-.wrap .meter{height:15px;font-size:9px}
-.wrap .sell .sub{font-size:8px;margin-top:3px}
-.wrap .botrow{grid-template-columns:1fr 1fr;gap:5px;height:100%}
-.wrap .bs{padding:5px;border-radius:8px;font-size:8px}
-.wrap .bs .h{font-size:9px;margin-bottom:3px}
-.wrap .bs p{gap:3px;margin-bottom:2px;line-height:1.2}
-.wrap .bs p span{font-size:7px}
-.wrap .bs p b{font-size:8px;white-space:nowrap}
-.wrap .ctl{gap:3px;min-width:0}
-.wrap .ctl .h{font-size:9px}
-.wrap #botStatus{font-size:7px;line-height:1.2;white-space:pre-line;max-height:38px;overflow:auto}
-.wrap .ctl .row{gap:3px}
-.wrap .tradeItem{padding:4px;margin-top:3px;font-size:7px}
-.wrap .tradeItem .tradeMeta{font-size:7px}
-.wrap #tradeList,.wrap #scanReport{max-height:100%;overflow:auto}
-.wrap .tradeEmpty{font-size:8px;padding:2px}
-.wrap .report-item{font-size:7px;padding:2px 0;line-height:1.2}
-.wrap .report-item b{margin-bottom:1px}
-.wrap .warn{font-size:7px;line-height:1.15;gap:4px;padding:3px 6px}
-@media (min-width:700px){
- .wrap{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:44px 92px 84px minmax(100px,1fr) minmax(100px,1fr) 120px minmax(100px,1fr) 24px;gap:7px;padding:3px}
+.wrap>.box:nth-child(7),.wrap>.box:nth-child(8){display:none}
+.wrap>.box:nth-child(9){grid-column:1/-1;grid-row:7}
+.wrap .search{height:40px;margin-bottom:6px;padding:0 10px}
+.wrap .search input{font-size:15px}
+.wrap .row .btn,.wrap>.box .btn{min-height:36px;padding:6px 8px;font-size:12px;border-radius:10px}
+.wrap .row{gap:6px}
+.wrap .discover-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:5px;max-height:42px;overflow:auto}
+.wrap .discover-item{min-width:0;padding:5px 6px;font-size:10px;gap:4px}
+.wrap .discover-item small{font-size:9px;max-width:48%}
+.wrap .scan-status{margin-top:4px;padding:4px 6px;font-size:10px;max-height:28px;overflow:auto}
+.wrap .tok{gap:8px}
+.wrap .av{width:42px;height:42px;font-size:22px}
+.wrap .av i{width:16px;height:16px;font-size:8px}
+.wrap .tm h2{font-size:17px}
+.wrap .tm small{font-size:11px}
+.wrap .tag{font-size:11px;padding:3px 8px;margin-top:3px}
+.wrap .chg{font-size:15px;padding:5px 7px}
+.wrap .chg small{font-size:10px}
+.wrap .st{margin-top:7px;padding-top:6px}
+.wrap .st .i{font-size:15px}
+.wrap .st span{font-size:10px;line-height:1.25}
+.wrap .st b{font-size:12px}
+.wrap .h{font-size:12px;margin-bottom:6px}
+.wrap .price{font-size:17px}
+.wrap .sub{font-size:10px}
+.wrap .chk{font-size:10px;max-height:calc(100% - 38px);overflow:auto}
+.wrap .chk li{gap:5px;margin-bottom:4px;line-height:1.25}
+.wrap .chk em{width:15px;height:15px;font-size:9px}
+.wrap .pill{font-size:10px;padding:4px;margin-top:3px}
+.wrap .don{gap:6px}
+.wrap .ring{width:62px;height:62px}
+.wrap .ring div{inset:9px;font-size:11px}
+.wrap .lg{font-size:10px}
+.wrap .lg p{gap:4px;margin-bottom:3px}
+.wrap .lg i{width:8px;height:8px}
+.wrap .sell p{font-size:11px;margin-bottom:6px}
+.wrap .meter{height:19px;font-size:11px}
+.wrap .sell .sub{font-size:10px;margin-top:5px}
+.wrap .botrow{grid-template-columns:1fr 1fr;gap:8px;height:100%}
+.wrap .bs{padding:7px;border-radius:9px;font-size:10px}
+.wrap .bs .h{font-size:11px;margin-bottom:5px}
+.wrap .bs p{gap:5px;margin-bottom:4px;line-height:1.25}
+.wrap .bs p span{font-size:10px}
+.wrap .bs p b{font-size:11px;white-space:nowrap}
+.wrap .ctl{gap:5px;min-width:0}
+.wrap .ctl .h{font-size:11px}
+.wrap #botStatus{font-size:10px;line-height:1.3;white-space:pre-line;max-height:46px;overflow:auto}
+.wrap .ctl .row{gap:5px}
+.wrap .ctl .row .btn{font-size:11px;min-height:32px}
+.wrap .warn{font-size:10px;line-height:1.25;gap:5px;padding:5px 8px}
+.detail-links{display:flex;gap:6px;margin-top:2px}
+.detail-links button{flex:1;min-width:0;min-height:29px;border:1px solid var(--line);border-radius:9px;background:rgba(59,130,246,.18);color:var(--text);font:inherit;font-size:10px;font-weight:700}
+.detail-modal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 10px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(3,5,18,.88)}
+.detail-modal.open{display:flex}
+.detail-dialog{width:min(100%,620px);max-height:100%;overflow:auto;background:#10122f;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 18px 60px #000b}
+.detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-size:15px;font-weight:800}
+.detail-close{border:1px solid var(--line);background:#252a6b;color:white;border-radius:9px;padding:7px 12px;font:inherit}
+.detail-dialog>.box{margin-bottom:8px}
+.detail-dialog .tradeItem{font-size:11px;padding:8px}
+.detail-dialog .tradeMeta,.detail-dialog .report-item{font-size:11px}
+.detail-dialog .tradeEmpty{font-size:12px}
+@media(min-width:700px){
+ .wrap{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:50px 132px 108px minmax(140px,1fr) 125px 154px 34px;gap:8px}
  .wrap>.row:nth-child(4)>.box:first-child{grid-column:1/3}
  .wrap>.row:nth-child(4)>.box:last-child{grid-column:3/5}
  .wrap>.row:nth-child(5)>.box:first-child{grid-column:1/3}
  .wrap>.row:nth-child(5)>.box:last-child{grid-column:3/5}
- .wrap>.box:nth-child(7){grid-column:1/3}
- .wrap>.box:nth-child(8){grid-column:3/5}
 }
-@media (max-height:700px){
- .wrap{grid-template-rows:30px 70px 62px minmax(75px,1fr) minmax(75px,1fr) 94px minmax(75px,1fr) 18px;gap:3px}
- .wrap>.box{padding:4px}
- .wrap #botStatus{max-height:28px}
- .wrap .discover-list{max-height:22px}
+@media(max-height:740px){
+ .wrap{grid-template-rows:42px 112px 94px minmax(105px,1fr) 100px 132px 30px;gap:4px}
+ .wrap>.box{padding:6px}
+ .wrap .chk{max-height:calc(100% - 32px)}
+ .wrap #botStatus{max-height:36px}
 }
 </style>
 </head>
@@ -259,13 +262,14 @@ body{min-height:0;padding:calc(4px + env(safe-area-inset-top,0px)) 5px calc(4px 
       <p><span>مامەڵە کراوە / داخراو:</span><b id="statTrades">0 / 0</b></p>
       <p><span>ڕێژەی بردن:</span><b id="statWin">0%</b></p></div>
     <div class="ctl"><div class="h"><span>🤖 ڕۆبۆتی ئۆتۆماتیکی</span></div><p id="botStatus" class="sub" style="text-align:right">بارکردنی دۆخی سێرڤەر...</p>
-      <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div></div>
+      <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div><div class="detail-links"><button id="showTrades" type="button">📒 مامەڵەکان</button><button id="showReports" type="button">🧾 ڕاپۆرتەکان</button></div></div>
   </div>
 </div>
 <div class="box"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
 <div class="box"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
 <div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
+<div class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-label="وردەکارییەکان"><div class="detail-dialog"><div class="detail-head"><span id="detailTitle">وردەکاری</span><button class="detail-close" id="detailClose" type="button">داخستن ✕</button></div><div id="detailContent"></div></div></div>
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
@@ -320,6 +324,20 @@ async function loadState(){
 
 var C=["#8b5cf6","#3b82f6","#f59e0b","#22c55e","#64748b"];
 function $(i){return document.getElementById(i)}
+function openDetail(which){
+ var content=$("detailContent");content.innerHTML="";
+ var source=which==="trades"?$("tradeList").parentElement:$("scanReport").parentElement;
+ $("detailTitle").textContent=which==="trades"?"📒 مامەڵەکانی دیمۆ":"🧾 ڕاپۆرتی دوا پشکنینەکان";
+ content.appendChild(source);
+ $("detailModal").classList.add("open");
+}
+function closeDetail(){
+ $("detailModal").classList.remove("open");
+ var content=$("detailContent");
+ var trade=$("tradeList").parentElement, report=$("scanReport").parentElement;
+ if(trade.parentElement===content)$("wrap")?.appendChild(trade);
+ if(report.parentElement===content)$("wrap")?.appendChild(report);
+}
 function fmt(n){var v=Number(n);return n==null||!Number.isFinite(v)?"--":"$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmtPrice(n){var v=Number(n);return n==null||!Number.isFinite(v)||v<=0?"نرخ بەردەست نییە":"$"+v.toLocaleString("en-US",{maximumSignificantDigits:8})}
 function renderScanReport(items){
@@ -457,6 +475,11 @@ $("stop").onclick=async function(){
  if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
  try{await api("/api/automation","POST",{paused:true});await loadState();toast("ڕۆبۆت ڕاوەستێنرا")}catch(e){toast(e.message);this.disabled=false}
 };
+$("showTrades").onclick=function(){openDetail("trades")};
+$("showReports").onclick=function(){openDetail("reports")};
+$("detailClose").onclick=closeDetail;
+$("detailModal").addEventListener("click",function(e){if(e.target===$("detailModal"))closeDetail()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDetail()});
 render();
 
 // Public paper-trading dashboard: no password or saved session is required.
