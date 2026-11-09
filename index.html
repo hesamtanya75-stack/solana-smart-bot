@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ckb" dir="ltr">
+<html lang="ckb" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -94,7 +94,7 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 
 .toast{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:#252a6b;border:1px solid var(--line);padding:10px 16px;border-radius:999px;font-size:13px;z-index:9;opacity:0;pointer-events:none;transition:opacity .2s;max-width:92%;text-align:center}
 .toast.show{opacity:1}
-.wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap button,.wrap li,.toast{unicode-bidi:plaintext}
+.wrap p,.wrap span,.wrap b,.wrap h1,.wrap h2,.wrap small,.wrap li,.toast{unicode-bidi:plaintext}
 .search input{direction:rtl}
 button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
 
@@ -308,7 +308,7 @@ body{
 .wrap button,
 .detail-modal button {
  direction:rtl;
- unicode-bidi:plaintext;
+ unicode-bidi:isolate;
  text-align:center;
  white-space:normal;
  word-break:normal;
