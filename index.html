@@ -634,14 +634,15 @@ $("disableTotp").onclick=async function(){
 // Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
 var devnetWallet=null;
 // Devnet-only RPC failover. Never use a Mainnet endpoint here.
-var DEVNET_RPCS=["https://api.devnet.solana.com","https://solana-devnet.drpc.org"];
+var DEVNET_RPCS=["https://api.devnet.solana.com","https://solana-devnet-rpc.publicnode.com","https://solana-devnet.drpc.org"];
 async function devnetRpc(method,params){
  var lastError=null;
  for(var i=0;i<DEVNET_RPCS.length;i++){
   try{
    var response=await fetch(DEVNET_RPCS[i],{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
-   if(!response.ok)throw new Error("HTTP "+response.status);
-   var data=await response.json();
+   var body=await response.text();
+   if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,180):""));
+   var data=JSON.parse(body);
    if(data.error)throw new Error(data.error.message||"RPC error");
    return data.result;
   }catch(error){lastError=error}
