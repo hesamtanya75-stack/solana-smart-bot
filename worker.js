@@ -1001,7 +1001,7 @@ export default {
               };
               settings.geometry[key] = {
                 x: clamp(g.x, 0, 95, 0),
-                y: clamp(g.y, 48, 1320, 48),
+                y: clamp(g.y, key === "header" ? 0 : 48, 1320, key === "header" ? 0 : 48),
                 w: clamp(g.w, 18, 100, 40),
                 h: clamp(g.h, 55, 500, 120)
               };
