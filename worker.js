@@ -407,7 +407,12 @@ async function enrichIncompleteMarketWithJupiter(mint, market, env) {
   const currentVolume = Number(market?.volume?.h24 || 0);
   const currentBuys = Number(market?.txns?.h24?.buys || 0);
   const currentSells = Number(market?.txns?.h24?.sells || 0);
-  if (currentPrice > 0 && (currentVolume > 0 || currentBuys + currentSells === 0)) return market;
+  const existingImage = market?.imageUrl || market?.info?.imageUrl || null;
+  const hasCoreMarket = currentPrice > 0 &&
+    (currentVolume > 0 || currentBuys + currentSells === 0);
+  // Keep complete DexScreener data, but still look up Jupiter when its token
+  // logo is missing so the scan result can show a real logo instead of fallback.
+  if (hasCoreMarket && existingImage) return market;
   const jupiter = await getJupiterMarketForMint(mint, env);
   return {
     ...market,
@@ -422,7 +427,7 @@ async function enrichIncompleteMarketWithJupiter(mint, market, env) {
     jupiterAudit: jupiter.audit,
     jupiterOrganicScore: jupiter.organicScore,
     jupiterVerified: jupiter.isVerified,
-    imageUrl: market.imageUrl || market.info?.imageUrl || jupiter.imageUrl || null
+    imageUrl: existingImage || jupiter.imageUrl || null
   };
 }
 
