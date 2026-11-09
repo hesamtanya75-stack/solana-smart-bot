@@ -963,22 +963,41 @@ $("requestDevnetAirdrop").onclick=function(){
 })();
 // Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
 var mainnetWallet=null;
-var MAINNET_RPC_URL="https://api.mainnet-beta.solana.com";
+var MAINNET_RPC_URLS=[
+ "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet.solana.com",
+ "https://solana.drpc.org",
+ "https://solana-rpc.publicnode.com",
+ "https://rpc.ankr.com/solana"
+];
 var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcUrl=null;
 var mainnetRpcVerified=false;
 async function mainnetRpc(method,params){
- if(!mainnetRpcVerified){
-  var check=await fetch(MAINNET_RPC_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
-  if(!check.ok)throw new Error("Mainnet RPC HTTP "+check.status);
-  var checkData=await check.json();
-  if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
-  mainnetRpcVerified=true;
+ var candidates=mainnetRpcUrl?[mainnetRpcUrl].concat(MAINNET_RPC_URLS.filter(function(url){return url!==mainnetRpcUrl})):MAINNET_RPC_URLS;
+ var lastError=null;
+ for(var i=0;i<candidates.length;i++){
+  var url=candidates[i];
+  try{
+   if(!mainnetRpcVerified||url!==mainnetRpcUrl){
+    var check=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+    if(!check.ok)throw new Error("HTTP "+check.status);
+    var checkData=await check.json();
+    if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+   }
+   var response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+   if(!response.ok)throw new Error("HTTP "+response.status);
+   var data=await response.json();
+   if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+   mainnetRpcUrl=url;
+   mainnetRpcVerified=true;
+   return data.result;
+  }catch(error){
+   lastError=error;
+   if(error&&error.message&&error.message.indexOf("Mainnet ـی دروست نییە")!==-1)throw error;
+  }
  }
- var response=await fetch(MAINNET_RPC_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
- if(!response.ok)throw new Error("Mainnet RPC HTTP "+response.status);
- var data=await response.json();
- if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
- return data.result;
+ throw new Error("هەموو RPC ـەکانی Mainnet بەردەست نین. دوا هەڵە: "+(lastError?lastError.message:"نەزانراو"));
 }
 function mainnetMessage(message,isError){
  $("mainnetMessage").textContent=message;
