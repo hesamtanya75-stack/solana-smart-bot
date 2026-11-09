@@ -246,7 +246,8 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 
 /* Keep the original logo untouched and place the token name immediately beside it. */
 .wrap .tok{direction:ltr;display:flex;align-items:center;justify-content:flex-start;gap:5px}
-.wrap .tm{flex:0 1 auto;width:max-content;max-width:calc(100% - 70px);min-width:0;direction:rtl;text-align:right;align-items:flex-start}
+.wrap .tok .av{width:76px;height:76px;font-size:38px;flex:none}
+.wrap .tm{flex:0 1 auto;width:max-content;max-width:calc(100% - 84px);min-width:0;direction:rtl;text-align:right;align-items:flex-start}
 .wrap .tm-head{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;width:max-content;max-width:100%;min-width:0}
 .wrap .tm h2{display:block;width:auto;max-width:100%;min-width:0;text-align:right;line-height:1.2;overflow-wrap:anywhere}
 .wrap .tm-head .tag{display:inline-flex;align-self:flex-start;margin:0;white-space:nowrap}
@@ -255,7 +256,8 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 .wrap .tok .chg{margin-left:auto;flex:none}
 @media(max-width:699px){
  .wrap .tok{gap:5px}
- .wrap .tm{max-width:calc(100% - 68px)}
+ .wrap .tok .av{width:70px;height:70px;font-size:35px}
+ .wrap .tm{max-width:calc(100% - 78px)}
  .wrap .tm h2{font-size:clamp(14px,4vw,17px)}
 }
 
