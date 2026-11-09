@@ -244,15 +244,16 @@ html[lang="ckb"] .wrap .st span,
 html[lang="ckb"] .wrap .bs p span,
 html[lang="ckb"] .wrap .warn span{text-align:right}
 
-/* Keep the token name immediately beside the existing logo; do not alter the logo. */
-.wrap .tok{gap:3px;justify-content:flex-start}
-.wrap .tm{flex:0 1 auto;width:max-content;min-width:0;direction:ltr;text-align:left;align-items:flex-start}
-.wrap .tm-head{width:max-content;max-width:100%;align-items:flex-start;gap:4px}
-.wrap .tm h2{width:max-content;max-width:100%;text-align:left}
-.wrap .tm-head .tag{align-self:flex-start}
-.wrap .tm small{text-align:left}
+/* Keep the original logo untouched and place the token name immediately beside it. */
+.wrap .tok{direction:ltr;display:flex;align-items:center;justify-content:flex-start;gap:5px}
+.wrap .tm{flex:0 1 auto;width:max-content;max-width:calc(100% - 70px);min-width:0;direction:rtl;text-align:right;align-items:flex-start}
+.wrap .tm-head{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;width:max-content;max-width:100%;min-width:0}
+.wrap .tm h2{display:block;width:auto;max-width:100%;min-width:0;text-align:right;line-height:1.2;overflow-wrap:anywhere}
+.wrap .tm-head .tag{display:inline-flex;align-self:flex-start;margin:0;white-space:nowrap}
+.wrap .tm small{display:block;text-align:right}
 @media(max-width:699px){
- .wrap .tok{gap:3px}
+ .wrap .tok{gap:5px}
+ .wrap .tm{max-width:calc(100% - 68px)}
  .wrap .tm h2{font-size:clamp(14px,4vw,17px)}
 }
 
