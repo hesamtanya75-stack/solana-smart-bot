@@ -974,7 +974,7 @@ export default {
       const sessionMatch = authHeader.match(/^Bearer ([0-9a-f-]{36})$/i);
       const sessionId = sessionMatch ? sessionMatch[1] : null;
       if (url.pathname === "/api/design-settings" && request.method === "GET") {
-        const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
+        const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", accent: "#8b5cf6", background: "aurora", font: "noto", radius: 18, visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
         const saved = await env.BOT_STATE.get("owner_design_settings", "json");
         return json({ ok: true, settings: { ...defaults, ...(saved && typeof saved === "object" ? saved : {}), visible: { ...defaults.visible, ...(saved?.visible && typeof saved.visible === "object" ? saved.visible : {}) } } });
       }
@@ -982,10 +982,12 @@ export default {
         try {
           const body = await request.json();
           const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
-          const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"] };
+          const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"], background: ["aurora", "midnight", "slate", "black"], font: ["noto", "system", "arial", "serif"] };
           const panelKeys = ["scan", "token", "market", "security", "holders", "selling", "botStats", "trades", "reports", "notice"];
           const settings = {};
           for (const [key, values] of Object.entries(allowed)) settings[key] = values.includes(body[key]) ? body[key] : defaults[key];
+          settings.accent = /^#[0-9a-f]{6}$/i.test(String(body.accent || "")) ? String(body.accent) : defaults.accent;
+          settings.radius = Number.isFinite(Number(body.radius)) ? Math.max(4, Math.min(30, Number(body.radius))) : defaults.radius;
           settings.visible = {};
           for (const key of Object.keys(defaults.visible)) settings.visible[key] = body.visible && body.visible[key] === false ? false : true;
           if (body.geometry && typeof body.geometry === "object" && !Array.isArray(body.geometry)) {
