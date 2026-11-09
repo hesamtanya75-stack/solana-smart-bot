@@ -62,7 +62,15 @@ async function saveState(env, state) {
   await env.BOT_STATE.put("bot_state", JSON.stringify(state));
 }
 async function authorized(request, env) {
-  // Public dashboard mode: paper-trading only; no login is required.
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer ([0-9a-f-]{36})$/i);
+  if (!match || !env?.BOT_STATE) return false;
+  const token = match[1];
+  const session = await env.BOT_STATE.get("session:" + token, "json");
+  if (!session || !Number.isFinite(Number(session.expiresAt)) || Number(session.expiresAt) <= Date.now()) {
+    if (session) await env.BOT_STATE.delete("session:" + token);
+    return false;
+  }
   return true;
 }
 async function rpc(method, params, env) {
