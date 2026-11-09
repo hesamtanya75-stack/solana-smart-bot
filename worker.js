@@ -210,6 +210,9 @@ async function getDexJson(url, env, ttlSeconds = 30) {
 }
 
 let geckoDiscoveryCache = { savedAt: 0, data: null };
+// Short-lived per-isolate cache for Jupiter token market fallback.
+const jupiterMarketCache = new Map();
+let jupiterNextAt = 0;
 
 async function getLatestSolanaProfiles(env) {
   const errors = [];
@@ -381,8 +384,52 @@ async function getMarketForMint(mint, env) {
     if (!pools.length) throw new Error("No GeckoTerminal pool found for this mint");
     return pools[0];
   } catch (geckoError) {
-    throw new Error("DexScreener: " + String(dexError?.message || dexError) +
-      "; GeckoTerminal: " + String(geckoError?.message || geckoError));
+    // Third independent source: Jupiter Token API. It returns token metadata,
+    // USD price, liquidity and 24h trading stats without requiring a DEX pair.
+    try {
+      const cached = jupiterMarketCache.get(mint);
+      if (cached && Date.now() - cached.savedAt < 60 * 1000) return cached.market;
+      const waitMs = Math.max(0, jupiterNextAt - Date.now());
+      jupiterNextAt = Date.now() + 2100; // keyless Jupiter limit: 0.5 requests/second
+      if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      const headers = { "Accept": "application/json" };
+      if (env?.JUPITER_API_KEY) headers["x-api-key"] = String(env.JUPITER_API_KEY).trim();
+      const response = await fetch(
+        "https://api.jup.ag/tokens/v2/search?query=" + encodeURIComponent(mint),
+        { headers, signal: AbortSignal.timeout(12000) }
+      );
+      if (!response.ok) throw new Error("Jupiter Token API HTTP " + response.status);
+      const payload = await response.json();
+      const token = (Array.isArray(payload) ? payload : []).find(item => item?.id === mint);
+      if (!token) throw new Error("Jupiter returned no exact match for this mint");
+      const stats = token.stats24h || token.stats?.["24h"] || {};
+      const market = {
+        chainId: "solana",
+        dexId: "jupiter-token-api",
+        url: "https://jup.ag/tokens/" + encodeURIComponent(mint),
+        baseToken: { address: mint, name: token.name || "Unknown token", symbol: token.symbol || "" },
+        quoteToken: { address: "", name: "USD", symbol: "USD" },
+        priceUsd: token.usdPrice || null,
+        priceChange: { h24: Number(stats.priceChange || 0) },
+        volume: { h24: Number(stats.volume || stats.volumeUsd || 0) },
+        liquidity: { usd: Number(token.liquidity || 0) },
+        txns: { h24: { buys: Number(stats.numBuys || 0), sells: Number(stats.numSells || 0) } },
+        mcap: Number(token.mcap || 0),
+        fdv: Number(token.fdv || 0),
+        isVerified: token.isVerified === true,
+        organicScore: Number(token.organicScore || 0),
+        audit: token.audit || null
+      };
+      jupiterMarketCache.set(mint, { savedAt: Date.now(), market });
+      while (jupiterMarketCache.size > 100) {
+        jupiterMarketCache.delete(jupiterMarketCache.keys().next().value);
+      }
+      return market;
+    } catch (jupiterError) {
+      throw new Error("DexScreener: " + String(dexError?.message || dexError) +
+        "; GeckoTerminal: " + String(geckoError?.message || geckoError) +
+        "; Jupiter: " + String(jupiterError?.message || jupiterError));
+    }
   }
 }
 
