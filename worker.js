@@ -1,4 +1,4 @@
-const BUILD_ID = "provider-resilience-v1";
+const BUILD_ID = "provider-resilience-v2";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -16,9 +16,8 @@ const DEFAULT_STATE = {
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 // Keep only the provider that has recently succeeded from this Worker.
  // The two public endpoints below repeatedly returned HTTP 403 in production.
-const RPCS = [
-  "https://public.rpc.solanavibestation.com"
-];
+// Solana Vibe Station repeatedly returned HTTP 429; use the confirmed Alchemy provider only.
+const RPCS = [];
 let rpcNextAt = 0;
 let rpcStartIndex = 0;
 const rpcCooldowns = new Map();
@@ -340,9 +339,9 @@ async function getLatestSolanaProfiles(env) {
         }
       );
       if (response.status === 429) {
-        const until = Date.now() + 5 * 60 * 1000;
+        const until = Date.now() + 30 * 60 * 1000;
         await writeProviderCooldown(env, "geckoterminal", until);
-        throw new Error("HTTP 429; cooldown 300s");
+        throw new Error("HTTP 429; cooldown 1800s");
       }
       if (!response.ok) throw new Error("HTTP " + response.status);
       const payload = await response.json();
@@ -560,6 +559,11 @@ async function getMarketForMint(mint, env) {
 
   // Independent market-data fallback for tokens when DexScreener is throttled.
   try {
+    const geckoCooldown = await readProviderCooldown(env, "geckoterminal");
+    if (geckoCooldown > Date.now()) {
+      throw new Error("GeckoTerminal cooldown active; retry in " +
+        Math.ceil((geckoCooldown - Date.now()) / 1000) + "s");
+    }
     const response = await fetch(
       "https://api.geckoterminal.com/api/v2/networks/solana/tokens/" +
         encodeURIComponent(mint) + "/pools?include=base_token,quote_token",
@@ -568,6 +572,11 @@ async function getMarketForMint(mint, env) {
         signal: AbortSignal.timeout(12000)
       }
     );
+    if (response.status === 429) {
+      const until = Date.now() + 30 * 60 * 1000;
+      await writeProviderCooldown(env, "geckoterminal", until);
+      throw new Error("GeckoTerminal HTTP 429; cooldown 1800s");
+    }
     if (!response.ok) throw new Error("GeckoTerminal HTTP " + response.status);
     const payload = await response.json();
     const included = new Map((payload.included || []).map(item => [item.id, item]));
