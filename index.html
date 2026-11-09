@@ -326,6 +326,17 @@ html[data-design-mode="light"] .testnet-address{color:#58647a}
 html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#172033}
 .design-actions{display:flex;gap:8px}
 .design-actions button{flex:1;min-height:38px;border:1px solid var(--line);border-radius:9px;background:linear-gradient(135deg,var(--accent-a,#7c3aed),var(--accent-b,#5b21b6));color:white;font:inherit;font-size:12px;font-weight:800}
+.design-checks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.design-check{display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:11px}
+.design-check input{width:17px;height:17px;accent-color:var(--accent-a,#7c3aed)}
+.design-hidden{display:none!important}
+html[data-design-scale="small"] body{zoom:.9}
+html[data-design-scale="normal"] body{zoom:1}
+html[data-design-scale="large"] body{zoom:1.08}
+.wrap[data-dashboard-layout="single"]{display:flex;flex-direction:column;height:auto;min-height:calc(100dvh - 20px);overflow:visible}
+.wrap[data-dashboard-layout="single"]>.row{display:flex;flex-direction:column}
+.wrap[data-dashboard-layout="single"]>.box{overflow:visible}
+.wrap[data-dashboard-layout="wide"]{max-width:1100px}
 
 </style>
 </head>
@@ -346,7 +357,7 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
   <div class="ttl"><h1>SOLANA <b>SMART BOT</b></h1><p>پشکنینی زیرەکی کۆینی سولانا 🚀</p></div>
   <div class="shield"><button id="openTestnet" type="button" style="margin-bottom:5px;padding:5px 9px;border:1px solid #22c55e;border-radius:9px;background:#102b25;color:#86efac;font:inherit;font-size:10px;font-weight:800;cursor:pointer">🧪 Testnet</button><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
 </header>
-<div class="box">
+<div class="box" id="panelScan">
   <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
   <div class="row">
     <button class="btn green" id="disc">🔄 دۆزینەوەی خۆکاری کۆینە نوێیەکان</button>
@@ -356,7 +367,7 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
   <div id="discoverResults" class="discover-list" aria-live="polite"></div>
   <div id="scanStatus" class="scan-status" role="status" aria-live="polite"></div>
 </div>
-<div class="box">
+<div class="box" id="panelToken">
   <div class="tok">
     <div class="av"><img id="tokenImage" alt="" hidden><span id="tokenFallback" class="av-fallback">🪙</span><i>S</i></div>
     <div class="tm"><div class="tm-head"><h2 id="name"></h2><span class="tag none" id="tag"></span></div><small id="tick"></small></div>
@@ -370,27 +381,27 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
   </div>
 </div>
 <div class="row">
-  <div class="box">
+  <div class="box" id="panelMarket">
     <div class="h"><span>دۆخی بازاڕ</span></div>
     <svg id="spark" viewBox="0 0 160 70" width="100%" height="70" preserveAspectRatio="none"></svg>
     <p class="sub">نرخی ئێستا</p><div class="price" id="price">--</div>
   </div>
-  <div class="box">
+  <div class="box" id="panelSecurity">
     <div class="h"><span>پشکنینی سەلامەتی</span></div>
     <ul class="chk" id="checks"></ul><span class="pill none" id="pill"></span>
   </div>
 </div>
 <div class="row">
-  <div class="box">
+  <div class="box" id="panelHolders">
     <div class="h"><span>دابەشبوونی خاوەنەکان</span></div>
     <div class="don"><div class="ring" id="ring"><div id="ringTxt"></div></div><div class="lg" id="lg"></div></div>
   </div>
-  <div class="box sell">
+  <div class="box sell" id="panelSelling">
     <div class="h"><span>مامەڵەی فرۆشتن 24h</span></div>
     <p id="sellTxt" style="color:var(--muted)">--</p><div class="meter none" id="meter">--</div><div class="sub" id="sellSub"></div>
   </div>
 </div>
-<div class="box">
+<div class="box" id="panelBotStats">
   <div class="botrow">
     <div class="bs"><div class="h"><span>🏆 ئاماری بۆت</span></div>
       <p><span>قازانجی ڕاستەقینەی دیمۆ:</span><b id="statProfit" style="color:#4ade80">+$0.00</b></p>
@@ -402,9 +413,9 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
       <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div><div class="detail-links"><button id="showTrades" type="button">📒 مامەڵەکان</button><button id="showReports" type="button">🧾 ڕاپۆرتەکان</button></div></div>
   </div>
 </div>
-<div class="box detail-source"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
-<div class="box detail-source"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
-<div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
+<div class="box detail-source" id="panelTrades"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
+<div class="box detail-source" id="panelReports"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
+<div class="box warn" id="panelNotice"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
 <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-label="وردەکارییەکان"><div class="detail-dialog"><div class="detail-head"><span id="detailTitle">وردەکاری</span><button class="detail-close" id="detailClose" type="button">داخستن ✕</button></div><div id="detailContent"></div></div></div>
 <div class="testnet-modal" id="testnetModal" role="dialog" aria-modal="true" aria-label="Solana Devnet Testnet">
@@ -461,9 +472,28 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
    <label class="design-field">🌗 شێوازی ڕووناکی
     <select id="designMode"><option value="dark">تاریک</option><option value="light">ڕوون</option></select>
    </label>
-   <label class="design-field">📐 قەبارە و بۆشایی
+   <label class="design-field">📐 قەبارە و بۆشایی کارتەکان
     <select id="designDensity"><option value="compact">کۆمپاکت</option><option value="comfortable">ئاسایی</option><option value="spacious">فراوان</option></select>
    </label>
+   <label class="design-field">🔎 قەبارەی گشتی شاشە
+    <select id="designScale"><option value="small">بچووک (90%)</option><option value="normal">ئاسایی (100%)</option><option value="large">گەورە (108%)</option></select>
+   </label>
+   <label class="design-field">🧩 چیدمانی داشبۆرد
+    <select id="designLayout"><option value="grid">چەند ستوون — داشبۆردی ئاسایی</option><option value="single">یەک ستوون — بەشەکان لەژێر یەک</option><option value="wide">شاشەی فراوان</option></select>
+   </label>
+   <div class="profile-note">👁️ پیشاندان یان شارکردنەوەی بەشەکان</div>
+   <div class="design-checks">
+    <label class="design-check"><input type="checkbox" id="showScan" checked> پشکنین و دۆزینەوە</label>
+    <label class="design-check"><input type="checkbox" id="showToken" checked> زانیاری کۆین</label>
+    <label class="design-check"><input type="checkbox" id="showMarket" checked> دۆخی بازاڕ</label>
+    <label class="design-check"><input type="checkbox" id="showSecurity" checked> سەلامەتی</label>
+    <label class="design-check"><input type="checkbox" id="showHolders" checked> خاوەنەکان</label>
+    <label class="design-check"><input type="checkbox" id="showSelling" checked> فرۆشتن</label>
+    <label class="design-check"><input type="checkbox" id="showBotStats" checked> ئاماری بۆت</label>
+    <label class="design-check"><input type="checkbox" id="showTrades" checked> مامەڵەکان</label>
+    <label class="design-check"><input type="checkbox" id="showReports" checked> ڕاپۆرتەکان</label>
+    <label class="design-check"><input type="checkbox" id="showNotice" checked> تێبینی پاراستن</label>
+   </div>
    <div class="design-actions"><button id="saveDesign" type="button">💾 پاشەکەوت</button><button id="resetDesign" type="button">↩ گەڕاندنەوەی بنەڕەت</button></div>
    <p class="profile-note" id="designMessage" aria-live="polite"></p>
   </section>
@@ -492,7 +522,7 @@ $("loginForm").addEventListener("submit",async function(e){
    if(result.mfaRequired){mfaChallenge=result.challengeId;$("totpCode").style.display="block";$("loginPassword").style.display="none";loginMessage("کۆدی ٦ ژمارەیی Authenticator بنووسە");button.disabled=false;return}
    apiToken=result.token;try{localStorage.setItem("solanaSmartBotSession",apiToken)}catch(e){}
   }
-  $("serverLogin").style.display="none";await loadState();if(stateRefreshTimer)clearInterval(stateRefreshTimer);stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);toast("چوونەژوورەوە سەرکەوتوو بوو");
+  $("serverLogin").style.display="none";await Promise.all([loadState(),loadCloudDesignSettings()]);if(stateRefreshTimer)clearInterval(stateRefreshTimer);stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);toast("چوونەژوورەوە سەرکەوتوو بوو");
  }catch(err){loginMessage(err.message)}finally{button.disabled=false}
 });
 $("logout").addEventListener("click",async function(){
@@ -641,32 +671,52 @@ function render(){
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
 
-function applyDesignSettings(showMessage){
- var root=document.documentElement;
- var settings={theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value};
- root.setAttribute("data-design-theme",settings.theme);
- root.setAttribute("data-design-mode",settings.mode);
- root.setAttribute("data-design-density",settings.density);
- try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(settings))}catch(error){}
- if(showMessage)$("designMessage").textContent="ڕێکخستنەکان پاشەکەوت کران.";
+var DESIGN_DEFAULTS={theme:"purple",mode:"dark",density:"comfortable",scale:"normal",layout:"grid",visible:{scan:true,token:true,market:true,security:true,holders:true,selling:true,botStats:true,trades:true,reports:true,notice:true}};
+var DESIGN_PANEL_IDS={scan:"panelScan",token:"panelToken",market:"panelMarket",security:"panelSecurity",holders:"panelHolders",selling:"panelSelling",botStats:"panelBotStats",trades:"panelTrades",reports:"panelReports",notice:"panelNotice"};
+function readDesignControls(){
+ var visible={};Object.keys(DESIGN_PANEL_IDS).forEach(function(key){visible[key]=$("show"+key.charAt(0).toUpperCase()+key.slice(1)).checked});
+ return {theme:$("designTheme").value,mode:$("designMode").value,density:$("designDensity").value,scale:$("designScale").value,layout:$("designLayout").value,visible:visible};
+}
+function normalizeDesignSettings(input){
+ var s=Object.assign({},DESIGN_DEFAULTS,input||{});s.visible=Object.assign({},DESIGN_DEFAULTS.visible,input&&input.visible&&typeof input.visible==="object"?input.visible:{});
+ if(!["purple","blue","green","rose"].includes(s.theme))s.theme="purple";
+ if(!["dark","light"].includes(s.mode))s.mode="dark";
+ if(!["compact","comfortable","spacious"].includes(s.density))s.density="comfortable";
+ if(!["small","normal","large"].includes(s.scale))s.scale="normal";
+ if(!["grid","single","wide"].includes(s.layout))s.layout="grid";
+ Object.keys(DESIGN_DEFAULTS.visible).forEach(function(k){s.visible[k]=s.visible[k]!==false});return s;
+}
+function applyDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls()),root=document.documentElement,wrap=document.querySelector(".wrap");
+ root.setAttribute("data-design-theme",s.theme);root.setAttribute("data-design-mode",s.mode);root.setAttribute("data-design-density",s.density);root.setAttribute("data-design-scale",s.scale);
+ wrap.setAttribute("data-dashboard-layout",s.layout);
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){var panel=$(DESIGN_PANEL_IDS[k]);if(panel)panel.classList.toggle("design-hidden",!s.visible[k])});
+ try{localStorage.setItem("solanaSmartBotDesign",JSON.stringify(s))}catch(error){}
+}
+function setDesignControls(input){
+ var s=normalizeDesignSettings(input);
+ $("designTheme").value=s.theme;$("designMode").value=s.mode;$("designDensity").value=s.density;$("designScale").value=s.scale;$("designLayout").value=s.layout;
+ Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$("show"+k.charAt(0).toUpperCase()+k.slice(1)).checked=s.visible[k]});
+ applyDesignSettings();
 }
 function loadDesignSettings(){
- var settings={theme:"purple",mode:"dark",density:"comfortable"};
- try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")settings=Object.assign(settings,saved)}catch(error){}
- if(!["purple","blue","green","rose"].includes(settings.theme))settings.theme="purple";
- if(!["dark","light"].includes(settings.mode))settings.mode="dark";
- if(!["compact","comfortable","spacious"].includes(settings.density))settings.density="comfortable";
- $("designTheme").value=settings.theme;$("designMode").value=settings.mode;$("designDensity").value=settings.density;
- var root=document.documentElement;
- root.setAttribute("data-design-theme",settings.theme);root.setAttribute("data-design-mode",settings.mode);root.setAttribute("data-design-density",settings.density);
+ var s=DESIGN_DEFAULTS;try{var saved=JSON.parse(localStorage.getItem("solanaSmartBotDesign")||"null");if(saved&&typeof saved==="object")s=normalizeDesignSettings(saved)}catch(error){}setDesignControls(s);
+}
+async function loadCloudDesignSettings(){
+ try{var r=await api("/api/design-settings");if(r&&r.settings)setDesignControls(r.settings)}
+ catch(error){console.warn("Cloud design settings unavailable; using local fallback",error)}
+}
+async function saveCloudDesignSettings(){
+ var s=normalizeDesignSettings(readDesignControls());$("saveDesign").disabled=true;
+ try{var r=await api("/api/design-settings","POST",s);if(r&&r.settings)setDesignControls(r.settings);$("designMessage").textContent="هەموو ڕێکخستنەکانی دیزاین لە هەژمارەکەت پاشەکەوت کران."}
+ catch(error){$("designMessage").textContent="پاشەکەوتی سێرڤەر سەرکەوتوو نەبوو: "+error.message}
+ finally{$("saveDesign").disabled=false}
 }
 loadDesignSettings();
-["designTheme","designMode","designDensity"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings(false);$("designMessage").textContent="پێشبینینی گۆڕانکارییەکان — پاشەکەوت بکە بۆ هەمیشەییبوون."})});
-$("saveDesign").onclick=function(){applyDesignSettings(true)};
-$("resetDesign").onclick=function(){
- $("designTheme").value="purple";$("designMode").value="dark";$("designDensity").value="comfortable";applyDesignSettings(false);
- $("designMessage").textContent="دیزاینی بنەڕەت گەڕێندرایەوە.";
-};
+["designTheme","designMode","designDensity","designScale","designLayout"].forEach(function(id){$(id).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$("show"+k.charAt(0).toUpperCase()+k.slice(1)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("saveDesign").onclick=saveCloudDesignSettings;
+$("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
 
 function profileMessage(message){$("profileMessage").textContent=message||""}
 function renderProfileSecurity(profile){
@@ -688,7 +738,7 @@ async function loadProfilePanel(){
  try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
  catch(error){profileMessage(error.message)}
 }
-$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await loadProfilePanel()};
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await Promise.all([loadProfilePanel(),loadCloudDesignSettings()])};
 function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
 $("profileClose").onclick=closeProfilePanel;
 $("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
@@ -896,7 +946,7 @@ render();
   try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){apiToken=null}
   if(!apiToken){$("serverLogin").style.display="flex";return}
   try{
-    await loadState();
+    await Promise.all([loadState(),loadCloudDesignSettings()]);
     if(stateRefreshTimer)clearInterval(stateRefreshTimer);
     stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
   }catch(error){
