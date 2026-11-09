@@ -261,6 +261,20 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
  .wrap .tm h2{font-size:clamp(14px,4vw,17px)}
 }
 
+
+/* Owner profile modal */
+.profile-button{padding:6px 10px;border:1px solid #8b5cf6;border-radius:9px;background:#211746;color:#ede9fe;font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+.profile-modal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 10px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(3,5,18,.9)}
+.profile-modal.open{display:flex}
+.profile-dialog{width:min(100%,520px);max-height:100%;overflow:auto;background:#10122f;border:1px solid var(--line);border-radius:17px;padding:16px;box-shadow:0 18px 60px #000b}
+.profile-field{display:block;margin:12px 0;color:var(--text);font-size:12px;font-weight:700}
+.profile-field input{display:block;width:100%;height:43px;margin-top:6px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:#080a24;color:white;font:inherit;direction:ltr;text-align:left}
+.profile-action{width:100%;min-height:40px;margin-top:8px;border:1px solid var(--line);border-radius:10px;background:#252a6b;color:white;font:inherit;font-size:12px;font-weight:700}
+.profile-note{font-size:11px;color:var(--muted);line-height:1.7;margin:8px 0}
+.profile-secret{padding:12px;border:1px dashed #8b5cf6;border-radius:10px;background:#090b25;color:#c4b5fd;direction:ltr;overflow-wrap:anywhere;user-select:all}
+.profile-status{font-size:12px;line-height:1.7;color:#a5f3fc;white-space:pre-wrap;margin-top:8px}
+@media(max-width:520px){.profile-dialog{padding:12px}.profile-button{font-size:10px;padding:6px 8px}}
+
 </style>
 </head>
 <body>
@@ -278,7 +292,7 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
   <svg class="sol" viewBox="0 0 40 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs>
   <path d="M7 1h31l-5 7H2z" fill="url(#sg)"/><path d="M7 13h31l-5 7H2z" fill="url(#sg)" transform="translate(0 0)"/><path d="M2 25h31l5 7H7z" fill="url(#sg)"/></svg>
   <div class="ttl"><h1>SOLANA <b>SMART BOT</b></h1><p>پشکنینی زیرەکی کۆینی سولانا 🚀</p></div>
-  <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
+  <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
 </header>
 <div class="box">
   <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
@@ -341,6 +355,30 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 <div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
 <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-label="وردەکارییەکان"><div class="detail-dialog"><div class="detail-head"><span id="detailTitle">وردەکاری</span><button class="detail-close" id="detailClose" type="button">داخستن ✕</button></div><div id="detailContent"></div></div></div>
+<div class="profile-modal" id="profileModal" role="dialog" aria-modal="true" aria-label="پرۆفایل">
+ <div class="profile-dialog">
+  <div class="detail-head"><span>👤 پرۆفایل و پاراستنی هەژمار</span><button class="detail-close" id="profileClose" type="button">داخستن ✕</button></div>
+  <p class="profile-note">ئەم بەشە تەنها بۆ خاوەنی هەژمارە. زانیارییەکان بە شێوەی پارێزراو لە سێرڤەر پاشەکەوت دەکرێن.</p>
+  <label class="profile-field">📧 Gmail / ئیمەیڵ<input id="profileEmail" type="email" maxlength="254" autocomplete="email" placeholder="name@gmail.com"></label>
+  <label class="profile-field">📱 ژمارەی مۆبایل (بە کۆدی وڵات)<input id="profilePhone" type="tel" maxlength="20" autocomplete="tel" placeholder="+9647xxxxxxxxx"></label>
+  <button class="profile-action" id="saveProfile" type="button">💾 پاشەکەوتکردنی زانیارییەکان</button>
+  <p class="profile-note">تێبینی: Gmail و ژمارەی مۆبایل لەم قۆناغەدا تەنها تۆمار دەکرێن؛ پشتڕاستکردنەوەی Gmail/SMS پێویستی بە خزمەتگوزاری ناردنی کۆد هەیە و هێشتا چالاک نییە.</p>
+  <div class="detail-head" style="margin-top:18px"><span>🔐 Google Authenticator (2FA)</span><span id="totpState" class="profile-note">بارکردن...</span></div>
+  <div id="totpSetupArea"><button class="profile-action" id="setupTotp" type="button">➕ چالاککردنی Google Authenticator</button></div>
+  <div id="totpPendingArea" hidden>
+   <p class="profile-note">لە Google Authenticator، زیادکردنی کلیلی بە دەستی هەڵبژێرە و ئەم کلیلی نهێنییە بنووسە:</p>
+   <div class="profile-secret" id="totpSecret"></div>
+   <label class="profile-field">کۆدی ٦ ژمارەیی بۆ پشتڕاستکردنەوە<input id="totpVerifyCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+   <button class="profile-action" id="verifyTotp" type="button">✓ پشتڕاستکردنەوە و چالاککردن</button>
+  </div>
+  <div id="totpDisableArea" hidden>
+   <p class="profile-note">Authenticator چالاکە؛ بۆ ناچالاککردن کۆدی ئێستای بنووسە.</p>
+   <label class="profile-field">کۆدی ئێستا<input id="totpDisableCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+   <button class="profile-action" id="disableTotp" type="button">ناچالاککردنی Authenticator</button>
+  </div>
+  <p class="profile-status" id="profileMessage" aria-live="polite"></p>
+ </div>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
@@ -508,6 +546,49 @@ function render(){
  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
+function profileMessage(message){$("profileMessage").textContent=message||""}
+function renderProfileSecurity(profile){
+ $("profileEmail").value=profile.email||"";
+ $("profilePhone").value=profile.phone||"";
+ $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
+ $("totpSetupArea").hidden=!!profile.totpEnabled;
+ $("totpDisableArea").hidden=!profile.totpEnabled;
+ $("totpPendingArea").hidden=true;
+}
+async function loadProfilePanel(){
+ profileMessage("زانیارییەکان بار دەکرێن...");
+ try{var result=await api("/api/profile");renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکانی پرۆفایل بارکران.")}
+ catch(error){profileMessage(error.message)}
+}
+$("openProfile").onclick=async function(){$("profileModal").classList.add("open");await loadProfilePanel()};
+function closeProfilePanel(){$("profileModal").classList.remove("open");$("totpPendingArea").hidden=true}
+$("profileClose").onclick=closeProfilePanel;
+$("profileModal").addEventListener("click",function(e){if(e.target===$("profileModal"))closeProfilePanel()});
+$("saveProfile").onclick=async function(){
+ this.disabled=true;profileMessage("پاشەکەوت دەکرێت...");
+ try{var result=await api("/api/profile","POST",{email:$("profileEmail").value,phone:$("profilePhone").value});renderProfileSecurity(result.profile||{});profileMessage("زانیارییەکان پاشەکەوت کران. Gmail و ژمارەی مۆبایل هێشتا پشتڕاست نەکراونەتەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("setupTotp").onclick=async function(){
+ this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
+ try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("verifyTotp").onclick=async function(){
+ this.disabled=true;
+ try{await api("/api/totp/verify","POST",{code:$("totpVerifyCode").value.trim()});$("totpVerifyCode").value="";await loadProfilePanel();profileMessage("Google Authenticator بە سەرکەوتوویی چالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
+$("disableTotp").onclick=async function(){
+ if(!window.confirm("دڵنیایت دەتەوێت Google Authenticator ناچالاک بکەیت؟"))return;
+ this.disabled=true;
+ try{await api("/api/totp/disable","POST",{code:$("totpDisableCode").value.trim()});$("totpDisableCode").value="";await loadProfilePanel();profileMessage("Google Authenticator ناچالاک کرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{this.disabled=false}
+};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
 async function scanMint(mint){
  mint=String(mint||"").trim();
