@@ -113,7 +113,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
   <svg class="sol" viewBox="0 0 40 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs>
   <path d="M7 1h31l-5 7H2z" fill="url(#sg)"/><path d="M7 13h31l-5 7H2z" fill="url(#sg)" transform="translate(0 0)"/><path d="M2 25h31l5 7H7z" fill="url(#sg)"/></svg>
   <div class="ttl"><h1>SOLANA <b>SMART BOT</b></h1><p>پشکنینی زیرەکی کۆینی سولانا 🚀</p></div>
-  <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>ئامان و پاراستن</div>
+  <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ</div>
 </header>
 <div class="box">
   <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
@@ -170,7 +170,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
       <div class="row"><button class="btn green" id="start">▶ دەستپێکردنەوە</button><button class="btn red" id="stop" disabled>⏸ ڕاوەستاندن</button></div></div>
   </div>
 </div>
-<div class="box"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div></div>
+<div class="box"><div class="h"><span>📒 مامەڵەکانی دیمۆ</span><span id="tradeCount" class="sub"></span></div><div id="tradeList" class="tradeEmpty">هێشتا هیچ مامەڵەیەکی دیمۆ نییە</div><button class="btn red" id="clearClosedTrades" disabled style="width:100%;height:38px;margin-top:9px;font-size:11px">🗑 پاککردنەوەی مامەڵە داخراوەکان (باڵانس دەپارێزێت)</button></div>
 <div class="box"><div class="h"><span>🧾 ڕاپۆرتی دوا پشکنینەکان</span></div><div id="scanReport" class="tradeEmpty">هێشتا ڕاپۆرتێک نییە</div></div>
 <div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
@@ -294,6 +294,12 @@ $("disc").onclick=async function(){
 $("start").onclick=async function(){
  if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
  try{await api("/api/automation","POST",{enabled:true,paused:false});await loadState();toast("ڕۆبۆتی تاقیکردنەوە چالاک کرا")}catch(e){toast(e.message);this.disabled=false}
+};
+$("clearClosedTrades").onclick=async function(){
+ if(!window.confirm("تەنها مامەڵە داخراوەکان پاک بکرێنەوە؟ باڵانس و پۆزیشنی کراوە دەپارێزرێن."))return;
+ this.disabled=true;
+ try{var r=await api("/api/clear-closed-trades","POST",{});await loadState();toast(" "+r.removed+" مامەڵەی داخراو پاککرایەوە؛ باڵانس پارێزرا")}
+ catch(e){toast(e.message);this.disabled=false}
 };
 $("stop").onclick=async function(){
  if(!apiToken){toast("سەرەتا بچۆ ژوورەوە");return}this.disabled=true;
