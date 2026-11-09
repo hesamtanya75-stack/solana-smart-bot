@@ -382,6 +382,7 @@ async function getJupiterMarketForMint(mint, env) {
     dexId: "jupiter-token-api",
     url: "https://jup.ag/tokens/" + encodeURIComponent(mint),
     baseToken: { address: mint, name: token.name || "Unknown token", symbol: token.symbol || "" },
+    imageUrl: token.icon || token.logoURI || null,
     quoteToken: { address: "", name: "USD", symbol: "USD" },
     priceUsd: Number(token.usdPrice || 0) > 0 ? String(token.usdPrice) : null,
     priceChange: { h24: Number(stats.priceChange || 0) },
@@ -420,7 +421,8 @@ async function enrichIncompleteMarketWithJupiter(mint, market, env) {
     } },
     jupiterAudit: jupiter.audit,
     jupiterOrganicScore: jupiter.organicScore,
-    jupiterVerified: jupiter.isVerified
+    jupiterVerified: jupiter.isVerified,
+    imageUrl: market.imageUrl || market.info?.imageUrl || jupiter.imageUrl || null
   };
 }
 
@@ -469,6 +471,7 @@ async function getMarketForMint(mint, env) {
         url: "https://www.geckoterminal.com/solana/pools/" + encodeURIComponent(attrs.address || ""),
         pairAddress: attrs.address || null,
         baseToken: { address: mint, name: base.name || "Unknown token", symbol: base.symbol || "" },
+        imageUrl: base.image_url || base.imageUrl || null,
         quoteToken: { address: quote.address || "", name: quote.name || "", symbol: quote.symbol || "" },
         priceUsd: attrs.base_token_price_usd || attrs.token_price_usd || null,
         priceChange: { h24: Number(attrs.price_change_percentage?.h24 || 0) },
@@ -888,7 +891,7 @@ export default {
             top: result.top, mint: result.mintAuthority, freeze: result.freezeAuthority,
             largestPct: result.largestPct, topTenPct: result.topTenPct,
             rugScore: result.rugScore, pairAddress: market.pairAddress || null,
-            dexUrl: market.url || null
+            dexUrl: market.url || null, imageUrl: market.imageUrl || market.info?.imageUrl || null
           };
           const state = await readState(env);
           state.lastScanReport = [{ mint, status: result.ok ? "passed" : "rejected", reasons: result.reasons, scannedAt: new Date().toISOString() }, ...state.lastScanReport].slice(0, 20);
