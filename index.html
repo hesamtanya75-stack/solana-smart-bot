@@ -244,14 +244,17 @@ html[lang="ckb"] .wrap .st span,
 html[lang="ckb"] .wrap .bs p span,
 html[lang="ckb"] .wrap .warn span{text-align:right}
 
-/* Move only the token text block toward the existing logo; leave logo dimensions and image untouched. */
-.wrap .tok{gap:2px}
-.wrap .tm{direction:rtl;text-align:left}
-.wrap .tm-head{align-items:flex-end;gap:4px}
-.wrap .tm h2{text-align:left}
-.wrap .tm-head .tag{align-self:flex-end}
+/* Keep the token name immediately beside the existing logo; do not alter the logo. */
+.wrap .tok{gap:3px;justify-content:flex-start}
+.wrap .tm{flex:0 1 auto;width:max-content;min-width:0;direction:ltr;text-align:left;align-items:flex-start}
+.wrap .tm-head{width:max-content;max-width:100%;align-items:flex-start;gap:4px}
+.wrap .tm h2{width:max-content;max-width:100%;text-align:left}
+.wrap .tm-head .tag{align-self:flex-start}
 .wrap .tm small{text-align:left}
-@media(max-width:699px){.wrap .tok{gap:2px}}
+@media(max-width:699px){
+ .wrap .tok{gap:3px}
+ .wrap .tm h2{font-size:clamp(14px,4vw,17px)}
+}
 
 </style>
 </head>
