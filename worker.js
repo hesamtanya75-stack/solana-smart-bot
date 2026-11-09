@@ -24,8 +24,9 @@ let rpcStartIndex = 0;
 const rpcCooldowns = new Map();
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
-// Per-isolate DexScreener cache: avoid spending Workers KV daily write quota on API caching.
+// Per-isolate DexScreener cache and single-flight requests prevent duplicate calls.
 const dexMemoryCache = new Map();
+const dexInFlight = new Map();
 let dexCooldownUntil = 0;
 
 function json(data, status = 200) {
@@ -200,41 +201,43 @@ async function getJson(url) {
 }
 
 async function getDexJson(url, env, ttlSeconds = 30) {
-  // Cache DexScreener responses in the Worker isolate instead of Workers KV.
-  // This avoids consuming the Free plan's daily KV write quota for temporary API data.
+  // Reuse fresh results, share in-flight requests, and serve stale data during
+  // provider cooldowns rather than multiplying HTTP 429 failures.
   const now = Date.now();
-  const discoveryOnly = url.includes("/token-profiles/latest/v1");
   const cached = dexMemoryCache.get(url) || null;
-  if (cached && now - cached.savedAt < ttlSeconds * 1000) {
-    return cached.data;
-  }
-
+  if (cached && now - cached.savedAt < ttlSeconds * 1000) return cached.data;
   if (dexCooldownUntil > now) {
-    if (discoveryOnly && cached?.data) return cached.data;
+    if (cached?.data) return cached.data;
     throw new Error("DexScreener cooldown active; retry in " +
       Math.ceil((dexCooldownUntil - now) / 1000) + "s");
   }
-
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-  if (response.status === 429) {
-    const retryHeader = response.headers.get("Retry-After");
-    const seconds = Number(retryHeader);
-    const retryAfterMs = Number.isFinite(seconds) && seconds > 0
-      ? seconds * 1000
-      : Math.max(0, Date.parse(retryHeader || "") - Date.now());
-    const cooldownMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, retryAfterMs));
-    dexCooldownUntil = Date.now() + cooldownMs;
-    if (discoveryOnly && cached?.data) return cached.data;
-    throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
-  }
-  if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
-  const data = await response.json();
-  dexMemoryCache.set(url, { savedAt: Date.now(), data });
-  // Bound isolate memory use; remove oldest entries first.
-  while (dexMemoryCache.size > 100) {
-    dexMemoryCache.delete(dexMemoryCache.keys().next().value);
-  }
-  return data;
+  const inFlight = dexInFlight.get(url);
+  if (inFlight) return inFlight;
+  const request = (async () => {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (response.status === 429) {
+        const retryHeader = response.headers.get("Retry-After");
+        const seconds = Number(retryHeader);
+        const retryAfterMs = Number.isFinite(seconds) && seconds > 0
+          ? seconds * 1000
+          : Math.max(0, Date.parse(retryHeader || "") - Date.now());
+        const cooldownMs = Math.min(15 * 60 * 1000, Math.max(60 * 1000, retryAfterMs));
+        dexCooldownUntil = Date.now() + cooldownMs;
+        if (cached?.data) return cached.data;
+        throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
+      }
+      if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
+      const data = await response.json();
+      dexMemoryCache.set(url, { savedAt: Date.now(), data });
+      while (dexMemoryCache.size > 100) dexMemoryCache.delete(dexMemoryCache.keys().next().value);
+      return data;
+    } finally {
+      dexInFlight.delete(url);
+    }
+  })();
+  dexInFlight.set(url, request);
+  return request;
 }
 
 let geckoDiscoveryCache = { savedAt: 0, data: null };
@@ -596,21 +599,22 @@ async function autoBuy(state, env) {
     seen.add(mint);
     return true;
   }) : [];
-  let checked = 0, bought = 0, skippedExisting = 0;
+  let checked = 0, bought = 0, skippedExisting = 0, newlyQueued = 0;
   const report = [];
   const scanned = new Set(state.scannedMints);
   const traded = new Set(state.trades.map(t => t.mint));
+  // Keep a bounded FIFO backlog; accept at most ten new candidates per cycle.
+  state.pendingMints = [...new Set(state.pendingMints)].slice(0, 20);
   const queued = new Set(state.pendingMints);
-  // Persist newly discovered candidates so the full batch is processed safely
-  // over multiple cron runs instead of dropping tokens beyond this cycle's cap.
   for (const token of tokens) {
     const mint = token.tokenAddress;
+    if (newlyQueued >= 10 || state.pendingMints.length >= 20) break;
     if (!scanned.has(mint) && !traded.has(mint) && !queued.has(mint)) {
       state.pendingMints.push(mint);
       queued.add(mint);
+      newlyQueued++;
     }
   }
-  state.pendingMints = state.pendingMints.slice(-100);
   // Two full inspections per five-minute cron run protects RPC and Worker limits.
   // A batch of up to ten newly discovered candidates is therefore processed
   // over several runs, while the queue can safely retain a larger backlog.
@@ -660,7 +664,7 @@ async function autoBuy(state, env) {
   }
   state.scannedMints = state.scannedMints.slice(-1000);
   state.deferredMints = [...new Map(state.deferredMints.map(item => [item.mint, item])).values()].slice(-1000);
-  state.pendingMints = [...new Set(state.pendingMints)].slice(-100);
+  state.pendingMints = [...new Set(state.pendingMints)].slice(0, 20);
   state.lastScanReport = report.slice(-20);
   const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
   const deferred = report.filter(x => x.status === "deferred").length;
