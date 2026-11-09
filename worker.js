@@ -519,14 +519,23 @@ async function enrichIncompleteMarketWithJupiter(mint, market, env) {
   const currentBuys = Number(market?.txns?.h24?.buys || 0);
   const currentSells = Number(market?.txns?.h24?.sells || 0);
   const existingImage = market?.imageUrl || market?.info?.imageUrl || null;
+  const existingName = String(market?.baseToken?.name || "").trim();
+  const existingSymbol = String(market?.baseToken?.symbol || "").trim();
+  const hasIdentity = existingName && existingName.toLowerCase() !== "unknown token" && existingSymbol;
   const hasCoreMarket = currentPrice > 0 &&
     (currentVolume > 0 || currentBuys + currentSells === 0);
-  // Keep complete DexScreener data, but still look up Jupiter when its token
-  // logo is missing so the scan result can show a real logo instead of fallback.
-  if (hasCoreMarket && existingImage) return market;
+  // Require exact-mint identity (name, symbol and logo) before skipping Jupiter.
+  // This prevents a quote-side token's name/logo being shown for the scanned mint.
+  if (hasCoreMarket && hasIdentity && existingImage) return market;
   const jupiter = await getJupiterMarketForMint(mint, env);
   return {
     ...market,
+    baseToken: {
+      ...(market?.baseToken || {}),
+      address: mint,
+      name: hasIdentity ? market.baseToken.name : (jupiter.baseToken?.name || "Unknown token"),
+      symbol: existingSymbol || jupiter.baseToken?.symbol || ""
+    },
     priceUsd: currentPrice > 0 ? market.priceUsd : jupiter.priceUsd,
     priceChange: market.priceChange || jupiter.priceChange,
     volume: { h24: currentVolume > 0 ? currentVolume : jupiter.volume.h24 },
@@ -548,8 +557,11 @@ async function getMarketForMint(mint, env) {
     const dex = await getDexJson(
       "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
     );
+    // DexScreener priceUsd and info.imageUrl describe the BASE token.
+    // Never select a pair where the requested mint is only the quote token,
+    // otherwise the UI can display the wrong coin name, symbol or logo.
     const market = (dex.pairs || []).filter(p => p.chainId === "solana" &&
-      (p.baseToken?.address === mint || p.quoteToken?.address === mint))
+      p.baseToken?.address === mint)
       .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
     if (market) return await enrichIncompleteMarketWithJupiter(mint, market, env);
     dexError = new Error("DexScreener returned no Solana market pair");
