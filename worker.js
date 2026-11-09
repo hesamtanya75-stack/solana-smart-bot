@@ -981,7 +981,7 @@ export default {
       if (url.pathname === "/api/design-settings" && request.method === "POST") {
         try {
           const body = await request.json();
-          const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
+          const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", accent: "#8b5cf6", background: "aurora", font: "noto", radius: 18, visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
           const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"], background: ["aurora", "midnight", "slate", "black"], font: ["noto", "system", "arial", "serif"] };
           const panelKeys = ["scan", "token", "market", "security", "holders", "selling", "botStats", "trades", "reports", "notice"];
           const settings = {};
