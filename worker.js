@@ -1,4 +1,4 @@
-const BUILD_ID = "public-paper-v3";
+const BUILD_ID = "profile-verification-v1";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -912,6 +912,98 @@ export default {
             totpEnabled: profile.totpEnabled === true
           }});
         } catch { return json({ error: "زانیارییەکانی پرۆفایل پاشەکەوت نەکران" }, 400); }
+      }
+      if (url.pathname === "/api/verify/email/send" && request.method === "POST") {
+        try {
+          const profile = await readProfile(env);
+          const email = String(profile.email || "").trim().toLowerCase();
+          if (!email) return json({ error: "سەرەتا Gmail لە پرۆفایل پاشەکەوت بکە" }, 400);
+          if (profile.emailVerified) return json({ error: "Gmail پێشتر پشتڕاست کراوەتەوە" }, 409);
+          if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return json({ error: "خزمەتگوزاری ئیمەیڵ ئامادە نییە؛ RESEND_API_KEY و RESEND_FROM_EMAIL لە Cloudflare زیاد بکە" }, 503);
+          const rateKey = "verify_rate:email:" + sessionId;
+          if (await env.BOT_STATE.get(rateKey)) return json({ error: "تکایە پێش ناردنی کۆدی نوێ ٦٠ چرکە چاوەڕێ بکە" }, 429);
+          const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+          const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + env.RESEND_API_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: env.RESEND_FROM_EMAIL, to: [email],
+              subject: "Solana Smart Bot - Email verification",
+              text: "Your verification code is " + code + ". It expires in 10 minutes. If you did not request this, ignore this email."
+            })
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            console.error("Email provider error", response.status, detail.slice(0, 300));
+            return json({ error: "ناردنی ئیمەیڵ سەرکەوتوو نەبوو؛ دڵنیابە ناونیشانی نێرەر لە Resend پشتڕاست کراوەتەوە" }, 502);
+          }
+          await env.BOT_STATE.put("verify_code:email:" + sessionId, JSON.stringify({ hash: await hashText(code), target: email, createdAt: Date.now(), attempts: 0 }), { expirationTtl: 600 });
+          await env.BOT_STATE.put(rateKey, "1", { expirationTtl: 60 });
+          return json({ ok: true });
+        } catch (error) { console.error("Email verification send failed", String(error?.message || error)); return json({ error: "ناردنی کۆدی Gmail سەرکەوتوو نەبوو" }, 502); }
+      }
+      if (url.pathname === "/api/verify/email/confirm" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const key = "verify_code:email:" + sessionId;
+          const pending = await env.BOT_STATE.get(key, "json");
+          const profile = await readProfile(env);
+          if (!pending || pending.target !== String(profile.email || "").toLowerCase() || Date.now() - Number(pending.createdAt || 0) > 600000) return json({ error: "کۆدەکە بەسەرچووە؛ دووبارە داوای کۆد بکە" }, 410);
+          if (!/^\d{6}$/.test(String(body.code || "")) || await hashText(String(body.code).trim()) !== pending.hash) {
+            pending.attempts = Number(pending.attempts || 0) + 1;
+            if (pending.attempts >= 5) await env.BOT_STATE.delete(key);
+            else await env.BOT_STATE.put(key, JSON.stringify(pending), { expirationTtl: 600 });
+            return json({ error: pending.attempts >= 5 ? "هەوڵەکان تەواو بوون؛ کۆدی نوێ داوا بکە" : "کۆدی Gmail هەڵەیە" }, 401);
+          }
+          profile.emailVerified = true;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          await env.BOT_STATE.delete(key);
+          return json({ ok: true });
+        } catch { return json({ error: "پشتڕاستکردنەوەی Gmail سەرکەوتوو نەبوو" }, 400); }
+      }
+      if (url.pathname === "/api/verify/phone/send" && request.method === "POST") {
+        try {
+          const profile = await readProfile(env);
+          const phone = String(profile.phone || "").trim();
+          if (!phone) return json({ error: "سەرەتا ژمارەی مۆبایل لە پرۆفایل پاشەکەوت بکە" }, 400);
+          if (profile.phoneVerified) return json({ error: "ژمارەی مۆبایل پێشتر پشتڕاست کراوەتەوە" }, 409);
+          if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_FROM_NUMBER) return json({ error: "خزمەتگوزاری SMS ئامادە نییە؛ سێ Secret ـی Twilio لە Cloudflare زیاد بکە" }, 503);
+          const rateKey = "verify_rate:phone:" + sessionId;
+          if (await env.BOT_STATE.get(rateKey)) return json({ error: "تکایە پێش ناردنی کۆدی نوێ ٦٠ چرکە چاوەڕێ بکە" }, 429);
+          const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+          const form = new URLSearchParams({ To: phone, From: env.TWILIO_FROM_NUMBER, Body: "Solana Smart Bot verification code: " + code + ". Expires in 10 minutes." });
+          const credentials = btoa(env.TWILIO_ACCOUNT_SID + ":" + env.TWILIO_AUTH_TOKEN);
+          const response = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + encodeURIComponent(env.TWILIO_ACCOUNT_SID) + "/Messages.json", {
+            method: "POST", headers: { "Authorization": "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString()
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            console.error("SMS provider error", response.status, detail.slice(0, 300));
+            return json({ error: "ناردنی SMS سەرکەوتوو نەبوو؛ هەژمار و ژمارەی نێرەری Twilio بپشکنە" }, 502);
+          }
+          await env.BOT_STATE.put("verify_code:phone:" + sessionId, JSON.stringify({ hash: await hashText(code), target: phone, createdAt: Date.now(), attempts: 0 }), { expirationTtl: 600 });
+          await env.BOT_STATE.put(rateKey, "1", { expirationTtl: 60 });
+          return json({ ok: true });
+        } catch (error) { console.error("SMS verification send failed", String(error?.message || error)); return json({ error: "ناردنی کۆدی SMS سەرکەوتوو نەبوو" }, 502); }
+      }
+      if (url.pathname === "/api/verify/phone/confirm" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const key = "verify_code:phone:" + sessionId;
+          const pending = await env.BOT_STATE.get(key, "json");
+          const profile = await readProfile(env);
+          if (!pending || pending.target !== String(profile.phone || "") || Date.now() - Number(pending.createdAt || 0) > 600000) return json({ error: "کۆدەکە بەسەرچووە؛ دووبارە داوای کۆد بکە" }, 410);
+          if (!/^\d{6}$/.test(String(body.code || "")) || await hashText(String(body.code).trim()) !== pending.hash) {
+            pending.attempts = Number(pending.attempts || 0) + 1;
+            if (pending.attempts >= 5) await env.BOT_STATE.delete(key);
+            else await env.BOT_STATE.put(key, JSON.stringify(pending), { expirationTtl: 600 });
+            return json({ error: pending.attempts >= 5 ? "هەوڵەکان تەواو بوون؛ کۆدی نوێ داوا بکە" : "کۆدی SMS هەڵەیە" }, 401);
+          }
+          profile.phoneVerified = true;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          await env.BOT_STATE.delete(key);
+          return json({ ok: true });
+        } catch { return json({ error: "پشتڕاستکردنەوەی ژمارەی مۆبایل سەرکەوتوو نەبوو" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
         try {
