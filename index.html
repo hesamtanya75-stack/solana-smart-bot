@@ -333,6 +333,9 @@ html[data-design-mode="light"] .design-field select{background:#f8fafc;color:#17
 html[data-design-scale="small"] body{zoom:.9}
 html[data-design-scale="normal"] body{zoom:1}
 html[data-design-scale="large"] body{zoom:1.08}
+
+/* User may choose to show detail panels directly on the dashboard. */
+.wrap>.box.detail-source:not(.design-hidden){display:block;grid-column:1/-1;grid-row:auto;overflow:auto}
 .wrap[data-dashboard-layout="single"]{display:flex;flex-direction:column;height:auto;min-height:calc(100dvh - 20px);overflow:visible}
 .wrap[data-dashboard-layout="single"]>.row{display:flex;flex-direction:column}
 .wrap[data-dashboard-layout="single"]>.box{overflow:visible}
