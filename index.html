@@ -661,7 +661,7 @@ $("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")}
 $("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
 $("connectPhantom").onclick=async function(){
  var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
- if(!provider||!provider.isPhantom){testnetMessage("Phantom نەدۆزرایەوە. تکایە ئەپی Phantom یان وێبگەڕی پشتیوانیکراوی بەکاربهێنە.",true);return}
+ if(!provider||!provider.isPhantom){testnetMessage("دەچیتە ناو وێبگەڕی Phantom؛ دوای کردنەوەی ئەپەکە، دووبارە بەستنەوە دابگرە...");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
  this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
  try{
   var result=await provider.connect();
