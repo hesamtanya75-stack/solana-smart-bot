@@ -333,10 +333,8 @@ function openDetail(which){
 }
 function closeDetail(){
  $("detailModal").classList.remove("open");
- var content=$("detailContent");
- var trade=$("tradeList").parentElement, report=$("scanReport").parentElement;
- if(trade.parentElement===content)$("wrap")?.appendChild(trade);
- if(report.parentElement===content)$("wrap")?.appendChild(report);
+ var content=$("detailContent"),root=document.querySelector(".wrap"),warn=root.querySelector(".warn");
+ Array.from(content.children).forEach(function(node){root.insertBefore(node,warn)});
 }
 function fmt(n){var v=Number(n);return n==null||!Number.isFinite(v)?"--":"$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmtPrice(n){var v=Number(n);return n==null||!Number.isFinite(v)||v<=0?"نرخ بەردەست نییە":"$"+v.toLocaleString("en-US",{maximumSignificantDigits:8})}
