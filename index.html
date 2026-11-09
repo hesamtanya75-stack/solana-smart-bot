@@ -303,6 +303,46 @@ body{
  .wrap #botStatus{max-height:38px}
 }
 
+
+/* Button typography repair: keep Kurdish labels readable on narrow screens. */
+.wrap button,
+.detail-modal button {
+ direction:rtl;
+ unicode-bidi:plaintext;
+ text-align:center;
+ white-space:normal;
+ word-break:normal;
+ overflow-wrap:break-word;
+ line-height:1.5;
+ writing-mode:horizontal-tb;
+}
+.wrap .btn,
+.detail-modal .detail-close {
+ height:auto;
+ min-height:40px;
+ padding:7px 10px;
+}
+.wrap .row .btn,
+.wrap>.box .btn,
+.wrap .ctl .row .btn {
+ min-height:38px;
+ height:auto;
+ line-height:1.45;
+ padding:6px 8px;
+}
+.wrap .detail-links button {
+ min-height:36px;
+ height:auto;
+ line-height:1.4;
+ padding:6px 5px;
+}
+.wrap .discover-item {
+ direction:rtl;
+ text-align:right;
+ min-height:34px;
+ line-height:1.4;
+}
+
 </style>
 </head>
 <body>
