@@ -55,10 +55,8 @@ async function saveState(env, state) {
   await env.BOT_STATE.put("bot_state", JSON.stringify(state));
 }
 async function authorized(request, env) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) return false;
-  const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  // Public dashboard mode: paper-trading only; no login is required.
+  return true;
 }
 async function rpc(method, params, env) {
   const errors = [];
