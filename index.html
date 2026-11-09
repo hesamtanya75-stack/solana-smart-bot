@@ -169,7 +169,7 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
 .wrap .warn{font-size:10px;line-height:1.25;gap:5px;padding:5px 8px}
 .detail-links{display:flex;gap:6px;margin-top:2px}
 .detail-links button{flex:1;min-width:0;min-height:29px;border:1px solid var(--line);border-radius:9px;background:rgba(59,130,246,.18);color:var(--text);font:inherit;font-size:10px;font-weight:700}
-.detail-modal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 10px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(3,5,18,.88)}
+.testnet-modal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 10px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(3,5,18,.9)}.testnet-modal.open{display:flex}.testnet-dialog{width:min(100%,460px);max-height:100%;overflow:auto;background:#10122f;border:1px solid rgba(34,197,94,.55);border-radius:16px;padding:14px;box-shadow:0 18px 60px #000b}.testnet-status{padding:9px;border:1px solid var(--line);border-radius:10px;text-align:center;font-size:12px;color:#fbbf24}.testnet-address{direction:ltr;text-align:center;overflow-wrap:anywhere;font-size:11px;color:var(--muted);padding:8px 2px}.testnet-balance{display:flex;justify-content:space-between;align-items:center;padding:12px;margin:8px 0;border-radius:12px;background:rgba(34,197,94,.12);font-size:13px}.testnet-balance b{direction:ltr;color:#4ade80;font-size:18px}.detail-modal{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top,0px)) 10px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(3,5,18,.88)}
 .detail-modal.open{display:flex}
 .detail-dialog{width:min(100%,620px);max-height:100%;overflow:auto;background:#10122f;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 18px 60px #000b}
 .detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-size:15px;font-weight:800}
@@ -292,7 +292,7 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
   <svg class="sol" viewBox="0 0 40 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs>
   <path d="M7 1h31l-5 7H2z" fill="url(#sg)"/><path d="M7 13h31l-5 7H2z" fill="url(#sg)" transform="translate(0 0)"/><path d="M2 25h31l5 7H7z" fill="url(#sg)"/></svg>
   <div class="ttl"><h1>SOLANA <b>SMART BOT</b></h1><p>پشکنینی زیرەکی کۆینی سولانا 🚀</p></div>
-  <div class="shield"><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
+  <div class="shield"><button id="openTestnet" type="button" style="margin-bottom:5px;padding:5px 9px;border:1px solid #22c55e;border-radius:9px;background:#102b25;color:#86efac;font:inherit;font-size:10px;font-weight:800;cursor:pointer">🧪 Testnet</button><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
 </header>
 <div class="box">
   <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
@@ -355,6 +355,18 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 <div class="box warn"><span>❤️</span><span>تێبینی: ئەم بۆتە تەنها مامەڵەی خەیاڵی (Paper Trading) ئەنجام دەدات؛ هیچ SOL یان پارەی ڕاستەقینە ناکڕێت و نافرۆشێت.</span></div>
 </div>
 <div class="detail-modal" id="detailModal" role="dialog" aria-modal="true" aria-label="وردەکارییەکان"><div class="detail-dialog"><div class="detail-head"><span id="detailTitle">وردەکاری</span><button class="detail-close" id="detailClose" type="button">داخستن ✕</button></div><div id="detailContent"></div></div></div>
+<div class="testnet-modal" id="testnetModal" role="dialog" aria-modal="true" aria-label="Solana Devnet Testnet">
+ <div class="testnet-dialog">
+  <div class="detail-head"><span>🧪 تاقیکردنەوەی Solana Devnet</span><button class="detail-close" id="testnetClose" type="button">داخستن ✕</button></div>
+  <p class="profile-note">ئەم بەشە تەنها بۆ تاقیکردنەوەی Devnet ـە. هیچ پارەی ڕاستەقینە بەکارناهێنرێت. لە Phantom ـدا Network بکە بە Devnet.</p>
+  <div class="testnet-status" id="testnetStatus">Wallet بەستەر نەکراوە</div>
+  <div class="testnet-address" id="testnetAddress">—</div>
+  <div class="testnet-balance"><span>باڵانسی Devnet SOL</span><b id="testnetBalance">— SOL</b></div>
+  <div class="row"><button class="btn blue" id="connectPhantom" type="button">🔗 بەستنەوەی Phantom</button><button class="btn red" id="disconnectPhantom" type="button" disabled>دابڕین</button></div>
+  <button class="btn green" id="requestDevnetAirdrop" type="button" disabled style="width:100%;margin-top:9px">💧 داواکردنی 0.5 SOL ـی تاقیکردنەوە</button>
+  <p class="sub" id="testnetMessage" style="margin-top:8px;line-height:1.6">تەنها SOL ـی Devnet ـە و نرخی ڕاستەقینەی نییە.</p>
+ </div>
+</div>
 <div class="profile-modal" id="profileModal" role="dialog" aria-modal="true" aria-label="پرۆفایل">
  <div class="profile-dialog">
   <div class="detail-head"><span>👤 پرۆفایل و پاراستنی هەژمار</span><button class="detail-close" id="profileClose" type="button">داخستن ✕</button></div>
@@ -619,6 +631,74 @@ $("disableTotp").onclick=async function(){
  catch(error){profileMessage(error.message)}
  finally{this.disabled=false}
 };
+// Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
+var devnetWallet=null;
+var DEVNET_RPC="https://api.devnet.solana.com";
+async function devnetRpc(method,params){
+ var response=await fetch(DEVNET_RPC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+ if(!response.ok)throw new Error("Devnet RPC HTTP "+response.status);
+ var data=await response.json();if(data.error)throw new Error(data.error.message||"Devnet RPC error");return data.result;
+}
+function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
+function renderDevnetWallet(publicKey){
+ devnetWallet=publicKey?String(publicKey):null;
+ $("testnetStatus").textContent=devnetWallet?"🟢 Phantom بەستراوە — Devnet":"Wallet بەستەر نەکراوە";
+ $("testnetStatus").style.color=devnetWallet?"#86efac":"#fbbf24";
+ $("testnetAddress").textContent=devnetWallet?devnetWallet:"—";
+ $("connectPhantom").disabled=!!devnetWallet;
+ $("disconnectPhantom").disabled=!devnetWallet;
+ $("requestDevnetAirdrop").disabled=!devnetWallet;
+ $("testnetBalance").textContent="— SOL";
+ if(devnetWallet)refreshDevnetBalance();
+}
+async function refreshDevnetBalance(){
+ if(!devnetWallet)return;
+ try{var result=await devnetRpc("getBalance",[devnetWallet,{commitment:"confirmed"}]);$("testnetBalance").textContent=(Number(result.value)/1e9).toFixed(4)+" SOL"}
+ catch(error){testnetMessage("نەتوانرا باڵانسی Devnet بخوێندرێتەوە: "+error.message,true)}
+}
+$("openTestnet").onclick=function(){$("testnetModal").classList.add("open");if(devnetWallet)refreshDevnetBalance()};
+$("testnetClose").onclick=function(){$("testnetModal").classList.remove("open")};
+$("testnetModal").addEventListener("click",function(event){if(event.target===$("testnetModal"))$("testnetModal").classList.remove("open")});
+$("connectPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){testnetMessage("Phantom نەدۆزرایەوە. تکایە ئەپی Phantom یان وێبگەڕی پشتیوانیکراوی بەکاربهێنە.",true);return}
+ this.disabled=true;testnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderDevnetWallet(result.publicKey.toString());
+  testnetMessage("Wallet بەسترا. دڵنیابە لە Phantom ـدا Network ـەکەت Devnet ـە.");
+ }catch(error){testnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{this.disabled=!!devnetWallet}
+};
+$("disconnectPhantom").onclick=async function(){
+ try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
+ renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
+};
+$("requestDevnetAirdrop").onclick=async function(){
+ if(!devnetWallet)return;
+ this.disabled=true;testnetMessage("داوای 0.5 SOL ـی Devnet دەکرێت...");
+ try{
+  var signature=await devnetRpc("requestAirdrop",[devnetWallet,500000000,{commitment:"confirmed"}]);
+  testnetMessage("داواکە نێردرا. چاوەڕێی پشتڕاستکردنەوەی تۆڕ بکە...");
+  var confirmed=false;
+  for(var attempt=0;attempt<12;attempt++){
+   await new Promise(function(resolve){setTimeout(resolve,1500)});
+   var status=await devnetRpc("getSignatureStatuses",[[signature],{searchTransactionHistory:true}]);
+   var item=status&&status.value&&status.value[0];
+   if(item&&item.err)throw new Error("Airdrop transaction ڕەتکرایەوە");
+   if(item&&item.confirmationStatus&&item.confirmationStatus!=="processed"){confirmed=true;break}
+  }
+  if(!confirmed)throw new Error("هێشتا پشتڕاست نەکراوەتەوە؛ دواتر باڵانس نوێ بکەرەوە");
+  await refreshDevnetBalance();testnetMessage("0.5 SOL ـی Devnet بە سەرکەوتوویی زیاد کرا. ئەمانە پارەی تاقیکردنەوەن.");
+ }catch(error){testnetMessage("Airdrop سەرکەوتوو نەبوو: "+error.message,true)}
+ finally{this.disabled=!devnetWallet}
+};
+(function watchPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
 async function scanMint(mint){
  mint=String(mint||"").trim();
