@@ -349,6 +349,11 @@ async function getLatestSolanaProfiles(env) {
     throw new Error("نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + errors.join("; "));
   }
 
+  const sourceDiagnostics = [
+    { name: "DexScreener", candidates: dexResult.status === "fulfilled" ? dexResult.value.length : 0, ok: dexResult.status === "fulfilled" },
+    { name: "GeckoTerminal", candidates: geckoResult.status === "fulfilled" ? geckoResult.value.length : 0, ok: geckoResult.status === "fulfilled" },
+    { name: "Jupiter", candidates: jupiterResult.status === "fulfilled" ? jupiterResult.value.length : 0, ok: jupiterResult.status === "fulfilled" }
+  ];
   // Round-robin the feeds so one provider cannot occupy the entire queue.
   const merged = [];
   const seen = new Set();
@@ -362,6 +367,7 @@ async function getLatestSolanaProfiles(env) {
       merged.push(item);
     }
   }
+  merged.discoveryDiagnostics = { sources: sourceDiagnostics, errors, totalCandidates: merged.length };
   return merged;
 }
 function mintDetails(account) {
@@ -643,6 +649,8 @@ async function refreshTrades(state, env) {
 async function autoBuy(state, env) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
   const profiles = await getLatestSolanaProfiles(env);
+  const discoveryDiagnostics = profiles.discoveryDiagnostics || { sources: [], errors: ["Discovery diagnostics unavailable"], totalCandidates: profiles.length };
+  state.lastDiscoveryDiagnostics = discoveryDiagnostics;
   const seen = new Set();
   const tokens = Array.isArray(profiles) ? profiles.filter(t => {
     const mint = String(t?.tokenAddress || "");
@@ -651,7 +659,17 @@ async function autoBuy(state, env) {
     return true;
   }) : [];
   let checked = 0, bought = 0, skippedExisting = 0, newlyQueued = 0;
-  const report = [];
+  const report = discoveryDiagnostics.sources.map(source => ({
+    status: source.ok ? "discovery-source" : "discovery-error",
+    mint: source.name,
+    reasons: [source.ok ? ("Candidates received: " + source.candidates) : "Source request failed"]
+  }));
+  for (const error of discoveryDiagnostics.errors) {
+    const name = String(error).split(":")[0];
+    const row = report.find(item => item.status === "discovery-error" && item.mint === name);
+    if (row) row.reasons = [String(error)];
+    else report.push({ status: "discovery-error", mint: name || "Discovery", reasons: [String(error)] });
+  }
   const scanned = new Set(state.scannedMints);
   const traded = new Set(state.trades.map(t => t.mint));
   // Keep a bounded FIFO backlog; accept at most ten new candidates per cycle.
@@ -715,13 +733,17 @@ async function autoBuy(state, env) {
   state.scannedMints = state.scannedMints.slice(-1000);
   state.deferredMints = [...new Map(state.deferredMints.map(item => [item.mint, item])).values()].slice(-1000);
   state.pendingMints = [...new Set(state.pendingMints)].slice(0, 20);
-  state.lastScanReport = report.slice(-20);
+  state.lastScanReport = report.slice(0, 20);
+  const sourceSummary = discoveryDiagnostics.sources.map(source =>
+    source.name + ": " + (source.ok ? source.candidates + " candidates" : "FAILED")
+  ).join(", ");
+  const sourceErrors = discoveryDiagnostics.errors.length ? " Source errors: " + discoveryDiagnostics.errors.join(" | ") + "." : "";
   const blocked = report.filter(x => x.status === "rejected" || x.status === "blocked-error").length;
   const deferred = report.filter(x => x.status === "deferred").length;
   const noNewTokens = checked === 0
     ? " No unscanned candidates were processed; " + skippedExisting + " already-seen tokens skipped."
     : "";
-  return "Checked " + checked + " new tokens (max 2 per 5-minute cycle; up to 10 candidates are processed across five cycles); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for retry; " + state.pendingMints.length + " candidates queued; reasons saved in scan report." + noNewTokens;
+  return "Discovery sources: " + sourceSummary + ". Total merged candidates: " + discoveryDiagnostics.totalCandidates + ". Checked " + checked + " new tokens (max 2 per 5-minute cycle; up to 10 candidates are processed across five cycles); paper buys: " + bought + ". " + blocked + " blocked; " + deferred + " waiting for retry; " + state.pendingMints.length + " candidates queued; source details and scan reasons saved in report." + sourceErrors + noNewTokens;
 }
 
 
@@ -1098,12 +1120,13 @@ export default {
             ...state.trades.map(trade => trade.mint)
           ]);
           const seen = new Set();
+          const diagnostics = profiles.discoveryDiagnostics || { sources: [], errors: [], totalCandidates: profiles.length };
           const tokens = (Array.isArray(profiles) ? profiles : []).filter(item => {
             const mint = String(item?.tokenAddress || "");
             if (item?.chainId !== "solana" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || seen.has(mint) || excluded.has(mint)) return false;
             seen.add(mint); return true;
           }).slice(0, 10).map(item => ({ mint: item.tokenAddress, name: item.description || "Solana token", url: item.url || null }));
-          return json({ ok: true, tokens });
+          return json({ ok: true, tokens, diagnostics });
         } catch (error) {
           return json({ error: "نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + String(error?.message || error) }, 503);
         }
