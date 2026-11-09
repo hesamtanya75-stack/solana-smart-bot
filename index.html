@@ -92,7 +92,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
 </style>
 </head>
 <body>
-<div id="serverLogin" style="position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,6,20,.96)">
+<div id="serverLogin" style="position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(5,6,20,.96)">
   <form id="loginForm" style="width:min(100%,380px);padding:24px;border:1px solid rgba(139,92,246,.65);border-radius:22px;background:#10112f;box-shadow:0 20px 70px #0009;text-align:center">
     <h2 style="font-size:22px;margin-bottom:8px">🔐 چوونەژوورەوە</h2>
     <p style="font-size:13px;color:#a9aed6;margin-bottom:16px">بۆ بەکارهێنانی داشبۆرد وشەی نهێنی بنووسە</p>
@@ -168,8 +168,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #c4b5fd;outline-offse
 <div class="toast" id="toast"></div>
 <script>
 var T=null;
-var apiToken=null, mfaChallenge=null, stateRefreshTimer=null;
-try{apiToken=localStorage.getItem("solanaSmartBotSession")||null}catch(e){}
+var apiToken="public", mfaChallenge=null, stateRefreshTimer=null;
 async function api(path,method,body){
  const headers={"Content-Type":"application/json"};if(apiToken)headers.Authorization="Bearer "+apiToken;
  const res=await fetch(path,{method:method||"GET",headers,body:body?JSON.stringify(body):undefined,cache:"no-store"});
@@ -265,21 +264,13 @@ $("stop").onclick=async function(){
 };
 render();
 
-// Restore the seven-day server session after a page reload or reopening the app.
-(async function restoreServerSession(){
+// Public paper-trading dashboard: no password or saved session is required.
+(async function startPublicDashboard(){
   if(location.hostname==="htmlpreview.github.io")return;
-  if(!apiToken)return;
-  try{
-    await loadState();
-    $("serverLogin").style.display="none";
-    if(stateRefreshTimer)clearInterval(stateRefreshTimer);
-    stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
-  }catch(error){
-    apiToken=null;
-    try{localStorage.removeItem("solanaSmartBotSession")}catch(e){}
-    $("serverLogin").style.display="flex";
-    loginMessage("دانیشتن کۆتایی هاتووە؛ تکایە دووبارە بچۆ ژوورەوە");
-  }
+  $("serverLogin").style.display="none";
+  try{await loadState()}catch(error){console.warn("Dashboard initial load failed",error)}
+  if(stateRefreshTimer)clearInterval(stateRefreshTimer);
+  stateRefreshTimer=setInterval(function(){loadState().catch(function(err){console.warn("Dashboard refresh failed",err)})},30000);
 })();
 
 // Public visual preview only: bypass the login screen on HTMLPreview.
