@@ -230,7 +230,7 @@ async function loadState(){
 
 var C=["#8b5cf6","#3b82f6","#f59e0b","#22c55e","#64748b"];
 function $(i){return document.getElementById(i)}
-function fmt(n){return "$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fmt(n){var v=Number(n);return n==null||!Number.isFinite(v)?"--":"$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function renderScanReport(items){
  var box=$("scanReport");box.innerHTML="";
  if(!Array.isArray(items)||!items.length){box.className="tradeEmpty";box.textContent="هێشتا ڕاپۆرتێک نییە";return}
@@ -270,16 +270,46 @@ function renderTrades(trades){
 }
 function render(){
  if(!T){
-  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="--";$("chgBox").className="chg none";$("chg").textContent="--";
-  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="--";$(k).className=""});$("price").textContent="--";$("spark").innerHTML="";$("checks").innerHTML="";$("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").innerHTML="";$("sellTxt").textContent="--";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="";return;
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
+  $("price").textContent="چاوەڕوانی پشکنین";
+  $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
+  $("checks").innerHTML='<li><em class="n">!</em>پشکنینی کۆین بکە بۆ دەرکەوتنی ئەنجامەکان</li>';
+  $("ring").style.background="#2b2f66";$("ringTxt").textContent="--";$("lg").textContent="داتای خاوەنەکان دوای پشکنین";
+  $("sellTxt").textContent="چاوەڕوانی داتای بازاڕ";$("meter").className="meter none";$("meter").textContent="--";$("sellSub").textContent="ژمارەی فرۆشتنەکان لە 24h دوای پشکنین دەردەکەوێت";return;
  }
  var top=Array.isArray(T.top)?T.top:[];var ch=[];
- ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);ch.push([top.length>0&&top[0]<=30,"Largest holder: "+(top[0]??"--")+"%"]);ch.push([Number(T.topTenPct)<=50&&T.topTenPct!=null,"Top 10 wallets (from 20 largest accounts): "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);ch.push([Number(T.liq)>=10000,"Liquidity: "+fmt(T.liq)]);ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"Buys / Sells: "+T.buys+" / "+T.sells]);
- if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
- $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;$("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";$("chgBox").className="chg"+(T.chg<0?" none":"");$("chg").textContent=(T.chg>=0?"↑ +":"↓ ")+T.chg+"%";
- $("hold").textContent=T.holderAccountsChecked==null?"--":Number(T.holderAccountsChecked).toLocaleString("en-US");$("bs").textContent=T.buys+" / "+T.sells;$("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=T.liq<10000?"bad":"";$("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
- var a=0,g=[],lg="";top.forEach(function(p,i){g.push(C[i%C.length]+" "+a+"% "+(a+p)+"%");a+=p;lg+='<p><i style="background:'+C[i%C.length]+'"></i>Top '+(i+1)+'<b>'+Number(p).toFixed(2)+'%</b></p>'});g.push("#2b2f66 "+a+"% 100%");$("ring").style.background="conic-gradient("+g.join(",")+")";$("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";$("lg").innerHTML=lg;
- var tot=Number(T.buys)+Number(T.sells),pct=tot?Math.round(Number(T.sells)/tot*100):0;$("sellTxt").textContent=T.sells>0?"مامەڵەی فرۆشتن تۆمار کراوە":"هیچ فرۆشتنێک تۆمار نەکراوە";$("meter").className="meter";$("meter").textContent=pct+"%";$("sellSub").textContent="ڕێژەی فرۆشتن لە مامەڵەکانی 24h";$("price").textContent=(T.price==null||!Number.isFinite(Number(T.price))||Number(T.price)<=0)?"--":fmt(T.price);
+ ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
+ ch.push([top.length>0&&top[0]<=30,"گەورەترین خاوەن: "+(top.length?Number(top[0]).toFixed(2):"--")+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"کۆی 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
+ ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
+ ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
+ if(T.ok===false&&Array.isArray(T.reasons)&&T.reasons.length){ch.push([false,"هۆکاری مەترسی: "+T.reasons.join("؛ ")]);}
+ var bad=ch.filter(function(c){return !c[0]}).length;var lv=T.ok===false?"high":(bad>=2?"high":bad===1?"mid":"low");
+ var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
+ var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
+ $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";
+ $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
+ $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US");
+ $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
+ $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
+ $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
+ var a=0,g=[],lg="";
+ top.forEach(function(p,i){var value=Math.max(0,Number(p)||0);g.push(C[i%C.length]+" "+a+"% "+(a+value)+"%");a+=value;lg+='<p><i style="background:'+C[i%C.length]+'"></i>خاوەنی '+(i+1)+'<b>'+value.toFixed(2)+'%</b></p>'});
+ g.push("#2b2f66 "+Math.min(100,a)+"% 100%");$("ring").style.background=top.length?"conic-gradient("+g.join(",")+")":"#2b2f66";
+ $("ringTxt").textContent=top.length?Number(top[0]).toFixed(2)+"%":"--";
+ $("lg").innerHTML=lg||"داتای دابەشبوونی خاوەنەکان بەردەست نییە";
+ var buys=Number(T.buys||0),sells=Number(T.sells||0),tot=buys+sells,pct=tot?Math.round(sells/tot*100):0;
+ $("sellTxt").textContent=sells.toLocaleString("en-US")+" فرۆشتن لە 24h";
+ $("meter").className="meter";$("meter").textContent=pct+"%";
+ $("sellSub").textContent="ڕێژەی فرۆشتن لە کۆی "+tot.toLocaleString("en-US")+" مامەڵەی 24h";
+ $("price").textContent=(T.price==null||!Number.isFinite(Number(T.price))||Number(T.price)<=0)?"نرخ بەردەست نییە":fmt(T.price);
+ var change=Number(T.chg||0),bar=Math.min(65,Math.abs(change)*2.2),x=change>=0?80:80-bar,color=change>=0?"#22c55e":"#f43f5e";
+ $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><rect x="'+x.toFixed(1)+'" y="29" width="'+Math.max(1,bar).toFixed(1)+'" height="14" rx="5" fill="'+color+'"/><text x="80" y="15" text-anchor="middle" fill="#e2e4ff" font-size="11">'+(change>=0?"+":"")+change.toFixed(2)+'% · 24h</text>';
 }
 window.setData=function(d){T=d;render();$("paperBuy").disabled=!(T&&T.ok===true&&T.tokenAddress&&apiToken)};
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
