@@ -328,6 +328,71 @@ function mintDetails(account) {
   }
   return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
 }
+async function getJupiterMarketForMint(mint, env) {
+  const cached = jupiterMarketCache.get(mint);
+  if (cached && Date.now() - cached.savedAt < 60 * 1000) return cached.market;
+  const waitMs = Math.max(0, jupiterNextAt - Date.now());
+  jupiterNextAt = Date.now() + 2100;
+  if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+  const headers = { "Accept": "application/json" };
+  if (env?.JUPITER_API_KEY) headers["x-api-key"] = String(env.JUPITER_API_KEY).trim();
+  const response = await fetch(
+    "https://api.jup.ag/tokens/v2/search?query=" + encodeURIComponent(mint),
+    { headers, signal: AbortSignal.timeout(12000) }
+  );
+  if (!response.ok) throw new Error("Jupiter Token API HTTP " + response.status);
+  const payload = await response.json();
+  const token = (Array.isArray(payload) ? payload : []).find(item => item?.id === mint);
+  if (!token) throw new Error("Jupiter returned no exact match for this mint");
+  const stats = token.stats24h || {};
+  const volume24h = Number(stats.buyVolume || 0) + Number(stats.sellVolume || 0);
+  const market = {
+    chainId: "solana",
+    dexId: "jupiter-token-api",
+    url: "https://jup.ag/tokens/" + encodeURIComponent(mint),
+    baseToken: { address: mint, name: token.name || "Unknown token", symbol: token.symbol || "" },
+    quoteToken: { address: "", name: "USD", symbol: "USD" },
+    priceUsd: Number(token.usdPrice || 0) > 0 ? String(token.usdPrice) : null,
+    priceChange: { h24: Number(stats.priceChange || 0) },
+    volume: { h24: volume24h },
+    liquidity: { usd: Number(token.liquidity || 0) },
+    txns: { h24: { buys: Number(stats.numBuys || 0), sells: Number(stats.numSells || 0) } },
+    mcap: Number(token.mcap || 0),
+    fdv: Number(token.fdv || 0),
+    isVerified: token.isVerified === true,
+    organicScore: Number(token.organicScore || 0),
+    audit: token.audit || null
+  };
+  jupiterMarketCache.set(mint, { savedAt: Date.now(), market });
+  while (jupiterMarketCache.size > 100) {
+    jupiterMarketCache.delete(jupiterMarketCache.keys().next().value);
+  }
+  return market;
+}
+
+async function enrichIncompleteMarketWithJupiter(mint, market, env) {
+  const currentPrice = Number(market?.priceUsd || 0);
+  const currentVolume = Number(market?.volume?.h24 || 0);
+  const currentBuys = Number(market?.txns?.h24?.buys || 0);
+  const currentSells = Number(market?.txns?.h24?.sells || 0);
+  if (currentPrice > 0 && (currentVolume > 0 || currentBuys + currentSells === 0)) return market;
+  const jupiter = await getJupiterMarketForMint(mint, env);
+  return {
+    ...market,
+    priceUsd: currentPrice > 0 ? market.priceUsd : jupiter.priceUsd,
+    priceChange: market.priceChange || jupiter.priceChange,
+    volume: { h24: currentVolume > 0 ? currentVolume : jupiter.volume.h24 },
+    liquidity: { usd: Number(market?.liquidity?.usd || 0) > 0 ? market.liquidity.usd : jupiter.liquidity.usd },
+    txns: { h24: {
+      buys: currentBuys > 0 ? currentBuys : jupiter.txns.h24.buys,
+      sells: currentSells > 0 ? currentSells : jupiter.txns.h24.sells
+    } },
+    jupiterAudit: jupiter.audit,
+    jupiterOrganicScore: jupiter.organicScore,
+    jupiterVerified: jupiter.isVerified
+  };
+}
+
 async function getMarketForMint(mint, env) {
   let dexError = null;
   try {
@@ -337,7 +402,7 @@ async function getMarketForMint(mint, env) {
     const market = (dex.pairs || []).filter(p => p.chainId === "solana" &&
       (p.baseToken?.address === mint || p.quoteToken?.address === mint))
       .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-    if (market) return market;
+    if (market) return await enrichIncompleteMarketWithJupiter(mint, market, env);
     dexError = new Error("DexScreener returned no Solana market pair");
   } catch (error) {
     dexError = error;
@@ -382,49 +447,11 @@ async function getMarketForMint(mint, env) {
       };
     }).filter(Boolean).sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0));
     if (!pools.length) throw new Error("No GeckoTerminal pool found for this mint");
-    return pools[0];
+    return await enrichIncompleteMarketWithJupiter(mint, pools[0], env);
   } catch (geckoError) {
-    // Third independent source: Jupiter Token API. It returns token metadata,
-    // USD price, liquidity and 24h trading stats without requiring a DEX pair.
+    // Third independent source: Jupiter Token API.
     try {
-      const cached = jupiterMarketCache.get(mint);
-      if (cached && Date.now() - cached.savedAt < 60 * 1000) return cached.market;
-      const waitMs = Math.max(0, jupiterNextAt - Date.now());
-      jupiterNextAt = Date.now() + 2100; // keyless Jupiter limit: 0.5 requests/second
-      if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-      const headers = { "Accept": "application/json" };
-      if (env?.JUPITER_API_KEY) headers["x-api-key"] = String(env.JUPITER_API_KEY).trim();
-      const response = await fetch(
-        "https://api.jup.ag/tokens/v2/search?query=" + encodeURIComponent(mint),
-        { headers, signal: AbortSignal.timeout(12000) }
-      );
-      if (!response.ok) throw new Error("Jupiter Token API HTTP " + response.status);
-      const payload = await response.json();
-      const token = (Array.isArray(payload) ? payload : []).find(item => item?.id === mint);
-      if (!token) throw new Error("Jupiter returned no exact match for this mint");
-      const stats = token.stats24h || token.stats?.["24h"] || {};
-      const market = {
-        chainId: "solana",
-        dexId: "jupiter-token-api",
-        url: "https://jup.ag/tokens/" + encodeURIComponent(mint),
-        baseToken: { address: mint, name: token.name || "Unknown token", symbol: token.symbol || "" },
-        quoteToken: { address: "", name: "USD", symbol: "USD" },
-        priceUsd: token.usdPrice || null,
-        priceChange: { h24: Number(stats.priceChange || 0) },
-        volume: { h24: Number(stats.volume || stats.volumeUsd || 0) },
-        liquidity: { usd: Number(token.liquidity || 0) },
-        txns: { h24: { buys: Number(stats.numBuys || 0), sells: Number(stats.numSells || 0) } },
-        mcap: Number(token.mcap || 0),
-        fdv: Number(token.fdv || 0),
-        isVerified: token.isVerified === true,
-        organicScore: Number(token.organicScore || 0),
-        audit: token.audit || null
-      };
-      jupiterMarketCache.set(mint, { savedAt: Date.now(), market });
-      while (jupiterMarketCache.size > 100) {
-        jupiterMarketCache.delete(jupiterMarketCache.keys().next().value);
-      }
-      return market;
+      return await getJupiterMarketForMint(mint, env);
     } catch (jupiterError) {
       throw new Error("DexScreener: " + String(dexError?.message || dexError) +
         "; GeckoTerminal: " + String(geckoError?.message || geckoError) +
