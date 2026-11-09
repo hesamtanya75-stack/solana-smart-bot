@@ -588,28 +588,44 @@ async function inspectMint(mint, env) {
   const supplyAmount = Number(supply?.value?.amount || 0);
   const largestAccounts = (largest?.value || []).slice(0, 20);
   if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
-  // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
+  // getTokenLargestAccounts returns only the 20 largest token accounts, not a
+  // complete wallet-holder list. Aggregate these accounts by wallet owner and
+  // conservatively assign ALL unobserved supply to the largest wallet / top 10.
   const accountDetails = await rpc(
     "getMultipleAccounts",
     [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
     env
   );
+  if (!Array.isArray(accountDetails?.value) || accountDetails.value.length !== largestAccounts.length) {
+    throw new Error("Incomplete holder account details");
+  }
   const ownerBalances = new Map();
+  let sampledAmount = 0;
   for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
+    const account = accountDetails.value[i];
     const info = account?.data?.parsed?.info;
     const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
+    const rawAmount = info?.tokenAmount?.amount;
+    const amount = Number(rawAmount);
+    if (!owner || rawAmount == null || !Number.isFinite(amount) || amount < 0) {
+      throw new Error("Holder owner or token balance is missing; concentration check is inconclusive");
+    }
+    sampledAmount += amount;
     ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
   }
-  if (!ownerBalances.size) throw new Error("Token account owners unavailable");
+  if (!ownerBalances.size || sampledAmount > supplyAmount * 1.001) {
+    throw new Error("Holder sample does not match token supply");
+  }
   const ownerPercentages = [...ownerBalances.values()]
     .map(amount => amount / supplyAmount * 100)
     .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
+  const holderCoveragePct = Math.min(100, sampledAmount / supplyAmount * 100);
+  const unobservedPct = Math.max(0, 100 - holderCoveragePct);
+  const largestObservedPct = ownerPercentages[0] || 0;
+  const topTenObservedPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
+  // Upper bounds prevent unobserved accounts from making concentration look safer.
+  const largestPct = Math.min(100, largestObservedPct + unobservedPct);
+  const topTenPct = Math.min(100, topTenObservedPct + unobservedPct);
   const liquidity = Number(market.liquidity?.usd || 0);
   const volume = Number(market.volume?.h24 || 0);
   const sells = Number(market.txns?.h24?.sells || 0);
@@ -619,8 +635,8 @@ async function inspectMint(mint, env) {
   if (sells <= 0) reasons.push("No 24h sells");
   if (sells > Number(market.txns?.h24?.buys || 0) * 3) reasons.push("24h sells exceed 3x buys");
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
+  if (largestPct > 30) reasons.push("Conservative largest-holder upper bound above 30% (includes all unobserved supply)");
+  if (topTenPct > 50) reasons.push("Conservative top-10-holder upper bound above 50% (includes all unobserved supply)");
   if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
 
   // Additional fail-closed checks from RugCheck's structured report.
@@ -656,9 +672,10 @@ async function inspectMint(mint, env) {
   if (!(price > 0)) reasons.push("Price unavailable");
   return {
     ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score,
-    largestPct, topTenPct, top: ownerPercentages.slice(0, 5),
+    largestPct, largestObservedPct, topTenPct, topTenObservedPct,
+    holderCoveragePct, unobservedPct, top: ownerPercentages.slice(0, 5),
     mintAuthority: details.mintAuthority, freezeAuthority: details.freezeAuthority,
-    holderAccountsChecked: ownerBalances.size
+    holderAccountsChecked: ownerBalances.size, holderTokenAccountsChecked: largestAccounts.length
   };
 }
 async function refreshTrades(state, env) {
@@ -1230,7 +1247,10 @@ export default {
             buys: Number(tx.buys || 0), sells: Number(tx.sells || 0),
             vol: Number(market.volume?.h24 || 0), liq: Number(market.liquidity?.usd || 0),
             top: result.top, mint: result.mintAuthority, freeze: result.freezeAuthority,
-            largestPct: result.largestPct, topTenPct: result.topTenPct,
+            largestPct: result.largestPct, largestObservedPct: result.largestObservedPct,
+            topTenPct: result.topTenPct, topTenObservedPct: result.topTenObservedPct,
+            holderCoveragePct: result.holderCoveragePct, unobservedPct: result.unobservedPct,
+            holderTokenAccountsChecked: result.holderTokenAccountsChecked,
             rugScore: result.rugScore, pairAddress: market.pairAddress || null,
             dexUrl: market.url || null, imageUrl: market.imageUrl || market.info?.imageUrl || null
           };
