@@ -49,7 +49,7 @@ function cleanState(value) {
     paused: s.paused === true,
     scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
     deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
-    pendingMints: Array.isArray(s.pendingMints) ? [...new Set(s.pendingMints.filter(m => typeof m === "string"))].slice(-100) : [],
+    pendingMints: Array.isArray(s.pendingMints) ? [...new Set(s.pendingMints.filter(m => typeof m === "string"))].slice(0, 20) : [],
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : [],
     lastScanData: s.lastScanData && typeof s.lastScanData === "object" ? s.lastScanData : null
   };
