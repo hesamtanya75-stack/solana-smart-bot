@@ -1,4 +1,4 @@
-const BUILD_ID = "profile-verification-v1";
+const BUILD_ID = "rugcheck-lp-safety-v2";
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -553,16 +553,24 @@ async function inspectMint(mint, env) {
 
   // RugCheck is an independent safety signal: its outage must not abort
   // the scan. RPC holder/mint data is still mandatory and fails closed.
-  const [rugResult, rpcResult] = await Promise.allSettled([
+  const [rugResult, rugSummaryResult, rpcResult] = await Promise.allSettled([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
+    getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report/summary"),
     rpcBatch([
       { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
       { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
       { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
     ], env)
   ]);
-  const rug = rugResult.status === "fulfilled" ? rugResult.value : null;
-  if (rugResult.status === "rejected") {
+  const fullRug = rugResult.status === "fulfilled" ? rugResult.value : null;
+  const rugSummary = rugSummaryResult.status === "fulfilled" ? rugSummaryResult.value : null;
+  const rug = fullRug ? {
+    ...fullRug,
+    score: fullRug.score ?? rugSummary?.score,
+    risks: Array.isArray(fullRug.risks) ? fullRug.risks : rugSummary?.risks,
+    lpLockedPct: rugSummary?.lpLockedPct
+  } : (rugSummary ? rugSummary : null);
+  if (rugResult.status === "rejected" || rugSummaryResult.status === "rejected") {
     console.warn("RugCheck unavailable; token remains ineligible for paper buy", {
       mint,
       error: String(rugResult.reason?.message || rugResult.reason || "Unknown RugCheck error")
