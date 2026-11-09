@@ -388,7 +388,7 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
   <svg class="sol" viewBox="0 0 40 34"><defs><linearGradient id="sg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs>
   <path d="M7 1h31l-5 7H2z" fill="url(#sg)"/><path d="M7 13h31l-5 7H2z" fill="url(#sg)" transform="translate(0 0)"/><path d="M2 25h31l5 7H7z" fill="url(#sg)"/></svg>
   <div class="ttl"><h1>SOLANA <b>SMART BOT</b></h1><p>پشکنینی زیرەکی کۆینی سولانا 🚀</p></div>
-  <div class="shield"><button id="openTestnet" type="button" style="margin-bottom:5px;padding:5px 9px;border:1px solid #22c55e;border-radius:9px;background:#102b25;color:#86efac;font:inherit;font-size:10px;font-weight:800;cursor:pointer">🧪 Testnet</button><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
+  <div class="shield"><button id="openTestnet" type="button" style="margin-bottom:5px;padding:5px 9px;border:1px solid #22c55e;border-radius:9px;background:#102b25;color:#86efac;font:inherit;font-size:10px;font-weight:800;cursor:pointer">🧪 Testnet</button><button id="openMainnet" type="button" style="margin:0 4px 5px;padding:5px 9px;border:1px solid #f59e0b;border-radius:9px;background:#33240b;color:#fcd34d;font:inherit;font-size:10px;font-weight:800;cursor:pointer">🌐 Mainnet (تەنها خوێندنەوە)</button><svg width="42" height="42" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z" fill="#22c55e"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>پاراستن · Wallet بەستەر نەکراوە · تەنها دیمۆ <button id="openProfile" class="profile-button" type="button">👤 پرۆفایل</button><button id="logout" type="button" style="margin-right:8px;padding:6px 10px;border:1px solid #fb7185;border-radius:9px;background:#3b1020;color:#fecdd3;font:inherit;font-size:11px;cursor:pointer">دەرچوون ↩</button></div>
 </header>
 <div class="box" id="panelScan">
   <label class="search"><span>🔍</span><input id="q" type="text" autocapitalize="off" autocorrect="off" placeholder="ئادرەسی Mint کۆین بنووسە..."></label>
@@ -465,6 +465,18 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
    <a href="https://faucet.solana.com/" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;min-height:38px;padding:6px 9px;border:1px solid #22c55e;border-radius:10px;background:#102b25;color:#86efac;text-decoration:none;font-size:12px;font-weight:800">🌐 Faucet ـی فەرمی</a>
   </div>
   <p class="sub" id="testnetMessage" style="margin-top:8px;line-height:1.6">تەنها SOL ـی Devnet ـە و نرخی ڕاستەقینەی نییە.</p>
+ </div>
+</div>
+<div class="testnet-modal" id="mainnetModal" role="dialog" aria-modal="true" aria-label="Solana Mainnet Read Only">
+ <div class="testnet-dialog">
+  <div class="detail-head"><span>🌐 Solana Mainnet — تەنها خوێندنەوە</span><button class="detail-close" id="mainnetClose" type="button">داخستن ✕</button></div>
+  <p class="profile-note">ئەم بەشە تەنها ناونیشانی گشتی و باڵانسی SOL لە Mainnet دەخوێنێتەوە. هیچ مامەڵەیەک دروست ناکات، واژۆ ناوێت و هیچ پارەیەک نانێرێت.</p>
+  <div class="testnet-status" id="mainnetStatus">Wallet بەستەر نەکراوە</div>
+  <div class="testnet-address" id="mainnetAddress">—</div>
+  <div class="testnet-balance"><span>باڵانسی Mainnet SOL</span><b id="mainnetBalance">— SOL</b></div>
+  <div class="row"><button class="btn blue" id="connectMainnetPhantom" type="button">🔗 بەستنەوەی Phantom</button><button class="btn green" id="refreshMainnetBalance" type="button" disabled>🔄 نوێکردنەوەی باڵانس</button></div>
+  <button class="btn blue" id="copyMainnetAddress" type="button" disabled style="width:100%;margin-top:9px">📋 کۆپیکردنی ناونیشان</button>
+  <p class="sub" id="mainnetMessage" style="margin-top:8px;line-height:1.6">تەنها خوێندنەوە؛ کڕین و فرۆشتن لەم قۆناغەدا ناچالاکە.</p>
  </div>
 </div>
 <div class="profile-modal" id="profileModal" role="dialog" aria-modal="true" aria-label="پرۆفایل">
@@ -948,6 +960,80 @@ $("requestDevnetAirdrop").onclick=function(){
  var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
  if(provider&&provider.isPhantom&&provider.publicKey)renderDevnetWallet(provider.publicKey.toString());
  if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderDevnetWallet(key?key.toString():null)});
+})();
+// Mainnet wallet: read-only connection and SOL balance. No transaction creation or signing here.
+var mainnetWallet=null;
+var MAINNET_RPC_URL="https://api.mainnet-beta.solana.com";
+var MAINNET_GENESIS_HASH="5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+var mainnetRpcVerified=false;
+async function mainnetRpc(method,params){
+ if(!mainnetRpcVerified){
+  var check=await fetch(MAINNET_RPC_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"getGenesisHash",params:[]})});
+  if(!check.ok)throw new Error("Mainnet RPC HTTP "+check.status);
+  var checkData=await check.json();
+  if(checkData.result!==MAINNET_GENESIS_HASH)throw new Error("RPC ـەکە Mainnet ـی دروست نییە؛ بۆ پاراستن ڕەتکرایەوە");
+  mainnetRpcVerified=true;
+ }
+ var response=await fetch(MAINNET_RPC_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+ if(!response.ok)throw new Error("Mainnet RPC HTTP "+response.status);
+ var data=await response.json();
+ if(data.error)throw new Error(data.error.message||"Mainnet RPC error");
+ return data.result;
+}
+function mainnetMessage(message,isError){
+ $("mainnetMessage").textContent=message;
+ $("mainnetMessage").style.color=isError?"#fda4af":"#a9aed6";
+}
+function renderMainnetWallet(publicKey){
+ mainnetWallet=publicKey?String(publicKey):null;
+ $("mainnetStatus").textContent=mainnetWallet?"🟢 Phantom بەستراوە — Mainnet balance read-only":"Wallet بەستەر نەکراوە";
+ $("mainnetStatus").style.color=mainnetWallet?"#86efac":"#fbbf24";
+ $("mainnetAddress").textContent=mainnetWallet||"—";
+ $("connectMainnetPhantom").disabled=!!mainnetWallet;
+ $("refreshMainnetBalance").disabled=!mainnetWallet;
+ $("copyMainnetAddress").disabled=!mainnetWallet;
+ $("mainnetBalance").textContent="— SOL";
+ if(mainnetWallet)refreshMainnetSolBalance();
+}
+async function refreshMainnetSolBalance(){
+ if(!mainnetWallet)return;
+ $("refreshMainnetBalance").disabled=true;
+ mainnetMessage("باڵانسی Mainnet دەخوێندرێتەوە...");
+ try{
+  var result=await mainnetRpc("getBalance",[mainnetWallet,{commitment:"confirmed"}]);
+  $("mainnetBalance").textContent=(Number(result.value)/1e9).toFixed(6)+" SOL";
+  mainnetMessage("باڵانس لە Solana Mainnet خوێندرایەوە. ئەم بەشە تەنها خوێندنەوەیە.");
+ }catch(error){mainnetMessage("نەتوانرا باڵانسی Mainnet بخوێندرێتەوە: "+error.message,true)}
+ finally{$("refreshMainnetBalance").disabled=!mainnetWallet}
+}
+$("openMainnet").onclick=function(){$("mainnetModal").classList.add("open");if(mainnetWallet)refreshMainnetSolBalance()};
+$("mainnetClose").onclick=function(){$("mainnetModal").classList.remove("open")};
+$("mainnetModal").addEventListener("click",function(event){if(event.target===$("mainnetModal"))$("mainnetModal").classList.remove("open")});
+$("connectMainnetPhantom").onclick=async function(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(!provider||!provider.isPhantom){mainnetMessage("تکایە لە وێبگەڕی Phantom ئەم وێبسایتە بکەرەوە و دووبارە هەوڵ بدەرەوە.");var currentUrl=window.location.href;window.location.href="https://phantom.app/ul/browse/"+encodeURIComponent(currentUrl);return}
+ this.disabled=true;mainnetMessage("داوای بەستنەوە لە Phantom دەکرێت...");
+ try{
+  var result=await provider.connect();
+  if(!result||!result.publicKey)throw new Error("Wallet public key بەردەست نییە");
+  renderMainnetWallet(result.publicKey.toString());
+  mainnetMessage("Wallet بەسترا؛ تەنها باڵانسی Mainnet دەخوێنینەوە. هیچ واژۆیەک داوا ناکرێت.");
+ }catch(error){mainnetMessage(error.message||"بەستنەوە سەرکەوتوو نەبوو.",true)}
+ finally{$("connectMainnetPhantom").disabled=!!mainnetWallet}
+};
+$("refreshMainnetBalance").onclick=refreshMainnetSolBalance;
+$("copyMainnetAddress").onclick=async function(){
+ if(!mainnetWallet)return;
+ try{
+  if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("Clipboard لەم وێبگەڕەدا بەردەست نییە.");
+  await navigator.clipboard.writeText(mainnetWallet);
+  mainnetMessage("ناونیشانی Wallet کۆپی کرا.");
+ }catch(error){mainnetMessage(error.message||"کۆپیکردن سەرکەوتوو نەبوو.",true)}
+};
+(function watchMainnetPhantom(){
+ var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
+ if(provider&&provider.isPhantom&&provider.publicKey)renderMainnetWallet(provider.publicKey.toString());
+ if(provider&&provider.isPhantom&&provider.on)provider.on("accountChanged",function(key){renderMainnetWallet(key?key.toString():null)});
 })();
 function toast(t){var e=$("toast");e.textContent=t;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},2300)}
 async function scanMint(mint){
