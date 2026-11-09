@@ -983,7 +983,7 @@ export default {
           const body = await request.json();
           const defaults = { theme: "purple", mode: "dark", density: "comfortable", scale: "normal", layout: "grid", accent: "#8b5cf6", background: "aurora", font: "noto", radius: 18, visible: { scan: true, token: true, market: true, security: true, holders: true, selling: true, botStats: true, trades: true, reports: true, notice: true } };
           const allowed = { theme: ["purple", "blue", "green", "rose"], mode: ["dark", "light"], density: ["compact", "comfortable", "spacious"], scale: ["small", "normal", "large"], layout: ["grid", "single", "wide"], background: ["aurora", "midnight", "slate", "black"], font: ["noto", "system", "arial", "serif"] };
-          const panelKeys = ["scan", "token", "market", "security", "holders", "selling", "botStats", "trades", "reports", "notice"];
+          const panelKeys = ["header", "scan", "token", "market", "security", "holders", "selling", "botStats", "trades", "reports", "notice"];
           const settings = {};
           for (const [key, values] of Object.entries(allowed)) settings[key] = values.includes(body[key]) ? body[key] : defaults[key];
           settings.accent = /^#[0-9a-f]{6}$/i.test(String(body.accent || "")) ? String(body.accent) : defaults.accent;
