@@ -13,7 +13,7 @@ const DEFAULT_STATE = {
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
-  "https://api.mainnet.solana.com",
+  "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com"
 ];
 let rpcCursor = 0;
