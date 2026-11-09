@@ -249,86 +249,121 @@ async function getDexJson(url, env, ttlSeconds = 30) {
 }
 
 let geckoDiscoveryCache = { savedAt: 0, data: null };
+let jupiterDiscoveryCache = { savedAt: 0, data: null };
 // Short-lived per-isolate cache for Jupiter token market fallback.
 const jupiterMarketCache = new Map();
 let jupiterNextAt = 0;
 
 async function getLatestSolanaProfiles(env) {
   const errors = [];
-  try {
-    const profiles = await getDexJson(
-      "https://api.dexscreener.com/token-profiles/latest/v1", env, 60
-    );
-    if (Array.isArray(profiles) && profiles.some(t => t?.chainId === "solana" && t?.tokenAddress)) return profiles;
-    errors.push("DexScreener returned no Solana profiles");
-  } catch (error) {
-    errors.push("DexScreener: " + String(error?.message || error));
-  }
+  const sources = [];
 
-  // Second source: GeckoTerminal newly-created Solana pools.
-  try {
-    const cached = geckoDiscoveryCache;
-    if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
-    const response = await fetch(
-      "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token,quote_token",
-      {
-        headers: { "Accept": "application/json;version=20230302" },
+  // Query independent discovery feeds together. A healthy DexScreener response
+  // must not hide newer pools or recent tokens available from other providers.
+  const [dexResult, geckoResult, jupiterResult] = await Promise.allSettled([
+    (async () => {
+      const profiles = await getDexJson(
+        "https://api.dexscreener.com/token-profiles/latest/v1", env, 60
+      );
+      if (!Array.isArray(profiles)) throw new Error("invalid profile response");
+      return profiles.filter(item => item?.chainId === "solana" && item?.tokenAddress)
+        .map(item => ({
+          chainId: "solana",
+          tokenAddress: String(item.tokenAddress),
+          description: item.description || item.header || item.url || "Solana token",
+          url: item.url || null
+        }));
+    })(),
+    (async () => {
+      const cached = geckoDiscoveryCache;
+      if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
+      const response = await fetch(
+        "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token,quote_token",
+        {
+          headers: { "Accept": "application/json;version=20230302" },
+          signal: AbortSignal.timeout(12000)
+        }
+      );
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const payload = await response.json();
+      const included = new Map((payload.included || []).map(item => [item.id, item]));
+      const profiles = (payload.data || []).map(pool => {
+        const tokenId = pool.relationships?.base_token?.data?.id;
+        const token = tokenId ? included.get(tokenId) : null;
+        const attrs = token?.attributes || {};
+        const mint = String(attrs.address || (tokenId || "").replace(/^solana_/, ""));
+        if (!mint) return null;
+        return {
+          chainId: "solana",
+          tokenAddress: mint,
+          description: [attrs.name, attrs.symbol].filter(Boolean).join(" ") || "New Solana pool",
+          url: "https://www.geckoterminal.com/solana/pools/" + encodeURIComponent(pool.attributes?.address || "")
+        };
+      }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
+      const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
+      if (!unique.length) throw new Error("returned no usable Solana tokens");
+      geckoDiscoveryCache = { savedAt: Date.now(), data: unique };
+      return unique;
+    })(),
+    (async () => {
+      const cached = jupiterDiscoveryCache;
+      if (cached.data && Date.now() - cached.savedAt < 60 * 1000) return cached.data;
+      const response = await fetch("https://api.jup.ag/tokens/v2/recent", {
+        headers: { "Accept": "application/json" },
         signal: AbortSignal.timeout(12000)
-      }
-    );
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const payload = await response.json();
-    const included = new Map((payload.included || []).map(item => [item.id, item]));
-    const profiles = (payload.data || []).map(pool => {
-      const tokenId = pool.relationships?.base_token?.data?.id;
-      const token = tokenId ? included.get(tokenId) : null;
-      const attrs = token?.attributes || {};
-      const mint = String(attrs.address || (tokenId || "").replace(/^solana_/, ""));
-      if (!mint) return null;
-      return {
-        chainId: "solana",
-        tokenAddress: mint,
-        description: [attrs.name, attrs.symbol].filter(Boolean).join(" "),
-        url: "https://www.geckoterminal.com/solana/pools/" + encodeURIComponent(pool.attributes?.address || "")
-      };
-    }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
-    const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
-    if (!unique.length) throw new Error("returned no usable Solana tokens");
-    geckoDiscoveryCache = { savedAt: Date.now(), data: unique };
-    return unique;
-  } catch (error) {
-    errors.push("GeckoTerminal: " + String(error?.message || error));
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const payload = await response.json();
+      const rows = Array.isArray(payload) ? payload : (payload.tokens || payload.data || []);
+      const profiles = rows.map(token => {
+        const mint = String(token.id || token.address || token.mint || "");
+        if (!mint) return null;
+        return {
+          chainId: "solana",
+          tokenAddress: mint,
+          description: [token.name, token.symbol].filter(Boolean).join(" ") || "Recent Solana token",
+          url: "https://jup.ag/tokens/" + encodeURIComponent(mint)
+        };
+      }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
+      const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
+      if (!unique.length) throw new Error("returned no usable Solana tokens");
+      jupiterDiscoveryCache = { savedAt: Date.now(), data: unique };
+      return unique;
+    })()
+  ]);
+
+  for (const [name, result] of [
+    ["DexScreener", dexResult],
+    ["GeckoTerminal", geckoResult],
+    ["Jupiter", jupiterResult]
+  ]) {
+    if (result.status === "fulfilled") {
+      if (result.value.length) sources.push(result.value);
+      else errors.push(name + ": no Solana candidates");
+    } else {
+      errors.push(name + ": " + String(result.reason?.message || result.reason));
+    }
   }
 
-  // Third source: Jupiter's recent first-pool feed. It is independent of both
-  // DexScreener and GeckoTerminal and needs no wallet or transaction signing.
-  try {
-    const response = await fetch("https://api.jup.ag/tokens/v2/recent", {
-      headers: { "Accept": "application/json" },
-      signal: AbortSignal.timeout(12000)
-    });
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const payload = await response.json();
-    const rows = Array.isArray(payload) ? payload : (payload.tokens || payload.data || []);
-    const profiles = rows.map(token => {
-      const mint = String(token.id || token.address || token.mint || "");
-      if (!mint) return null;
-      return {
-        chainId: "solana",
-        tokenAddress: mint,
-        description: [token.name, token.symbol].filter(Boolean).join(" "),
-        url: "https://jup.ag/tokens/" + encodeURIComponent(mint)
-      };
-    }).filter(item => item && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(item.tokenAddress));
-    const unique = [...new Map(profiles.map(item => [item.tokenAddress, item])).values()];
-    if (!unique.length) throw new Error("returned no usable Solana tokens");
-    return unique;
-  } catch (error) {
-    errors.push("Jupiter: " + String(error?.message || error));
+  if (!sources.length) {
+    throw new Error("نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + errors.join("; "));
   }
-  throw new Error("نەتوانرا کۆینی نوێ بدۆزرێتەوە: " + errors.join("; "));
+
+  // Round-robin the feeds so one provider cannot occupy the entire queue.
+  const merged = [];
+  const seen = new Set();
+  const maxLength = Math.max(...sources.map(source => source.length));
+  for (let index = 0; index < maxLength; index++) {
+    for (const source of sources) {
+      const item = source[index];
+      const mint = String(item?.tokenAddress || "");
+      if (!mint || seen.has(mint)) continue;
+      seen.add(mint);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
-
 function mintDetails(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account unavailable");
@@ -1056,10 +1091,16 @@ export default {
       if (url.pathname === "/api/discover" && request.method === "GET") {
         try {
           const profiles = await getLatestSolanaProfiles(env);
+          const state = await readState(env);
+          const excluded = new Set([
+            ...state.scannedMints,
+            ...state.pendingMints,
+            ...state.trades.map(trade => trade.mint)
+          ]);
           const seen = new Set();
           const tokens = (Array.isArray(profiles) ? profiles : []).filter(item => {
             const mint = String(item?.tokenAddress || "");
-            if (item?.chainId !== "solana" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || seen.has(mint)) return false;
+            if (item?.chainId !== "solana" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || seen.has(mint) || excluded.has(mint)) return false;
             seen.add(mint); return true;
           }).slice(0, 10).map(item => ({ mint: item.tokenAddress, name: item.description || "Solana token", url: item.url || null }));
           return json({ ok: true, tokens });
