@@ -371,15 +371,69 @@ function mintDetails(account) {
   }
   return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
 }
+async function getMarketForMint(mint, env) {
+  let dexError = null;
+  try {
+    const dex = await getDexJson(
+      "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
+    );
+    const market = (dex.pairs || []).filter(p => p.chainId === "solana" &&
+      (p.baseToken?.address === mint || p.quoteToken?.address === mint))
+      .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
+    if (market) return market;
+    dexError = new Error("DexScreener returned no Solana market pair");
+  } catch (error) {
+    dexError = error;
+  }
+
+  // Independent market-data fallback for tokens when DexScreener is throttled.
+  try {
+    const response = await fetch(
+      "https://api.geckoterminal.com/api/v2/networks/solana/tokens/" +
+        encodeURIComponent(mint) + "/pools?include=base_token,quote_token",
+      {
+        headers: { "Accept": "application/json;version=20230302" },
+        signal: AbortSignal.timeout(12000)
+      }
+    );
+    if (!response.ok) throw new Error("GeckoTerminal HTTP " + response.status);
+    const payload = await response.json();
+    const included = new Map((payload.included || []).map(item => [item.id, item]));
+    const pools = (payload.data || []).map(pool => {
+      const attrs = pool.attributes || {};
+      const baseId = pool.relationships?.base_token?.data?.id;
+      const quoteId = pool.relationships?.quote_token?.data?.id;
+      const base = included.get(baseId)?.attributes || {};
+      const quote = included.get(quoteId)?.attributes || {};
+      const isBase = String(base.address || baseId?.replace(/^solana_/, "")) === mint;
+      if (!isBase) return null;
+      const tx = attrs.transactions?.h24 || {};
+      const buys = Number(tx.buys || tx.buys_count || 0);
+      const sells = Number(tx.sells || tx.sells_count || 0);
+      return {
+        chainId: "solana",
+        dexId: "geckoterminal",
+        url: "https://www.geckoterminal.com/solana/pools/" + encodeURIComponent(attrs.address || ""),
+        pairAddress: attrs.address || null,
+        baseToken: { address: mint, name: base.name || "Unknown token", symbol: base.symbol || "" },
+        quoteToken: { address: quote.address || "", name: quote.name || "", symbol: quote.symbol || "" },
+        priceUsd: attrs.base_token_price_usd || attrs.token_price_usd || null,
+        priceChange: { h24: Number(attrs.price_change_percentage?.h24 || 0) },
+        volume: { h24: Number(attrs.volume_usd?.h24 || 0) },
+        liquidity: { usd: Number(attrs.reserve_in_usd || 0) },
+        txns: { h24: { buys, sells } }
+      };
+    }).filter(Boolean).sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0));
+    if (!pools.length) throw new Error("No GeckoTerminal pool found for this mint");
+    return pools[0];
+  } catch (geckoError) {
+    throw new Error("DexScreener: " + String(dexError?.message || dexError) +
+      "; GeckoTerminal: " + String(geckoError?.message || geckoError));
+  }
+}
+
 async function inspectMint(mint, env) {
-  // Check for a real Solana market first. New-token profile entries can exist
-  // before DexScreener has indexed a tradable pair; avoid spending RPC calls then.
-  const dex = await getDexJson(
-    "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
-  );
-  const market = (dex.pairs || []).filter(p => p.chainId === "solana")
-    .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-  if (!market) throw new Error("No Solana market pair");
+  const market = await getMarketForMint(mint, env);
 
   const [rug, rpcResults] = await Promise.all([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
