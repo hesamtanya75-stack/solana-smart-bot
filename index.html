@@ -426,7 +426,7 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
 </div>
 <div class="row">
   <div class="box" id="panelHolders">
-    <div class="h"><span>دابەشبوونی خاوەنەکان</span></div>
+    <div class="h"><span>دابەشبوونی خاوەنەکان</span></div><div class="sub">تەنها 20 هەژماری گەورەترین دەبینرێن؛ سنووری پارێزگاری بۆ داتای نەبینراو لە پشکنینەکەدا زیاد دەکرێت.</div>
     <div class="don"><div class="ring" id="ring"><div id="ringTxt"></div></div><div class="lg" id="lg"></div></div>
   </div>
   <div class="box sell" id="panelSelling">
@@ -698,8 +698,9 @@ function render(){
  var top=Array.isArray(T.top)?T.top:[];var ch=[];
  ch.push([T.mint===false,"Mint Authority: "+(T.mint===false?"Disabled":T.mint===true?"Enabled":"Unknown / unconfirmed")]);
  ch.push([T.freeze===false,"Freeze Authority: "+(T.freeze===false?"Disabled":T.freeze===true?"Enabled":"Unknown / unconfirmed")]);
- ch.push([top.length>0&&top[0]<=30,"گەورەترین خاوەن: "+(top.length?Number(top[0]).toFixed(2):"--")+"%"]);
- ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"کۆی 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.largestPct!=null&&Number(T.largestPct)<=30,"سنووری پارێزگاری بۆ گەورەترین خاوەن: "+(T.largestPct==null?"--":Number(T.largestPct).toFixed(2))+"%"]);
+ ch.push([T.topTenPct!=null&&Number(T.topTenPct)<=50,"سنووری پارێزگاری بۆ 10 خاوەنی گەورە: "+(T.topTenPct==null?"--":Number(T.topTenPct).toFixed(2))+"%"]);
+ ch.push([T.holderCoveragePct!=null&&Number(T.holderCoveragePct)>=0,"داپۆشینی داتای 20 هەژماری گەورە: "+(T.holderCoveragePct==null?"--":Number(T.holderCoveragePct).toFixed(2))+"%"]);
  ch.push([Number(T.liq)>=10000,"لیکوییدیتی: "+fmt(T.liq)]);
  ch.push([Number(T.buys)>0&&Number(T.sells)>0&&Number(T.sells)<=Number(T.buys)*3,"کڕین / فرۆشتن: "+T.buys+" / "+T.sells]);
  ch.push([T.rugScore!=null&&Number(T.rugScore)<=2500,"RugCheck Score: "+(T.rugScore==null?"بەردەست نییە":Number(T.rugScore).toLocaleString("en-US"))]);
@@ -711,7 +712,7 @@ function render(){
  $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
  $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
  $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
- $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US");
+ $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US")+" خاوەن / "+Number(T.holderTokenAccountsChecked||0).toLocaleString("en-US")+" هەژمار";
  $("bs").textContent=Number(T.buys||0).toLocaleString("en-US")+" / "+Number(T.sells||0).toLocaleString("en-US");
  $("vol").textContent=fmt(T.vol);$("liq").textContent=fmt(T.liq);$("liq").className=Number(T.liq)<10000?"bad":"";
  $("checks").innerHTML=ch.map(function(c){return '<li><em class="'+(c[0]?"y":"n")+'">'+(c[0]?"✓":"✕")+'</em>'+c[1]+'</li>'}).join("");
