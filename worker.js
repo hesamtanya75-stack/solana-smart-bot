@@ -20,6 +20,8 @@ const RPCS = [
   "https://solana-rpc.publicnode.com"
 ];
 let rpcNextAt = 0;
+let rpcStartIndex = 0;
+const rpcCooldowns = new Map();
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
 // Per-isolate DexScreener cache: avoid spending Workers KV daily write quota on API caching.
@@ -64,13 +66,9 @@ async function authorized(request, env) {
 }
 async function rpc(method, params, env) {
   const errors = [];
-  // Try the existing Alchemy key first, then fall back to a public Solana RPC.
-  // Never expose the API key in logs or error messages.
   const endpoints = [];
   const alchemyConfig = String(env?.ALCHEMY_API_KEY || "").trim();
   if (alchemyConfig && !alchemyUnauthorized) {
-    // Accept either the raw Alchemy API key or the complete HTTPS endpoint.
-    // This avoids accidental 401s caused by storing the endpoint URL as a key.
     const alchemyUrl = /^https:\/\//i.test(alchemyConfig)
       ? alchemyConfig.replace(/\/+$/, "")
       : "https://solana-mainnet.g.alchemy.com/v2/" + alchemyConfig;
@@ -87,51 +85,79 @@ async function rpc(method, params, env) {
       errors.push("Alchemy configuration invalid: use the Solana Mainnet API key or its HTTPS endpoint");
     }
   }
-  // Try every configured public fallback, not just the first one. Rotate the
-  // starting provider between calls to avoid repeatedly favoring one endpoint.
   for (const fallback of RPCS) {
-    endpoints.push({ url: fallback, label: fallback.includes("solanavibestation") ? "Solana Vibe Station" : new URL(fallback).hostname });
+    endpoints.push({
+      url: fallback,
+      label: fallback.includes("solanavibestation")
+        ? "Solana Vibe Station"
+        : new URL(fallback).hostname
+    });
   }
 
-  // Each provider has a bounded timeout; continue to the next provider on failure.
-  for (const endpoint of endpoints) {
+  if (!endpoints.length) throw new Error("No Solana RPC providers configured");
+  // Round-robin the first provider; skip temporarily blocked providers and
+  // continue to the next one without repeatedly hitting the same 403/429 host.
+  const startAt = rpcStartIndex % endpoints.length;
+  rpcStartIndex = (rpcStartIndex + 1) % endpoints.length;
+  const ordered = endpoints.slice(startAt).concat(endpoints.slice(0, startAt));
+  let attempted = 0;
+  for (const endpoint of ordered) {
+    const cooldownUntil = rpcCooldowns.get(endpoint.label) || 0;
+    if (cooldownUntil > Date.now()) {
+      errors.push(endpoint.label + ": temporarily cooling down (" +
+        Math.ceil((cooldownUntil - Date.now()) / 1000) + "s)");
+      continue;
+    }
+    attempted++;
     try {
-      if (endpoint.label === "Solana Vibe Station") {
-        const waitMs = Math.max(0, rpcNextAt - Date.now());
-        rpcNextAt = Date.now() + 1100;
-        if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-      }
       const response = await fetch(endpoint.url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(7000)
+        signal: AbortSignal.timeout(6000)
       });
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) {
+        const status = response.status;
+        let cooldownMs = 0;
+        if (status === 401 && endpoint.label === "Alchemy Solana RPC") {
+          alchemyUnauthorized = true;
+          cooldownMs = 10 * 60 * 1000;
+        } else if (status === 403) {
+          cooldownMs = 5 * 60 * 1000;
+        } else if (status === 429) {
+          const retry = Number(response.headers.get("Retry-After") || 0);
+          cooldownMs = Math.min(10 * 60 * 1000,
+            Math.max(30 * 1000, Number.isFinite(retry) && retry > 0 ? retry * 1000 : 60 * 1000));
+        } else if (status >= 500) {
+          cooldownMs = 15 * 1000;
+        }
+        if (cooldownMs) rpcCooldowns.set(endpoint.label, Date.now() + cooldownMs);
+        throw new Error("HTTP " + status);
+      }
       const data = await response.json();
       if (data.error) throw new Error(data.error.message || "RPC error");
+      rpcCooldowns.delete(endpoint.label);
       rpcDiagnostics.successes.push(endpoint.label);
       return data.result;
     } catch (error) {
       const message = String(error?.message || error);
-      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") {
-        alchemyUnauthorized = true;
+      if (/timeout|abort/i.test(message)) {
+        rpcCooldowns.set(endpoint.label, Date.now() + 10 * 1000);
       }
       errors.push(endpoint.label + ": " + message);
       rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
   }
+  if (!attempted) {
+    throw new Error("هەموو سێرڤەرەکانی RPC کاتی پشوویانە؛ دوای چەند چرکەیەک دووبارە هەوڵ بدە.");
+  }
   throw new Error("Solana RPC providers failed — " + errors.join(" | "));
 }
 
 async function rpcBatch(calls, env) {
-  // Send standard single JSON-RPC requests instead of JSON-RPC batch arrays.
-  // Several public Solana gateways reject batch payloads with HTTP 400.
-  const results = [];
-  for (const call of calls) {
-    results.push(await rpc(call.method, call.params, env));
-  }
-  return results;
+  // Use independent JSON-RPC requests concurrently (not a batch payload).
+  // Each call rotates providers independently and fails over on 403/429/timeouts.
+  return Promise.all(calls.map(call => rpc(call.method, call.params, env)));
 }
 
 async function getJson(url) {
