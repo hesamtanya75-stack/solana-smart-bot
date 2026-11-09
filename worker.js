@@ -616,8 +616,7 @@ async function autoBuy(state, env) {
     }
   }
   // Two full inspections per five-minute cron run protects RPC and Worker limits.
-  // A batch of up to ten newly discovered candidates is therefore processed
-  // over several runs, while the queue can safely retain a larger backlog.
+  // The bounded FIFO queue prevents old candidates from growing without limit.
   let queueChecksRemaining = state.pendingMints.length;
   while (checked < 2 && queueChecksRemaining-- > 0 && state.balance >= 5 &&
          state.trades.filter(t => !t.sold).length < 10 && state.pendingMints.length) {
