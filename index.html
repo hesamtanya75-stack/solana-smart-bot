@@ -497,7 +497,7 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
   </div>
   <section class="design-panel" aria-label="ڕێکخستنی دیزاین">
    <h3>🎨 ڕێکخستنی دیزاین</h3>
-   <p class="profile-note">شێوازی بۆتەکە بگۆڕە؛ گۆڕانکارییەکان لەسەر ئەم ئامێرە پاشەکەوت دەکرێن.</p>
+   <p class="profile-note">شێوازی بۆتەکە بگۆڕە؛ ڕێکخستنەکان لە هەژمارەکەت پاشەکەوت و هاوکات دەکرێن.</p>
    <label class="design-field">🎨 ڕەنگی دیزاین
     <select id="designTheme"><option value="purple">مۆر</option><option value="blue">شین</option><option value="green">سەوز</option><option value="rose">پەمەیی</option></select>
    </label>
@@ -782,6 +782,7 @@ $("openVisualEditor").onclick=openVisualEditor;
 loadDesignSettings();
 ["designTheme","designMode","designDensity","designScale","designLayout","designAccent","designBackground","designFont","designRadius"].forEach(function(id){$(id).addEventListener("change",function(){if(this.id==="designRadius")$("designRadiusValue").textContent=this.value;applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
 Object.keys(DESIGN_PANEL_IDS).forEach(function(k){$(designControlId(k)).addEventListener("change",function(){applyDesignSettings();$("designMessage").textContent="پێشبینین — بۆ پاشەکەوتکردن دوگمەی پاشەکەوت دابگرە."})});
+$("designRadius").addEventListener("input",function(){ $("designRadiusValue").textContent=this.value;applyDesignSettings() });
 $("saveDesign").onclick=saveCloudDesignSettings;
 $("resetDesign").onclick=async function(){setDesignControls(DESIGN_DEFAULTS);await saveCloudDesignSettings();$("designMessage").textContent="هەموو ڕێکخستنەکان گەڕێندرایەوە بۆ بنەڕەت.";};
 
