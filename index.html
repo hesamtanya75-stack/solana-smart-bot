@@ -633,21 +633,15 @@ $("disableTotp").onclick=async function(){
 };
 // Phantom wallet: Devnet-only test tools. No mainnet signing or real-money trades.
 var devnetWallet=null;
-// Devnet-only RPC failover. Never use a Mainnet endpoint here.
-var DEVNET_RPCS=["https://api.devnet.solana.com","https://solana-devnet-rpc.publicnode.com","https://solana-devnet.drpc.org"];
+// Official Solana Devnet RPC only. No paid-provider endpoint and no Mainnet.
+var DEVNET_RPC="https://api.devnet.solana.com";
 async function devnetRpc(method,params){
- var lastError=null;
- for(var i=0;i<DEVNET_RPCS.length;i++){
-  try{
-   var response=await fetch(DEVNET_RPCS[i],{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
-   var body=await response.text();
-   if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,180):""));
-   var data=JSON.parse(body);
-   if(data.error)throw new Error(data.error.message||"RPC error");
-   return data.result;
-  }catch(error){lastError=error}
- }
- throw new Error("هەموو RPC ـەکانی Devnet وەڵامیان نەدا: "+(lastError?lastError.message:"هەڵەی نەناسراو"));
+ var response=await fetch(DEVNET_RPC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:Date.now(),method:method,params:params||[]})});
+ var body=await response.text();
+ if(!response.ok)throw new Error("HTTP "+response.status+(body?" — "+body.slice(0,180):""));
+ var data=JSON.parse(body);
+ if(data.error)throw new Error(data.error.message||"RPC error");
+ return data.result;
 }
 function testnetMessage(message,isError){$("testnetMessage").textContent=message;$("testnetMessage").style.color=isError?"#fda4af":"#a9aed6"}
 function renderDevnetWallet(publicKey){
@@ -685,24 +679,10 @@ $("disconnectPhantom").onclick=async function(){
  try{var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;if(provider&&provider.isPhantom)await provider.disconnect()}catch(error){}
  renderDevnetWallet(null);testnetMessage("Wallet دابڕا.");
 };
-$("requestDevnetAirdrop").onclick=async function(){
+$("requestDevnetAirdrop").onclick=function(){
  if(!devnetWallet)return;
- this.disabled=true;testnetMessage("داوای 0.5 SOL ـی Devnet دەکرێت...");
- try{
-  var signature=await devnetRpc("requestAirdrop",[devnetWallet,500000000,{commitment:"confirmed"}]);
-  testnetMessage("داواکە نێردرا. چاوەڕێی پشتڕاستکردنەوەی تۆڕ بکە...");
-  var confirmed=false;
-  for(var attempt=0;attempt<12;attempt++){
-   await new Promise(function(resolve){setTimeout(resolve,1500)});
-   var status=await devnetRpc("getSignatureStatuses",[[signature],{searchTransactionHistory:true}]);
-   var item=status&&status.value&&status.value[0];
-   if(item&&item.err)throw new Error("Airdrop transaction ڕەتکرایەوە");
-   if(item&&item.confirmationStatus&&item.confirmationStatus!=="processed"){confirmed=true;break}
-  }
-  if(!confirmed)throw new Error("هێشتا پشتڕاست نەکراوەتەوە؛ دواتر باڵانس نوێ بکەرەوە");
-  await refreshDevnetBalance();testnetMessage("0.5 SOL ـی Devnet بە سەرکەوتوویی زیاد کرا. ئەمانە پارەی تاقیکردنەوەن.");
- }catch(error){testnetMessage("Airdrop سەرکەوتوو نەبوو: "+error.message,true)}
- finally{this.disabled=!devnetWallet}
+ testnetMessage("فەوسێتی خۆڕایی QuickNode دەکرێتەوە. ناونیشانی Wallet ـەکەت لەوێ دابنێ و داوای Devnet SOL بکە.");
+ window.open("https://faucet.quicknode.com/solana/devnet","_blank","noopener");
 };
 (function watchPhantom(){
  var provider=window.phantom&&window.phantom.solana?window.phantom.solana:window.solana;
