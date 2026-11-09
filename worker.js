@@ -123,59 +123,13 @@ async function rpc(method, params, env) {
 }
 
 async function rpcBatch(calls, env) {
-  const errors = [];
-  const endpoints = [];
-  const config = String(env?.ALCHEMY_API_KEY || "").trim();
-  if (config && !alchemyUnauthorized) {
-    const url = /^https:\/\//i.test(config)
-      ? config.replace(/\/+$/, "")
-      : "https://solana-mainnet.g.alchemy.com/v2/" + config;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === "https:" && parsed.hostname === "solana-mainnet.g.alchemy.com" && parsed.pathname.startsWith("/v2/")) {
-        endpoints.push({ url, label: "Alchemy Solana RPC" });
-      }
-    } catch {}
+  // Send standard single JSON-RPC requests instead of JSON-RPC batch arrays.
+  // Several public Solana gateways reject batch payloads with HTTP 400.
+  const results = [];
+  for (const call of calls) {
+    results.push(await rpc(call.method, call.params, env));
   }
-  // Always make all public providers available as fallbacks, even when
-  // Alchemy is configured or returns HTTP 401/403.
-  for (const url of RPCS) {
-    endpoints.push({ url, label: url.includes("solanavibestation") ? "Solana Vibe Station" : new URL(url).hostname });
-  }
-  for (const endpoint of endpoints) {
-    try {
-      if (endpoint.label === "Solana Vibe Station") {
-        const waitMs = Math.max(0, rpcNextAt - Date.now());
-        rpcNextAt = Date.now() + 1100;
-        if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
-      }
-      const response = await fetch(endpoint.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(calls.map((call, index) => ({
-          jsonrpc: "2.0", id: index + 1, method: call.method, params: call.params
-        }))),
-        signal: AbortSignal.timeout(7000)
-      });
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
-      if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
-      const byId = new Map(data.map(item => [item.id, item]));
-      const results = calls.map((_, index) => {
-        const item = byId.get(index + 1);
-        if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
-        return item.result;
-      });
-      rpcDiagnostics.successes.push(endpoint.label);
-      return results;
-    } catch (error) {
-      const message = String(error?.message || error);
-      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") alchemyUnauthorized = true;
-      errors.push(endpoint.label + ": " + message);
-      rpcDiagnostics.errors.push(endpoint.label + ": " + message);
-    }
-  }
-  throw new Error("Solana RPC batch providers failed — " + errors.join(" | "));
+  return results;
 }
 
 async function getJson(url) {
