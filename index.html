@@ -249,7 +249,7 @@ function renderDiscovery(tokens){
   var label=document.createElement("span");label.textContent=(index+1)+". "+String(token.name||"کۆینی نوێ").slice(0,48);
   var mint=document.createElement("small");mint.textContent=token.mint;
   button.append(label,mint);
-  button.onclick=function(){$("q").value=token.mint;toast("ئادرەسی کۆین هەڵبژێردرا؛ ئێستا پشکنینی بکە")};
+  button.onclick=function(){$("q").value=token.mint;toast("کۆین هەڵبژێردرا؛ پشکنین دەست پێدەکات...");$("scan").click()};
   box.appendChild(button);
  });
 }
