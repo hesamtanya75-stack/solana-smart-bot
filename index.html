@@ -35,7 +35,7 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .btn:disabled{opacity:.45}
 .tok{display:flex;align-items:center;gap:12px}
 .av{position:relative;width:64px;height:64px;flex:none;border-radius:50%;background:#2b2f66;display:grid;place-items:center;font-size:34px;border:3px solid #8b5cf6;box-shadow:0 0 14px rgba(139,92,246,.6)}
-.av i{position:absolute;bottom:-3px;left:-3px;width:22px;height:22px;border-radius:50%;background:#0b0d2a;border:2px solid #8b5cf6;display:grid;place-items:center;font-style:normal;font-size:10px;color:#14f195}
+.av img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}.av .av-fallback{display:grid;place-items:center;width:100%;height:100%}.av i{position:absolute;bottom:-3px;left:-3px;width:22px;height:22px;border-radius:50%;background:#0b0d2a;border:2px solid #8b5cf6;display:grid;place-items:center;font-style:normal;font-size:10px;color:#14f195}
 .tm{flex:1;min-width:0}
 .tm h2{font-size:23px;font-weight:800;line-height:1.15}
 .tm small{color:var(--muted);font-size:14px;direction:ltr;display:inline-block}
@@ -274,7 +274,7 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 </div>
 <div class="box">
   <div class="tok">
-    <div class="av">🪙<i>S</i></div>
+    <div class="av"><img id="tokenImage" alt="" hidden><span id="tokenFallback" class="av-fallback">🪙</span><i>S</i></div>
     <div class="tm"><h2 id="name"></h2><small id="tick"></small><br><span class="tag none" id="tag"></span></div>
     <div class="chg none" id="chgBox"><span id="chg"></span><small>24h</small></div>
   </div>
@@ -389,6 +389,7 @@ function closeDetail(){
  var content=$("detailContent"),root=document.querySelector(".wrap"),warn=root.querySelector(".warn");
  Array.from(content.children).forEach(function(node){root.insertBefore(node,warn)});
 }
+function setTokenImage(url){var img=$("tokenImage"),fallback=$("tokenFallback");if(!img||!fallback)return;var safe="";try{var parsed=new URL(String(url||""));if(parsed.protocol==="https:")safe=parsed.href}catch(e){}img.onerror=function(){img.hidden=true;img.removeAttribute("src");fallback.hidden=false};if(safe){img.src=safe;img.hidden=false;fallback.hidden=true}else{img.hidden=true;img.removeAttribute("src");fallback.hidden=false}}
 function fmt(n){var v=Number(n);return n==null||!Number.isFinite(v)?"--":"$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fmtPrice(n){var v=Number(n);return n==null||!Number.isFinite(v)||v<=0?"نرخ بەردەست نییە":"$"+v.toLocaleString("en-US",{maximumSignificantDigits:8})}
 function renderScanReport(items){
@@ -430,7 +431,7 @@ function renderTrades(trades){
 }
 function render(){
  if(!T){
-  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
+  $("name").textContent="ناوی کۆین";$("tick").textContent="$---";setTokenImage(null);$("tag").className="tag none";$("tag").textContent="پشکنین نەکراوە";$("pill").className="pill none";$("pill").textContent="چاوەڕوانی پشکنین";$("chgBox").className="chg none";$("chg").textContent="--";
   ["hold","bs","vol","liq"].forEach(function(k){$(k).textContent="چاوەڕوانی پشکنین";$(k).className=""});
   $("price").textContent="چاوەڕوانی پشکنین";
   $("spark").innerHTML='<line x1="8" y1="36" x2="152" y2="36" stroke="#64748b" stroke-width="1" stroke-dasharray="3 3"/><text x="80" y="25" text-anchor="middle" fill="#a9aed6" font-size="10">گۆڕانی 24h دوای پشکنین</text>';
@@ -451,7 +452,7 @@ function render(){
  var tg={high:"✕ مەترسی بەرز",mid:"⚠ ئاگاداربە",low:"✓ سەلامەتی باش"}[lv];
  var pl={high:"مەترسی زۆر بەرز",mid:"مەترسی مامناوەند",low:"مەترسی کەم"}[lv];
  $("tag").className="tag "+lv;$("tag").textContent=tg;$("pill").className="pill "+lv;$("pill").textContent=pl;
- $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";
+ $("name").textContent=T.name||"ناوی کۆین";$("tick").textContent=T.tick||"";setTokenImage(T.imageUrl);
  $("chgBox").className="chg"+(Number(T.chg)<0?" none":"");
  $("chg").textContent=(Number(T.chg)>=0?"↑ +":"↓ ")+Number(T.chg||0).toFixed(2)+"%";
  $("hold").textContent=T.holderAccountsChecked==null?"بەردەست نییە":Number(T.holderAccountsChecked).toLocaleString("en-US");
