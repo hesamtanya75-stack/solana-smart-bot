@@ -343,6 +343,40 @@ body{
  line-height:1.4;
 }
 
+
+/* Kurdish text readability: preserve Arabic-script shaping and clear word separation everywhere. */
+html[lang="ckb"], html[lang="ckb"] body,
+html[lang="ckb"] body button, html[lang="ckb"] body input,
+html[lang="ckb"] body textarea, html[lang="ckb"] body select {
+ font-family:'Noto Naskh Arabic','Noto Sans Arabic','Geeza Pro',-apple-system,system-ui,sans-serif;
+ font-kerning:normal;
+ font-variant-ligatures:normal;
+ font-feature-settings:"ccmp" 1,"rlig" 1,"liga" 1,"calt" 1;
+}
+html[lang="ckb"] body {
+ direction:rtl;
+ text-rendering:optimizeLegibility;
+}
+html[lang="ckb"] .wrap,
+html[lang="ckb"] .detail-dialog,
+html[lang="ckb"] .toast {
+ word-spacing:.12em;
+ letter-spacing:normal;
+}
+html[lang="ckb"] .wrap button,
+html[lang="ckb"] .detail-dialog button,
+html[lang="ckb"] .wrap p,
+html[lang="ckb"] .wrap span,
+html[lang="ckb"] .wrap b,
+html[lang="ckb"] .wrap small,
+html[lang="ckb"] .wrap li,
+html[lang="ckb"] .detail-dialog,
+html[lang="ckb"] .toast {
+ font-kerning:normal;
+ font-variant-ligatures:normal;
+ font-feature-settings:"ccmp" 1,"rlig" 1,"liga" 1,"calt" 1;
+}
+
 </style>
 </head>
 <body>
