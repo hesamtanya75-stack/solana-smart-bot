@@ -362,7 +362,15 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
   <label class="profile-field">📧 Gmail / ئیمەیڵ<input id="profileEmail" type="email" maxlength="254" autocomplete="email" placeholder="name@gmail.com"></label>
   <label class="profile-field">📱 ژمارەی مۆبایل (بە کۆدی وڵات)<input id="profilePhone" type="tel" maxlength="20" autocomplete="tel" placeholder="+9647xxxxxxxxx"></label>
   <button class="profile-action" id="saveProfile" type="button">💾 پاشەکەوتکردنی زانیارییەکان</button>
-  <p class="profile-note">تێبینی: Gmail و ژمارەی مۆبایل لەم قۆناغەدا تەنها تۆمار دەکرێن؛ پشتڕاستکردنەوەی Gmail/SMS پێویستی بە خزمەتگوزاری ناردنی کۆد هەیە و هێشتا چالاک نییە.</p>
+  <div class="profile-note" id="emailVerifyState">Gmail: پشتڕاست نەکراوەتەوە</div>
+  <button class="profile-action" id="sendEmailCode" type="button">📨 ناردنی کۆدی پشتڕاستکردنەوە بۆ Gmail</button>
+  <label class="profile-field">کۆدی نێردراو بۆ Gmail<input id="emailVerifyCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+  <button class="profile-action" id="confirmEmailCode" type="button">✓ پشتڕاستکردنەوەی Gmail</button>
+  <div class="profile-note" id="phoneVerifyState">مۆبایل: پشتڕاست نەکراوەتەوە</div>
+  <button class="profile-action" id="sendPhoneCode" type="button">📱 ناردنی کۆدی SMS بۆ مۆبایل</button>
+  <label class="profile-field">کۆدی نێردراو بە SMS<input id="phoneVerifyCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"></label>
+  <button class="profile-action" id="confirmPhoneCode" type="button">✓ پشتڕاستکردنەوەی ژمارەی مۆبایل</button>
+  <p class="profile-note">کۆدی پشتڕاستکردنەوە ٦ ژمارەییە و ١٠ خولەک بەردەوامە. هەر کۆدێک تەنها یەکجار بەکاردێت.</p>
   <div class="detail-head" style="margin-top:18px"><span>🔐 Google Authenticator (2FA)</span><span id="totpState" class="profile-note">بارکردن...</span></div>
   <div id="totpSetupArea"><button class="profile-action" id="setupTotp" type="button">➕ چالاککردنی Google Authenticator</button></div>
   <div id="totpPendingArea" hidden>
@@ -550,6 +558,12 @@ function profileMessage(message){$("profileMessage").textContent=message||""}
 function renderProfileSecurity(profile){
  $("profileEmail").value=profile.email||"";
  $("profilePhone").value=profile.phone||"";
+ $("emailVerifyState").textContent="Gmail: "+(profile.emailVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("phoneVerifyState").textContent="مۆبایل: "+(profile.phoneVerified?"پشتڕاست کراوەتەوە ✓":"پشتڕاست نەکراوەتەوە");
+ $("sendEmailCode").disabled=!!profile.emailVerified||!profile.email;
+ $("confirmEmailCode").disabled=!!profile.emailVerified;
+ $("sendPhoneCode").disabled=!!profile.phoneVerified||!profile.phone;
+ $("confirmPhoneCode").disabled=!!profile.phoneVerified;
  $("totpState").textContent=profile.totpEnabled?"چالاکە ✓":"ناچالاکە";
  $("totpSetupArea").hidden=!!profile.totpEnabled;
  $("totpDisableArea").hidden=!profile.totpEnabled;
@@ -570,6 +584,22 @@ $("saveProfile").onclick=async function(){
  catch(error){profileMessage(error.message)}
  finally{this.disabled=false}
 };
+async function requestProfileCode(kind,buttonId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/send","POST",{});profileMessage(kind==="email"?"کۆدی پشتڕاستکردنەوە بۆ Gmail نێردرا.":"کۆدی پشتڕاستکردنەوە بە SMS نێردرا.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+async function confirmProfileCode(kind,buttonId,inputId){
+ const button=$(buttonId);button.disabled=true;
+ try{await api("/api/verify/"+kind+"/confirm","POST",{code:$(inputId).value.trim()});$(inputId).value="";await loadProfilePanel();profileMessage(kind==="email"?"Gmail بە سەرکەوتوویی پشتڕاست کرایەوە.":"ژمارەی مۆبایل بە سەرکەوتوویی پشتڕاست کرایەوە.");}
+ catch(error){profileMessage(error.message)}
+ finally{button.disabled=false}
+}
+$("sendEmailCode").onclick=function(){requestProfileCode("email","sendEmailCode")};
+$("confirmEmailCode").onclick=function(){confirmProfileCode("email","confirmEmailCode","emailVerifyCode")};
+$("sendPhoneCode").onclick=function(){requestProfileCode("phone","sendPhoneCode")};
+$("confirmPhoneCode").onclick=function(){confirmProfileCode("phone","confirmPhoneCode","phoneVerifyCode")};
 $("setupTotp").onclick=async function(){
  this.disabled=true;profileMessage("کلیلی نهێنی دروست دەکرێت...");
  try{var result=await api("/api/totp/setup","POST",{});$("totpSecret").textContent=result.secret;$("totpPendingArea").hidden=false;profileMessage("کلیلی نهێنی تەنها ٥ خولەک بەردەستە. لە ئەپی Google Authenticator زیادیکە.");}
