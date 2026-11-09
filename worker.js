@@ -865,6 +865,12 @@ export default {
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
     }
+    if (url.pathname === "/api/logout" && request.method === "POST") {
+      const header = request.headers.get("Authorization") || "";
+      const match = header.match(/^Bearer ([0-9a-f-]{36})$/i);
+      if (match && env?.BOT_STATE) await env.BOT_STATE.delete("session:" + match[1]);
+      return json({ ok: true });
+    }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
       // Profile and authenticator management are disabled in public paper-trading mode.
