@@ -193,6 +193,28 @@ body{min-height:0;padding:calc(6px + env(safe-area-inset-top,0px)) 8px calc(6px 
 }
 
 
+
+/* Kurdish text spacing and shaping repair: keep words visibly separated. */
+html[lang="ckb"] body,
+html[lang="ckb"] body :is(h1,h2,h3,p,span,b,strong,small,label,li,button,div,em,textarea,input,select){
+  font-family:'Noto Naskh Arabic','Noto Sans Arabic','Geeza Pro',sans-serif !important;
+  font-kerning:normal !important;
+  font-variant-ligatures:normal !important;
+  letter-spacing:normal !important;
+}
+html[lang="ckb"] body :is(p,span,b,strong,small,label,li,button,div,em,textarea,input,select){
+  word-spacing:.28em !important;
+  line-height:1.85;
+}
+html[lang="ckb"] body :is(button,.btn){
+  line-height:1.8 !important;
+  white-space:normal !important;
+  overflow-wrap:break-word !important;
+}
+html[lang="ckb"] body :is(input,textarea){
+  text-align:right;
+}
+
 /* Preserve Kurdish RTL shaping while restoring the original compact dashboard design. */
 html[lang="ckb"] body{
  direction:rtl;
