@@ -4,6 +4,7 @@ import {
   AddressLookupTableAccount,
   Keypair,
   SystemProgram,
+  TransactionInstruction,
   TransactionMessage,
   VersionedTransaction
 } from "@solana/web3.js";
@@ -214,4 +215,109 @@ test("instruction policy rejects signer mismatch, pre-signed orders and empty al
   assert.throws(() => validateDecodedSwapTransaction({
     ...options, instructionValidators: { [program]: () => ({ allowed: false }) }
   }), /semantics were not approved/);
+});
+
+
+test("exposes signer and writable privileges for static and ALT-loaded accounts", async () => {
+  const payer = Keypair.generate();
+  const writableAltAccount = Keypair.generate().publicKey;
+  const readonlyAltAccount = Keypair.generate().publicKey;
+  const table = new AddressLookupTableAccount({
+    key: Keypair.generate().publicKey,
+    state: {
+      deactivationSlot: BigInt("18446744073709551615"),
+      lastExtendedSlot: 0,
+      lastExtendedSlotStartIndex: 0,
+      authority: undefined,
+      addresses: [writableAltAccount, readonlyAltAccount]
+    }
+  });
+  const instruction = new TransactionInstruction({
+    programId: SystemProgram.programId,
+    keys: [
+      { pubkey: writableAltAccount, isSigner: false, isWritable: true },
+      { pubkey: readonlyAltAccount, isSigner: false, isWritable: false }
+    ],
+    data: Buffer.alloc(0)
+  });
+  const message = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: blockhash,
+    instructions: [instruction]
+  }).compileToV0Message([table]);
+  const transaction = new VersionedTransaction(message);
+  const decoded = await decodeSolanaTransaction(
+    Buffer.from(transaction.serialize()).toString("base64"),
+    { lookupTableResolver: async (key) => key.equals(table.key) ? table : null }
+  );
+
+  const payerMeta = decoded.accountMetadata.find((entry) => entry.pubkey === payer.publicKey.toBase58());
+  const writableMeta = decoded.accountMetadata.find((entry) => entry.pubkey === writableAltAccount.toBase58());
+  const readonlyMeta = decoded.accountMetadata.find((entry) => entry.pubkey === readonlyAltAccount.toBase58());
+  assert.deepEqual(
+    { isSigner: payerMeta.isSigner, isWritable: payerMeta.isWritable, source: payerMeta.source.type },
+    { isSigner: true, isWritable: true, source: "static" }
+  );
+  assert.deepEqual(
+    { isSigner: writableMeta.isSigner, isWritable: writableMeta.isWritable,
+      source: writableMeta.source.type, access: writableMeta.source.access,
+      table: writableMeta.source.table, addressIndex: writableMeta.source.addressIndex },
+    { isSigner: false, isWritable: true, source: "lookupTable", access: "writable",
+      table: table.key.toBase58(), addressIndex: 0 }
+  );
+  assert.deepEqual(
+    { isSigner: readonlyMeta.isSigner, isWritable: readonlyMeta.isWritable,
+      source: readonlyMeta.source.type, access: readonlyMeta.source.access,
+      table: readonlyMeta.source.table, addressIndex: readonlyMeta.source.addressIndex },
+    { isSigner: false, isWritable: false, source: "lookupTable", access: "readonly",
+      table: table.key.toBase58(), addressIndex: 1 }
+  );
+});
+
+test("rejects ALT lookups with out-of-range or duplicate address indexes", async () => {
+  const payer = Keypair.generate();
+  const recipient = Keypair.generate().publicKey;
+  const table = new AddressLookupTableAccount({
+    key: Keypair.generate().publicKey,
+    state: {
+      deactivationSlot: BigInt("18446744073709551615"),
+      lastExtendedSlot: 0,
+      lastExtendedSlotStartIndex: 0,
+      authority: undefined,
+      addresses: [recipient]
+    }
+  });
+  const message = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: blockhash,
+    instructions: [SystemProgram.transfer({
+      fromPubkey: payer.publicKey, toPubkey: recipient, lamports: 1
+    })]
+  }).compileToV0Message([table]);
+
+  const outOfRange = VersionedTransaction.deserialize(
+    new VersionedTransaction(message).serialize()
+  );
+  outOfRange.message.addressTableLookups[0].writableIndexes = [9];
+  const outOfRangeEncoded = Buffer.from(outOfRange.serialize()).toString("base64");
+  await assert.rejects(
+    () => decodeSolanaTransaction(outOfRangeEncoded, {
+      lookupTableResolver: async () => table
+    }),
+    /invalid or duplicate address indexes/
+  );
+
+  const duplicate = VersionedTransaction.deserialize(
+    new VersionedTransaction(message).serialize()
+  );
+  duplicate.message.addressTableLookups[0].readonlyIndexes = [
+    ...duplicate.message.addressTableLookups[0].writableIndexes
+  ];
+  const duplicateEncoded = Buffer.from(duplicate.serialize()).toString("base64");
+  await assert.rejects(
+    () => decodeSolanaTransaction(duplicateEncoded, {
+      lookupTableResolver: async () => table
+    }),
+    /invalid or duplicate address indexes/
+  );
 });
