@@ -92,7 +92,7 @@ async function getJupiterOrder({
 }) {
   const policy = readLivePolicy(env);
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
-  evaluateLiveTradeEligibility({ policy, amountLamports, ...(eligibility || {}) });
+  evaluateLiveTradeEligibility({ ...(eligibility || {}), policy, amountLamports });
 
   if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
   if (inputMint === outputMint) throw new Error("Input and output mints must differ");
