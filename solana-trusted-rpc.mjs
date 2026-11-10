@@ -113,7 +113,6 @@ function createTrustedSolanaRpc({
           sigVerify: false,
           replaceRecentBlockhash: true,
           innerInstructions: true,
-          maxSupportedTransactionVersion: 0,
           minContextSlot
         }
       ]);
