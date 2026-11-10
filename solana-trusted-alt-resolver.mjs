@@ -25,10 +25,15 @@ export function createTrustedAltResolver({
       typeof connection.getSlot !== "function") {
     throw new Error("A trusted Solana RPC connection is required");
   }
-  if (typeof trustedRpcEndpoint !== "string" ||
-      !trustedRpcEndpoint.trim() ||
+  let endpoint;
+  try {
+    endpoint = new URL(trustedRpcEndpoint);
+  } catch {
+    throw new Error("An explicit HTTPS trusted RPC endpoint is required");
+  }
+  if (endpoint.protocol !== "https:" ||
       connection.rpcEndpoint !== trustedRpcEndpoint) {
-    throw new Error("RPC endpoint does not match the explicitly trusted endpoint");
+    throw new Error("RPC endpoint does not match the explicitly trusted HTTPS endpoint");
   }
   if (!Number.isInteger(maxSlotLag) || maxSlotLag < 0 ||
       !Number.isInteger(minContextSlot) || minContextSlot < 0) {
@@ -62,10 +67,21 @@ export function createTrustedAltResolver({
     } catch {
       throw new Error("ALT account data could not be decoded");
     }
-    if (!state || !Array.isArray(state.addresses)) {
+    if (!state || !Array.isArray(state.addresses) ||
+        state.addresses.length > 256 ||
+        state.addresses.some((address) => !address || typeof address.toBase58 !== "function") ||
+        !Number.isInteger(state.lastExtendedSlotStartIndex) ||
+        state.lastExtendedSlotStartIndex < 0 ||
+        state.lastExtendedSlotStartIndex > state.addresses.length) {
       throw new Error("ALT account state is invalid");
     }
-    if (BigInt(state.deactivationSlot) !== MAX_U64) {
+    let deactivationSlot;
+    try {
+      deactivationSlot = BigInt(state.deactivationSlot);
+    } catch {
+      throw new Error("ALT deactivation slot is invalid");
+    }
+    if (deactivationSlot !== MAX_U64) {
       throw new Error("Deactivated ALT tables are not accepted");
     }
 
