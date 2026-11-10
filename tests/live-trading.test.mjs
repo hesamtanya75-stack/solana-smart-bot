@@ -17,6 +17,7 @@ const goodEnv = {
 const goodEligibility = {
   dailySpentLamports: 1000000, openPositions: 1,
   liquidityUsd: 25000, volume24hUsd: 5000,
+  riskDataFetchedAtMs: Date.now(), marketDataFetchedAtMs: Date.now(),
   riskChecks: {
     mintAuthoritySafe: true, freezeAuthoritySafe: true,
     token2022ExtensionsSafe: true, holderConcentrationSafe: true,
@@ -97,6 +98,18 @@ test("eligibility gate enforces daily spend, open positions, liquidity, volume a
     policy, amountLamports: 1000000, ...goodEligibility,
     riskChecks: { ...goodEligibility.riskChecks, freezeAuthoritySafe: false }
   }), /Token safety checks/);
+});
+
+test("eligibility gate rejects stale or future-dated market and risk data", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility,
+    riskDataFetchedAtMs: Date.now() - 31000
+  }), /price or risk data is missing, stale, or future-dated/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility,
+    marketDataFetchedAtMs: Date.now() + 6000
+  }), /price or risk data is missing, stale, or future-dated/);
 });
 
 test("eligibility gate rejects missing or invalid server-side state", () => {
