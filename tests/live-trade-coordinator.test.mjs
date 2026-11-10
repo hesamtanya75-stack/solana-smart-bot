@@ -102,11 +102,29 @@ test("idempotency key rejects any changed lamport amount, even if USD cents roun
   assert.match(changed.body.error, /Idempotency key/);
 });
 
-test("failed reservations release capacity but closed positions retain daily spend", async () => {
+test("ambiguous pending reservations cannot be failed or release capacity", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
-  await post(coordinator, "/fail", { idempotencyKey: "order-key-0001" });
+  const rejected = await post(coordinator, "/fail", {
+    idempotencyKey: "order-key-0001"
+  });
+  assert.equal(rejected.status, 409);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 200);
+});
+
+test("only explicitly confirmed non-submission can release a pending reservation", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const failed = await post(coordinator, "/fail", {
+    idempotencyKey: "order-key-0001",
+    definitelyNotSubmitted: true,
+    resolutionReason: "RPC confirmed no transaction was submitted"
+  });
+  assert.equal(failed.status, 200);
   const status = await coordinator.status();
   assert.equal(status.openPositions, 0);
   assert.equal(status.dailySpendUsdCents, 0);
