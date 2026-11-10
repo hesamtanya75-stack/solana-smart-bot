@@ -3,8 +3,10 @@
  *
  * The allow-list must be supplied by trusted server code after independent
  * review. Never populate it from Jupiter responses, browser input, or routePlan.
- * This generic gate is not a substitute for protocol-specific instruction
- * decoding (including exact amounts, token accounts, authorities and CPI).
+ * Every invoked program must also have a trusted protocol-specific validator.
+ * This module does not ship guessed validators: absent validators fail closed.
+ * Validators must decode instruction data and verify exact amounts, token
+ * accounts, authorities, fees, and any supported CPI behavior.
  */
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -27,7 +29,8 @@ export function validateDecodedSwapTransaction({
   expectedSigner,
   requiredAccounts,
   allowedProgramIds,
-  allowedAccountKeys
+  allowedAccountKeys,
+  instructionValidators
 } = {}) {
   if (!decoded || !["legacy", 0].includes(decoded.version) ||
       !Array.isArray(decoded.instructions) || decoded.instructions.length === 0 ||
@@ -65,6 +68,11 @@ export function validateDecodedSwapTransaction({
       throw new Error("A required swap account is absent or not allow-listed");
     }
   }
+  if (!instructionValidators || typeof instructionValidators !== "object" ||
+      Array.isArray(instructionValidators)) {
+    throw new Error("Trusted protocol-specific instruction validators are required");
+  }
+
   for (const instruction of decoded.instructions) {
     if (!instruction || !programAllowList.has(instruction.programId)) {
       throw new Error("Transaction contains an unknown or unapproved program");
@@ -72,6 +80,19 @@ export function validateDecodedSwapTransaction({
     if (!Array.isArray(instruction.accounts) ||
         instruction.accounts.some((key) => !accountAllowList.has(key))) {
       throw new Error("Instruction references an account outside the explicit allow-list");
+    }
+    const validator = instructionValidators[instruction.programId];
+    if (typeof validator !== "function") {
+      throw new Error("No trusted semantic validator exists for transaction program");
+    }
+    let semanticResult;
+    try {
+      semanticResult = validator(Object.freeze({ ...instruction }), decoded);
+    } catch {
+      throw new Error("Protocol-specific instruction validation failed");
+    }
+    if (!semanticResult || semanticResult.allowed !== true) {
+      throw new Error("Protocol-specific instruction semantics were not approved");
     }
   }
 
