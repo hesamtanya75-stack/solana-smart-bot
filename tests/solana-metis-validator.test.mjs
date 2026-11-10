@@ -56,14 +56,14 @@ function fixture(overrides = {}) {
       expectedSigner: wallet, inputMint: sourceMint, outputMint: destinationMint,
       inAmount: "1000000", outAmount: "12345", slippageBps: 50,
       platformFeeBps: 0,
-      routePlan: [{ swapInfo: { label: "Saber", ammKey: amm }, percent: 100 }],
+      routePlan: [{ swapInfo: { label: "TestDEX", ammKey: amm }, percent: 100 }],
       dexProgramBySwapVariant: { "0": dexProgram },
-      dexLabelsBySwapVariant: { "0": ["Saber"] },
+      dexLabelsBySwapVariant: { "0": ["TestDEX"] },
       dexSemanticValidatorsBySwapVariant: {
         "0": ({ dexProgramId, ammKey, routeStep, quoteStep }) => ({
           allowed: dexProgramId === dexProgram && ammKey === amm &&
             routeStep.inputIndex === 0 && routeStep.outputIndex === 1 &&
-            quoteStep.swapInfo.label === "Saber"
+            quoteStep.swapInfo.label === "TestDEX"
         })
       },
       allowedDexProgramIds: [dexProgram],
@@ -111,6 +111,23 @@ test("Metis validator rejects non-Metis instruction variants, account mismatches
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction, ...f.args, inputMint: destinationMint
   }), /do not match the pinned signer/);
+});
+
+test("Metis validator blocks Saber until deployed binary and CPI semantics are independently verified", () => {
+  const f = fixture();
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded: f.decoded,
+    instruction: f.instruction,
+    ...f.args,
+    routePlan: [{ ...f.args.routePlan[0], swapInfo: { ...f.args.routePlan[0].swapInfo, label: "Saber" } }]
+  }), /Saber StableSwap is blocked/);
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded: f.decoded,
+    instruction: f.instruction,
+    ...f.args,
+    dexProgramBySwapVariant: { "0": "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ" },
+    allowedDexProgramIds: ["SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ"]
+  }), /Saber StableSwap is blocked/);
 });
 
 test("Metis validator rejects unknown swap variants, route percentage drift, and unapproved DEX programs", () => {
