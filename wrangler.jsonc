@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-"name": "solana-smart-bot-new",
+  "name": "solana-smart-bot-new",
   "main": "worker.js",
   "compatibility_date": "2026-11-06",
   "assets": {
@@ -32,5 +32,21 @@
     "crons": [
       "* * * * *"
     ]
-  }
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LIVE_TRADE_COORDINATOR",
+        "class_name": "LiveTradeCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-live-trade-coordinator",
+      "new_sqlite_classes": [
+        "LiveTradeCoordinator"
+      ]
+    }
+  ]
 }
