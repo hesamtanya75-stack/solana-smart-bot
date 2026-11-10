@@ -170,7 +170,10 @@ test("Jupiter order is decoded and structurally checked before inspection metada
     transactionAllowList: {
       requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
       allowedProgramIds: [SystemProgram.programId.toBase58()],
-      allowedAccountKeys
+      allowedAccountKeys,
+      instructionValidators: {
+        [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
+      }
     },
     fetchImpl: async () => new Response(JSON.stringify({
       requestId: "req-decoded", transaction: encoded,
