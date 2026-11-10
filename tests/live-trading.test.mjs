@@ -197,6 +197,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: {
+      allowedRouters: ["metis"],
       requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
       allowedProgramIds: [SystemProgram.programId.toBase58()],
       allowedAccountKeys,
@@ -210,6 +211,24 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       routePlan: [{ swapInfo: { label: "test" } }]
     }), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /protocol-specific instruction validators are required/);
+});
+
+
+test("Jupiter order rejects a router outside the explicit single-router policy", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    transactionAllowList: { allowedRouters: ["metis"] },
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-unapproved-router", transaction: "dGVzdA==",
+      router: "jupiterz", inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /outside the explicit router policy/);
 });
 
 test("Jupiter order rejects invalid serialized transactions even with an allow-list", async () => {
