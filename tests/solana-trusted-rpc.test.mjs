@@ -40,6 +40,7 @@ function rpcFixture(overrides = {}) {
     } } }
   });
   const fetchImpl = async (url, options) => {
+    assert.equal(options.redirect, "error");
     requests.push({ url, body: JSON.parse(options.body) });
     const request = requests.at(-1).body;
     let result;
