@@ -102,7 +102,7 @@ function evaluateLiveTradeEligibility({
  */
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
-  fetchImpl = fetch, lookupTableResolver, transactionAllowList,
+  fetchImpl = fetch, transactionAllowList,
   trustedRpc, metisPolicy, minContextSlot = 0
 }) {
   const policy = readLivePolicy(env);
@@ -194,8 +194,11 @@ async function getJupiterOrder({
     throw new Error("Jupiter route plan contains incomplete or invalid swap steps");
   }
 
+  if (!trustedRpc || typeof trustedRpc.resolveAddressLookupTable !== "function") {
+    throw new Error("Pinned trusted RPC ALT resolver is required");
+  }
   const decoded = await decodeSolanaTransaction(order.transaction, {
-    lookupTableResolver
+    lookupTableResolver: (tableKey) => trustedRpc.resolveAddressLookupTable(tableKey, { minContextSlot })
   });
   const jupiterInstructions = decoded.instructions.filter((item) =>
     item.programId === "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
