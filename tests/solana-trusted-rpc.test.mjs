@@ -122,7 +122,8 @@ test("trusted order inspection validates source/destination accounts and exact-t
     allowedCpiProgramIds: ["11111111111111111111111111111111"],
     allowedCpiAccountKeys: decoded.accountKeys,
     requiredCpiProgramIds: [decoded.accountKeys[2]],
-    expectedCpiProgramIds: [decoded.accountKeys[2]]
+    expectedCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiOuterInstructionIndexes: [0]
   });
   assert.equal(result.allowed, true);
   assert.equal(result.tokenAccounts.length, 2);
@@ -145,7 +146,8 @@ test("trusted order inspection rejects decoded metadata that differs from serial
     allowedCpiProgramIds: [decoded.accountKeys[2]],
     allowedCpiAccountKeys: decoded.accountKeys,
     requiredCpiProgramIds: [decoded.accountKeys[2]],
-    expectedCpiProgramIds: [decoded.accountKeys[2]]
+    expectedCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiOuterInstructionIndexes: [0]
   }), /does not match the exact serialized transaction/);
 });
 test("trusted order inspection fails closed on account identity mismatch and failed simulation", async () => {
@@ -173,7 +175,8 @@ test("trusted order inspection fails closed on account identity mismatch and fai
     allowedCpiProgramIds: [decoded.accountKeys[2]],
     allowedCpiAccountKeys: decoded.accountKeys,
     requiredCpiProgramIds: [decoded.accountKeys[2]],
-    expectedCpiProgramIds: [decoded.accountKeys[2]]
+    expectedCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiOuterInstructionIndexes: [0]
   }), /stale or inconsistent|authority does not match|not found|mint does not match/);
 });
 
