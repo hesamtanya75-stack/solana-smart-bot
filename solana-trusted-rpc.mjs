@@ -97,6 +97,7 @@ function createTrustedSolanaRpc({
     const id = nextId++;
     const response = await fetchImpl(parsed.href, {
       method: "POST",
+      redirect: "error",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
       signal: AbortSignal.timeout(timeoutMs)
