@@ -25,7 +25,7 @@ test("SOL/USD quote rejects wrong pair and invalid prices", async () => {
     fetchTrustedSolUsdQuote(async () => Response.json({
       data: { base: "SOL", currency: "USD", amount: "0" }
     })),
-    /positive finite number/
+    /missing or invalid/
   );
 });
 
