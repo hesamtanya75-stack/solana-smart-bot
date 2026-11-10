@@ -71,31 +71,45 @@ async function main() {
     throw new Error("Devnet reference token supply is unavailable or invalid");
   }
 
-  const largest = await rpc("getTokenLargestAccounts", [DEVNET_USDC_MINT, { commitment: "confirmed" }]);
-  if (!Array.isArray(largest?.value) || largest.value.length === 0) {
-    throw new Error("Devnet largest-token-account data is unavailable");
-  }
-  const accountDetails = await rpc("getMultipleAccounts", [
-    largest.value.map(item => item.address),
-    { encoding: "jsonParsed", commitment: "confirmed" }
-  ]);
-  if (!Array.isArray(accountDetails?.value) || accountDetails.value.length !== largest.value.length) {
-    throw new Error("Devnet holder-owner lookup returned incomplete data");
-  }
-
-  const owners = new Map();
-  for (let i = 0; i < accountDetails.value.length; i++) {
-    const info = accountDetails.value[i]?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largest.value[i]?.amount);
-    if (owner && Number.isFinite(amount) && amount >= 0) {
-      owners.set(owner, (owners.get(owner) || 0) + amount);
+  let largestAccountRows = null;
+  let uniqueOwnersInLargestAccountSample = null;
+  let topTenOwnerShareOfSupplyInSamplePct = null;
+  let holderDataWarning = null;
+  try {
+    const largest = await rpc("getTokenLargestAccounts", [DEVNET_USDC_MINT, { commitment: "confirmed" }]);
+    if (!Array.isArray(largest?.value) || largest.value.length === 0) {
+      throw new Error("Devnet largest-token-account data is unavailable");
     }
-  }
-  if (owners.size === 0) throw new Error("Devnet holder-owner aggregation returned no usable owners");
+    const accountDetails = await rpc("getMultipleAccounts", [
+      largest.value.map(item => item.address),
+      { encoding: "jsonParsed", commitment: "confirmed" }
+    ]);
+    if (!Array.isArray(accountDetails?.value) || accountDetails.value.length !== largest.value.length) {
+      throw new Error("Devnet holder-owner lookup returned incomplete data");
+    }
 
-  const topOwnerSamplePct = [...owners.values()].sort((a, b) => b - a)
-    .slice(0, 10).reduce((sum, amount) => sum + amount, 0) / supplyAmount * 100;
+    const owners = new Map();
+    for (let i = 0; i < accountDetails.value.length; i++) {
+      const info = accountDetails.value[i]?.data?.parsed?.info;
+      const owner = info?.owner;
+      const amount = Number(info?.tokenAmount?.amount ?? largest.value[i]?.amount);
+      if (owner && Number.isFinite(amount) && amount >= 0) {
+        owners.set(owner, (owners.get(owner) || 0) + amount);
+      }
+    }
+    if (owners.size === 0) throw new Error("Devnet holder-owner aggregation returned no usable owners");
+    largestAccountRows = largest.value.length;
+    uniqueOwnersInLargestAccountSample = owners.size;
+    topTenOwnerShareOfSupplyInSamplePct = Number(
+      ([...owners.values()].sort((a, b) => b - a).slice(0, 10)
+        .reduce((sum, amount) => sum + amount, 0) / supplyAmount * 100).toFixed(4)
+    );
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (!message.includes("HTTP 429")) throw error;
+    holderDataWarning = "Devnet public RPC rate-limited holder enumeration; holder concentration was not validated.";
+  }
+
   const quote = await fetchSolUsdSpot();
 
   console.log(JSON.stringify({
@@ -109,10 +123,11 @@ async function main() {
     mintAuthorityPresent: Boolean(parsedMint.mintAuthority),
     freezeAuthorityPresent: Boolean(parsedMint.freezeAuthority),
     supplyAvailable: true,
-    largestAccountRows: largest.value.length,
-    uniqueOwnersInLargestAccountSample: owners.size,
-    topTenOwnerShareOfSupplyInSamplePct: Number(topOwnerSamplePct.toFixed(4)),
+    largestAccountRows,
+    uniqueOwnersInLargestAccountSample,
+    topTenOwnerShareOfSupplyInSamplePct,
     holderMetricNote: "Largest-account sample only; not a complete holder census or a pass/fail token safety verdict.",
+    holderDataWarning,
     solUsdQuote: quote,
     marketRiskFeeds: "DexScreener/RugCheck mainnet market data is not treated as Devnet validation.",
     signing: "not performed",
