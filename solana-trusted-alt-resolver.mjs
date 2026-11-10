@@ -90,9 +90,13 @@ export function createTrustedAltResolver({
         currentSlot - responseSlot > maxSlotLag) {
       throw new Error("ALT RPC context is stale or inconsistent");
     }
-    if (!Number.isInteger(state.lastExtendedSlot) ||
-        state.lastExtendedSlot < 0 ||
-        state.lastExtendedSlot >= currentSlot) {
+    let lastExtendedSlot;
+    try {
+      lastExtendedSlot = BigInt(state.lastExtendedSlot);
+    } catch {
+      throw new Error("ALT last extension slot is invalid");
+    }
+    if (lastExtendedSlot < 0n || lastExtendedSlot >= BigInt(currentSlot)) {
       throw new Error("ALT table was extended too recently to use safely");
     }
 
