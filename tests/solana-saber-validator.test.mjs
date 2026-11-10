@@ -89,7 +89,7 @@ function fixture(overrides = {}) {
     programId: SABER_STABLE_SWAP_PROGRAM_ID,
     accounts,
     data: bs58.encode(data),
-    expectedSigner: wallet.toBase58(),
+    expectedUserAuthority: wallet.toBase58(),
     decoded: { accountMetadata: metadata },
     rawAccounts
   };
