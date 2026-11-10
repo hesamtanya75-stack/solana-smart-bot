@@ -107,7 +107,10 @@ test("trusted order inspection rejects decoded metadata that differs from serial
   const altered = { ...decoded, accountKeys: [...decoded.accountKeys].reverse() };
   await assert.rejects(() => inspectMetisOrderWithTrustedRpc({
     rpc: fixture.rpc, encodedTransaction, decoded: altered,
-    tokenAccountExpectations: [],
+    tokenAccountExpectations: [
+      { address: fixture.keys[0], expectedTokenProgramId: fixture.tokenProgram, expectedMint: fixture.mintA, expectedAuthority: fixture.owner, minimumAmount: "1" },
+      { address: fixture.keys[1], expectedTokenProgramId: fixture.tokenProgram, expectedMint: fixture.mintB, expectedAuthority: fixture.owner, minimumAmount: "1" }
+    ],
     allowedCpiProgramIds: [decoded.accountKeys[2]],
     allowedCpiAccountKeys: decoded.accountKeys,
     requiredCpiProgramIds: [decoded.accountKeys[2]],
