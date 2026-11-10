@@ -67,12 +67,12 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
       throw new Error("Alchemy holder page reported indexing errors");
     }
     for (const row of rows) {
-      const amount = Number(row.amount);
+      const rawAmount = String(row.amount);
       if (row.mint !== mint || typeof row.owner !== "string" ||
-          !Number.isFinite(amount) || amount <= 0) {
+          !/^\\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
         throw new Error("Alchemy holder page contains incomplete or mismatched account data");
       }
-      accounts.push({ owner: row.owner, amount });
+      accounts.push({ owner: row.owner, amount: BigInt(rawAmount) });
     }
     if (rows.length < limit) {
       if (accounts.length === 0) throw new Error("No positive-balance token accounts were found");
@@ -172,25 +172,27 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
     throw new Error("RugCheck score is unavailable");
   }
   const mintSafety = parseMintAccount(mintAccount);
-  const supplyAmount = Number(supply?.value?.amount);
-  if (!Number.isFinite(supplyAmount) || supplyAmount <= 0 || holderAccounts.length === 0) {
+  const rawSupplyAmount = String(supply?.value?.amount ?? "");
+  if (!/^\\d+$/.test(rawSupplyAmount) || BigInt(rawSupplyAmount) <= 0n || holderAccounts.length === 0) {
     throw new Error("Holder account data is incomplete");
   }
 
   // Alchemy DAS pages every positive-balance token account for this mint.
   // Aggregate multiple token accounts belonging to the same wallet owner.
+  const supplyAmount = BigInt(rawSupplyAmount);
   const ownerBalances = new Map();
-  let totalAccountBalance = 0;
+  let totalAccountBalance = 0n;
   for (const account of holderAccounts) {
-    ownerBalances.set(account.owner, (ownerBalances.get(account.owner) || 0) + account.amount);
+    ownerBalances.set(account.owner, (ownerBalances.get(account.owner) || 0n) + account.amount);
     totalAccountBalance += account.amount;
   }
   if (ownerBalances.size === 0 || totalAccountBalance !== supplyAmount) {
     throw new Error("Complete holder census does not reconcile to on-chain token supply");
   }
-  const topTenBalance = [...ownerBalances.values()].sort((a, b) => b - a)
-    .slice(0, 10).reduce((sum, amount) => sum + amount, 0);
-  const top10OwnerConcentrationPct = (topTenBalance / supplyAmount) * 100;
+  const topTenBalance = [...ownerBalances.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0)
+    .slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
+  const concentrationScaled = (topTenBalance * 1_000_000n) / supplyAmount;
+  const top10OwnerConcentrationPct = Number(concentrationScaled) / 10_000;
 
   const checks = {
     mintAuthoritySafe: mintSafety.mintAuthoritySafe,
