@@ -78,7 +78,9 @@ test("trusted order inspection validates source/destination accounts and exact-t
       { address: fixture.keys[1], expectedTokenProgramId: fixture.tokenProgram, expectedMint: fixture.mintB, expectedAuthority: fixture.owner, minimumAmount: "1" }
     ],
     allowedCpiProgramIds: ["11111111111111111111111111111111"],
-    allowedCpiAccountKeys: decoded.accountKeys
+    allowedCpiAccountKeys: decoded.accountKeys,
+    requiredCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiProgramIds: [decoded.accountKeys[2]]
   });
   assert.equal(result.allowed, true);
   assert.equal(result.tokenAccounts.length, 2);
@@ -109,6 +111,8 @@ test("trusted order inspection fails closed on account identity mismatch and fai
     rpc: bad.rpc, encodedTransaction: "AQ==", decoded,
     tokenAccountExpectations: expectations,
     allowedCpiProgramIds: [decoded.accountKeys[2]],
-    allowedCpiAccountKeys: decoded.accountKeys
+    allowedCpiAccountKeys: decoded.accountKeys,
+    requiredCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiProgramIds: [decoded.accountKeys[2]]
   }), /stale or inconsistent|authority does not match|not found|mint does not match/);
 });
