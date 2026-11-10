@@ -1,5 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {
+  AddressLookupTableAccount, AddressLookupTableProgram, Keypair,
+  PublicKey, SystemProgram, TransactionInstruction, TransactionMessage,
+  VersionedTransaction
+} from "@solana/web3.js";
+import { decodeSolanaTransaction } from "../solana-transaction-decoder.mjs";
 import { createTrustedSolanaRpc, inspectMetisOrderWithTrustedRpc } from "../solana-trusted-rpc.mjs";
 
 const endpoint = "https://trusted-rpc.example/";
@@ -115,4 +121,60 @@ test("trusted order inspection fails closed on account identity mismatch and fai
     requiredCpiProgramIds: [decoded.accountKeys[2]],
     expectedCpiProgramIds: [decoded.accountKeys[2]]
   }), /stale or inconsistent|authority does not match|not found|mint does not match/);
+});
+
+test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder records loaded account provenance", async () => {
+  const payer = Keypair.generate();
+  const tableKey = Keypair.generate().publicKey;
+  const loadedAddress = Keypair.generate().publicKey;
+  const state = {
+    deactivationSlot: (1n << 64n) - 1n,
+    lastExtendedSlot: 1000,
+    lastExtendedSlotStartIndex: 0,
+    authority: undefined,
+    addresses: [loadedAddress]
+  };
+  const table = new AddressLookupTableAccount({ key: tableKey, state });
+  const instruction = new TransactionInstruction({
+    programId: SystemProgram.programId,
+    keys: [{ pubkey: loadedAddress, isSigner: false, isWritable: true }],
+    data: Buffer.alloc(0)
+  });
+  const message = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    instructions: [instruction]
+  }).compileToV0Message([table]);
+  const encoded = Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
+
+  const tableData = Buffer.alloc(56 + 32);
+  tableData.writeBigUInt64LE((1n << 64n) - 1n, 0);
+  tableData.writeBigUInt64LE(1000n, 8);
+  tableData.writeUInt8(0, 16);
+  tableData.writeUInt8(0, 17);
+  loadedAddress.toBuffer().copy(tableData, 56);
+  const fetchImpl = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    let result;
+    if (request.method === "getSlot") result = 1100;
+    else if (request.method === "getAccountInfo") result = {
+      context: { slot: 1098 },
+      value: {
+        owner: AddressLookupTableProgram.programId.toBase58(),
+        data: [tableData.toString("base64"), "base64"],
+        executable: false, lamports: 1000000, rentEpoch: 0
+      }
+    };
+    else throw new Error("unexpected RPC method " + request.method);
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }), { status: 200 });
+  };
+  const rpc = createTrustedSolanaRpc({ endpoint, expectedEndpoint: endpoint, fetchImpl });
+  const decoded = await decodeSolanaTransaction(encoded, {
+    lookupTableResolver: (key) => rpc.resolveAddressLookupTable(key, { minContextSlot: 1090 })
+  });
+  assert.ok(decoded.accountKeys.includes(loadedAddress.toBase58()));
+  const metadata = decoded.accountMetadata.find((item) => item.pubkey === loadedAddress.toBase58());
+  assert.equal(metadata.source, "lookupTable");
+  assert.equal(metadata.lookupTable, tableKey.toBase58());
+  assert.equal(metadata.isWritable, true);
 });
