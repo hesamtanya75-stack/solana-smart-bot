@@ -1,4 +1,7 @@
 const JUPITER_V6_PROGRAM_ID = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+// Saber StableSwap mainnet program. Source is available, but the deployed
+// mainnet binary has not been independently verified against that source.
+const SABER_STABLE_SWAP_PROGRAM_ID = "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const SHARED_ACCOUNTS_ROUTE_V2 = [123, 141, 210, 115, 241, 229, 15, 101];
@@ -155,6 +158,10 @@ function validateMetisJupiterV6Instruction({
     const programId = dexProgramBySwapVariant[String(step.swapVariant)];
     const labels = dexLabelsBySwapVariant[String(step.swapVariant)];
     const quoteStep = routePlan[i];
+    if (programId === SABER_STABLE_SWAP_PROGRAM_ID ||
+        quoteStep?.swapInfo?.label === "Saber") {
+      throw new Error("Saber StableSwap is blocked until its deployed mainnet binary and exact CPI account semantics are independently verified");
+    }
     if (typeof programId !== "string" || !BASE58.test(programId) ||
         !allowed.has(programId) || !instruction.accounts.slice(11).includes(programId) || !Array.isArray(labels) ||
         !labels.includes(quoteStep?.swapInfo?.label) ||
@@ -223,6 +230,7 @@ function validateMetisJupiterV6Instruction({
 
 export {
   JUPITER_V6_PROGRAM_ID,
+  SABER_STABLE_SWAP_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   validateMetisJupiterV6Instruction
