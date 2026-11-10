@@ -10,7 +10,7 @@ Reviewed branch `live-trading-policy-enforcement` at the audit starting point `5
 
 | Area | What exists | Remaining blocker |
 |---|---|---|
-| Transaction decoding | Legacy and v0 message decoding; canonical Base64 and size checks; bounded instruction/account counts; instruction account indexes are resolved. | Decoder output does not preserve the full per-account signer/writable privilege metadata needed for a protocol-level privilege audit. |
+| Transaction decoding | Legacy and v0 message decoding; canonical Base64 and size checks; bounded instruction/account counts; instruction account indexes are resolved. The decoder now exposes per-key signer/writable flags and whether each key came from the static message or an ALT, including the lookup table and address index. | Privileges are message-declared privileges; they do not establish token-account ownership, mint, authority, or protocol-specific safety. |
 | Program allow-list | Caller must provide a non-empty Program ID allow-list; every outer instruction Program ID must be present. | No reviewed production Program ID set is supplied or wired. Never derive it from Jupiter's response or `routePlan`. |
 | Account allow-list | Caller must provide a non-empty Account key allow-list; all message keys and instruction account references must be allow-listed; dedicated signer is pinned. | No reviewed production account policy is supplied or wired. Exact token-account mint/owner, authority, writable privilege, fee destination, and token-program relationships are not established by key membership alone. |
 | Semantic validation | Every invoked outer program requires a trusted validator returning exactly `{ allowed: true }`; missing, throwing, or rejecting validators fail closed. | No production protocol-specific validators exist. A test validator that returns `{ allowed: true }` unconditionally is only a harness fixture, not evidence that a swap instruction is safe. |
@@ -20,16 +20,15 @@ Reviewed branch `live-trading-policy-enforcement` at the audit starting point `5
 
 ## Test review
 
-Existing Node tests cover legacy/v0 decoding, a resolved and unresolved ALT fixture, malformed serialized data, unknown Program/Account rejection, signer mismatch, pre-signed transaction rejection, missing semantic validators, and metadata-only order results.
+Existing Node tests cover legacy/v0 decoding, static-key and ALT-loaded signer/writable metadata, ALT address-index bounds and duplicate-index rejection, resolved and unresolved ALT fixtures, malformed serialized data, unknown Program/Account rejection, signer mismatch, pre-signed transaction rejection, missing semantic validators, and metadata-only order results.
 
 Important limitation: the positive policy test uses a deliberately permissive mock validator. It proves the validator hook is called and its explicit approval is required; it does **not** validate any real Jupiter, Token, Associated Token, System, or DEX instruction semantics. The ALT fixture is a constructed in-memory object and does not test RPC owner/slot/freshness verification.
 
-The latest recorded CI for the reviewed head had Node tests successful and the current `solana-smart-bot-new` Cloudflare Preview build successful. The separate legacy `solana-smart-bot` check failed because that Worker does not exist; this is a legacy configuration mismatch, not evidence of a failure in the current Worker.
+The previous recorded CI for the prior head had Node tests successful and the current `solana-smart-bot-new` Cloudflare Preview build successful. The separate legacy `solana-smart-bot` check failed because that Worker does not exist; this is a legacy configuration mismatch, not evidence of a failure in the current Worker.
 
 ## Required work before Stage 2 can pass
 
-1. Add a reviewed decoder representation for every account's signer/writable privileges and preserve static versus ALT-loaded key provenance.
-2. Implement a trusted ALT resolver that validates canonical program ownership, active/deactivation state, lookup indexes, RPC trust, and slot/freshness constraints.
+1. Implement a trusted ALT resolver that validates canonical program ownership, active/deactivation state, lookup indexes, RPC trust, and slot/freshness constraints.
 3. Select the exact supported swap protocol(s) and versions. Independently review their program IDs, instruction layouts, account ordering, token program variants, authorities, exact input/output amounts, slippage, fees, and destination accounts.
 4. Implement semantic validators for those exact versions. Reject unknown instructions, optional/remaining accounts not explicitly understood, unexpected writable privileges, and any unsupported token program or extension.
 5. Define and test CPI policy. Inspect simulated inner instructions/logs for the exact transaction and reject unexpected CPI programs/accounts; do not treat simulation alone as approval.
