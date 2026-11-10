@@ -14,7 +14,7 @@ function fixture(overrides = {}) {
   const address = Keypair.generate().publicKey;
   const state = {
     deactivationSlot: MAX_U64,
-    lastExtendedSlot: 90,
+    lastExtendedSlot: 90n,
     lastExtendedSlotStartIndex: 0,
     authority: undefined,
     addresses: [address],
@@ -98,10 +98,10 @@ test("rejects deactivated, stale, and inconsistent ALT state", async () => {
 });
 
 test("rejects an ALT extended in the current slot or a future slot", async () => {
-  const current = fixture({ state: { lastExtendedSlot: 101 }, currentSlot: 101 });
+  const current = fixture({ state: { lastExtendedSlot: 101n }, currentSlot: 101 });
   await assert.rejects(() => current.resolver(current.key), /extended too recently/);
 
-  const future = fixture({ state: { lastExtendedSlot: 102 }, currentSlot: 101 });
+  const future = fixture({ state: { lastExtendedSlot: 102n }, currentSlot: 101 });
   await assert.rejects(() => future.resolver(future.key), /extended too recently/);
 });
 
