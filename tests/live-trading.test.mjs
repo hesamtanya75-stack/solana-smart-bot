@@ -168,6 +168,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: {
+      allowedRouters: ["metis"],
       requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
       allowedProgramIds: [SystemProgram.programId.toBase58()],
       allowedAccountKeys,
@@ -177,7 +178,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       }
     },
     fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-decoded", transaction: encoded,
+      requestId: "req-decoded", transaction: encoded, router: "metis",
       inputMint: SOL_MINT,
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
@@ -202,7 +203,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()]
     },
     fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-no-validator", transaction: encoded,
+      requestId: "req-no-validator", transaction: encoded, router: "metis",
       inputMint: SOL_MINT,
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
@@ -218,12 +219,13 @@ test("Jupiter order rejects invalid serialized transactions even with an allow-l
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: {
+      allowedRouters: ["metis"],
       requiredAccounts: [EXPECTED_BOT_WALLET],
       allowedProgramIds: ["11111111111111111111111111111111"],
       allowedAccountKeys: [EXPECTED_BOT_WALLET, "11111111111111111111111111111111"]
     },
     fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-invalid", transaction: "dGVzdA==",
+      requestId: "req-invalid", transaction: "dGVzdA==", router: "metis",
       inputMint: SOL_MINT,
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
