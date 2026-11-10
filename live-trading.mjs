@@ -89,7 +89,7 @@ async function getJupiterOrder({ env, inputMint = SOL_MINT, outputMint, amountLa
   if (!order || typeof order !== "object" ||
       typeof order.requestId !== "string" || !order.requestId ||
       typeof order.transaction !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(order.transaction) ||
-      !/^\\d+$/.test(String(order.outAmount || "")) ||
+      !/^[0-9]+$/.test(String(order.outAmount || "")) ||
       BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
