@@ -66,6 +66,35 @@ test("malformed Jupiter instruction program index is rejected", () => {
   );
 });
 
+
+test("unsupported versioned Jupiter message is rejected", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  // Signature-count prefix + 64 signature bytes = message start.
+  bytes[65] = 0x81;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /Unsupported Jupiter transaction message version/
+  );
+});
+
+test("out-of-range Jupiter instruction account index is rejected", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  bytes[bytes.length - 2] = 250;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /instruction account index is invalid/
+  );
+});
+
+test("unparsed trailing Jupiter transaction bytes are rejected", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  const extended = Buffer.concat([bytes, Buffer.from([0])]);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(extended.toString("base64"), BOT_WALLET),
+    /trailing or unparsed bytes/
+  );
+});
+
 test("SOL/USD quote is fetched and timestamped by the server", async () => {
   const quote = await fetchTrustedSolUsdQuote(async (url) => {
     assert.match(String(url), /api\.coinbase\.com\/v2\/prices\/SOL-USD\/spot/);
