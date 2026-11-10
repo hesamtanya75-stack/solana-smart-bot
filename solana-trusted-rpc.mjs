@@ -215,7 +215,7 @@ function createTrustedSolanaRpc({
           throw new Error("Trusted RPC returned an invalid raw-account response");
         }
         assertPublicKey(account.owner, "Raw account owner");
-        if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(account.data[0])) {
+        if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
           throw new Error("Trusted RPC raw-account data is not canonical base64");
         }
         const data = Buffer.from(account.data[0], "base64");
