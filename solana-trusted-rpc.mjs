@@ -156,7 +156,7 @@ function createTrustedSolanaRpc({
           encoding: "base64",
           commitment,
           sigVerify: false,
-          replaceRecentBlockhash: true,
+          replaceRecentBlockhash: false,
           innerInstructions: true,
           minContextSlot
         }
