@@ -92,11 +92,12 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     throw new Error("Token decimals are unavailable for sell-route verification");
   }
   const priceText = String(priceUsd);
-  const match = /^(\d+)(?:\\.(\d+))?$/.exec(priceText);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(priceText);
   if (!match) throw new Error("Token USD price format is unsupported for sell-route verification");
-  const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(12, "0").slice(0, 12));
+  const priceScale = 24;
+  const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(priceScale, "0").slice(0, priceScale));
   if (priceScaled <= 0n) throw new Error("Token USD price is invalid for sell-route verification");
-  const amount = (3n * (10n ** BigInt(decimals)) * 1_000_000_000_000n) / priceScaled;
+  const amount = (3n * (10n ** BigInt(decimals)) * (10n ** BigInt(priceScale))) / priceScaled;
   const maxProbeAmount = supplyAmount / 100n;
   if (amount <= 0n || maxProbeAmount <= 0n || amount > maxProbeAmount) {
     throw new Error("A $3 sell-route probe would exceed 1% of token supply or is below token precision");
@@ -194,8 +195,9 @@ function parseMintAccount(account) {
 
 /**
  * Risk evidence is generated from server-fetched feeds for the exact mint.
- * The largest-20-account sample is NOT a complete holder census, so this
- * module intentionally never marks holderConcentrationSafe true.
+ * Holder concentration is accepted only after all paginated token accounts
+ * reconcile exactly to on-chain supply; sell-route evidence requires a fresh
+ * Jupiter V2 order response for a capped $3 probe.
  */
 export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || mint === SOL_MINT) {
@@ -263,7 +265,7 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   };
   return Object.freeze({
     mint,
-    provider: "DexScreener + RugCheck + Solana mainnet RPC",
+    provider: "DexScreener + RugCheck + Alchemy DAS + Solana mainnet RPC + Jupiter Swap API V2",
     fetchedAt: Date.now(),
     priceUsd,
     liquidityUsd,
