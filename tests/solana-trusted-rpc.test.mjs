@@ -157,15 +157,19 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
     const request = JSON.parse(options.body);
     let result;
     if (request.method === "getSlot") result = 1100;
-    else if (request.method === "getAccountInfo") result = {
+    else if (request.method === "getAccountInfo") {
+      assert.equal(request.params[0], tableKey.toBase58());
+      assert.equal(request.params[1].encoding, "base64");
+      assert.equal(request.params[1].minContextSlot, 1090);
+      result = {
       context: { slot: 1098 },
       value: {
         owner: AddressLookupTableProgram.programId.toBase58(),
         data: [tableData.toString("base64"), "base64"],
         executable: false, lamports: 1000000, rentEpoch: 0
       }
-    };
-    else throw new Error("unexpected RPC method " + request.method);
+      };
+    } else throw new Error("unexpected RPC method " + request.method);
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }), { status: 200 });
   };
   const rpc = createTrustedSolanaRpc({ endpoint, expectedEndpoint: endpoint, fetchImpl });
