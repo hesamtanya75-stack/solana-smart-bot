@@ -175,6 +175,14 @@ test("getJupiterOrder binds Metis route, trusted parsed token accounts, and CPI 
     metisPolicy: {
       dexProgramBySwapVariant: { "0": dexProgram.toBase58() },
       dexLabelsBySwapVariant: { "0": ["Saber"] },
+      // Test-only semantic fixture; not an approved production DEX validator.
+      dexSemanticValidatorsBySwapVariant: {
+        "0": ({ dexProgramId, ammKey, routeStep, quoteStep }) => ({
+          allowed: dexProgramId === dexProgram.toBase58() &&
+            ammKey === amm.toBase58() && routeStep.inputIndex === 0 &&
+            routeStep.outputIndex === 1 && quoteStep.swapInfo.label === "Saber"
+        })
+      },
       allowedDexProgramIds: [dexProgram.toBase58()],
       allowedCpiProgramIds: [dexProgram.toBase58()],
       allowedCpiAccountKeys: decoded.accountKeys,
