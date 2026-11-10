@@ -108,3 +108,23 @@ test("CPI validator binds trace groups exactly to expected outer instruction ind
   })), /malformed or unexpected CPI instruction group/);
   assert.equal(validateSimulatedCpi(valid).allowed, true);
 });
+
+
+test("CPI validator returns the exact inner program, account-key order and instruction data", () => {
+  const result = validateSimulatedCpi(args());
+  assert.deepEqual(result.instructions, [{
+    outerInstructionIndex: 0,
+    programId: program,
+    accounts: [signer, account],
+    data: ""
+  }]);
+  assert.throws(() => validateSimulatedCpi(args({
+    simulationMeta: {
+      err: null,
+      innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 2, accounts: [0, 1], data: "x".repeat(2049) }]
+      }]
+    }
+  })), /invalid or oversized CPI instruction data/);
+});
