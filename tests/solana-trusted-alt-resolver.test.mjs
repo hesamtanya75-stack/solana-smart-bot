@@ -29,6 +29,7 @@ function fixture(overrides = {}) {
         context: { slot: overrides.responseSlot ?? 100 },
         value: {
           owner: overrides.owner ?? AddressLookupTableProgram.programId,
+          executable: overrides.executable ?? false,
           data: Buffer.from("fixture")
         }
       };
@@ -60,6 +61,11 @@ test("resolves a canonical, active ALT from a fresh trusted RPC context", async 
     "getSlot"
   ]);
   assert.deepEqual(calls[0].config, { commitment: "confirmed", minContextSlot: 0 });
+});
+
+test("rejects executable accounts even when they claim the ALT program owner", async () => {
+  const { key, resolver } = fixture({ executable: true });
+  await assert.rejects(() => resolver(key), /non-executable data account/);
 });
 
 test("rejects an ALT owned by a different program", async () => {
