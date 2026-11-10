@@ -116,8 +116,10 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     }
     cursor += dataHeader.value;
   }
+  let addressLookupCount = 0;
   if (messageVersion === 0) {
     const lookupHeader = readShortVector(bytes, cursor);
+    addressLookupCount = lookupHeader.value;
     cursor = lookupHeader.offset;
     if (lookupHeader.value > 64) throw new Error("Jupiter address lookup count is invalid");
     for (let i = 0; i < lookupHeader.value; i++) {
@@ -138,7 +140,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     signatureCount,
     staticAccountCount: keyCount,
     instructionCount,
-    addressLookupCount: messageVersion === 0 ? lookupHeader.value : 0,
+    addressLookupCount,
     messageVersion,
     // Wire structure is validated, but lookup tables and instruction semantics are not.
     semanticInstructionVerification: false
