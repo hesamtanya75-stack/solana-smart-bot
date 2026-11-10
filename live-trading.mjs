@@ -127,9 +127,14 @@ async function getJupiterOrder({
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
+  // Do not trust the Jupiter routePlan or browser values to create an allow-list.
+  // A trusted server caller must supply reviewed IDs and a trusted ALT resolver.
+  if (!transactionAllowList || typeof transactionAllowList !== "object") {
+    throw new Error("Trusted transaction program/account allow-list is required");
+  }
   // Only the Metis on-chain router is supported in this initial review scope.
   // Explicitly reject RFQ and third-party routers, gasless payers, and stale/malformed quote metadata.
-  const allowedRouters = transactionAllowList?.allowedRouters;
+  const allowedRouters = transactionAllowList.allowedRouters;
   if (!Array.isArray(allowedRouters) || allowedRouters.length !== 1 ||
       allowedRouters[0] !== "metis" || order.router !== "metis") {
     throw new Error("Only the explicitly reviewed Metis router is permitted");
@@ -168,11 +173,6 @@ async function getJupiterOrder({
     throw new Error("Jupiter route plan contains incomplete or invalid swap steps");
   }
 
-  // Do not trust the Jupiter routePlan or browser values to create an allow-list.
-  // A trusted server caller must supply reviewed IDs and a trusted ALT resolver.
-  if (!transactionAllowList || typeof transactionAllowList !== "object") {
-    throw new Error("Trusted transaction program/account allow-list is required");
-  }
   const decoded = await decodeSolanaTransaction(order.transaction, {
     lookupTableResolver
   });
