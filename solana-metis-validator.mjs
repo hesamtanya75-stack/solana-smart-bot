@@ -37,7 +37,7 @@ function readRoutePlan(data, offset, expectedSteps) {
     const percent = data[offset++];
     const inputIndex = data[offset++];
     const outputIndex = data[offset++];
-    if (percent < 1 || inputIndex === outputIndex) {
+    if (percent < 1 || percent > 100 || inputIndex === outputIndex) {
       throw new Error("Metis route step has invalid percent or token indexes");
     }
 
@@ -154,7 +154,7 @@ function validateMetisJupiterV6Instruction({
         !labels.includes(quoteStep?.swapInfo?.label) ||
         !Number.isInteger(quoteStep?.percent) ||
         quoteStep.percent !== step.percent ||
-        !quoteStep.swapInfo || !BASE58.test(String(quoteStep.swapInfo.ammKey || ""))) {
+        !quoteStep.swapInfo || !BASE58.test(String(quoteStep.swapInfo.ammKey || "")) ||\n        !instruction.accounts.slice(11).includes(quoteStep.swapInfo.ammKey)) {
       throw new Error("Metis on-chain DEX route does not match the pinned program/label policy and Jupiter quote");
     }
     requiredCpiProgramIds.push(programId);
