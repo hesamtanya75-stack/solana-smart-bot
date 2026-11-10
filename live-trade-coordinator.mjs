@@ -122,11 +122,42 @@ export class LiveTradeCoordinator {
     if (!Number.isSafeInteger(amountLamports) || amountLamports <= 0) {
       throw new Error("Amount must be a positive safe integer in lamports");
     }
-
     const intentFingerprint = orderIntentFingerprint(body, amountLamports);
+
+    // Fast idempotent retry path: do not require a still-fresh quote for an
+    // order that has already been reserved with exactly the same immutable intent.
+    const previous = await this.withState(state => {
+      const existing = state.reservations[key];
+      if (!existing) return null;
+      if (existing.intentFingerprint !== intentFingerprint) {
+        throw new Error("Idempotency key reused with a different order intent");
+      }
+      return { ok: true, duplicate: true, reservation: existing };
+    });
+    if (previous) return previous;
+
+    // Recheck the kill switch before making external requests.
+    const stopped = await this.withState(state => state.killSwitch !== false);
+    if (stopped) throw new Error("Emergency kill switch is active");
+
+    // All price and risk evidence is fetched by trusted server code. Any
+    // browser-supplied solUsd, quoteTimestamp, quoteId, or riskPassed is ignored.
+    const evidence = await fetchTrustedLiveEvidence(body.outputMint, this.env?.FETCH_IMPL || fetch);
+    if (!evidence.passed) {
+      throw new Error("Trusted token risk checks did not all pass; reservation blocked");
+    }
+    const quoteTimestamp = evidence.quote.fetchedAt;
     const now = Date.now();
+    if (!Number.isFinite(quoteTimestamp) || quoteTimestamp > now + 5000 ||
+        now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
+      throw new Error("Trusted SOL/USD quote is stale");
+    }
+    const amountCents = usdCentsFromLamports(amountLamports, evidence.quote.price);
+    if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
+
     return this.withState(state => {
-      // Recheck after network calls to protect against concurrent reservations.
+      // Recheck after network calls to protect against concurrent reservations
+      // and a kill-switch activation while external evidence was being fetched.
       const existing = state.reservations[key];
       if (existing) {
         if (existing.intentFingerprint !== intentFingerprint) {
@@ -144,7 +175,6 @@ export class LiveTradeCoordinator {
       if (dailySpend + amountCents > MAX_DAILY_SPEND_USD_CENTS) {
         throw new Error("Daily USD spend limit exceeded");
       }
-
       const openPositions = records.filter(item =>
         item.status === "pending" || item.status === "confirmed"
       ).length;
@@ -154,6 +184,13 @@ export class LiveTradeCoordinator {
         idempotencyKey: key,
         amountLamports,
         intentFingerprint,
+        quoteProvider: evidence.quote.provider,
+        quoteId: evidence.quote.quoteId,
+        quoteFetchedAt: new Date(quoteTimestamp).toISOString(),
+        solUsd: evidence.quote.price,
+        tokenRiskProvider: evidence.risk.provider,
+        tokenRiskFetchedAt: new Date(evidence.risk.fetchedAt).toISOString(),
+        tokenRiskChecks: evidence.risk.checks,
         amountCents,
         day,
         status: "pending",
