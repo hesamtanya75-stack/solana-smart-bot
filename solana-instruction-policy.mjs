@@ -120,3 +120,64 @@ export function validateDecodedSwapTransaction({
     accountKeys: Object.freeze([...decoded.accountKeys])
   });
 }
+
+/**
+ * Validate the CPI trace returned by a trusted simulation of this exact
+ * unsigned transaction. This is an additional rejection gate, not proof that
+ * execution will be identical on-chain. The caller must bind the simulation
+ * to the exact decoded transaction and use a trusted RPC response.
+ */
+export function validateSimulatedCpi({
+  decoded,
+  simulationMeta,
+  allowedCpiProgramIds,
+  allowedCpiAccountKeys
+} = {}) {
+  if (!decoded || !Array.isArray(decoded.instructions) ||
+      !Array.isArray(decoded.accountKeys) || decoded.accountKeys.length === 0) {
+    throw new Error("Decoded transaction is required for CPI validation");
+  }
+  if (!simulationMeta || simulationMeta.err !== null ||
+      !Array.isArray(simulationMeta.innerInstructions)) {
+    throw new Error("Successful simulation with an explicit inner-instruction trace is required");
+  }
+  const programAllowList = normalizeAllowList(allowedCpiProgramIds, "CPI program");
+  const accountAllowList = normalizeAllowList(allowedCpiAccountKeys, "CPI account");
+  let instructionCount = 0;
+  const programIds = new Set();
+
+  for (const group of simulationMeta.innerInstructions) {
+    if (!group || !Number.isInteger(group.index) || group.index < 0 ||
+        group.index >= decoded.instructions.length ||
+        !Array.isArray(group.instructions)) {
+      throw new Error("Simulation returned a malformed CPI instruction group");
+    }
+    for (const inner of group.instructions) {
+      if (!inner || !Number.isInteger(inner.programIdIndex) ||
+          inner.programIdIndex < 0 || inner.programIdIndex >= decoded.accountKeys.length ||
+          !Array.isArray(inner.accounts)) {
+        throw new Error("Simulation returned a malformed CPI instruction");
+      }
+      const programId = decoded.accountKeys[inner.programIdIndex];
+      if (!programAllowList.has(programId)) {
+        throw new Error("Simulation invoked an unknown or unapproved CPI program");
+      }
+      for (const index of inner.accounts) {
+        if (!Number.isInteger(index) || index < 0 || index >= decoded.accountKeys.length) {
+          throw new Error("CPI instruction contains an invalid account index");
+        }
+        if (!accountAllowList.has(decoded.accountKeys[index])) {
+          throw new Error("CPI instruction references an unapproved account");
+        }
+      }
+      programIds.add(programId);
+      instructionCount++;
+    }
+  }
+
+  return Object.freeze({
+    allowed: true,
+    instructionCount,
+    programIds: Object.freeze([...programIds])
+  });
+}
