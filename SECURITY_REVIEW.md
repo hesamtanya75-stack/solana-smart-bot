@@ -18,17 +18,17 @@ The Worker does not call `LiveTradeCoordinator`; no route exposes it. The parent
 
 Required: obtain the SOL/USD quote inside trusted server-side code from an allowlisted provider; validate currency, positive finite price, response shape, and fetch-time freshness. Run token risk inspection server-side for the exact mint immediately before reservation. Never accept a client boolean as risk approval. The parent `getJupiterOrder()` also accepts an `eligibility` object from its caller; before any integration, its values must be built inside the trusted Worker from fresh scanner data and serialized spend state, never from browser input. Bind the quote and risk evidence to the reservation and order identity.
 
-### High — coordinator endpoints have no local authorization
+### High — coordinator endpoints require a provisioned internal credential
 
-The Durable Object's `fetch()` accepts `/reserve`, `/confirm`, `/fail`, `/close`, and `/kill-switch` without checking an internal credential. There is currently no public Worker route to the namespace, so this is not presently an internet-exposed route. Nevertheless, do not add a public route or call these handlers from untrusted/browser input. Before integration, authenticate every internal operation and restrict kill-switch changes to trusted operator code.
+The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes.
 
 ### High — lifecycle transitions are not chain-verified
 
 `/confirm` accepts a caller assertion without a transaction signature or finalized-chain lookup. `/close` accepts a caller assertion without verified settlement. `/fail` now requires an explicit non-submission assertion and reason, which is a useful guard, but the assertion itself is not independently verified. A future reconciler must query the correct cluster and prove transaction outcome before changing state or releasing capacity.
 
-### High — idempotency does not bind the full order
+### High — idempotency now binds the immutable order intent, but caller evidence remains untrusted
 
-The idempotency record compares only `amountLamports`. It does not bind the mint, destination wallet, slippage policy, quote identity, or transaction intent. Reusing a key with the same amount but a different order can be treated as a duplicate. Store and compare a canonical hash of the complete immutable order intent.
+The coordinator now requires and compares amount, input mint, output mint, destination, slippage basis points, and quote identity for every idempotency key. Reuse with any changed field is rejected. However, this fingerprint does not authenticate the quote or prove that risk checks ran; those values remain caller-supplied. Do not integrate reservations until trusted server-side quote/risk evidence is generated and bound to the order.
 
 ### Medium — reservation history is stored as one unbounded object
 
