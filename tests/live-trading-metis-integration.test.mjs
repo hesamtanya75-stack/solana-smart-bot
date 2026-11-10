@@ -143,7 +143,7 @@ test("getJupiterOrder binds Metis route, trusted parsed token accounts, and CPI 
     inAmount: String(inAmount), outAmount: String(outAmount),
     routePlan: [{
       swapInfo: {
-        ammKey: amm.toBase58(), label: "Saber",
+        ammKey: amm.toBase58(), label: "TestDEX",
         inputMint: SOL_MINT, outputMint: outputMint.toBase58(),
         inAmount: String(inAmount), outAmount: String(outAmount)
       },
@@ -174,13 +174,13 @@ test("getJupiterOrder binds Metis route, trusted parsed token accounts, and CPI 
     },
     metisPolicy: {
       dexProgramBySwapVariant: { "0": dexProgram.toBase58() },
-      dexLabelsBySwapVariant: { "0": ["Saber"] },
+      dexLabelsBySwapVariant: { "0": ["TestDEX"] },
       // Test-only semantic fixture; not an approved production DEX validator.
       dexSemanticValidatorsBySwapVariant: {
         "0": ({ dexProgramId, ammKey, routeStep, quoteStep }) => ({
           allowed: dexProgramId === dexProgram.toBase58() &&
             ammKey === amm.toBase58() && routeStep.inputIndex === 0 &&
-            routeStep.outputIndex === 1 && quoteStep.swapInfo.label === "Saber"
+            routeStep.outputIndex === 1 && quoteStep.swapInfo.label === "TestDEX"
         })
       },
       allowedDexProgramIds: [dexProgram.toBase58()],
