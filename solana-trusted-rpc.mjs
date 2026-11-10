@@ -15,6 +15,51 @@ function assertPublicKey(value, name) {
   }
 }
 
+async function readLimitedResponseBody(response, maxBytes) {
+  if (!response?.body || typeof response.body.getReader !== "function") {
+    throw new Error("Trusted RPC response body is unavailable");
+  }
+  const declaredLength = response.headers?.get?.("content-length");
+  if (declaredLength !== null && declaredLength !== undefined) {
+    if (!/^(0|[1-9][0-9]*)$/.test(declaredLength) || Number(declaredLength) > maxBytes) {
+      throw new Error("Trusted RPC response exceeds size limit");
+    }
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        throw new Error("Trusted RPC response body is malformed");
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error("Trusted RPC response exceeds size limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("Trusted RPC response is not valid UTF-8");
+  }
+}
+
 function parseTrustedEndpoint(endpoint) {
   let parsed;
   try { parsed = new URL(endpoint); } catch { throw new Error("Trusted RPC endpoint is invalid"); }
