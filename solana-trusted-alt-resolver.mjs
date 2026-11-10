@@ -60,6 +60,9 @@ export function createTrustedAltResolver({
     if (!accountInfo.owner?.equals?.(AddressLookupTableProgram.programId)) {
       throw new Error("ALT account is not owned by the canonical Address Lookup Table Program");
     }
+    if (accountInfo.executable !== false) {
+      throw new Error("ALT account must be a non-executable data account");
+    }
 
     let state;
     try {
