@@ -1,0 +1,54 @@
+name: Cloudflare Worker build validation
+
+on:
+  pull_request:
+    paths:
+      - "worker.js"
+      - "trusted-live-evidence.mjs"
+      - "live-trade-coordinator.mjs"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "tests/**"
+      - ".github/workflows/cloudflare-worker-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-new-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify Wrangler targets the active Worker
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          if (config.name !== "solana-smart-bot-new") {
+            throw new Error(`Unexpected Worker name: ${config.name}`);
+          }
+          if (config.main !== "worker.js") {
+            throw new Error(`Unexpected Worker entry point: ${config.main}`);
+          }
+          if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) {
+            throw new Error("BOT_STATE KV binding is missing");
+          }
+          if (!config.durable_objects?.bindings?.some(binding =>
+            binding.name === "LIVE_TRADE_COORDINATOR" &&
+            binding.class_name === "LiveTradeCoordinator")) {
+            throw new Error("LIVE_TRADE_COORDINATOR binding is missing");
+          }
+          console.log("Validated active Worker name, entry point, KV, and Durable Object bindings.");
+          NODE
+
+      - name: Build Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc

@@ -14,10 +14,25 @@ class MemoryStorage {
     try { return await fn(); } finally { release(); }
   }
 }
-function makeCoordinator() {
+function trustedEvidence(overrides = {}) {
+  const fetchedAt = Date.now();
+  return {
+    quote: { provider: "Coinbase", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "test-quote-" + fetchedAt },
+    risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt,
+      checks: {
+        mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
+        holderConcentrationSafe: true, sellRouteAvailable: true, marketLiquiditySafe: true,
+        marketVolumeSafe: true, rugCheckSafe: true
+      }, passed: true },
+    passed: true,
+    ...overrides
+  };
+}
+function makeCoordinator(evidenceProvider = async () => trustedEvidence()) {
   const storage = new MemoryStorage();
   const coordinator = new LiveTradeCoordinator({ storage }, {
-    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters"
+    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
+    FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider
   });
   return { coordinator, storage };
 }
@@ -57,8 +72,12 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
     amountLamports: 15_000_001
   }));
   assert.equal(tooLarge.status, 409);
-  const stale = await post(coordinator, "/reserve", validReservation({
-    idempotencyKey: "order-key-stale", quoteTimestamp: Date.now() - 31_000
+  const staleCoordinator = makeCoordinator(async () => trustedEvidence({
+    quote: { provider: "test-fixture", price: 200, fetchedAt: Date.now() - 31_000 }
+  })).coordinator;
+  await post(staleCoordinator, "/kill-switch", { enabled: false });
+  const stale = await post(staleCoordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-stale"
   }));
   assert.equal(stale.status, 409);
 });
@@ -137,11 +156,35 @@ test("only explicitly confirmed non-submission can release a pending reservation
   assert.equal(status.dailySpendUsdCents, 0);
 });
 
-test("missing server-side risk approval fails closed", async () => {
+test("browser-supplied risk flag is ignored; server evidence controls approval", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
-  const result = await post(coordinator, "/reserve", validReservation({ riskPassed: false }));
+  const result = await post(coordinator, "/reserve", validReservation({ riskPassed: false, solUsd: 0.01 }));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.reservation.solUsd, 200);
+  assert.equal(result.body.reservation.quoteProvider, "Coinbase");
+});
+
+test("server-side risk evidence failure blocks reservation even if browser claims approval", async () => {
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    passed: false, risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt: Date.now(), checks: {}, passed: false }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation({ riskPassed: true }));
   assert.equal(result.status, 409);
+  assert.match(result.body.error, /risk checks/);
+});
+
+test("coordinator blocks reservation when Jupiter instruction semantics are unverified", async () => {
+  const evidence = trustedEvidence();
+  evidence.passed = false;
+  evidence.risk.passed = false;
+  evidence.risk.checks.sellRouteAvailable = false;
+  const { coordinator } = makeCoordinator(async () => evidence);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /risk checks/);
 });
 
 test("ten open reservations block an eleventh", async () => {
@@ -201,6 +244,6 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   const changed = await post(coordinator, "/reserve", validReservation({
     destination: "11111111111111111111111111111111"
   }));
-  assert.equal(changed.status, 409);
-  assert.match(changed.body.error, /different order intent/);
+  assert.equal(changed.status, 400);
+  assert.match(changed.body.error, /immutable order intent/);
 });
