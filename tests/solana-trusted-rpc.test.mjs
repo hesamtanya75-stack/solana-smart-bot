@@ -10,6 +10,20 @@ import { createTrustedSolanaRpc, inspectMetisOrderWithTrustedRpc } from "../sola
 
 const endpoint = "https://trusted-rpc.example/";
 
+async function decodedTransferFixture() {
+  const payer = Keypair.generate();
+  const recipient = Keypair.generate().publicKey;
+  const message = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    instructions: [SystemProgram.transfer({
+      fromPubkey: payer.publicKey, toPubkey: recipient, lamports: 1
+    })]
+  }).compileToLegacyMessage();
+  const encodedTransaction = Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
+  return { encodedTransaction, decoded: await decodeSolanaTransaction(encodedTransaction) };
+}
+
 function rpcFixture(overrides = {}) {
   let id = 0;
   const requests = [];
@@ -67,17 +81,10 @@ test("trusted RPC calls validate JSON-RPC and request token accounts with minCon
 
 test("trusted order inspection validates source/destination accounts and exact-transaction CPI trace", async () => {
   const fixture = rpcFixture();
-  const decoded = {
-    instructions: [{ programId: "11111111111111111111111111111111", accounts: [] }],
-    accountKeys: [
-      "11111111111111111111111111111112",
-      "11111111111111111111111111111113",
-      "11111111111111111111111111111111"
-    ]
-  };
+  const { encodedTransaction, decoded } = await decodedTransferFixture();
   const result = await inspectMetisOrderWithTrustedRpc({
     rpc: fixture.rpc,
-    encodedTransaction: "AQ==",
+    encodedTransaction,
     decoded,
     tokenAccountExpectations: [
       { address: fixture.keys[0], expectedTokenProgramId: fixture.tokenProgram, expectedMint: fixture.mintA, expectedAuthority: fixture.owner, minimumAmount: "1" },
@@ -94,6 +101,19 @@ test("trusted order inspection validates source/destination accounts and exact-t
   assert.equal(fixture.requests.some(item => item.body.method === "simulateTransaction"), true);
 });
 
+test("trusted order inspection rejects decoded metadata that differs from serialized transaction", async () => {
+  const fixture = rpcFixture();
+  const { encodedTransaction, decoded } = await decodedTransferFixture();
+  const altered = { ...decoded, accountKeys: [...decoded.accountKeys].reverse() };
+  await assert.rejects(() => inspectMetisOrderWithTrustedRpc({
+    rpc: fixture.rpc, encodedTransaction, decoded: altered,
+    tokenAccountExpectations: [],
+    allowedCpiProgramIds: [decoded.accountKeys[2]],
+    allowedCpiAccountKeys: decoded.accountKeys,
+    requiredCpiProgramIds: [decoded.accountKeys[2]],
+    expectedCpiProgramIds: [decoded.accountKeys[2]]
+  }), /does not match the exact serialized transaction/);
+});
 test("trusted order inspection fails closed on account identity mismatch and failed simulation", async () => {
   const wrongAccount = {
     context: { slot: 1099 },
@@ -108,13 +128,13 @@ test("trusted order inspection fails closed on account identity mismatch and fai
     }, null]
   };
   const bad = rpcFixture({ getMultipleAccounts: wrongAccount });
-  const decoded = { instructions: [{ programId: "11111111111111111111111111111111", accounts: [] }], accountKeys: ["11111111111111111111111111111112", "11111111111111111111111111111113", "11111111111111111111111111111111"] };
+  const { encodedTransaction, decoded } = await decodedTransferFixture();
   const expectations = [
     { address: bad.keys[0], expectedTokenProgramId: bad.tokenProgram, expectedMint: bad.mintA, expectedAuthority: bad.owner },
     { address: bad.keys[1], expectedTokenProgramId: bad.tokenProgram, expectedMint: bad.mintB, expectedAuthority: bad.owner }
   ];
   await assert.rejects(() => inspectMetisOrderWithTrustedRpc({
-    rpc: bad.rpc, encodedTransaction: "AQ==", decoded,
+    rpc: bad.rpc, encodedTransaction, decoded,
     tokenAccountExpectations: expectations,
     allowedCpiProgramIds: [decoded.accountKeys[2]],
     allowedCpiAccountKeys: decoded.accountKeys,
