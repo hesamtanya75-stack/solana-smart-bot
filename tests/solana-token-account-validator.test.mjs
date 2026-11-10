@@ -37,7 +37,7 @@ function fixture(overrides = {}) {
 function validate(response = fixture(), overrides = {}) {
   return validateParsedTokenAccount({
     response,
-    expectedTokenProgramId: tokenProgram,
+    expectedTokenProgramId: overrides.expectedTokenProgramId || tokenProgram,
     expectedMint: mint,
     expectedAuthority: authority,
     currentSlot: 1010,
@@ -104,9 +104,27 @@ test("token account validator rejects malformed amounts and unknown Token-2022 e
   malformed.value.data.parsed.info.tokenAmount.amount = "-1";
   assert.throws(() => validate(malformed), /amount or decimals are invalid/);
 
+  const token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
   const extended = fixture();
+  extended.value.owner = token2022Program;
   extended.value.data.program = "spl-token-2022";
   extended.value.data.parsed.info.extensions = [{ extension: "transferFeeAmount" }];
-  assert.throws(() => validate(extended), /unapproved Token-2022 extension/);
-  assert.equal(validate(extended, { allowedExtensions: ["transferFeeAmount"] }).allowed, true);
+  assert.throws(() => validate(extended, { expectedTokenProgramId: token2022Program }), /unapproved Token-2022 extension/);
+  assert.equal(validate(extended, {
+    expectedTokenProgramId: token2022Program,
+    allowedExtensions: ["transferFeeAmount"]
+  }).allowed, true);
+
+  const missingExtensions = fixture();
+  missingExtensions.value.owner = token2022Program;
+  missingExtensions.value.data.program = "spl-token-2022";
+  delete missingExtensions.value.data.parsed.info.extensions;
+  assert.throws(
+    () => validate(missingExtensions, { expectedTokenProgramId: token2022Program }),
+    /extension metadata is missing/
+  );
+
+  const mismatchedLabel = fixture();
+  mismatchedLabel.value.data.program = "spl-token-2022";
+  assert.throws(() => validate(mismatchedLabel), /program label does not match/);
 });
