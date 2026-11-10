@@ -59,6 +59,13 @@ function fixture(overrides = {}) {
       routePlan: [{ swapInfo: { label: "Saber", ammKey: amm }, percent: 100 }],
       dexProgramBySwapVariant: { "0": dexProgram },
       dexLabelsBySwapVariant: { "0": ["Saber"] },
+      dexSemanticValidatorsBySwapVariant: {
+        "0": ({ dexProgramId, ammKey, routeStep, quoteStep }) => ({
+          allowed: dexProgramId === dexProgram && ammKey === amm &&
+            routeStep.inputIndex === 0 && routeStep.outputIndex === 1 &&
+            quoteStep.swapInfo.label === "Saber"
+        })
+      },
       allowedDexProgramIds: [dexProgram],
       ...overrides.args
     }
@@ -127,4 +134,14 @@ test("Metis validator rejects unknown swap variants, route percentage drift, and
     decoded: f.decoded, instruction: f.instruction,
     ...f.args, allowedDexProgramIds: []
   }), /Pinned Metis DEX/);
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded: f.decoded, instruction: f.instruction,
+    ...f.args, dexSemanticValidatorsBySwapVariant: {}
+  }), /Pinned Metis DEX/);
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded: f.decoded, instruction: f.instruction,
+    ...f.args, dexSemanticValidatorsBySwapVariant: {
+      "0": () => ({ allowed: false })
+    }
+  }), /DEX-specific CPI account semantics were not approved/);
 });
