@@ -188,6 +188,53 @@ function createTrustedSolanaRpc({
       }
       return result;
     },
+    async getMultipleRawAccountInfos(pubkeys, { minContextSlot = 0 } = {}) {
+      const MAX_RAW_ACCOUNT_READS = 16;
+      const MAX_RAW_ACCOUNT_DATA_BYTES = 512_000;
+      if (!Array.isArray(pubkeys) || pubkeys.length < 1 || pubkeys.length > MAX_RAW_ACCOUNT_READS ||
+          pubkeys.some((key) => { try { assertPublicKey(key, "Raw account"); return false; } catch { return true; } }) ||
+          new Set(pubkeys).size !== pubkeys.length ||
+          !Number.isSafeInteger(minContextSlot) || minContextSlot < 0) {
+        throw new Error("Trusted raw-account request is invalid");
+      }
+      const result = await call("getMultipleAccounts", [
+        pubkeys, { encoding: "base64", commitment, minContextSlot }
+      ]);
+      if (!result || !result.context || !Number.isSafeInteger(result.context.slot) ||
+          result.context.slot < minContextSlot ||
+          !Array.isArray(result.value) || result.value.length !== pubkeys.length) {
+        throw new Error("Trusted RPC raw-account response is incomplete or stale");
+      }
+      const values = result.value.map((account) => {
+        if (account === null) return null;
+        if (!account || typeof account !== "object" ||
+            typeof account.executable !== "boolean" ||
+            !Number.isSafeInteger(account.lamports) || account.lamports < 0 ||
+            !Array.isArray(account.data) || account.data.length !== 2 ||
+            typeof account.data[0] !== "string" || account.data[1] !== "base64") {
+          throw new Error("Trusted RPC returned an invalid raw-account response");
+        }
+        assertPublicKey(account.owner, "Raw account owner");
+        if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(account.data[0])) {
+          throw new Error("Trusted RPC raw-account data is not canonical base64");
+        }
+        const data = Buffer.from(account.data[0], "base64");
+        if (data.toString("base64") !== account.data[0] || data.length > MAX_RAW_ACCOUNT_DATA_BYTES) {
+          throw new Error("Trusted RPC raw-account data exceeds limits or is malformed");
+        }
+        return Object.freeze({
+          owner: new PublicKey(account.owner),
+          data,
+          executable: account.executable,
+          lamports: account.lamports,
+          rentEpoch: account.rentEpoch
+        });
+      });
+      return Object.freeze({
+        context: Object.freeze({ slot: result.context.slot }),
+        value: Object.freeze(values)
+      });
+    },
     async simulateUnsignedTransaction(encodedTransaction, { minContextSlot = 0 } = {}) {
       if (typeof encodedTransaction !== "string" ||
           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(encodedTransaction) ||
