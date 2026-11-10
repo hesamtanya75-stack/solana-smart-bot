@@ -105,7 +105,7 @@ test("opaque Base64 Jupiter transaction is rejected until a real decoder and all
         transactionVersion: 0, feeBps: 0
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-  }), error => error.message.includes("Transaction decoder"));
+  }), error => error.message.includes("Trusted transaction program/account allow-list"));
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
