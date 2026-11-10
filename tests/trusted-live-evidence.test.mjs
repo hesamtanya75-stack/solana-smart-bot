@@ -35,8 +35,12 @@ test("risk inspection rejects invalid mint before external requests", async () =
   }), /valid non-SOL output mint/);
 });
 
-test("risk inspection never claims complete holder concentration from top-20 sample", async () => {
+test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const firstPage = Array.from({ length: 1000 }, () => ({
+    mint, owner: "11111111111111111111111111111111", amount: "1"
+  }));
+  let holderPages = 0;
   const mockFetch = async (url, options = {}) => {
     const value = String(url);
     if (value.includes("dexscreener.com")) return Response.json({ pairs: [{
@@ -45,8 +49,17 @@ test("risk inspection never claims complete holder concentration from top-20 sam
     }] });
     if (value.includes("rugcheck.xyz")) return Response.json({ score: 100 });
     const request = JSON.parse(options.body);
-    const method = request.method;
-    if (method === "getAccountInfo") return Response.json({ result: {
+    if (value.includes("solana-mainnet.g.alchemy.com")) {
+      assert.equal(request.method, "getTokenAccounts");
+      holderPages++;
+      return Response.json({ result: {
+        token_accounts: request.params.page === 1 ? firstPage : [{
+          mint, owner: "11111111111111111111111111111112", amount: "1"
+        }],
+        errors: []
+      } });
+    }
+    if (request.method === "getAccountInfo") return Response.json({ result: {
       value: {
         owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         data: { parsed: { info: {
@@ -56,21 +69,17 @@ test("risk inspection never claims complete holder concentration from top-20 sam
         } } }
       }
     } });
-    if (method === "getTokenLargestAccounts") return Response.json({ result: {
-      value: [{ address: "11111111111111111111111111111111" }]
+    if (request.method === "getTokenSupply") return Response.json({ result: {
+      value: { amount: "1001" }
     } });
-    if (method === "getTokenSupply") return Response.json({ result: {
-      value: { amount: "1000000" }
-    } });
-    if (method === "getMultipleAccounts") return Response.json({ result: {
-      value: [{ data: { parsed: { info: {
-        owner: "11111111111111111111111111111111", tokenAmount: { amount: "1000" }
-      } } } }]
-    } });
-    throw new Error("Unexpected RPC method " + method);
+    throw new Error("Unexpected RPC method " + request.method);
   };
-  const risk = await fetchTrustedTokenRisk(mint, mockFetch);
-  assert.equal(risk.holderSampleOnly, true);
+  const risk = await fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456");
+  assert.equal(holderPages, 2);
+  assert.equal(risk.holderSampleOnly, false);
+  assert.equal(risk.holderAccountCount, 1001);
+  assert.equal(risk.holderOwnerCount, 2);
+  assert.ok(risk.top10OwnerConcentrationPct > 99);
   assert.equal(risk.checks.token2022ExtensionsSafe, false);
   assert.equal(risk.checks.holderConcentrationSafe, false);
   assert.equal(risk.checks.sellRouteAvailable, false);
