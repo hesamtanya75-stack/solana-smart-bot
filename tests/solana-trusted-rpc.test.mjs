@@ -327,3 +327,79 @@ test("trusted RPC raw account reader rejects oversized account lists before netw
   await assert.rejects(() => rpc.getMultipleRawAccountInfos(keys), /request is invalid/);
   assert.equal(called, false);
 });
+
+
+test("trusted RPC inspects upgradeable Program and large ProgramData in a consistent context", async () => {
+  const programId = Keypair.generate().publicKey;
+  const programDataAddress = Keypair.generate().publicKey;
+  const authority = Keypair.generate().publicKey;
+  const loader = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const programData = Buffer.alloc(45 + 610_000);
+  programData.writeUInt32LE(3, 0);
+  programData.writeBigUInt64LE(119721738n, 4);
+  programData[12] = 1;
+  authority.toBuffer().copy(programData, 13);
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46]).copy(programData, 45);
+  const program = Buffer.alloc(36);
+  program.writeUInt32LE(2, 0);
+  programDataAddress.toBuffer().copy(program, 4);
+  const makeRaw = (data, executable) => ({
+    owner: loader, executable, lamports: 1,
+    data: [data.toString("base64"), "base64"]
+  });
+  const requests = [];
+  const rpc = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      requests.push(request);
+      assert.equal(request.method, "getMultipleAccounts");
+      const keys = request.params[0];
+      const value = keys.length === 1
+        ? [makeRaw(program, true)]
+        : [makeRaw(program, true), makeRaw(programData, false)];
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0", id: request.id,
+        result: { context: { slot: keys.length === 1 ? 1200 : 1201 }, value }
+      }), { status: 200 });
+    }
+  });
+  const result = await rpc.inspectUpgradeableProgram(programId.toBase58(), { minContextSlot: 1190 });
+  assert.equal(result.programDataAddress, programDataAddress.toBase58());
+  assert.equal(result.deploymentSlot, "119721738");
+  assert.equal(result.upgradeAuthority, authority.toBase58());
+  assert.equal(result.contextSlot, 1201);
+  assert.equal(result.executableLength, 610_000);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].params[1].minContextSlot, 1200);
+});
+
+test("trusted RPC upgradeable program inspection rejects a changed ProgramData pointer", async () => {
+  const programId = Keypair.generate().publicKey;
+  const firstData = Keypair.generate().publicKey;
+  const changedData = Keypair.generate().publicKey;
+  const loader = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const makeProgram = (dataAddress) => {
+    const data = Buffer.alloc(36);
+    data.writeUInt32LE(2, 0);
+    dataAddress.toBuffer().copy(data, 4);
+    return { owner: loader, executable: true, lamports: 1, data: [data.toString("base64"), "base64"] };
+  };
+  const rpc = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      const value = request.params[0].length === 1
+        ? [makeProgram(firstData)]
+        : [makeProgram(changedData), null];
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0", id: request.id,
+        result: { context: { slot: 2000 }, value }
+      }), { status: 200 });
+    }
+  });
+  await assert.rejects(
+    () => rpc.inspectUpgradeableProgram(programId.toBase58()),
+    /pointer changed or snapshot is inconsistent/
+  );
+});
