@@ -59,11 +59,13 @@ export async function decodeSolanaTransaction(
     const table = await lookupTableResolver(lookup.accountKey);
     if (!table || !table.key?.equals?.(lookup.accountKey) ||
         !Array.isArray(table.state?.addresses) ||
-        !Array.isArray(lookup.writableIndexes) ||
-        !Array.isArray(lookup.readonlyIndexes)) {
+        !(Array.isArray(lookup.writableIndexes) || ArrayBuffer.isView(lookup.writableIndexes)) ||
+        !(Array.isArray(lookup.readonlyIndexes) || ArrayBuffer.isView(lookup.readonlyIndexes))) {
       throw new Error("Address Lookup Table is missing, mismatched, or invalid");
     }
-    const selectedIndexes = [...lookup.writableIndexes, ...lookup.readonlyIndexes];
+    const writableIndexes = Array.from(lookup.writableIndexes);
+    const readonlyIndexes = Array.from(lookup.readonlyIndexes);
+    const selectedIndexes = [...writableIndexes, ...readonlyIndexes];
     if (selectedIndexes.some((addressIndex) =>
       !Number.isInteger(addressIndex) || addressIndex < 0 ||
       addressIndex >= table.state.addresses.length
@@ -112,12 +114,18 @@ export async function decodeSolanaTransaction(
     throw new Error("Transaction message contains invalid account privilege header values");
   }
 
-  const loadedWritableCount = lookups.reduce(
-    (count, lookup) => count + lookup.writableIndexes.length, 0
+  const loadedWritableEntries = lookups.flatMap((lookup) =>
+    Array.from(lookup.writableIndexes, (addressIndex) => ({
+      table: lookup.accountKey.toBase58(), addressIndex
+    }))
   );
-  const loadedReadonlyCount = lookups.reduce(
-    (count, lookup) => count + lookup.readonlyIndexes.length, 0
+  const loadedReadonlyEntries = lookups.flatMap((lookup) =>
+    Array.from(lookup.readonlyIndexes, (addressIndex) => ({
+      table: lookup.accountKey.toBase58(), addressIndex
+    }))
   );
+  const loadedWritableCount = loadedWritableEntries.length;
+  const loadedReadonlyCount = loadedReadonlyEntries.length;
   if (staticKeyCount + loadedWritableCount + loadedReadonlyCount !== accountKeyCount) {
     throw new Error("Resolved account keys do not match static and ALT lookup counts");
   }
@@ -135,34 +143,16 @@ export async function decodeSolanaTransaction(
     } else {
       const loadedIndex = index - staticKeyCount;
       isWritable = loadedIndex < loadedWritableCount;
-      let cursor = 0;
-      let origin = null;
-      for (const lookup of lookups) {
-        const writableCount = lookup.writableIndexes.length;
-        const readonlyCount = lookup.readonlyIndexes.length;
-        if (loadedIndex >= cursor && loadedIndex < cursor + writableCount) {
-          origin = {
-            type: "lookupTable",
-            table: lookup.accountKey.toBase58(),
-            access: "writable",
-            addressIndex: lookup.writableIndexes[loadedIndex - cursor]
-          };
-          break;
-        }
-        cursor += writableCount;
-        if (loadedIndex >= cursor && loadedIndex < cursor + readonlyCount) {
-          origin = {
-            type: "lookupTable",
-            table: lookup.accountKey.toBase58(),
-            access: "readonly",
-            addressIndex: lookup.readonlyIndexes[loadedIndex - cursor]
-          };
-          break;
-        }
-        cursor += readonlyCount;
-      }
+      const origin = isWritable
+        ? loadedWritableEntries[loadedIndex]
+        : loadedReadonlyEntries[loadedIndex - loadedWritableCount];
       if (!origin) throw new Error("Unable to map an ALT-loaded account to its lookup table");
-      source = Object.freeze(origin);
+      source = Object.freeze({
+        type: "lookupTable",
+        table: origin.table,
+        access: isWritable ? "writable" : "readonly",
+        addressIndex: origin.addressIndex
+      });
     }
     return Object.freeze({ pubkey, index, isSigner, isWritable, source });
   });
