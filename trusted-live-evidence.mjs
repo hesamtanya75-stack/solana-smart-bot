@@ -48,7 +48,7 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
     throw new Error("Alchemy API key is required for complete paginated holder verification");
   }
   const endpoint = "https://solana-mainnet.g.alchemy.com/v2/" + encodeURIComponent(alchemyApiKey);
-  const limit = 1000;
+  const limit = 100;
   const accounts = [];
   for (let page = 1; page <= 100; page++) {
     const payload = await fetchJson(fetchImpl, endpoint, {
