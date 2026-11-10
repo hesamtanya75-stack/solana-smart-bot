@@ -45,7 +45,7 @@ test("eligibility gate enforces daily spend, open positions, liquidity, volume a
     policy, amountLamports: 1000000, ...goodEligibility, dailySpentLamports: 49500000
   }), /daily spend limit/);
   assert.throws(() => evaluateLiveTradeEligibility({
-    policy, amountLamports: 1000000, ...goodEligibility, openPositions: 3
+    policy, amountLamports: 1000000, ...goodEligibility, openPositions: 10
   }), /Maximum open positions/);
   assert.throws(() => evaluateLiveTradeEligibility({
     policy, amountLamports: 1000000, ...goodEligibility, liquidityUsd: 9999
