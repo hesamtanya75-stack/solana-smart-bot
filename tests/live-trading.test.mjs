@@ -148,7 +148,7 @@ test("empty or malformed unsigned transaction is rejected", async () => {
 });
 
 
-test("Jupiter order is decoded and structurally checked before inspection metadata is returned", async () => {
+test("Jupiter order requires semantic validation and returns inspection metadata only", async () => {
   const wallet = new PublicKey(EXPECTED_BOT_WALLET);
   const recipient = Keypair.generate().publicKey;
   const message = new TransactionMessage({
@@ -188,6 +188,25 @@ test("Jupiter order is decoded and structurally checked before inspection metada
   assert.equal(result.instructionPolicy.allowed, true);
   assert.equal(result.instructionPolicy.instructionCount, 1);
   assert.equal("transaction" in result, false);
+
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    transactionAllowList: {
+      requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
+      allowedProgramIds: [SystemProgram.programId.toBase58()],
+      allowedAccountKeys
+    },
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-no-validator", transaction: encoded,
+      inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /protocol-specific instruction validators are required/);
 });
 
 test("Jupiter order rejects invalid serialized transactions even with an allow-list", async () => {
