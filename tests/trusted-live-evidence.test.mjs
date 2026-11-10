@@ -47,7 +47,14 @@ test("risk inspection never claims complete holder concentration from top-20 sam
     const request = JSON.parse(options.body);
     const method = request.method;
     if (method === "getAccountInfo") return Response.json({ result: {
-      value: { data: { parsed: { info: { mintAuthority: null, freezeAuthority: null } } } }
+      value: {
+        owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        data: { parsed: { info: {
+          mintAuthority: null,
+          freezeAuthority: null,
+          extensions: [{ extension: "transferHook" }]
+        } } }
+      }
     } });
     if (method === "getTokenLargestAccounts") return Response.json({ result: {
       value: [{ address: "11111111111111111111111111111111" }]
@@ -64,6 +71,7 @@ test("risk inspection never claims complete holder concentration from top-20 sam
   };
   const risk = await fetchTrustedTokenRisk(mint, mockFetch);
   assert.equal(risk.holderSampleOnly, true);
+  assert.equal(risk.checks.token2022ExtensionsSafe, false);
   assert.equal(risk.checks.holderConcentrationSafe, false);
   assert.equal(risk.checks.sellRouteAvailable, false);
   assert.equal(risk.passed, false);
