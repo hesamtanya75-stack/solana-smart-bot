@@ -92,7 +92,7 @@ function validateMetisJupiterV6Instruction({
   }
   const accounts = instruction.accounts;
   const [tokenProgram, , authority, sourceTokenAccount, , , destinationTokenAccount, sourceMint, destinationMint, , token2022Program] = accounts;
-  if (![TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(tokenProgram) ||
+  if (tokenProgram !== TOKEN_PROGRAM_ID ||
       token2022Program !== TOKEN_2022_PROGRAM_ID ||
       authority !== expectedSigner ||
       sourceMint !== inputMint || destinationMint !== outputMint ||
