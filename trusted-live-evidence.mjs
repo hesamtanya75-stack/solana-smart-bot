@@ -1,4 +1,6 @@
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/SOL-USD/spot";
 const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
@@ -56,10 +58,18 @@ function parseMintAccount(account) {
   if (!value) throw new Error("Mint account is unavailable");
   const parsed = value.data?.parsed?.info;
   if (parsed) {
+    // Only the classic SPL Token program is treated as extension-free.
+    // Token-2022 is allowed only when the RPC explicitly returns an empty
+    // extensions array; missing or unknown program metadata fails closed.
+    const tokenProgram = value.owner;
+    const token2022ExtensionsSafe =
+      tokenProgram === TOKEN_PROGRAM_ID ||
+      (tokenProgram === TOKEN_2022_PROGRAM_ID &&
+        Array.isArray(parsed.extensions) && parsed.extensions.length === 0);
     return {
       mintAuthoritySafe: parsed.mintAuthority == null,
       freezeAuthoritySafe: parsed.freezeAuthority == null,
-      token2022ExtensionsSafe: true
+      token2022ExtensionsSafe
     };
   }
   const raw = value.data;
