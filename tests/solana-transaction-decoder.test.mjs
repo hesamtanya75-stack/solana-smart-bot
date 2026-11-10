@@ -147,6 +147,10 @@ test("instruction policy accepts only exact reviewed programs, accounts and sign
     signerPubkeys: [signer],
     signaturesPresent: [false],
     accountKeys: [signer, program, input, output],
+    accountMetadata: [signer, program, input, output].map((pubkey, index) => ({
+      pubkey, index, isSigner: index === 0, isWritable: index !== 1,
+      source: { type: "static" }
+    })),
     instructions: [{ programId: program, accounts: [signer, input, output] }]
   };
   const result = validateDecodedSwapTransaction({
@@ -154,6 +158,7 @@ test("instruction policy accepts only exact reviewed programs, accounts and sign
     requiredAccounts: [signer, input, output],
     allowedProgramIds: [program],
     allowedAccountKeys: [signer, program, input, output],
+    allowedWritableAccountKeys: [signer, input, output],
     instructionValidators: { [program]: () => ({ allowed: true }) }
   });
   assert.equal(result.allowed, true);
@@ -169,12 +174,17 @@ test("instruction policy rejects unknown programs and accounts", () => {
   const base = {
     version: 0, signerPubkeys: [signer], signaturesPresent: [false],
     accountKeys: [signer, program, input, output],
+    accountMetadata: [signer, program, input, output].map((pubkey, index) => ({
+      pubkey, index, isSigner: index === 0, isWritable: index !== 1,
+      source: { type: "static" }
+    })),
     instructions: [{ programId: program, accounts: [signer, input, output] }]
   };
   const options = {
     expectedSigner: signer, requiredAccounts: [signer, input, output],
     allowedProgramIds: [program],
     allowedAccountKeys: [signer, program, input, output],
+    allowedWritableAccountKeys: [signer, input, output],
     instructionValidators: { [program]: () => ({ allowed: true }) }
   };
   assert.throws(() => validateDecodedSwapTransaction({
@@ -193,12 +203,17 @@ test("instruction policy rejects signer mismatch, pre-signed orders and empty al
   const decoded = {
     version: 0, signerPubkeys: [signer], signaturesPresent: [false],
     accountKeys: [signer, program, input, output],
+    accountMetadata: [signer, program, input, output].map((pubkey, index) => ({
+      pubkey, index, isSigner: index === 0, isWritable: index !== 1,
+      source: { type: "static" }
+    })),
     instructions: [{ programId: program, accounts: [signer, input, output] }]
   };
   const options = {
     decoded, expectedSigner: signer, requiredAccounts: [signer, input, output],
     allowedProgramIds: [program],
-    allowedAccountKeys: [signer, program, input, output]
+    allowedAccountKeys: [signer, program, input, output],
+    allowedWritableAccountKeys: [signer, input, output]
   };
   assert.throws(() => validateDecodedSwapTransaction({
     ...options, expectedSigner: input
