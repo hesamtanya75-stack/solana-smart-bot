@@ -171,8 +171,8 @@ async function getJupiterOrder({
       BigInt(order.lastValidBlockHeight) > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("Jupiter order block-height expiry is missing or invalid");
   }
-  if (typeof getCurrentBlockHeight !== "function") {
-    throw new Error("Trusted RPC block-height provider is required");
+  if (!trustedRpc || typeof trustedRpc.getBlockHeight !== "function") {
+    throw new Error("Pinned trusted Solana RPC client is required");
   }
   const currentBlockHeight = await trustedRpc.getBlockHeight();
   const lastValidBlockHeight = Number(order.lastValidBlockHeight);
