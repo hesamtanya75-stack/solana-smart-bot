@@ -152,7 +152,8 @@ test("instruction policy accepts only exact reviewed programs, accounts and sign
     decoded, expectedSigner: signer,
     requiredAccounts: [signer, input, output],
     allowedProgramIds: [program],
-    allowedAccountKeys: [signer, program, input, output]
+    allowedAccountKeys: [signer, program, input, output],
+    instructionValidators: { [program]: () => ({ allowed: true }) }
   });
   assert.equal(result.allowed, true);
   assert.equal(result.instructionCount, 1);
@@ -172,7 +173,8 @@ test("instruction policy rejects unknown programs and accounts", () => {
   const options = {
     expectedSigner: signer, requiredAccounts: [signer, input, output],
     allowedProgramIds: [program],
-    allowedAccountKeys: [signer, program, input, output]
+    allowedAccountKeys: [signer, program, input, output],
+    instructionValidators: { [program]: () => ({ allowed: true }) }
   };
   assert.throws(() => validateDecodedSwapTransaction({
     ...options, decoded: { ...base, instructions: [{ ...base.instructions[0], programId: unknownProgram }] }
@@ -206,4 +208,10 @@ test("instruction policy rejects signer mismatch, pre-signed orders and empty al
   assert.throws(() => validateDecodedSwapTransaction({
     ...options, allowedProgramIds: []
   }), /allow-list is missing or empty/);
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, instructionValidators: undefined
+  }), /protocol-specific instruction validators are required/);
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, instructionValidators: { [program]: () => ({ allowed: false }) }
+  }), /semantics were not approved/);
 });
