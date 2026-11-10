@@ -25,4 +25,4 @@ jobs:
       - name: Install isolated Devnet transaction test dependency
         run: npm install --no-save --ignore-scripts --package-lock=false @solana/web3.js@1.98.4
       - name: Sign, submit, and verify an ephemeral Devnet transfer
-        run: node scripts/devnet-signed-transaction-test.mjs
+        run: node scripts/devnet-signed-lifecycle.mjs
