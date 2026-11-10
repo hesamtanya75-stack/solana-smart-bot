@@ -1,4 +1,5 @@
 import { VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 
 const MAX_SERIALIZED_TRANSACTION_BYTES = 1232;
 const MAX_INSTRUCTIONS = 64;
@@ -109,8 +110,17 @@ export async function decodeSolanaTransaction(
           accountIndex < 0 ||
           accountIndex >= accountKeyCount
         ) ||
-        typeof instruction.data !== "string") {
+        !(typeof instruction.data === "string" || instruction.data instanceof Uint8Array)) {
       throw new Error("Transaction contains an invalid compiled instruction");
+    }
+
+    let instructionData;
+    try {
+      instructionData = typeof instruction.data === "string"
+        ? bs58.decode(instruction.data)
+        : instruction.data;
+    } catch {
+      throw new Error("Transaction contains invalid instruction data");
     }
 
     return Object.freeze({
@@ -118,7 +128,7 @@ export async function decodeSolanaTransaction(
       programId: accountKeys[instruction.programIdIndex],
       accountIndexes: Object.freeze(Array.from(accountIndexes)),
       accounts: Object.freeze(Array.from(accountIndexes, (accountIndex) => accountKeys[accountIndex])),
-      dataBase58: instruction.data
+      dataBase64: Buffer.from(instructionData).toString("base64")
     });
   });
 
