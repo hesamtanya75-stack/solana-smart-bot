@@ -121,13 +121,11 @@ async function getJupiterOrder({
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
-  return Object.freeze({
-    requestId: order.requestId, transaction: order.transaction,
-    inputMint, outputMint, inputAmount: String(amountLamports),
-    outputAmount: String(order.outAmount), router: String(order.router || "unknown"),
-    transactionVersion: order.transactionVersion ?? 0,
-    feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null
-  });
+  // Fail closed: syntactically valid Base64 is not proof of a valid or safe
+  // Solana transaction. Until a real message decoder resolves address lookup
+  // tables and validates every instruction/program/account against an explicit
+  // reviewed allow-list, do not return an opaque transaction to any caller.
+  throw new Error("Transaction decoder and program/account allow-list are not implemented; refusing opaque Jupiter transaction");
 }
 
 async function executeLiveOrder() {
