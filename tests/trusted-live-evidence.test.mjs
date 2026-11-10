@@ -134,8 +134,10 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   assert.ok(risk.top10OwnerConcentrationPct > 99);
   assert.equal(risk.checks.token2022ExtensionsSafe, false);
   assert.equal(risk.checks.holderConcentrationSafe, false);
-  assert.equal(risk.checks.sellRouteAvailable, true);
+  assert.equal(risk.checks.sellRouteAvailable, false);
   assert.equal(risk.sellRoute.provider, "Jupiter Swap API V2");
   assert.equal(risk.sellRoute.requestId, "test-sell-order");
+  assert.equal(risk.sellRoute.semanticInstructionVerification, false);
+  assert.equal(risk.sellRoute.routeVerification, "unsigned-transaction-structure-only");
   assert.equal(risk.passed, false);
 });
