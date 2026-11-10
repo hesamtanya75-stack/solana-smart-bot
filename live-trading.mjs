@@ -202,7 +202,7 @@ async function getJupiterOrder({
   );
   if (jupiterInstructions.length !== 1 || !metisPolicy ||
       !Array.isArray(metisPolicy.allowedCpiProgramIds) ||
-      !Array.isArray(metisPolicy.allowedCpiAccountKeys)) {
+      !Array.isArray(metisPolicy.allowedCpiAccountKeys) ||\n      !Array.isArray(metisPolicy.supportingCpiProgramIds)) {
     throw new Error("Trusted Metis semantic policy and CPI allow-lists are required");
   }
   const metisInstruction = validateMetisJupiterV6Instruction({
