@@ -3,7 +3,7 @@ import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 
 const MAX_RPC_RESPONSE_BYTES = 2_000_000;
 const MAX_TOKEN_ACCOUNTS = 16;
-const MAX_CPI_TRANSACTION_BYTES = 1232;
+const MAX_CPI_TRANSACTION_BYTES = 1232;\nconst trustedRpcClients = new WeakSet();
 
 function assertPublicKey(value, name) {
   if (typeof value !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) {
