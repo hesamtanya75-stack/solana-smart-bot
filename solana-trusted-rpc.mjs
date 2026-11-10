@@ -113,7 +113,8 @@ function createTrustedSolanaRpc({
           commitment,
           sigVerify: false,
           replaceRecentBlockhash: true,
-          innerInstructions: true,\n          maxSupportedTransactionVersion: 0,
+          innerInstructions: true,
+          maxSupportedTransactionVersion: 0,
           minContextSlot
         }
       ]);
@@ -146,7 +147,8 @@ async function inspectMetisOrderWithTrustedRpc({
   allowedCpiAccountKeys,
   minContextSlot = 0,
   maxSlotLag = 32,
-  requiredCpiProgramIds = []
+  requiredCpiProgramIds = [],
+  expectedCpiProgramIds = []
 } = {}) {
   if (!rpc || !trustedRpcClients.has(rpc) || typeof rpc.getSlot !== "function" ||
       typeof rpc.getMultipleParsedTokenAccounts !== "function" ||
@@ -208,6 +210,11 @@ async function inspectMetisOrderWithTrustedRpc({
   if (!Array.isArray(requiredCpiProgramIds) ||
       requiredCpiProgramIds.some((programId) => !cpi.programIds.includes(programId))) {
     throw new Error("Trusted CPI trace does not contain every DEX program in the Metis route");
+  }
+  if (!Array.isArray(expectedCpiProgramIds) || expectedCpiProgramIds.length === 0 ||
+      cpi.programIds.some((programId) => !expectedCpiProgramIds.includes(programId)) ||
+      expectedCpiProgramIds.some((programId) => !cpi.programIds.includes(programId))) {
+    throw new Error("Trusted CPI trace differs from the exact expected DEX/supporting-program set");
   }
 
   return Object.freeze({
