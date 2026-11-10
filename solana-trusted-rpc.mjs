@@ -3,7 +3,9 @@ import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 
 const MAX_RPC_RESPONSE_BYTES = 2_000_000;
 const MAX_TOKEN_ACCOUNTS = 16;
-const MAX_CPI_TRANSACTION_BYTES = 1232;\nconst trustedRpcClients = new WeakSet();
+const MAX_CPI_TRANSACTION_BYTES = 1232;
+const trustedRpcClients = new WeakSet();
+const trustedRpcClients = new WeakSet();
 
 function assertPublicKey(value, name) {
   if (typeof value !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) {
@@ -66,7 +68,7 @@ function createTrustedSolanaRpc({
     return payload.result;
   }
 
-  return Object.freeze({
+  const client = Object.freeze({
     endpoint: parsed.href,
     commitment,
     async getSlot() {
@@ -123,6 +125,8 @@ function createTrustedSolanaRpc({
       return result;
     }
   });
+  trustedRpcClients.add(client);
+  return client;
 }
 
 /**
@@ -141,9 +145,10 @@ async function inspectMetisOrderWithTrustedRpc({
   allowedCpiProgramIds,
   allowedCpiAccountKeys,
   minContextSlot = 0,
-  maxSlotLag = 32
+  maxSlotLag = 32,
+  requiredCpiProgramIds = []
 } = {}) {
-  if (!rpc || typeof rpc.getSlot !== "function" ||
+  if (!rpc || !trustedRpcClients.has(rpc) || typeof rpc.getSlot !== "function" ||
       typeof rpc.getMultipleParsedTokenAccounts !== "function" ||
       typeof rpc.simulateUnsignedTransaction !== "function") {
     throw new Error("Pinned trusted Solana RPC client is required");
@@ -200,6 +205,10 @@ async function inspectMetisOrderWithTrustedRpc({
     allowedCpiProgramIds,
     allowedCpiAccountKeys
   });
+  if (!Array.isArray(requiredCpiProgramIds) ||
+      requiredCpiProgramIds.some((programId) => !cpi.programIds.includes(programId))) {
+    throw new Error("Trusted CPI trace does not contain every DEX program in the Metis route");
+  }
 
   return Object.freeze({
     allowed: true,
