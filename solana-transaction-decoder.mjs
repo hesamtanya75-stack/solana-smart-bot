@@ -98,36 +98,46 @@ export async function decodeSolanaTransaction(
   }
 
   const instructions = compiledInstructions.map((instruction, index) => {
-    const accountIndexes = version === "legacy"
+    // web3.js exposes legacy account indexes as "accounts" and v0 indexes as
+    // "accountKeyIndexes". Normalize either representation without trusting
+    // arbitrary objects or coercing invalid index values.
+    const rawAccountIndexes = version === "legacy"
       ? instruction.accounts
-      : instruction.accountKeyIndexes;
-    if (!Number.isInteger(instruction.programIdIndex) ||
-        instruction.programIdIndex < 0 ||
-        instruction.programIdIndex >= accountKeyCount ||
-        !(Array.isArray(accountIndexes) || ArrayBuffer.isView(accountIndexes)) ||
-        Array.from(accountIndexes).some((accountIndex) =>
+      : (instruction.accountKeyIndexes ?? instruction.accounts);
+    if (!(Array.isArray(rawAccountIndexes) || ArrayBuffer.isView(rawAccountIndexes))) {
+      throw new Error("Transaction instruction account indexes are missing or invalid");
+    }
+    const accountIndexes = Array.from(rawAccountIndexes);
+    const programIdIndex = instruction.programIdIndex;
+    if (!Number.isInteger(programIdIndex) ||
+        programIdIndex < 0 ||
+        programIdIndex >= accountKeyCount ||
+        accountIndexes.some((accountIndex) =>
           !Number.isInteger(accountIndex) ||
           accountIndex < 0 ||
           accountIndex >= accountKeyCount
-        ) ||
-        !(typeof instruction.data === "string" || instruction.data instanceof Uint8Array)) {
-      throw new Error("Transaction contains an invalid compiled instruction");
+        )) {
+      throw new Error("Transaction instruction references an invalid account-key index");
     }
 
     let instructionData;
     try {
-      instructionData = typeof instruction.data === "string"
-        ? bs58.decode(instruction.data)
-        : instruction.data;
+      if (typeof instruction.data === "string") {
+        instructionData = bs58.decode(instruction.data);
+      } else if (instruction.data instanceof Uint8Array || ArrayBuffer.isView(instruction.data)) {
+        instructionData = Uint8Array.from(instruction.data);
+      } else {
+        throw new Error("Unsupported instruction data representation");
+      }
     } catch {
       throw new Error("Transaction contains invalid instruction data");
     }
 
     return Object.freeze({
       index,
-      programId: accountKeys[instruction.programIdIndex],
-      accountIndexes: Object.freeze(Array.from(accountIndexes)),
-      accounts: Object.freeze(Array.from(accountIndexes, (accountIndex) => accountKeys[accountIndex])),
+      programId: accountKeys[programIdIndex],
+      accountIndexes: Object.freeze(accountIndexes),
+      accounts: Object.freeze(accountIndexes.map((accountIndex) => accountKeys[accountIndex])),
       dataBase64: Buffer.from(instructionData).toString("base64")
     });
   });
