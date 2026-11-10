@@ -103,8 +103,8 @@ export async function decodeSolanaTransaction(
     if (!Number.isInteger(instruction.programIdIndex) ||
         instruction.programIdIndex < 0 ||
         instruction.programIdIndex >= accountKeyCount ||
-        !Array.isArray(accountIndexes) ||
-        accountIndexes.some((accountIndex) =>
+        !(Array.isArray(accountIndexes) || ArrayBuffer.isView(accountIndexes)) ||
+        Array.from(accountIndexes).some((accountIndex) =>
           !Number.isInteger(accountIndex) ||
           accountIndex < 0 ||
           accountIndex >= accountKeyCount
@@ -116,8 +116,8 @@ export async function decodeSolanaTransaction(
     return Object.freeze({
       index,
       programId: accountKeys[instruction.programIdIndex],
-      accountIndexes: Object.freeze([...accountIndexes]),
-      accounts: Object.freeze(accountIndexes.map((accountIndex) => accountKeys[accountIndex])),
+      accountIndexes: Object.freeze(Array.from(accountIndexes)),
+      accounts: Object.freeze(Array.from(accountIndexes, (accountIndex) => accountKeys[accountIndex])),
       dataBase58: instruction.data
     });
   });
