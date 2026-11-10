@@ -90,9 +90,9 @@ test("order request enforces eligibility before network access", async () => {
   assert.equal(called, false);
 });
 
-test("valid Jupiter order is parsed but never executed", async () => {
+test("opaque Base64 Jupiter transaction is rejected until a real decoder and allow-list exist", async () => {
   let request;
-  const result = await getJupiterOrder({
+  await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url, options) => {
@@ -105,14 +105,11 @@ test("valid Jupiter order is parsed but never executed", async () => {
         transactionVersion: 0, feeBps: 0
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-  });
-  assert.equal(result.requestId, "req-test");
-  assert.equal(result.inputMint, SOL_MINT);
+  }), error => error.message.includes("Transaction decoder"));
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
-
 test("malformed Jupiter order fails closed", async () => {
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
