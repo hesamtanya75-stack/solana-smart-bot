@@ -88,7 +88,7 @@ test("out-of-range Jupiter instruction account index is rejected", () => {
 
 test("unparsed trailing Jupiter transaction bytes are rejected", () => {
   const bytes = Buffer.from(validUnsignedTransaction(), "base64");
-  const extended = Buffer.concat([bytes, Buffer.from([0])]);
+  const extended = Buffer.concat([bytes, Buffer.from([0, 0, 0])]);
   assert.throws(
     () => validateUnsignedJupiterTransaction(extended.toString("base64"), BOT_WALLET),
     /trailing or unparsed bytes/
