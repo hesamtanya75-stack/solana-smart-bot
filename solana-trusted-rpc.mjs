@@ -129,7 +129,9 @@ function createTrustedSolanaRpc({
         { encoding: "base64", commitment: requestedCommitment, minContextSlot }
       ]);
       if (!result || !result.context || !Number.isSafeInteger(result.context.slot) ||
-          !result.value || !Array.isArray(result.value.data) ||
+          !result.value || typeof result.value.executable !== "boolean" ||
+          !Number.isSafeInteger(result.value.lamports) || result.value.lamports < 0 ||
+          !Array.isArray(result.value.data) ||
           result.value.data.length !== 2 || typeof result.value.data[0] !== "string" ||
           result.value.data[1] !== "base64" ||
           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(result.value.data[0])) {
