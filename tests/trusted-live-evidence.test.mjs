@@ -58,17 +58,6 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       volume: { h24: 5000 }, priceUsd: "1", txns: { h24: { sells: 20 } }
     }] });
     if (value.includes("rugcheck.xyz")) return Response.json({ score: 100 });
-    const request = JSON.parse(options.body);
-    if (value.includes("solana-mainnet.g.alchemy.com")) {
-      assert.equal(request.method, "getTokenAccounts");
-      holderPages++;
-      return Response.json({ result: {
-        token_accounts: request.params.page === 1 ? firstPage : [{
-          mint, owner: "11111111111111111111111111111112", amount: "1"
-        }],
-        errors: []
-      } });
-    }
     if (value.includes("api.jup.ag/swap/v2/order")) {
       const amount = new URL(value).searchParams.get("amount");
       return Response.json({
@@ -80,6 +69,17 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         outAmount: "1000000",
         routePlan: [{ swapInfo: { label: "test-route" } }]
       });
+    }
+    const request = JSON.parse(options.body);
+    if (value.includes("solana-mainnet.g.alchemy.com")) {
+      assert.equal(request.method, "getTokenAccounts");
+      holderPages++;
+      return Response.json({ result: {
+        token_accounts: request.params.page === 1 ? firstPage : [{
+          mint, owner: "11111111111111111111111111111112", amount: "1"
+        }],
+        errors: []
+      } });
     }
     if (request.method === "getAccountInfo") return Response.json({ result: {
       value: {
