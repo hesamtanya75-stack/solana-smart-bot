@@ -76,14 +76,28 @@ test("daily spend cap is enforced atomically and confirmed/closed spend remains 
   assert.match(third.body.error, /Daily USD spend limit/);
 });
 
-test("idempotency prevents duplicate reservations and rejects changed amounts", async () => {
+test("idempotency retries succeed after quote expiry and kill switch activation", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation());
-  const duplicate = await post(coordinator, "/reserve", validReservation());
   assert.equal(first.status, 200);
-  assert.equal(duplicate.body.duplicate, true);
-  const changed = await post(coordinator, "/reserve", validReservation({ amountLamports: 11_000_000 }));
+  await post(coordinator, "/kill-switch", { enabled: true });
+  const retry = await post(coordinator, "/reserve", validReservation({
+    quoteTimestamp: Date.now() - 60_000
+  }));
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.duplicate, true);
+  assert.equal(retry.body.reservation.idempotencyKey, "order-key-0001");
+});
+
+test("idempotency key rejects any changed lamport amount, even if USD cents round equally", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const first = await post(coordinator, "/reserve", validReservation({ solUsd: 1 }));
+  assert.equal(first.status, 200);
+  const changed = await post(coordinator, "/reserve", validReservation({
+    amountLamports: 10_000_001, solUsd: 1
+  }));
   assert.equal(changed.status, 409);
   assert.match(changed.body.error, /Idempotency key/);
 });
