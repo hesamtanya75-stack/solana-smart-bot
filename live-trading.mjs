@@ -111,17 +111,16 @@ async function getJupiterOrder({
 
   if (!order || typeof order !== "object" ||
       typeof order.requestId !== "string" || !order.requestId ||
-      typeof order.transaction !== "string" ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(order.transaction) ||
+      typeof order.transaction !== "string" || order.transaction.length === 0 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(order.transaction) ||
+      !/^[0-9]+$/.test(String(order.inAmount || "")) ||
+      String(order.inAmount) !== String(amountLamports) ||
+      order.inputMint !== inputMint || order.outputMint !== outputMint ||
       !/^[0-9]+$/.test(String(order.outAmount || "")) ||
       BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
-  if (order.inputMint && order.inputMint !== inputMint) throw new Error("Jupiter input mint mismatch");
-  if (order.outputMint && order.outputMint !== outputMint) throw new Error("Jupiter output mint mismatch");
-  if (order.inAmount && String(order.inAmount) !== String(amountLamports)) throw new Error("Jupiter input amount mismatch");
-
   return Object.freeze({
     requestId: order.requestId, transaction: order.transaction,
     inputMint, outputMint, inputAmount: String(amountLamports),
