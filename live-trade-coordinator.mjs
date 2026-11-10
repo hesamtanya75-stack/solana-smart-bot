@@ -84,7 +84,7 @@ export class LiveTradeCoordinator {
   async fetch(request) {
     const expectedToken = String(this.env?.COORDINATOR_INTERNAL_TOKEN || "");
     const authorization = request.headers.get("Authorization") || "";
-    const suppliedToken = authorization.replace(/^Bearer\\s+/i, "");
+    const suppliedToken = authorization.replace(/^Bearer\s+/i, "");
     if (expectedToken.length < 32 || !constantTimeEqual(suppliedToken, expectedToken)) {
       return json({ error: "Unauthorized coordinator request" }, 401);
     }
