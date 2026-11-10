@@ -138,7 +138,8 @@ async function getJupiterOrder({
     expectedSigner: policy.wallet,
     requiredAccounts: transactionAllowList.requiredAccounts,
     allowedProgramIds: transactionAllowList.allowedProgramIds,
-    allowedAccountKeys: transactionAllowList.allowedAccountKeys
+    allowedAccountKeys: transactionAllowList.allowedAccountKeys,
+    instructionValidators: transactionAllowList.instructionValidators
   });
 
   // Structural allow-listing is not yet semantic swap validation. Return only
