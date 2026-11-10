@@ -1,3 +1,18 @@
+## Saber StableSwap disposition — blocked pending binary verification
+
+The official Saber repository identifies the StableSwap program as `SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ` and publishes Rust source and client instruction/account definitions. Its swap ABI is a one-byte instruction tag followed by little-endian `amount_in` and `minimum_amount_out`; the source describes nine ordered accounts for a swap. However, the publicly surfaced Mainnet program record reports the deployed binary as **Unverified Binary**. The published source/IDL-like client definitions therefore cannot, by themselves, be treated as proof of the currently deployed Mainnet executable.
+
+The Metis validator now hard-blocks a route when either its trusted DEX program mapping identifies the Saber StableSwap Program ID or the quote labels the venue as `Saber`. This is intentional fail-closed behavior. No generic test callback can override this block. Unit fixtures use a clearly synthetic `TestDEX` label and do not imply any real DEX approval.
+
+Before Saber can be reconsidered, an independent review must:
+1. Fetch the current Mainnet executable and deployment/upgrade metadata for the exact program address.
+2. Reproducibly build the official Saber source at a pinned commit/toolchain and compare the resulting binary to the deployed executable (or obtain independently verifiable build provenance).
+3. Pin the exact source commit, build inputs, deployed binary hash, and upgrade-authority status.
+4. Implement a route-specific CPI validator that checks the nine-account order, signer and writable privileges, pool-state owner/layout/initialized/paused fields, PDA authority, reserve and fee-vault addresses, token mint/owner relationships, token program, and exact input/minimum-output semantics against trusted RPC account data.
+5. Add fixtures from independently verified Mainnet transactions plus negative/fuzz tests, then pass CI and independent review.
+
+Until all gates pass, Saber remains unsupported and no DEX is approved for live execution. This change does not enable signing, submission, or production routing.
+
 ## DEX-specific CPI semantics are now a mandatory fail-closed gate
 
 The Metis route validator now requires a per-swap-variant semantic validator supplied by trusted policy. It receives the exact decoded Jupiter instruction, parsed on-chain route step, quote step, DEX program ID, and AMM key. Missing, throwing, or negative validators reject the order. The generic program/label/AMM membership checks alone are not treated as a DEX security audit.
