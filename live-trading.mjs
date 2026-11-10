@@ -103,7 +103,9 @@ async function getJupiterOrder({
 
   const params = new URLSearchParams({
     inputMint, outputMint, amount: String(amountLamports),
-    taker: policy.wallet, slippageBps: String(policy.maxSlippageBps)
+    taker: policy.wallet, slippageBps: String(policy.maxSlippageBps),
+    swapMode: "ExactIn", maxSupportedTransactionVersion: "0",
+    excludeRouters: "jupiterz,dflow,okx"
   });
   const response = await fetchImpl("https://api.jup.ag/swap/v2/order?" + params.toString(), {
     method: "GET",
@@ -125,19 +127,51 @@ async function getJupiterOrder({
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
+  // Only the Metis on-chain router is supported in this initial review scope.
+  // Explicitly reject RFQ and third-party routers, gasless payers, and stale/malformed quote metadata.
+  const allowedRouters = transactionAllowList?.allowedRouters;
+  if (!Array.isArray(allowedRouters) || allowedRouters.length !== 1 ||
+      allowedRouters[0] !== "metis" || order.router !== "metis") {
+    throw new Error("Only the explicitly reviewed Metis router is permitted");
+  }
+  if (order.mode !== "manual" || order.swapMode !== "ExactIn" ||
+      order.transactionVersion !== 0 ||
+      order.gasless !== false || order.signatureFeePayer !== policy.wallet) {
+    throw new Error("Jupiter order mode, version, or fee payer is not approved");
+  }
+  if (!Number.isSafeInteger(order.feeBps) || order.feeBps < 0 || order.feeBps > 10000 ||
+      !BASE58.test(String(order.feeMint)) ||
+      (order.feeMint !== inputMint && order.feeMint !== outputMint)) {
+    throw new Error("Jupiter fee metadata is missing or inconsistent");
+  }
+  if (!/^[0-9]+$/.test(String(order.otherAmountThreshold || "")) ||
+      BigInt(order.otherAmountThreshold) <= 0n ||
+      BigInt(order.otherAmountThreshold) > BigInt(order.outAmount) ||
+      order.slippageBps !== policy.maxSlippageBps) {
+    throw new Error("Jupiter minimum output or slippage metadata is invalid");
+  }
+  if (!/^[0-9]+$/.test(String(order.lastValidBlockHeight || "")) ||
+      BigInt(order.lastValidBlockHeight) <= 0n ||
+      BigInt(order.lastValidBlockHeight) > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("Jupiter order block-height expiry is missing or invalid");
+  }
+  if (!Array.isArray(order.routePlan) || order.routePlan.some((step) => {
+    const info = step?.swapInfo;
+    return !info || !BASE58.test(String(info.ammKey || "")) ||
+      typeof info.label !== "string" || !info.label ||
+      !BASE58.test(String(info.inputMint || "")) ||
+      !BASE58.test(String(info.outputMint || "")) ||
+      !/^[0-9]+$/.test(String(info.inAmount || "")) ||
+      !/^[0-9]+$/.test(String(info.outAmount || "")) ||
+      BigInt(info.inAmount) <= 0n || BigInt(info.outAmount) <= 0n;
+  })) {
+    throw new Error("Jupiter route plan contains incomplete or invalid swap steps");
+  }
+
   // Do not trust the Jupiter routePlan or browser values to create an allow-list.
   // A trusted server caller must supply reviewed IDs and a trusted ALT resolver.
   if (!transactionAllowList || typeof transactionAllowList !== "object") {
     throw new Error("Trusted transaction program/account allow-list is required");
-  }
-  const supportedRouters = new Set(["metis", "jupiterz", "dflow", "okx"]);
-  const allowedRouters = transactionAllowList.allowedRouters;
-  if (!Array.isArray(allowedRouters) || allowedRouters.length !== 1 ||
-      typeof allowedRouters[0] !== "string" || !supportedRouters.has(allowedRouters[0])) {
-    throw new Error("Exactly one explicitly reviewed Jupiter router is required");
-  }
-  if (order.router !== allowedRouters[0]) {
-    throw new Error("Jupiter selected a router outside the explicit router policy");
   }
   const decoded = await decodeSolanaTransaction(order.transaction, {
     lookupTableResolver
