@@ -98,7 +98,9 @@ test("valid Jupiter order is parsed but never executed", async () => {
     fetchImpl: async (url, options) => {
       request = { url, options };
       return new Response(JSON.stringify({
-        requestId: "req-test", transaction: "dGVzdA==", outAmount: "12345",
+        requestId: "req-test", transaction: "dGVzdA==",
+        inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount: "12345",
         routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
         transactionVersion: 0, feeBps: 0
       }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -131,5 +133,18 @@ test("Jupiter cannot silently change the requested input amount or mint", async 
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       routePlan: [{ swapInfo: { label: "test" } }]
     }), { status: 200 })
-  }), /input amount mismatch/);
+  }), /incomplete or non-executable/);
+});
+
+test("empty or malformed unsigned transaction is rejected", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-test", transaction: "", inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }]
+    }), { status: 200 })
+  }), /incomplete or non-executable/);
 });
