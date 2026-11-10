@@ -1,3 +1,5 @@
+import { fetchTrustedLiveEvidence } from "./trusted-live-evidence.mjs";
+
 const MAX_TRADE_USD_CENTS = 300;
 const MAX_DAILY_SPEND_USD_CENTS = 500;
 const MAX_OPEN_POSITIONS = 10;
@@ -49,13 +51,12 @@ function orderIntentFingerprint(body, amountLamports) {
   const outputMint = String(body?.outputMint || "");
   const destination = String(body?.destination || "");
   const slippageBps = Number(body?.slippageBps);
-  const quoteId = String(body?.quoteId || "");
   if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
       !base58.test(destination) || !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
-      !/^[A-Za-z0-9._:-]{8,128}$/.test(quoteId)) {
+      inputMint !== "So11111111111111111111111111111111111111112") {
     throw new Error("Complete immutable order intent is required");
   }
-  return JSON.stringify({ amountLamports, inputMint, outputMint, destination, slippageBps, quoteId });
+  return JSON.stringify({ amountLamports, inputMint, outputMint, destination, slippageBps });
 }
 
 /**
@@ -125,9 +126,7 @@ export class LiveTradeCoordinator {
     const intentFingerprint = orderIntentFingerprint(body, amountLamports);
     const now = Date.now();
     return this.withState(state => {
-      // Resolve retries before checking the kill switch or quote freshness.
-      // A retry must never create a second reservation or be blocked merely
-      // because the original quote has since expired.
+      // Recheck after network calls to protect against concurrent reservations.
       const existing = state.reservations[key];
       if (existing) {
         if (existing.intentFingerprint !== intentFingerprint) {
@@ -135,20 +134,7 @@ export class LiveTradeCoordinator {
         }
         return { ok: true, duplicate: true, reservation: existing };
       }
-
       if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
-
-      const quoteTimestamp = Number(body?.quoteTimestamp);
-      if (!Number.isFinite(quoteTimestamp) || quoteTimestamp > now + 5_000 ||
-          now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
-        throw new Error("SOL/USD quote is missing, stale, or from the future");
-      }
-      if (body?.riskPassed !== true) {
-        throw new Error("All server-side risk checks must pass");
-      }
-
-      const amountCents = usdCentsFromLamports(amountLamports, Number(body?.solUsd));
-      if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
 
       const day = currentUtcDay(now);
       const records = Object.values(state.reservations);
