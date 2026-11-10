@@ -129,7 +129,7 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
   const loadedAddress = Keypair.generate().publicKey;
   const state = {
     deactivationSlot: (1n << 64n) - 1n,
-    lastExtendedSlot: 1000,
+    lastExtendedSlot: 1000n,
     lastExtendedSlotStartIndex: 0,
     authority: undefined,
     addresses: [loadedAddress]
