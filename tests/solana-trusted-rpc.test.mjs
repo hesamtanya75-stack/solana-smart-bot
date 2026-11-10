@@ -135,10 +135,10 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
     addresses: [loadedAddress]
   };
   const table = new AddressLookupTableAccount({ key: tableKey, state });
-  const instruction = new TransactionInstruction({
-    programId: SystemProgram.programId,
-    keys: [{ pubkey: loadedAddress, isSigner: false, isWritable: true }],
-    data: Buffer.alloc(0)
+  const instruction = SystemProgram.transfer({
+    fromPubkey: payer.publicKey,
+    toPubkey: loadedAddress,
+    lamports: 55
   });
   const message = new TransactionMessage({
     payerKey: payer.publicKey,
