@@ -142,7 +142,7 @@ export class LiveTradeCoordinator {
 
     // All price and risk evidence is fetched by trusted server code. Any
     // browser-supplied solUsd, quoteTimestamp, quoteId, or riskPassed is ignored.
-    const evidence = await fetchTrustedLiveEvidence(body.outputMint, this.env?.FETCH_IMPL || fetch);
+    const evidence = await this.fetchLiveEvidence(body.outputMint, this.env?.FETCH_IMPL || fetch);
     if (!evidence.passed) {
       throw new Error("Trusted token risk checks did not all pass; reservation blocked");
     }
