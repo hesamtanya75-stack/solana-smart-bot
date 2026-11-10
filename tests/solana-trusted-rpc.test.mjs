@@ -174,7 +174,8 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
   });
   assert.ok(decoded.accountKeys.includes(loadedAddress.toBase58()));
   const metadata = decoded.accountMetadata.find((item) => item.pubkey === loadedAddress.toBase58());
-  assert.equal(metadata.source, "lookupTable");
-  assert.equal(metadata.lookupTable, tableKey.toBase58());
+  assert.equal(metadata.source.type, "lookupTable");
+  assert.equal(metadata.source.table, tableKey.toBase58());
+  assert.equal(metadata.source.access, "writable");
   assert.equal(metadata.isWritable, true);
 });
