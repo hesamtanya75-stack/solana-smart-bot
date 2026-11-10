@@ -64,8 +64,8 @@ export function createTrustedAltResolver({
     let state;
     try {
       state = deserializeLookupTable(accountInfo.data);
-    } catch {
-      throw new Error("ALT account data could not be decoded");
+    } catch (error) {
+      throw new Error("ALT account data could not be decoded: " + (error?.message || "unknown decoder error"));
     }
     if (!state || !Array.isArray(state.addresses) ||
         state.addresses.length > 256 ||
