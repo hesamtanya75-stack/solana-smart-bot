@@ -132,3 +132,78 @@ test("rejects a transaction with no instructions", async () => {
     /instruction count/
   );
 });
+
+
+import { validateDecodedSwapTransaction } from "../solana-instruction-policy.mjs";
+
+test("instruction policy accepts only exact reviewed programs, accounts and signer", () => {
+  const signer = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+  const program = "11111111111111111111111111111111";
+  const input = "So11111111111111111111111111111111111111112";
+  const output = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const decoded = {
+    version: "legacy",
+    signerPubkeys: [signer],
+    signaturesPresent: [false],
+    accountKeys: [signer, program, input, output],
+    instructions: [{ programId: program, accounts: [signer, input, output] }]
+  };
+  const result = validateDecodedSwapTransaction({
+    decoded, expectedSigner: signer,
+    requiredAccounts: [signer, input, output],
+    allowedProgramIds: [program],
+    allowedAccountKeys: [signer, program, input, output]
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.instructionCount, 1);
+});
+
+test("instruction policy rejects unknown programs and accounts", () => {
+  const signer = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+  const program = "11111111111111111111111111111111";
+  const unknownProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const input = "So11111111111111111111111111111111111111112";
+  const output = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const base = {
+    version: 0, signerPubkeys: [signer], signaturesPresent: [false],
+    accountKeys: [signer, program, input, output],
+    instructions: [{ programId: program, accounts: [signer, input, output] }]
+  };
+  const options = {
+    expectedSigner: signer, requiredAccounts: [signer, input, output],
+    allowedProgramIds: [program],
+    allowedAccountKeys: [signer, program, input, output]
+  };
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, decoded: { ...base, instructions: [{ ...base.instructions[0], programId: unknownProgram }] }
+  }), /unknown or unapproved program/);
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, decoded: { ...base, accountKeys: [...base.accountKeys, unknownProgram] }
+  }), /account outside the explicit allow-list/);
+});
+
+test("instruction policy rejects signer mismatch, pre-signed orders and empty allow-lists", () => {
+  const signer = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+  const program = "11111111111111111111111111111111";
+  const input = "So11111111111111111111111111111111111111112";
+  const output = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const decoded = {
+    version: 0, signerPubkeys: [signer], signaturesPresent: [false],
+    accountKeys: [signer, program, input, output],
+    instructions: [{ programId: program, accounts: [signer, input, output] }]
+  };
+  const options = {
+    decoded, expectedSigner: signer, requiredAccounts: [signer, input, output],
+    allowedProgramIds: [program],
+    allowedAccountKeys: [signer, program, input, output]
+  };
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, expectedSigner: input
+  }), /signer does not exactly match/);
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, decoded: { ...decoded, signaturesPresent: [true] }
+  }), /must be unsigned/);
+  assert.throws(() => validateDecodedSwapTransaction({
+    ...options, allowedProgramIds: []
+  }), /allow-list is missing or empty/);
+});
