@@ -30,6 +30,7 @@ export function validateDecodedSwapTransaction({
   requiredAccounts,
   allowedProgramIds,
   allowedAccountKeys,
+  allowedWritableAccountKeys,
   instructionValidators
 } = {}) {
   if (!decoded || !["legacy", 0].includes(decoded.version) ||
@@ -66,6 +67,22 @@ export function validateDecodedSwapTransaction({
   for (const key of requiredAccounts) {
     if (!decoded.accountKeys.includes(key) || !accountAllowList.has(key)) {
       throw new Error("A required swap account is absent or not allow-listed");
+    }
+  }
+  const writableAllowList = normalizeAllowList(allowedWritableAccountKeys, "Writable account");
+  if (!Array.isArray(decoded.accountMetadata) ||
+      decoded.accountMetadata.length !== decoded.accountKeys.length ||
+      decoded.accountMetadata.some((meta, index) =>
+        !meta || meta.pubkey !== decoded.accountKeys[index] ||
+        meta.index !== index || typeof meta.isSigner !== "boolean" ||
+        typeof meta.isWritable !== "boolean" || !meta.source ||
+        !["static", "lookupTable"].includes(meta.source.type)
+      )) {
+    throw new Error("Trusted account privilege metadata is missing or inconsistent");
+  }
+  for (const meta of decoded.accountMetadata) {
+    if (meta.isWritable && !writableAllowList.has(meta.pubkey)) {
+      throw new Error("Transaction contains an unapproved writable account");
     }
   }
   if (!instructionValidators || typeof instructionValidators !== "object" ||
