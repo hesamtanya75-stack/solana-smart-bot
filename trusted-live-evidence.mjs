@@ -27,8 +27,17 @@ function readShortVector(bytes, offset) {
   for (let i = 0; i < 3; i++) {
     if (cursor >= bytes.length) throw new Error("Jupiter transaction is truncated");
     const byte = bytes[cursor++];
-    value |= (byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) return { value, offset: cursor };
+    const digit = byte & 0x7f;
+    if (i === 2 && (digit > 3 || (byte & 0x80) !== 0)) {
+      throw new Error("Jupiter transaction compact length exceeds u16");
+    }
+    value += digit * (2 ** shift);
+    if ((byte & 0x80) === 0) {
+      if (i > 0 && digit === 0) {
+        throw new Error("Jupiter transaction compact length is non-canonical");
+      }
+      return { value, offset: cursor };
+    }
     shift += 7;
   }
   throw new Error("Jupiter transaction has an invalid compact length");
@@ -69,7 +78,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const keysHeader = readShortVector(bytes, cursor);
   const keyCount = keysHeader.value;
   cursor = keysHeader.offset;
-  if (keyCount < requiredSignatures || readonlyUnsigned > keyCount - requiredSignatures ||
+  if (keyCount < requiredSignatures || keyCount > 256 ||
+      readonlyUnsigned > keyCount - requiredSignatures ||
+      readonlySigned + readonlyUnsigned > keyCount ||
       cursor + keyCount * 32 + 32 > bytes.length) {
     throw new Error("Jupiter transaction account keys or blockhash are invalid");
   }
@@ -127,6 +138,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     signatureCount,
     staticAccountCount: keyCount,
     instructionCount,
+    addressLookupCount: messageVersion === 0 ? lookupHeader.value : 0,
     messageVersion,
     // Wire structure is validated, but lookup tables and instruction semantics are not.
     semanticInstructionVerification: false
