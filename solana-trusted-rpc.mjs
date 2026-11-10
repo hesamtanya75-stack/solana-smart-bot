@@ -105,8 +105,7 @@ function createTrustedSolanaRpc({
     if (!response || response.status !== 200) {
       throw new Error("Trusted Solana RPC request failed");
     }
-    const raw = await response.text();
-    if (raw.length > MAX_RPC_RESPONSE_BYTES) throw new Error("Trusted RPC response exceeds size limit");
+    const raw = await readLimitedResponseBody(response, MAX_RPC_RESPONSE_BYTES);
     let payload;
     try { payload = JSON.parse(raw); } catch { throw new Error("Trusted RPC returned malformed JSON"); }
     if (!payload || payload.jsonrpc !== "2.0" || payload.id !== id ||
