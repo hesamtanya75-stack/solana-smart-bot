@@ -69,7 +69,7 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
     for (const row of rows) {
       const rawAmount = String(row.amount);
       if (row.mint !== mint || typeof row.owner !== "string" ||
-          !/^\\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
+          !/^\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
         throw new Error("Alchemy holder page contains incomplete or mismatched account data");
       }
       accounts.push({ owner: row.owner, amount: BigInt(rawAmount) });
@@ -173,7 +173,7 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   }
   const mintSafety = parseMintAccount(mintAccount);
   const rawSupplyAmount = String(supply?.value?.amount ?? "");
-  if (!/^\\d+$/.test(rawSupplyAmount) || BigInt(rawSupplyAmount) <= 0n || holderAccounts.length === 0) {
+  if (!/^\d+$/.test(rawSupplyAmount) || BigInt(rawSupplyAmount) <= 0n || holderAccounts.length === 0) {
     throw new Error("Holder account data is incomplete");
   }
 
