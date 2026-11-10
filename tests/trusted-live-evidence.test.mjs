@@ -47,8 +47,8 @@ test("holder verification fails closed when Alchemy credentials are absent", asy
 
 test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-  const firstPage = Array.from({ length: 1000 }, () => ({
-    mint, owner: "11111111111111111111111111111111", amount: "1"
+  const firstPage = Array.from({ length: 100 }, () => ({
+    mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
   const mockFetch = async (url, options = {}) => {
@@ -101,7 +101,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   );
   assert.equal(holderPages, 2);
   assert.equal(risk.holderSampleOnly, false);
-  assert.equal(risk.holderAccountCount, 1001);
+  assert.equal(risk.holderAccountCount, 101);
   assert.equal(risk.holderOwnerCount, 2);
   assert.ok(risk.top10OwnerConcentrationPct > 99);
   assert.equal(risk.checks.token2022ExtensionsSafe, false);
