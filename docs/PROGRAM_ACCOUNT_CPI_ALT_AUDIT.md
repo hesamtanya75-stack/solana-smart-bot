@@ -100,3 +100,10 @@ The trusted RPC client now provides bounded `getMultipleRawAccountInfos` reads u
 ### Saber swap direction correction
 
 The official Rust `swap()` constructor defines accounts 4 and 5 as `swap_source` and `swap_destination`, not permanently as token-A reserve then token-B reserve. The processor selects the direction by comparing account 4 to token-A or token-B reserves, and validates account 5 plus account 7 against the opposite token's reserve and admin-fee account. The candidate validator now applies this directional ordering for both A-to-B and B-to-A and includes a reverse-direction positive fixture. It still remains disconnected from production policy and is not a binary-verification result.
+
+
+### Mainnet executable provenance remains unverified
+
+A public program-index page currently labels this Saber program's binary **Unverified Binary** and reports an upgrade authority of `EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEVO`, a last-deployed slot of `119721738`, and a canonical hash. The upstream repository's `stable-swap-program/scripts/deployment_config.json` instead lists `GSmjrpT8zNtp6Ke8y2xS5P1kREEjqZCjwxF8VbxDJAV8` as upgrade authority. These are not reconciled facts: the explorer is a third-party index and the repository file is a source-side deployment config, neither substitutes for a fresh Mainnet RPC read. Treat the discrepancy as an explicit verification blocker.
+
+Required next evidence: fetch the program account on Mainnet; verify its owner is the upgradeable BPF loader and it is executable; decode its ProgramData address; fetch ProgramData and decode deployment slot and upgrade authority; hash the executable bytes; run a reproducible build of the pinned Saber source commit using its exact toolchain/dependencies; compare the on-chain executable hash to the locally built executable using the Solana Verify tooling. Solana's official verification guide describes the hash comparison and notes that verification proves source-to-binary correspondence, not program safety. Do not enable Saber based only on a program explorer listing or a source repository.
