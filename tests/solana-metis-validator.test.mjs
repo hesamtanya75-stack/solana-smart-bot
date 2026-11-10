@@ -154,7 +154,7 @@ test("Metis validator rejects unknown swap variants, route percentage drift, and
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction,
     ...f.args, dexSemanticValidatorsBySwapVariant: {}
-  }), /Pinned Metis DEX/);
+  }), /No reviewed DEX-specific CPI account semantic validator/);
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction,
     ...f.args, dexSemanticValidatorsBySwapVariant: {
