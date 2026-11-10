@@ -27,14 +27,14 @@ This branch is preparation and policy enforcement only. It does not enable live 
 - Jupiter response parsing rejects malformed Base64 syntax, non-positive output, missing route data, and mismatched input/output mint or input amount.
 - Execution remains intentionally unimplemented; no transaction is signed or submitted.
 
-Eligibility values must come from trusted, fresh server-side scanner and persisted trading state. Do not accept these values from browser input. This branch does not yet provide the instruction decoder, quote-freshness proof, durable idempotency, signing, submission, confirmation reconciliation, or emergency-stop endpoint.
+Eligibility values must come from trusted, fresh server-side scanner and persisted trading state. Do not accept these values from browser input. This branch does not yet provide the instruction decoder, quote-freshness proof, durable idempotency, signing, submission, confirmation reconciliation, or emergency-stop endpoint. The current Worker uses Cloudflare KV for application state; KV is eventually consistent and does not provide the atomic transaction/compare-and-set guarantees needed to enforce concurrent daily spend limits or prevent duplicate live submissions. A live execution design must use a serialized coordinator such as a Cloudflare Durable Object (or another transactional store) for per-wallet spend accounting, idempotency keys, kill-switch state, and pending/confirmed/failed transitions. The policy helper in this branch is not wired to trusted scanner data or the Worker and must not be treated as an operational trade gate.
 
 ## Mandatory remaining release gates
 
 1. Implement and independently audit transaction message decoding and program/account allow-listing.
 2. Establish quote freshness and validate all relevant amounts, fees, and token programs.
-3. Add durable idempotency and pending/confirmed/failed states to prevent duplicate submissions during Cron retries.
-4. Add an authenticated emergency stop that blocks new buys immediately and define safe exit behavior.
+3. Move live execution coordination out of KV-only state into a serialized/transactional component (for example, a Cloudflare Durable Object); implement durable idempotency keys and pending/confirmed/failed states to prevent duplicate submissions during Cron retries.
+4. Add an authenticated emergency stop stored in the same strongly coordinated component so it blocks new buys immediately; define safe exit behavior.
 5. Test RPC outages, provider errors, ambiguous submissions, partial confirmations, and restart recovery.
 6. Complete a Devnet-only signing/submission test using a disposable wallet and tiny test amount.
 7. Obtain independent review of signing and transaction-decoding code.
