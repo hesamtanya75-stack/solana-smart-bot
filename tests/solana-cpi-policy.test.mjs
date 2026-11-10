@@ -54,8 +54,7 @@ test("CPI validator rejects unknown programs and accounts", () => {
         index: 0,
         instructions: [{ programIdIndex: 3, accounts: [0, 1] }]
       }]
-    },
-    allowedCpiProgramIds: [program, unknownProgram]
+    }
   })), /unapproved CPI program/);
   assert.throws(() => validateSimulatedCpi(args({
     simulationMeta: {
@@ -64,8 +63,7 @@ test("CPI validator rejects unknown programs and accounts", () => {
         index: 0,
         instructions: [{ programIdIndex: 2, accounts: [0, 3] }]
       }]
-    },
-    allowedCpiAccountKeys: [signer, account, unknownProgram]
+    }
   })), /unapproved account/);
 });
 
