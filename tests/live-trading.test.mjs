@@ -54,7 +54,9 @@ async function assertOrderRejected(overrides, pattern, currentBlockHeight = 9999
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: { allowedRouters: ["metis"] },
-    getCurrentBlockHeight: async () => currentBlockHeight,
+    ...(currentBlockHeight === null ? {} : {
+      getCurrentBlockHeight: async () => currentBlockHeight
+    }),
     fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
       status: 200, headers: { "Content-Type": "application/json" }
     })
@@ -259,7 +261,7 @@ test("Jupiter order rejects gasless orders and unexpected fee payers", async () 
 });
 
 test("Jupiter order requires a fresh trusted RPC block height", async () => {
-  await assertOrderRejected({}, /Trusted RPC block-height provider is required/);
+  await assertOrderRejected({}, /Trusted RPC block-height provider is required/, null);
   await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999999);
   await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999800);
 });
