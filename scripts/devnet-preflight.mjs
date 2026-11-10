@@ -17,9 +17,9 @@ async function rpc(method, params = []) {
 }
 
 async function main() {
-  const genesis = await rpc("getGenesisHash");
+  const genesis = String(await rpc("getGenesisHash")).trim();
   if (genesis !== EXPECTED_DEVNET_GENESIS) {
-    throw new Error("Wrong cluster: expected Solana Devnet genesis hash, received " + genesis);
+    throw new Error("Wrong cluster: expected Devnet genesis hash " + EXPECTED_DEVNET_GENESIS + " (" + EXPECTED_DEVNET_GENESIS.length + " chars), received " + JSON.stringify(genesis) + " (" + genesis.length + " chars)");
   }
 
   const health = await rpc("getHealth");
