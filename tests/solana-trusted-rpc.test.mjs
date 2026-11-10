@@ -148,10 +148,13 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
   const encoded = Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
 
   const tableData = Buffer.alloc(56 + 32);
-  tableData.writeBigUInt64LE((1n << 64n) - 1n, 0);
-  tableData.writeBigUInt64LE(1000n, 8);
-  tableData.writeUInt8(0, 16);
-  tableData.writeUInt8(0, 17);
+  // Solana ALT account data starts with the u32 LookupTable enum tag;
+  // the metadata fields therefore begin at byte offset 4.
+  tableData.writeUInt32LE(1, 0);
+  tableData.writeBigUInt64LE((1n << 64n) - 1n, 4);
+  tableData.writeBigUInt64LE(1000n, 12);
+  tableData.writeUInt8(0, 20);
+  tableData.writeUInt8(0, 21);
   loadedAddress.toBuffer().copy(tableData, 56);
   const fetchImpl = async (_url, options) => {
     const request = JSON.parse(options.body);
