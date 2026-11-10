@@ -29,8 +29,8 @@ function fixture(overrides = {}) {
     accounts: [TOKEN_PROGRAM_ID, "11111111111111111111111111111115", wallet, source,
       "11111111111111111111111111111116", "11111111111111111111111111111117",
       destination, sourceMint, destinationMint, "11111111111111111111111111111118",
-      TOKEN_2022_PROGRAM_ID],
-    accountIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      TOKEN_2022_PROGRAM_ID, dexProgram, amm],
+    accountIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     dataBase64: data.toString("base64")
   };
   const decoded = {
