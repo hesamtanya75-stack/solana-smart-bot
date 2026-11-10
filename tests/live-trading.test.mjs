@@ -278,6 +278,7 @@ test("Jupiter order rejects invalid serialized transactions even with an allow-l
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000,
     eligibility: goodEligibility,
+    trustedRpc: { getBlockHeight: async () => 999999900 },
     transactionAllowList: {
       allowedRouters: ["metis"],
       requiredAccounts: [EXPECTED_BOT_WALLET],
