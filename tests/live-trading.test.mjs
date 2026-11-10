@@ -47,6 +47,19 @@ function validOrder(overrides = {}) {
   };
 }
 
+async function assertOrderRejected(overrides, pattern) {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    transactionAllowList: { allowedRouters: ["metis"] },
+    fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    })
+  }), pattern);
+}
+
 test("live trading fails closed unless both feature flag and kill switch are explicitly set", () => {
   assert.equal(readLivePolicy({ LIVE_TRADING_ENABLED: "TRUE" }).enabled, false);
   assert.equal(readLivePolicy({ ...goodEnv, LIVE_TRADING_KILL_SWITCH: "true" }).enabled, false);
@@ -126,6 +139,10 @@ test("Jupiter order requires an explicit trusted transaction allow-list", async 
   }), error => error.message.includes("Trusted transaction program/account allow-list"));
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   assert.equal(request.options.headers["x-api-key"], "test-only");
+  const query = new URL(request.url).searchParams;
+  assert.equal(query.get("excludeRouters"), "jupiterz,dflow,okx");
+  assert.equal(query.get("swapMode"), "ExactIn");
+  assert.equal(query.get("maxSupportedTransactionVersion"), "0");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
 test("malformed Jupiter order fails closed", async () => {
@@ -228,6 +245,27 @@ test("Jupiter order rejects a router outside the explicit single-router policy",
     transactionAllowList: { allowedRouters: ["metis"] },
     fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-unapproved-router", router: "jupiterz" })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /Only the explicitly reviewed Metis router is permitted/);
+});
+
+
+test("Jupiter order rejects gasless orders and unexpected fee payers", async () => {
+  await assertOrderRejected({ gasless: true }, /mode, version, or fee payer/);
+  await assertOrderRejected({
+    signatureFeePayer: "11111111111111111111111111111111"
+  }, /mode, version, or fee payer/);
+});
+
+test("Jupiter order rejects inconsistent fees, expiry, minimum output, and route steps", async () => {
+  await assertOrderRejected({
+    feeMint: "11111111111111111111111111111111"
+  }, /fee metadata is missing or inconsistent/);
+  await assertOrderRejected({ lastValidBlockHeight: "0" }, /block-height expiry/);
+  await assertOrderRejected({
+    otherAmountThreshold: "12346"
+  }, /minimum output or slippage metadata/);
+  await assertOrderRejected({
+    routePlan: [{ swapInfo: { label: "missing route identity" } }]
+  }, /route plan contains incomplete or invalid swap steps/);
 });
 
 test("Jupiter order rejects invalid serialized transactions even with an allow-list", async () => {
