@@ -1,5 +1,7 @@
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
-import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";\nimport { validateMetisJupiterV6Instruction } from "./solana-metis-validator.mjs";\nimport { inspectMetisOrderWithTrustedRpc } from "./solana-trusted-rpc.mjs";
+import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";
+import { validateMetisJupiterV6Instruction } from "./solana-metis-validator.mjs";
+import { inspectMetisOrderWithTrustedRpc } from "./solana-trusted-rpc.mjs";
 
 /**
  * Solana live-trading preparation module.
