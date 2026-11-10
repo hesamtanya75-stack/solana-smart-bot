@@ -92,7 +92,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     throw new Error("Token decimals are unavailable for sell-route verification");
   }
   const priceText = String(priceUsd);
-  const match = /^(\\d+)(?:\\.(\\d+))?$/.exec(priceText);
+  const match = /^(\d+)(?:\\.(\d+))?$/.exec(priceText);
   if (!match) throw new Error("Token USD price format is unsupported for sell-route verification");
   const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(12, "0").slice(0, 12));
   if (priceScaled <= 0n) throw new Error("Token USD price is invalid for sell-route verification");
@@ -117,7 +117,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(order.transaction) ||
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
-      !/^\\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
+      !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter did not return a complete executable sell order route");
   }
@@ -244,7 +244,7 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   const top10OwnerConcentrationPct = Number(concentrationScaled) / 10_000;
   const sellRoute = await fetchTrustedSellRoute(
     mint,
-    priceUsd,
+    pair.priceUsd,
     supplyAmount,
     supply?.value?.decimals,
     fetchImpl,
