@@ -2,6 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk } from "../trusted-live-evidence.mjs";
 
+const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+function decodeBase58(value) {
+  let number = 0n;
+  for (const char of value) number = number * 58n +
+    BigInt("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".indexOf(char));
+  const bytes = [];
+  while (number > 0n) { bytes.unshift(Number(number & 255n)); number >>= 8n; }
+  for (let i = 0; i < value.length && value[i] === "1"; i++) bytes.unshift(0);
+  return Uint8Array.from(bytes);
+}
+function validUnsignedTransaction() {
+  const key = decodeBase58(BOT_WALLET);
+  const message = Uint8Array.from([1, 0, 0, 1, ...key, ...new Array(32).fill(0), 0]);
+  return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(0), ...message])).toString("base64");
+}
+
 test("SOL/USD quote is fetched and timestamped by the server", async () => {
   const quote = await fetchTrustedSolUsdQuote(async (url) => {
     assert.match(String(url), /api\.coinbase\.com\/v2\/prices\/SOL-USD\/spot/);
@@ -47,7 +63,8 @@ test("holder verification fails closed when Alchemy credentials are absent", asy
 
 test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-  const firstPage = Array.from({ length: 100 }, () => ({
+  const firstPage = Array.from({ length: 100 }, (_, i) => ({
+    address: "TokenAccountAddress" + String(i).padStart(20, "0"),
     mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
@@ -62,7 +79,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       const amount = new URL(value).searchParams.get("amount");
       return Response.json({
         requestId: "test-sell-order",
-        transaction: "AQ==",
+        transaction: validUnsignedTransaction(),
         inputMint: mint,
         outputMint: "So11111111111111111111111111111111111111112",
         inAmount: amount,
@@ -76,11 +93,17 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       holderPages++;
       return Response.json({ result: {
         token_accounts: request.params.page === 1 ? firstPage : [{
+          address: "TokenAccountAddress" + "100".padStart(20, "0"),
           mint, owner: "11111111111111111111111111111112", amount: "1"
         }],
         errors: []
       } });
     }
+    if (request.method === "getTokenAccountsByOwner") return Response.json({ result: { value: [{
+      account: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: { parsed: { info: {
+        mint, owner: BOT_WALLET, tokenAmount: { amount: "10" }
+      } } } }
+    }] } });
     if (request.method === "getAccountInfo") return Response.json({ result: {
       value: {
         owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",

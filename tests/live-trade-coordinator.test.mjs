@@ -18,7 +18,12 @@ function trustedEvidence(overrides = {}) {
   const fetchedAt = Date.now();
   return {
     quote: { provider: "test-fixture", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "test-quote-" + fetchedAt },
-    risk: { provider: "test-fixture", fetchedAt, checks: { all: true }, passed: true },
+    risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt,
+      checks: {
+        mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
+        holderConcentrationSafe: true, sellRouteAvailable: true, marketLiquiditySafe: true,
+        marketVolumeSafe: true, rugCheckSafe: true
+      }, passed: true },
     passed: true,
     ...overrides
   };
@@ -162,7 +167,7 @@ test("browser-supplied risk flag is ignored; server evidence controls approval",
 
 test("server-side risk evidence failure blocks reservation even if browser claims approval", async () => {
   const { coordinator } = makeCoordinator(async () => trustedEvidence({
-    passed: false, risk: { provider: "test-fixture", fetchedAt: Date.now(), checks: {}, passed: false }
+    passed: false, risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt: Date.now(), checks: {}, passed: false }
   }));
   await post(coordinator, "/kill-switch", { enabled: false });
   const result = await post(coordinator, "/reserve", validReservation({ riskPassed: true }));
@@ -227,6 +232,6 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   const changed = await post(coordinator, "/reserve", validReservation({
     destination: "11111111111111111111111111111111"
   }));
-  assert.equal(changed.status, 409);
-  assert.match(changed.body.error, /different order intent/);
+  assert.equal(changed.status, 400);
+  assert.match(changed.body.error, /immutable order intent/);
 });

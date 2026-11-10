@@ -7,7 +7,73 @@ const COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/SOL-USD/spot";
 const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
 const DEVNET_OR_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
-const RISKY_TOKEN_2022_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
+const EXPECTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
+
+function decodeBase58(value) {
+  let number = 0n;
+  for (const char of value) {
+    const digit = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".indexOf(char);
+    if (digit < 0) throw new Error("Invalid base58 address");
+    number = number * 58n + BigInt(digit);
+  }
+  const bytes = [];
+  while (number > 0n) { bytes.unshift(Number(number & 255n)); number >>= 8n; }
+  for (let i = 0; i < value.length && value[i] === "1"; i++) bytes.unshift(0);
+  return Uint8Array.from(bytes);
+}
+
+function readShortVector(bytes, offset) {
+  let value = 0, shift = 0, cursor = offset;
+  for (let i = 0; i < 3; i++) {
+    if (cursor >= bytes.length) throw new Error("Jupiter transaction is truncated");
+    const byte = bytes[cursor++];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) return { value, offset: cursor };
+    shift += 7;
+  }
+  throw new Error("Jupiter transaction has an invalid compact length");
+}
+
+function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
+  if (typeof encoded !== "string" || encoded.length === 0 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(encoded)) {
+    throw new Error("Jupiter transaction is empty or not canonical base64");
+  }
+  const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+  const sigHeader = readShortVector(bytes, 0);
+  const signatureCount = sigHeader.value;
+  if (signatureCount < 1 || signatureCount > 64 ||
+      sigHeader.offset + signatureCount * 64 >= bytes.length) {
+    throw new Error("Jupiter transaction signature section is invalid");
+  }
+  const signaturesEnd = sigHeader.offset + signatureCount * 64;
+  for (let i = sigHeader.offset; i < signaturesEnd; i++) {
+    if (bytes[i] !== 0) throw new Error("Jupiter order transaction must be unsigned");
+  }
+  const cursor = signaturesEnd;
+  let headerOffset = cursor;
+  if ((bytes[cursor] & 0x80) !== 0) {
+    if ((bytes[cursor] & 0x7f) !== 0) throw new Error("Unsupported Jupiter transaction message version");
+    headerOffset++;
+  }
+  if (headerOffset + 3 > bytes.length) throw new Error("Jupiter transaction message is truncated");
+  const requiredSignatures = bytes[headerOffset];
+  if (requiredSignatures !== signatureCount || requiredSignatures < 1) {
+    throw new Error("Jupiter transaction signer count is inconsistent");
+  }
+  const keysHeader = readShortVector(bytes, headerOffset + 3);
+  const keyCount = keysHeader.value;
+  const keysStart = keysHeader.offset;
+  if (keyCount < requiredSignatures || keysStart + keyCount * 32 > bytes.length) {
+    throw new Error("Jupiter transaction account keys are invalid");
+  }
+  const signerBytes = bytes.slice(keysStart, keysStart + 32);
+  const expectedBytes = decodeBase58(expectedSigner);
+  if (expectedBytes.length !== 32 || signerBytes.some((byte, i) => byte !== expectedBytes[i])) {
+    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+  }
+  return { signatureCount, staticAccountCount: keyCount, messageVersion: headerOffset === cursor ? "legacy" : 0 };
+}
 
 function positive(value, label) {
   const number = Number(value);
@@ -50,6 +116,7 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
   const endpoint = "https://solana-mainnet.g.alchemy.com/v2/" + encodeURIComponent(alchemyApiKey);
   const limit = 100;
   const accounts = [];
+  const seenAccounts = new Set();
   for (let page = 1; page <= 100; page++) {
     const payload = await fetchJson(fetchImpl, endpoint, {
       method: "POST",
@@ -70,12 +137,14 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
     }
     for (const row of rows) {
       const rawAmount = String(row.amount);
+      const accountAddress = row.address || row.pubkey;
       if (row.mint !== mint || typeof row.owner !== "string" ||
-          !/^\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
-        throw new Error("Alchemy holder page contains incomplete or mismatched account data");
+          typeof accountAddress !== "string" || accountAddress.length < 32 ||
+          seenAccounts.has(accountAddress) || !/^\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
+        throw new Error("Alchemy holder page contains incomplete, duplicate, or mismatched account data");
       }
-      accounts.push({ owner: row.owner, amount: BigInt(rawAmount) });
-    }
+      seenAccounts.add(accountAddress);
+      accounts.push({ address: accountAddress, owner: row.owner, amount: BigInt(rawAmount) });    }
     if (rows.length < limit) {
       if (accounts.length === 0) throw new Error("No positive-balance token accounts were found");
       return accounts;
@@ -102,6 +171,27 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
   if (amount <= 0n || maxProbeAmount <= 0n || amount > maxProbeAmount) {
     throw new Error("A $3 sell-route probe would exceed 1% of token supply or is below token precision");
   }
+  const walletAccounts = await rpc(fetchImpl, "getTokenAccountsByOwner", [
+    EXPECTED_BOT_WALLET,
+    { mint },
+    { encoding: "jsonParsed", commitment: "confirmed" }
+  ]);
+  if (!Array.isArray(walletAccounts?.value) || walletAccounts.value.length === 0) {
+    throw new Error("Expected bot wallet has no verified token accounts for this mint");
+  }
+  let walletTokenBalance = 0n;
+  for (const account of walletAccounts.value) {
+    const info = account?.account?.data?.parsed?.info;
+    if (!EXPECTED_TOKEN_PROGRAMS.has(account?.account?.owner) ||
+        info?.mint !== mint || info?.owner !== EXPECTED_BOT_WALLET ||
+        !/^\d+$/.test(String(info?.tokenAmount?.amount ?? ""))) {
+      throw new Error("Bot wallet token account ownership or balance data is invalid");
+    }
+    walletTokenBalance += BigInt(info.tokenAmount.amount);
+  }
+  if (amount > walletTokenBalance) {
+    throw new Error("Expected bot wallet does not own enough tokens for the sell-route probe");
+  }
   const params = new URLSearchParams({
     inputMint: mint,
     outputMint: SOL_MINT,
@@ -115,20 +205,24 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
   if (!order || typeof order !== "object" ||
       typeof order.requestId !== "string" || !order.requestId ||
       typeof order.transaction !== "string" ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(order.transaction) ||
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
       !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter did not return a complete executable sell order route");
   }
+  const decodedTransaction = validateUnsignedJupiterTransaction(order.transaction, EXPECTED_BOT_WALLET);
   return Object.freeze({
     provider: "Jupiter Swap API V2",
     requestId: order.requestId,
     inputAmount: amount.toString(),
     outputLamports: String(order.outAmount),
     router: String(order.router || "unknown"),
-    routePlanCount: order.routePlan.length
+    routePlanCount: order.routePlan.length,
+    signatureCount: decodedTransaction.signatureCount,
+    staticAccountCount: decodedTransaction.staticAccountCount,
+    messageVersion: decodedTransaction.messageVersion,
+    walletTokenBalance: walletTokenBalance.toString()
   });
 }
 
@@ -149,10 +243,10 @@ function parseMintAccount(account) {
   if (!value) throw new Error("Mint account is unavailable");
   const parsed = value.data?.parsed?.info;
   if (parsed) {
-    // Only the classic SPL Token program is treated as extension-free.
-    // Token-2022 is allowed only when the RPC explicitly returns an empty
-    // extensions array; missing or unknown program metadata fails closed.
     const tokenProgram = value.owner;
+    if (!EXPECTED_TOKEN_PROGRAMS.has(tokenProgram)) {
+      throw new Error("Mint account is owned by an unsupported token program");
+    }
     const token2022ExtensionsSafe =
       tokenProgram === TOKEN_PROGRAM_ID ||
       (tokenProgram === TOKEN_2022_PROGRAM_ID &&
@@ -162,6 +256,9 @@ function parseMintAccount(account) {
       freezeAuthoritySafe: parsed.freezeAuthority == null,
       token2022ExtensionsSafe
     };
+  }
+  if (!EXPECTED_TOKEN_PROGRAMS.has(value.owner)) {
+    throw new Error("Mint account is owned by an unsupported token program");
   }
   const raw = value.data;
   if (!Array.isArray(raw) || typeof raw[0] !== "string") {
@@ -189,7 +286,7 @@ function parseMintAccount(account) {
   return {
     mintAuthoritySafe: mintOption === 0,
     freezeAuthoritySafe: freezeOption === 0,
-    token2022ExtensionsSafe: !extensions.some(type => RISKY_TOKEN_2022_EXTENSIONS.has(type))
+    token2022ExtensionsSafe: value.owner === TOKEN_PROGRAM_ID ? bytes.length === 82 : extensions.length === 0
   };
 }
 

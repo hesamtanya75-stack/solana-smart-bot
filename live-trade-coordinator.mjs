@@ -5,6 +5,12 @@ const MAX_DAILY_SPEND_USD_CENTS = 500;
 const MAX_OPEN_POSITIONS = 10;
 const MAX_QUOTE_AGE_MS = 30_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
+const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+const EXPECTED_TOKEN_CHECKS = [
+  "mintAuthoritySafe", "freezeAuthoritySafe", "token2022ExtensionsSafe",
+  "holderConcentrationSafe", "sellRouteAvailable", "marketLiquiditySafe",
+  "marketVolumeSafe", "rugCheckSafe"
+];
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -52,7 +58,8 @@ function orderIntentFingerprint(body, amountLamports) {
   const destination = String(body?.destination || "");
   const slippageBps = Number(body?.slippageBps);
   if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
-      !base58.test(destination) || !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
+      !base58.test(destination) || destination !== EXPECTED_BOT_WALLET ||
+      !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
       inputMint !== "So11111111111111111111111111111111111111112") {
     throw new Error("Complete immutable order intent is required");
   }
@@ -150,16 +157,31 @@ export class LiveTradeCoordinator {
       this.env?.ALCHEMY_API_KEY || "",
       this.env?.JUPITER_API_KEY || ""
     );
-    if (!evidence.passed) {
-      throw new Error("Trusted token risk checks did not all pass; reservation blocked");
+    const quote = evidence?.quote;
+    const risk = evidence?.risk;
+    if (evidence?.passed !== true || risk?.passed !== true ||
+        risk?.mint !== body.outputMint ||
+        typeof risk?.checks !== "object" || risk.checks === null ||
+        EXPECTED_TOKEN_CHECKS.some(name => risk.checks[name] !== true) ||
+        Object.values(risk.checks).some(value => value !== true)) {
+      throw new Error("Trusted token risk checks are missing, mismatched, or failed; reservation blocked");
     }
-    const quoteTimestamp = evidence.quote.fetchedAt;
+    const riskTimestamp = risk.fetchedAt;
+    if (!Number.isFinite(riskTimestamp) || riskTimestamp > Date.now() + 5000 ||
+        Date.now() - riskTimestamp > MAX_QUOTE_AGE_MS) {
+      throw new Error("Trusted token risk evidence is stale");
+    }
+    if (quote?.provider !== "Coinbase" || quote?.pair !== "SOL/USD" ||
+        typeof quote.quoteId !== "string" || !quote.quoteId) {
+      throw new Error("Trusted SOL/USD quote identity is invalid");
+    }
+    const quoteTimestamp = quote.fetchedAt;
     const now = Date.now();
     if (!Number.isFinite(quoteTimestamp) || quoteTimestamp > now + 5000 ||
         now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
       throw new Error("Trusted SOL/USD quote is stale");
     }
-    const amountCents = usdCentsFromLamports(amountLamports, evidence.quote.price);
+    const amountCents = usdCentsFromLamports(amountLamports, quote.price);
     if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
 
     return this.withState(state => {
@@ -191,13 +213,14 @@ export class LiveTradeCoordinator {
         idempotencyKey: key,
         amountLamports,
         intentFingerprint,
-        quoteProvider: evidence.quote.provider,
-        quoteId: evidence.quote.quoteId,
+        quoteProvider: quote.provider,
+        quoteId: quote.quoteId,
         quoteFetchedAt: new Date(quoteTimestamp).toISOString(),
-        solUsd: evidence.quote.price,
-        tokenRiskProvider: evidence.risk.provider,
-        tokenRiskFetchedAt: new Date(evidence.risk.fetchedAt).toISOString(),
-        tokenRiskChecks: evidence.risk.checks,
+        solUsd: quote.price,
+        tokenRiskProvider: risk.provider,
+        tokenRiskMint: risk.mint,
+        tokenRiskFetchedAt: new Date(riskTimestamp).toISOString(),
+        tokenRiskChecks: risk.checks,
         amountCents,
         day,
         status: "pending",
