@@ -1,4 +1,12 @@
-const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+import { PublicKey } from "@solana/web3.js";
+
+function isPublicKey(value) {
+  try {
+    return typeof value === "string" && new PublicKey(value).toBase58() === value;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Validate a parsed SPL Token / Token-2022 account response from a trusted RPC.
@@ -20,7 +28,7 @@ function validateParsedTokenAccount({
   for (const [name, value] of Object.entries({
     expectedTokenProgramId, expectedMint, expectedAuthority
   })) {
-    if (typeof value !== "string" || !BASE58.test(value)) {
+    if (!isPublicKey(value)) {
       throw new Error(name + " must be a valid public key");
     }
   }
@@ -78,7 +86,7 @@ function validateParsedTokenAccount({
   const tokenAmount = info.tokenAmount;
   if (!tokenAmount || !/^(0|[1-9][0-9]*)$/.test(String(tokenAmount.amount)) ||
       !Number.isInteger(tokenAmount.decimals) || tokenAmount.decimals < 0 ||
-      tokenAmount.decimals > 18) {
+      tokenAmount.decimals > 255) {
     throw new Error("Token account amount or decimals are invalid");
   }
   if (BigInt(tokenAmount.amount) < BigInt(minimumAmount)) {
