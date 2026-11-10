@@ -150,11 +150,12 @@ function validateMetisJupiterV6Instruction({
     const labels = dexLabelsBySwapVariant[String(step.swapVariant)];
     const quoteStep = routePlan[i];
     if (typeof programId !== "string" || !BASE58.test(programId) ||
-        !allowed.has(programId) || !Array.isArray(labels) ||
+        !allowed.has(programId) || !instruction.accounts.slice(11).includes(programId) || !Array.isArray(labels) ||
         !labels.includes(quoteStep?.swapInfo?.label) ||
         !Number.isInteger(quoteStep?.percent) ||
         quoteStep.percent !== step.percent ||
-        !quoteStep.swapInfo || !BASE58.test(String(quoteStep.swapInfo.ammKey || "")) ||\n        !instruction.accounts.slice(11).includes(quoteStep.swapInfo.ammKey)) {
+        !quoteStep.swapInfo || !BASE58.test(String(quoteStep.swapInfo.ammKey || "")) ||
+        !instruction.accounts.slice(11).includes(quoteStep.swapInfo.ammKey)) {
       throw new Error("Metis on-chain DEX route does not match the pinned program/label policy and Jupiter quote");
     }
     requiredCpiProgramIds.push(programId);
