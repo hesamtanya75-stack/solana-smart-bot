@@ -1,3 +1,9 @@
+## DEX-specific CPI semantics are now a mandatory fail-closed gate
+
+The Metis route validator now requires a per-swap-variant semantic validator supplied by trusted policy. It receives the exact decoded Jupiter instruction, parsed on-chain route step, quote step, DEX program ID, and AMM key. Missing, throwing, or negative validators reject the order. The generic program/label/AMM membership checks alone are not treated as a DEX security audit.
+
+**Important limitation:** this repository still does not contain independently reviewed, production-ready validators for Saber or other DEXes. The unit-test callback is a fixture only and must never be copied into production policy. Until each supported DEX has a reviewed validator that checks its exact CPI account order, pool/vault/PDA derivations, token mints, authorities, and amount flow against the deployed program/IDL, the route must remain rejected. No DEX is approved for live execution by this change.
+
 # Program / Account / CPI / ALT security audit — PR #17
 
 ## Scope and disposition
