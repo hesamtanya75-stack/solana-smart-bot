@@ -74,7 +74,7 @@ function validateMetisJupiterV6Instruction({
   if (!decoded || !Array.isArray(decoded.instructions) ||
       decoded.instructions.filter((item) => item.programId === JUPITER_V6_PROGRAM_ID).length !== 1 ||
       !instruction || instruction.programId !== JUPITER_V6_PROGRAM_ID ||
-      !Array.isArray(instruction.accounts) || instruction.accounts.length !== 11) {
+      !Array.isArray(instruction.accounts) || instruction.accounts.length < 11) {
     throw new Error("Metis order must contain exactly one supported Jupiter V6 sharedAccountsRouteV2 instruction");
   }
   for (const [name, value] of Object.entries({ expectedSigner, inputMint, outputMint })) {
