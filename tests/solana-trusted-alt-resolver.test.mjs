@@ -117,4 +117,23 @@ test("requires an exact trusted RPC endpoint and valid freshness settings", () =
   assert.throws(() => createTrustedAltResolver({
     connection, trustedRpcEndpoint: "https://one.example", maxSlotLag: -1
   }), /freshness settings/);
+  assert.throws(() => createTrustedAltResolver({
+    connection: { ...connection, rpcEndpoint: "http://one.example" },
+    trustedRpcEndpoint: "http://one.example"
+  }), /HTTPS trusted RPC endpoint/);
+});
+
+test("rejects malformed ALT state metadata", async () => {
+  const { key, connection } = fixture();
+  const malformed = createTrustedAltResolver({
+    connection,
+    trustedRpcEndpoint: "https://trusted-rpc.example",
+    deserializeLookupTable: () => ({
+      deactivationSlot: MAX_U64,
+      lastExtendedSlot: 90,
+      lastExtendedSlotStartIndex: 3,
+      addresses: []
+    })
+  });
+  await assert.rejects(() => malformed(key), /state is invalid/);
 });
