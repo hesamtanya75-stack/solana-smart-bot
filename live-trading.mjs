@@ -1,5 +1,5 @@
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
-import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";
+import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";\nimport { validateMetisJupiterV6Instruction } from "./solana-metis-validator.mjs";\nimport { inspectMetisOrderWithTrustedRpc } from "./solana-trusted-rpc.mjs";
 
 /**
  * Solana live-trading preparation module.
@@ -153,7 +153,7 @@ async function getJupiterOrder({
       order.gasless !== false || order.signatureFeePayer !== policy.wallet) {
     throw new Error("Jupiter order mode, version, or fee payer is not approved");
   }
-  if (!Number.isSafeInteger(order.feeBps) || order.feeBps < 0 || order.feeBps > 10000 ||
+  if (!Number.isSafeInteger(order.feeBps) || order.feeBps < 0 || order.feeBps > 255 ||
       !BASE58.test(String(order.feeMint)) ||
       (order.feeMint !== inputMint && order.feeMint !== outputMint)) {
     throw new Error("Jupiter fee metadata is missing or inconsistent");
@@ -195,6 +195,35 @@ async function getJupiterOrder({
   const decoded = await decodeSolanaTransaction(order.transaction, {
     lookupTableResolver
   });
+  const jupiterInstructions = decoded.instructions.filter((item) =>
+    item.programId === "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTa4"
+  );
+  if (jupiterInstructions.length !== 1 || !metisPolicy ||
+      !Array.isArray(metisPolicy.allowedCpiProgramIds) ||
+      !Array.isArray(metisPolicy.allowedCpiAccountKeys)) {
+    throw new Error("Trusted Metis semantic policy and CPI allow-lists are required");
+  }
+  const metisInstruction = validateMetisJupiterV6Instruction({
+    decoded,
+    instruction: jupiterInstructions[0],
+    expectedSigner: policy.wallet,
+    inputMint,
+    outputMint,
+    inAmount: order.inAmount,
+    outAmount: order.outAmount,
+    slippageBps: order.slippageBps,
+    platformFeeBps: order.feeBps,
+    routePlan: order.routePlan,
+    dexProgramBySwapVariant: metisPolicy.dexProgramBySwapVariant,
+    dexLabelsBySwapVariant: metisPolicy.dexLabelsBySwapVariant,
+    allowedDexProgramIds: metisPolicy.allowedDexProgramIds
+  });
+  const instructionValidators = {
+    ...(transactionAllowList.instructionValidators || {}),
+    [jupiterInstructions[0].programId]: (instruction) => ({
+      allowed: instruction.index === jupiterInstructions[0].index
+    })
+  };
   const instructionPolicy = validateDecodedSwapTransaction({
     decoded,
     expectedSigner: policy.wallet,
@@ -202,11 +231,20 @@ async function getJupiterOrder({
     allowedProgramIds: transactionAllowList.allowedProgramIds,
     allowedAccountKeys: transactionAllowList.allowedAccountKeys,
     allowedWritableAccountKeys: transactionAllowList.allowedWritableAccountKeys,
-    instructionValidators: transactionAllowList.instructionValidators
+    instructionValidators
+  });
+  const rpcInspection = await inspectMetisOrderWithTrustedRpc({
+    rpc: trustedRpc,
+    encodedTransaction: order.transaction,
+    decoded,
+    tokenAccountExpectations: metisInstruction.tokenAccountExpectations,
+    allowedCpiProgramIds: metisPolicy.allowedCpiProgramIds,
+    allowedCpiAccountKeys: metisPolicy.allowedCpiAccountKeys,
+    requiredCpiProgramIds: metisInstruction.requiredCpiProgramIds,
+    minContextSlot
   });
 
-  // Only trusted protocol-specific validators can approve instruction semantics.
-  // Return inspection metadata only; never expose the unsigned transaction to an executor.
+  // Inspection metadata only; no transaction bytes are returned or executed.
   return Object.freeze({
     requestId: order.requestId,
     router: order.router,
@@ -214,7 +252,12 @@ async function getJupiterOrder({
     outputMint: order.outputMint,
     inAmount: String(order.inAmount),
     outAmount: String(order.outAmount),
-    instructionPolicy
+    instructionPolicy,
+    metisInstruction: Object.freeze({
+      instructionName: metisInstruction.instructionName,
+      routeSteps: metisInstruction.routeSteps
+    }),
+    rpcInspection
   });
 }
 
