@@ -198,7 +198,7 @@ async function getJupiterOrder({
     lookupTableResolver
   });
   const jupiterInstructions = decoded.instructions.filter((item) =>
-    item.programId === "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTa4"
+    item.programId === "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
   );
   if (jupiterInstructions.length !== 1 || !metisPolicy ||
       !Array.isArray(metisPolicy.allowedCpiProgramIds) ||
