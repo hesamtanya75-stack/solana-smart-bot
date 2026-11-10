@@ -198,7 +198,8 @@ test("Jupiter order requires semantic validation and returns inspection metadata
     transactionAllowList: {
       requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
       allowedProgramIds: [SystemProgram.programId.toBase58()],
-      allowedAccountKeys
+      allowedAccountKeys,
+      allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()]
     },
     fetchImpl: async () => new Response(JSON.stringify({
       requestId: "req-no-validator", transaction: encoded,
