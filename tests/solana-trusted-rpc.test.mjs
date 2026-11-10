@@ -98,7 +98,9 @@ test("trusted order inspection validates source/destination accounts and exact-t
   assert.equal(result.allowed, true);
   assert.equal(result.tokenAccounts.length, 2);
   assert.equal(result.cpi.instructionCount, 1);
-  assert.equal(fixture.requests.some(item => item.body.method === "simulateTransaction"), true);
+  const simulationCall = fixture.requests.find(item => item.body.method === "simulateTransaction");
+  assert.ok(simulationCall);
+  assert.equal(simulationCall.body.params[1].replaceRecentBlockhash, false);
 });
 
 test("trusted order inspection rejects decoded metadata that differs from serialized transaction", async () => {
