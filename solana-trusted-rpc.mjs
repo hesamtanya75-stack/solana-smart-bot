@@ -3,6 +3,7 @@ import { createTrustedAltResolver } from "./solana-trusted-alt-resolver.mjs";
 import { validateParsedTokenAccount } from "./solana-token-account-validator.mjs";
 import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
+import { inspectUpgradeableProgramAccounts } from "./solana-upgradeable-program.mjs";
 
 const MAX_RPC_RESPONSE_BYTES = 2_000_000;
 const MAX_TOKEN_ACCOUNTS = 16;
@@ -190,7 +191,7 @@ function createTrustedSolanaRpc({
     },
     async getMultipleRawAccountInfos(pubkeys, { minContextSlot = 0 } = {}) {
       const MAX_RAW_ACCOUNT_READS = 16;
-      const MAX_RAW_ACCOUNT_DATA_BYTES = 512_000;
+      const MAX_RAW_ACCOUNT_DATA_BYTES = 1_000_000;
       if (!Array.isArray(pubkeys) || pubkeys.length < 1 || pubkeys.length > MAX_RAW_ACCOUNT_READS ||
           pubkeys.some((key) => { try { assertPublicKey(key, "Raw account"); return false; } catch { return true; } }) ||
           new Set(pubkeys).size !== pubkeys.length ||
@@ -233,6 +234,38 @@ function createTrustedSolanaRpc({
       return Object.freeze({
         context: Object.freeze({ slot: result.context.slot }),
         value: Object.freeze(values)
+      });
+    },
+    async inspectUpgradeableProgram(programId, { minContextSlot = 0 } = {}) {
+      assertPublicKey(programId, "Upgradeable program ID");
+      const first = await client.getMultipleRawAccountInfos([programId], { minContextSlot });
+      const programAccount = first.value[0];
+      const loaderId = "BPFLoaderUpgradeab1e11111111111111111111111";
+      if (!programAccount || programAccount.owner.toBase58() !== loaderId ||
+          programAccount.executable !== true || programAccount.data.length !== 36 ||
+          programAccount.data.readUInt32LE(0) !== 2) {
+        throw new Error("Trusted RPC program account is not a valid upgradeable-loader Program");
+      }
+      const programDataAddress = new PublicKey(programAccount.data.subarray(4, 36)).toBase58();
+      const snapshot = await client.getMultipleRawAccountInfos(
+        [programId, programDataAddress],
+        { minContextSlot: first.context.slot }
+      );
+      if (snapshot.context.slot < first.context.slot ||
+          snapshot.value[0]?.data?.length !== 36 ||
+          snapshot.value[0].data.readUInt32LE(0) !== 2 ||
+          new PublicKey(snapshot.value[0].data.subarray(4, 36)).toBase58() !== programDataAddress) {
+        throw new Error("Trusted RPC upgradeable Program pointer changed or snapshot is inconsistent");
+      }
+      const inspected = inspectUpgradeableProgramAccounts({
+        programId,
+        programAccount: snapshot.value[0],
+        programDataAccount: snapshot.value[1]
+      });
+      return Object.freeze({
+        ...inspected,
+        contextSlot: snapshot.context.slot,
+        rpcEndpoint: endpoint
       });
     },
     async simulateUnsignedTransaction(encodedTransaction, { minContextSlot = 0 } = {}) {
