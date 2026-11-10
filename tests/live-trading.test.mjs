@@ -47,13 +47,14 @@ function validOrder(overrides = {}) {
   };
 }
 
-async function assertOrderRejected(overrides, pattern) {
+async function assertOrderRejected(overrides, pattern, currentBlockHeight = 999999900) {
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv,
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: { allowedRouters: ["metis"] },
+    getCurrentBlockHeight: async () => currentBlockHeight,
     fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
       status: 200, headers: { "Content-Type": "application/json" }
     })
@@ -211,6 +212,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
         [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
       }
     },
+    getCurrentBlockHeight: async () => 999999900,
     fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-decoded", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
   });
 
@@ -231,6 +233,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       allowedAccountKeys,
       allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()]
     },
+    getCurrentBlockHeight: async () => 999999900,
     fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-no-validator", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /protocol-specific instruction validators are required/);
 });
@@ -253,6 +256,12 @@ test("Jupiter order rejects gasless orders and unexpected fee payers", async () 
   await assertOrderRejected({
     signatureFeePayer: "11111111111111111111111111111111"
   }, /mode, version, or fee payer/);
+});
+
+test("Jupiter order requires a fresh trusted RPC block height", async () => {
+  await assertOrderRejected({}, /Trusted RPC block-height provider is required/);
+  await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999999);
+  await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999800);
 });
 
 test("Jupiter order rejects inconsistent fees, expiry, minimum output, and route steps", async () => {
@@ -280,6 +289,7 @@ test("Jupiter order rejects invalid serialized transactions even with an allow-l
       allowedProgramIds: ["11111111111111111111111111111111"],
       allowedAccountKeys: [EXPECTED_BOT_WALLET, "11111111111111111111111111111111"]
     },
+    getCurrentBlockHeight: async () => 999999900,
     fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-invalid" })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /valid Solana transaction/);
 });
