@@ -55,7 +55,8 @@ function readLivePolicy(env = {}) {
  */
 function evaluateLiveTradeEligibility({
   policy, amountLamports, dailySpentLamports, openPositions,
-  liquidityUsd, volume24hUsd, riskChecks
+  liquidityUsd, volume24hUsd, riskChecks,
+  riskDataFetchedAtMs, marketDataFetchedAtMs
 } = {}) {
   if (!policy || policy.enabled !== true) throw new Error("Live trading policy is disabled");
   if (!Number.isSafeInteger(amountLamports) || amountLamports <= 0 || amountLamports > policy.maxTradeLamports) {
@@ -74,6 +75,13 @@ function evaluateLiveTradeEligibility({
   }
   if (!Number.isFinite(volume24hUsd) || volume24hUsd < policy.minVolume24hUsd) {
     throw new Error("Token 24-hour volume is below the configured minimum or unavailable");
+  }
+  const now = Date.now();
+  const isFreshTimestamp = (value) => Number.isSafeInteger(value) &&
+    value <= now + 5000 && now - value <= 30000;
+  if (!isFreshTimestamp(riskDataFetchedAtMs) ||
+      !isFreshTimestamp(marketDataFetchedAtMs)) {
+    throw new Error("Server-side price or risk data is missing, stale, or future-dated");
   }
   const requiredChecks = [
     "mintAuthoritySafe", "freezeAuthoritySafe", "token2022ExtensionsSafe",
