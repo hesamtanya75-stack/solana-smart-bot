@@ -265,3 +265,65 @@ test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder recor
   assert.equal(metadata.source.access, "writable");
   assert.equal(metadata.isWritable, true);
 });
+
+
+test("trusted RPC reads bounded raw account data at the requested context slot", async () => {
+  const keys = [Keypair.generate().publicKey.toBase58(), Keypair.generate().publicKey.toBase58()];
+  const owner = SystemProgram.programId.toBase58();
+  let request;
+  const rpc = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async (_url, options) => {
+      request = JSON.parse(options.body);
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0", id: request.id,
+        result: {
+          context: { slot: 1200 },
+          value: [
+            { owner, data: [Buffer.from([1, 2, 3]).toString("base64"), "base64"], executable: false, lamports: 1000, rentEpoch: 4 },
+            null
+          ]
+        }
+      }), { status: 200 });
+    }
+  });
+  const result = await rpc.getMultipleRawAccountInfos(keys, { minContextSlot: 1190 });
+  assert.equal(request.method, "getMultipleAccounts");
+  assert.equal(request.params[1].encoding, "base64");
+  assert.equal(request.params[1].minContextSlot, 1190);
+  assert.equal(result.context.slot, 1200);
+  assert.deepEqual([...result.value[0].data], [1, 2, 3]);
+  assert.equal(result.value[0].owner.toBase58(), owner);
+  assert.equal(result.value[1], null);
+});
+
+test("trusted RPC raw account reader rejects stale context, invalid metadata, and malformed base64", async () => {
+  const key = Keypair.generate().publicKey.toBase58();
+  const owner = SystemProgram.programId.toBase58();
+  for (const result of [
+    { context: { slot: 99 }, value: [{ owner, data: ["AQ==", "base64"], executable: false, lamports: 1 }] },
+    { context: { slot: 100 }, value: [{ owner, data: ["%%%=", "base64"], executable: false, lamports: 1 }] },
+    { context: { slot: 100 }, value: [{ owner, data: ["AQ==", "base64"], executable: "false", lamports: 1 }] },
+    { context: { slot: 100 }, value: [{ owner, data: ["AQ==", "base64"], executable: false, lamports: -1 }] }
+  ]) {
+    const rpc = createTrustedSolanaRpc({
+      endpoint, expectedEndpoint: endpoint,
+      fetchImpl: async (_url, options) => {
+        const request = JSON.parse(options.body);
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }), { status: 200 });
+      }
+    });
+    await assert.rejects(() => rpc.getMultipleRawAccountInfos([key], { minContextSlot: 100 }));
+  }
+});
+
+test("trusted RPC raw account reader rejects oversized account lists before network access", async () => {
+  let called = false;
+  const rpc = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async () => { called = true; throw new Error("unexpected request"); }
+  });
+  const keys = Array.from({ length: 17 }, () => Keypair.generate().publicKey.toBase58());
+  await assert.rejects(() => rpc.getMultipleRawAccountInfos(keys), /request is invalid/);
+  assert.equal(called, false);
+});
