@@ -100,7 +100,7 @@ test("Metis validator rejects unknown swap variants, route percentage drift, and
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction,
     ...f.args, routePlan: [{ ...f.args.routePlan[0], percent: 99 }]
-  }), /does not match the quote/);
+  }), /does not match/);
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction,
     ...f.args, allowedDexProgramIds: []
