@@ -71,7 +71,7 @@ test("CPI validator rejects unknown programs and accounts", () => {
 test("CPI validator rejects malformed group and out-of-range account indexes", () => {
   assert.throws(() => validateSimulatedCpi(args({
     simulationMeta: { err: null, innerInstructions: [{ index: 9, instructions: [] }] }
-  })), /malformed CPI instruction group/);
+  })), /malformed or unexpected CPI instruction group/);
   assert.throws(() => validateSimulatedCpi(args({
     simulationMeta: {
       err: null,
