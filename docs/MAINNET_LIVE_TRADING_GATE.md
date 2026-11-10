@@ -18,7 +18,7 @@ This branch is preparation and policy enforcement only. It does not enable live 
 
 ## User-requested initial trade cap (not yet operational)
 
-The user selected a maximum of **USD $3 per buy** and a maximum cumulative spend of **USD $5 per day**. These are requested limits only; they are not active, deployed, or enforced by the current Worker. The daily cap must be enforced atomically across concurrent requests and Cron retries. Before implementation, the server must convert the USD cap to lamports using a trusted, fresh SOL/USD price with conservative rounding, and reject the trade if the price is unavailable or stale. A separate daily spend cap, slippage cap, liquidity/volume thresholds, and maximum open-position count still require explicit review. Do not infer or enable those settings from the $3 per-trade choice.
+The user selected a maximum of **USD $3 per buy**, a maximum cumulative spend of **USD $5 per day**, and a maximum of **10 simultaneous open positions**. These are requested limits only; they are not active, deployed, or enforced by the current Worker. The daily cap must be enforced atomically across concurrent requests and Cron retries. Before implementation, the server must convert the USD cap to lamports using a trusted, fresh SOL/USD price with conservative rounding, and reject the trade if the price is unavailable or stale. Slippage, liquidity/volume thresholds, and other risk controls still require explicit review. Do not infer or enable those settings from the user's selected position count.
 
 ## Implemented fail-closed policy checks in this branch
 
