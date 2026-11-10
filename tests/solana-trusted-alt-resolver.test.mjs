@@ -120,7 +120,7 @@ test("requires an exact trusted RPC endpoint and valid freshness settings", () =
   assert.throws(() => createTrustedAltResolver({
     connection: { ...connection, rpcEndpoint: "http://one.example" },
     trustedRpcEndpoint: "http://one.example"
-  }), /HTTPS trusted RPC endpoint/);
+  }), /explicitly trusted HTTPS endpoint/);
 });
 
 test("rejects malformed ALT state metadata", async () => {
