@@ -70,6 +70,8 @@ export class LiveTradeCoordinator {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
+    // Injectable only in isolated unit tests; production Worker bindings cannot carry functions.
+    this.fetchLiveEvidence = env?.FETCH_TRUSTED_LIVE_EVIDENCE || fetchTrustedLiveEvidence;
   }
 
   async withState(operation) {
