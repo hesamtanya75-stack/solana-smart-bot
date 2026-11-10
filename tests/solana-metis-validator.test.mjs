@@ -89,8 +89,14 @@ test("Metis validator rejects an instruction object not taken from the decoded t
 
 test("Metis validator rejects non-Metis instruction variants, account mismatches, and quote drift", () => {
   const f = fixture();
+  const malformedInstruction = {
+    ...f.instruction,
+    dataBase64: Buffer.from([1,2,3]).toString("base64")
+  };
   assert.throws(() => validateMetisJupiterV6Instruction({
-    decoded: f.decoded, instruction: { ...f.instruction, dataBase64: Buffer.from([1,2,3]).toString("base64") }, ...f.args
+    decoded: { ...f.decoded, instructions: [malformedInstruction] },
+    instruction: malformedInstruction,
+    ...f.args
   }), /not the reviewed sharedAccountsRouteV2/);
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction, ...f.args, inAmount: "1000001"
@@ -104,8 +110,14 @@ test("Metis validator rejects unknown swap variants, route percentage drift, and
   const f = fixture();
   const unknown = Buffer.from(f.instruction.dataBase64, "base64");
   unknown[13] = 250;
+  const unknownVariantInstruction = {
+    ...f.instruction,
+    dataBase64: unknown.toString("base64")
+  };
   assert.throws(() => validateMetisJupiterV6Instruction({
-    decoded: f.decoded, instruction: { ...f.instruction, dataBase64: unknown.toString("base64") }, ...f.args
+    decoded: { ...f.decoded, instructions: [unknownVariantInstruction] },
+    instruction: unknownVariantInstruction,
+    ...f.args
   }), /unknown swap variant/);
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded: f.decoded, instruction: f.instruction,
