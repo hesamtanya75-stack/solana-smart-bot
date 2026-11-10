@@ -35,6 +35,16 @@ test("risk inspection rejects invalid mint before external requests", async () =
   }), /valid non-SOL output mint/);
 });
 
+test("holder verification fails closed when Alchemy credentials are absent", async () => {
+  const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  await assert.rejects(
+    fetchTrustedTokenRisk(mint, async () => {
+      throw new Error("network must not be called without Alchemy credentials");
+    }),
+    /Alchemy API key is required/
+  );
+});
+
 test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const firstPage = Array.from({ length: 1000 }, () => ({
