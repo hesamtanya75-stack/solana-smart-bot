@@ -250,6 +250,7 @@ async function getJupiterOrder({
     allowedCpiAccountKeys: metisPolicy.allowedCpiAccountKeys,
     requiredCpiProgramIds: metisInstruction.requiredCpiProgramIds,
     expectedCpiProgramIds: [...new Set([...metisInstruction.requiredCpiProgramIds, ...metisPolicy.supportingCpiProgramIds])],
+    expectedCpiOuterInstructionIndexes: [jupiterInstructions[0].index],
     minContextSlot
   });
 
