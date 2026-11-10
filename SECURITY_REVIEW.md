@@ -46,11 +46,11 @@ DexScreener liquidity/volume/sells and RugCheck score are useful signals, not pr
 
 - Kill switch defaults active.
 - Per-trade cap is $3; daily cap is $5; open-position cap is 10.
-- Quote timestamp age is limited to 30 seconds, but the timestamp and price are currently caller-supplied.
-- Idempotency rejects reuse with a changed lamport amount.
+- Quote timestamp age is limited to 30 seconds, but the timestamp, price, and risk assertion are currently caller-supplied and not trusted.
+- Idempotency binds amount, input/output mint, destination, slippage, and quote identity; changed immutable order intent is rejected.
 - Ambiguous pending reservations cannot be failed without an explicit non-submission assertion and reason.
 - Storage mutations use a Durable Object storage transaction.
-- No live route, signing, or transaction submission is present.
+- Coordinator routes require a dedicated internal Bearer secret; no secret is configured, so the isolated coordinator fails closed. No live route, signing, or transaction submission is present.
 
 ## Devnet validation boundary
 
