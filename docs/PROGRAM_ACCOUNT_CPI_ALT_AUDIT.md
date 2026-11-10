@@ -84,3 +84,14 @@ The CPI rejection test fixture was corrected so the unknown Program ID and accou
 ## Safety invariant
 
 Until every applicable item above is completed and independently reviewed, the live-trading module remains isolated, default-off, and non-executable. No merge, production deployment, wallet signing, or real transaction is authorized by this audit.
+
+
+## Saber StableSwap source-derived account validator (PR #17 follow-up)
+
+The Saber source baseline is pinned to `saber-hq/stable-swap@39d5d4e0e844a009c83d37a3ce63d219fdba0bff` (upstream master commit dated 2023-12-01). Its deployment configuration declares program ID `SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ` and an upgrade authority; this source declaration is not proof that the currently deployed Mainnet executable matches the source.
+
+The source-defined `SwapInfo` account is exactly 395 bytes. The decoder in `solana-saber-validator.mjs` reads the initialized/paused flags, nonce, amplification values, reserve keys, token mint keys, admin fee keys, and eight fee integers at the offsets defined by the official Rust `Pack` implementation. The candidate CPI validator checks the 17-byte Swap instruction (tag 1 plus little-endian amount-in and minimum-output), the nine-account order, the swap-authority PDA, reserve/mint relationships, classic SPL Token account ownership, vault authority, admin-fee destination, source balance, and account privilege constraints.
+
+The trusted RPC client now provides bounded `getMultipleRawAccountInfos` reads using base64, a pinned HTTPS endpoint, a minimum context slot, strict owner/metadata checks, a 512 KB per-account data ceiling, and a 16-account request ceiling. Tests cover valid raw account reads and malformed, stale, oversized, or incomplete responses. Saber validator tests include positive and negative synthetic account fixtures; they do not query Mainnet or Devnet.
+
+**Saber remains explicitly blocked.** The candidate validator is not wired into the Metis route validator or Worker. A Jupiter CPI's user-authority PDA and inner-account privileges must be bound to independently verified Jupiter route semantics before integration. The deployed Saber program account and ProgramData must be read from Mainnet, the executable hash and upgrade authority verified, and source-to-binary equivalence established (or the binary independently audited). Then add Devnet positive/negative integration tests using only test tokens and no real funds. Until all those gates pass, no Saber route is approved for live transactions.
