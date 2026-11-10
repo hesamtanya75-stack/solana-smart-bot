@@ -92,7 +92,8 @@ function evaluateLiveTradeEligibility({
  */
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
-  fetchImpl = fetch, lookupTableResolver, transactionAllowList
+  fetchImpl = fetch, lookupTableResolver, transactionAllowList,
+  getCurrentBlockHeight
 }) {
   const policy = readLivePolicy(env);
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
@@ -159,6 +160,16 @@ async function getJupiterOrder({
       BigInt(order.lastValidBlockHeight) <= 0n ||
       BigInt(order.lastValidBlockHeight) > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("Jupiter order block-height expiry is missing or invalid");
+  }
+  if (typeof getCurrentBlockHeight !== "function") {
+    throw new Error("Trusted RPC block-height provider is required");
+  }
+  const currentBlockHeight = await getCurrentBlockHeight();
+  const lastValidBlockHeight = Number(order.lastValidBlockHeight);
+  if (!Number.isSafeInteger(currentBlockHeight) || currentBlockHeight < 0 ||
+      lastValidBlockHeight <= currentBlockHeight ||
+      lastValidBlockHeight - currentBlockHeight > 150) {
+    throw new Error("Jupiter order is expired or its block-height window is not fresh");
   }
   if (!Array.isArray(order.routePlan) || order.routePlan.some((step) => {
     const info = step?.swapInfo;
