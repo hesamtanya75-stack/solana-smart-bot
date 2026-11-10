@@ -156,6 +156,7 @@ export function validateSimulatedCpi({
   const accountAllowList = normalizeAllowList(allowedCpiAccountKeys, "CPI account");
   let instructionCount = 0;
   const programIds = new Set();
+  const cpiInstructions = [];
 
   for (const group of simulationMeta.innerInstructions) {
     if (!group || !Number.isInteger(group.index) || group.index < 0 ||
@@ -172,6 +173,10 @@ export function validateSimulatedCpi({
           !Array.isArray(inner.accounts)) {
         throw new Error("Simulation returned a malformed CPI instruction");
       }
+      if (inner.data !== undefined &&
+          (typeof inner.data !== "string" || inner.data.length > 2048)) {
+        throw new Error("Simulation returned invalid or oversized CPI instruction data");
+      }
       const programId = decoded.accountKeys[inner.programIdIndex];
       if (!programAllowList.has(programId)) {
         throw new Error("Simulation invoked an unknown or unapproved CPI program");
@@ -185,6 +190,12 @@ export function validateSimulatedCpi({
         }
       }
       programIds.add(programId);
+      cpiInstructions.push(Object.freeze({
+        outerInstructionIndex: group.index,
+        programId,
+        accounts: Object.freeze(inner.accounts.map((index) => decoded.accountKeys[index])),
+        data: typeof inner.data === "string" ? inner.data : null
+      }));
       instructionCount++;
     }
   }
@@ -196,6 +207,7 @@ export function validateSimulatedCpi({
   return Object.freeze({
     allowed: true,
     instructionCount,
-    programIds: Object.freeze([...programIds])
+    programIds: Object.freeze([...programIds]),
+    instructions: Object.freeze(cpiInstructions)
   });
 }
