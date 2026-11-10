@@ -130,7 +130,7 @@ test("rejects malformed ALT state metadata", async () => {
     trustedRpcEndpoint: "https://trusted-rpc.example",
     deserializeLookupTable: () => ({
       deactivationSlot: MAX_U64,
-      lastExtendedSlot: 90,
+      lastExtendedSlot: 90n,
       lastExtendedSlotStartIndex: 3,
       addresses: []
     })
