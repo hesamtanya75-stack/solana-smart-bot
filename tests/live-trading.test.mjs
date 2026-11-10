@@ -24,6 +24,29 @@ const goodEligibility = {
   }
 };
 
+function validOrder(overrides = {}) {
+  return {
+    requestId: "req-test", transaction: "dGVzdA==", router: "metis",
+    mode: "manual", swapMode: "ExactIn", transactionVersion: 0,
+    gasless: false, signatureFeePayer: EXPECTED_BOT_WALLET,
+    feeBps: 0, feeMint: SOL_MINT, otherAmountThreshold: "12000",
+    slippageBps: 50, lastValidBlockHeight: "999999999",
+    inputMint: SOL_MINT,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000", outAmount: "12345",
+    routePlan: [{
+      swapInfo: {
+        ammKey: "11111111111111111111111111111111",
+        label: "Test DEX", inputMint: SOL_MINT,
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount: "12345"
+      },
+      percent: 100, bps: 10000
+    }],
+    ...overrides
+  };
+}
+
 test("live trading fails closed unless both feature flag and kill switch are explicitly set", () => {
   assert.equal(readLivePolicy({ LIVE_TRADING_ENABLED: "TRUE" }).enabled, false);
   assert.equal(readLivePolicy({ ...goodEnv, LIVE_TRADING_KILL_SWITCH: "true" }).enabled, false);
@@ -98,13 +121,7 @@ test("Jupiter order requires an explicit trusted transaction allow-list", async 
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url, options) => {
       request = { url, options };
-      return new Response(JSON.stringify({
-        requestId: "req-test", transaction: "dGVzdA==",
-        inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        inAmount: "1000000", outAmount: "12345",
-        routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
-        transactionVersion: 0, feeBps: 0
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(validOrder()), { status: 200, headers: { "Content-Type": "application/json" } });
     }
   }), error => error.message.includes("Trusted transaction program/account allow-list"));
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
@@ -177,13 +194,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
         [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
       }
     },
-    fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-decoded", transaction: encoded, router: "metis",
-      inputMint: SOL_MINT,
-      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }]
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-decoded", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
   });
 
   assert.equal(result.requestId, "req-decoded");
@@ -203,13 +214,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       allowedAccountKeys,
       allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()]
     },
-    fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-no-validator", transaction: encoded, router: "metis",
-      inputMint: SOL_MINT,
-      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }]
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-no-validator", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /protocol-specific instruction validators are required/);
 });
 
@@ -221,14 +226,8 @@ test("Jupiter order rejects a router outside the explicit single-router policy",
     amountLamports: 1000000,
     eligibility: goodEligibility,
     transactionAllowList: { allowedRouters: ["metis"] },
-    fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-unapproved-router", transaction: "dGVzdA==",
-      router: "jupiterz", inputMint: SOL_MINT,
-      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }]
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
-  }), /outside the explicit router policy/);
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-unapproved-router", router: "jupiterz" })), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /Only the explicitly reviewed Metis router is permitted/);
 });
 
 test("Jupiter order rejects invalid serialized transactions even with an allow-list", async () => {
@@ -243,12 +242,6 @@ test("Jupiter order rejects invalid serialized transactions even with an allow-l
       allowedProgramIds: ["11111111111111111111111111111111"],
       allowedAccountKeys: [EXPECTED_BOT_WALLET, "11111111111111111111111111111111"]
     },
-    fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-invalid", transaction: "dGVzdA==", router: "metis",
-      inputMint: SOL_MINT,
-      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }]
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-invalid" })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /valid Solana transaction/);
 });
