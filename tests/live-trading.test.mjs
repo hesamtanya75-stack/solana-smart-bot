@@ -56,7 +56,8 @@ async function assertOrderRejected(overrides, pattern, currentBlockHeight = 9999
     eligibility: goodEligibility,
     transactionAllowList: { allowedRouters: ["metis"] },
     ...(currentBlockHeight === null ? {} : {
-      getCurrentBlockHeight: async () => currentBlockHeight
+      getCurrentBlockHeight: async () => currentBlockHeight,
+      trustedRpc: { getBlockHeight: async () => currentBlockHeight }
     }),
     fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
       status: 200, headers: { "Content-Type": "application/json" }
@@ -198,7 +199,7 @@ test("empty or malformed unsigned transaction is rejected", async () => {
 });
 
 
-test("Jupiter order requires semantic validation and returns inspection metadata only", async () => {
+test("Jupiter order rejects non-Jupiter transactions even when generic policy allows them", async () => {
   const wallet = new PublicKey(EXPECTED_BOT_WALLET);
   const recipient = Keypair.generate().publicKey;
   const message = new TransactionMessage({
@@ -212,7 +213,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
   const allowedAccountKeys = [
     wallet.toBase58(), recipient.toBase58(), SystemProgram.programId.toBase58()
   ];
-  const result = await getJupiterOrder({
+  await assert.rejects(() => getJupiterOrder({
     env: goodEnv,
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000,
@@ -227,32 +228,13 @@ test("Jupiter order requires semantic validation and returns inspection metadata
         [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
       }
     },
+    trustedRpc: { getBlockHeight: async () => 999999900 },
     getCurrentBlockHeight: async () => 999999900,
-    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-decoded", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
-  });
-
-  assert.equal(result.requestId, "req-decoded");
-  assert.equal(result.instructionPolicy.allowed, true);
-  assert.equal(result.instructionPolicy.instructionCount, 1);
-  assert.equal("transaction" in result, false);
-
-  await assert.rejects(() => getJupiterOrder({
-    env: goodEnv,
-    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: 1000000,
-    eligibility: goodEligibility,
-    transactionAllowList: {
-      allowedRouters: ["metis"],
-      requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
-      allowedProgramIds: [SystemProgram.programId.toBase58()],
-      allowedAccountKeys,
-      allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()]
-    },
-    getCurrentBlockHeight: async () => 999999900,
-    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-no-validator", transaction: encoded })), { status: 200, headers: { "Content-Type": "application/json" } })
-  }), /protocol-specific instruction validators are required/);
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({
+      requestId: "req-non-metis", transaction: encoded
+    })), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /Trusted Metis semantic policy and CPI allow-lists are required/);
 });
-
 
 test("Jupiter order rejects a router outside the explicit single-router policy", async () => {
   await assert.rejects(() => getJupiterOrder({
@@ -274,7 +256,7 @@ test("Jupiter order rejects gasless orders and unexpected fee payers", async () 
 });
 
 test("Jupiter order requires a fresh trusted RPC block height", async () => {
-  await assertOrderRejected({}, /Trusted RPC block-height provider is required/, null);
+  await assertOrderRejected({}, /Pinned trusted Solana RPC client is required/, null);
   await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999999);
   await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999800);
 });
