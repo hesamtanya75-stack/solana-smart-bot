@@ -103,8 +103,8 @@ test("Saber validator accepts official Swap ABI and matching SwapInfo, PDA, vaul
   assert.equal(result.direction, "A_TO_B");
   assert.equal(result.amountIn, "50");
   assert.equal(result.minimumAmountOut, "40");
-  assert.equal(result.reserveAAmount, "5000");
-  assert.equal(result.reserveBAmount, "6000");
+  assert.equal(result.sourceReserveAmount, "5000");
+  assert.equal(result.destinationReserveAmount, "6000");
 });
 
 test("Saber validator rejects malformed instruction data and zero swap amounts", () => {
@@ -125,7 +125,7 @@ test("Saber validator rejects paused pools, altered reserves, and a mismatched a
   const substitutedReserve = Keypair.generate().publicKey.toBase58();
   badReserve.args.accounts[4] = substitutedReserve;
   badReserve.args.decoded.accountMetadata[4].pubkey = substitutedReserve;
-  assert.throws(() => validateSaberStableSwapCpi(badReserve.args), /reserve account keys/);
+  assert.throws(() => validateSaberStableSwapCpi(badReserve.args), /reserve order/);
 
   const badAuthority = fixture();
   const substitutedAuthority = Keypair.generate().publicKey.toBase58();
@@ -142,7 +142,7 @@ test("Saber validator rejects wrong vault ownership, mint relationships, fee des
   const badMint = fixture();
   const wrongMint = Keypair.generate().publicKey;
   wrongMint.toBuffer().copy(badMint.rawAccounts.get(badMint.accounts[4]).data, 0);
-  assert.throws(() => validateSaberStableSwapCpi(badMint.args), /reserve A mint/);
+  assert.throws(() => validateSaberStableSwapCpi(badMint.args), /swap source reserve mint/);
 
   const badFee = fixture();
   badFee.args.accounts[7] = badFee.accounts[4];
@@ -162,4 +162,31 @@ test("Saber validator rejects privilege mismatches and missing raw account data"
   const missing = fixture();
   missing.rawAccounts.delete(missing.accounts[5]);
   assert.throws(() => validateSaberStableSwapCpi(missing.args), /raw account data is missing/);
+});
+
+test("Saber validator accepts reverse B-to-A reserve ordering and token direction", () => {
+  const f = fixture();
+  const [reserveA, reserveB] = [f.accounts[4], f.accounts[5]];
+  const [adminFeeA, adminFeeB] = [
+    f.state.subarray(267, 299), f.state.subarray(299, 331)
+  ].map((bytes) => new PublicKey(bytes).toBase58());
+
+  f.args.accounts[4] = reserveB;
+  f.args.accounts[5] = reserveA;
+  f.args.accounts[7] = adminFeeA;
+  f.args.decoded.accountMetadata[4].pubkey = reserveB;
+  f.args.decoded.accountMetadata[5].pubkey = reserveA;
+  f.args.decoded.accountMetadata[7].pubkey = adminFeeA;
+
+  const source = f.rawAccounts.get(f.accounts[3]).data;
+  new PublicKey(f.mintBKey).toBuffer().copy(source, 0);
+  const destination = f.rawAccounts.get(f.accounts[6]).data;
+  new PublicKey(f.mintAKey).toBuffer().copy(destination, 0);
+
+  const result = validateSaberStableSwapCpi(f.args);
+  assert.equal(result.allowed, true);
+  assert.equal(result.direction, "B_TO_A");
+  assert.equal(result.sourceReserveAmount, "6000");
+  assert.equal(result.destinationReserveAmount, "5000");
+  assert.equal(result.adminFeeMint, f.mintAKey.toBase58());
 });
