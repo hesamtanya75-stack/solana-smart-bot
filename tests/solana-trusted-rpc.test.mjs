@@ -25,7 +25,7 @@ function rpcFixture(overrides = {}) {
     let result;
     if (request.method === "getSlot" || request.method === "getBlockHeight") result = 1100;
     else if (request.method === "getMultipleAccounts") result = {
-      context: { slot: 1099 }, value: [makeAccount(mintA), makeAccount(mintB)]
+      context: { slot: 1100 }, value: [makeAccount(mintA), makeAccount(mintB)]
     };
     else if (request.method === "simulateTransaction") result = {
       context: { slot: 1100 },
@@ -110,5 +110,5 @@ test("trusted order inspection fails closed on account identity mismatch and fai
     tokenAccountExpectations: expectations,
     allowedCpiProgramIds: [decoded.accountKeys[2]],
     allowedCpiAccountKeys: decoded.accountKeys
-  }), /authority does not match|not found|mint does not match/);
+  }), /stale or inconsistent|authority does not match|not found|mint does not match/);
 });
