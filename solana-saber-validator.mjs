@@ -158,6 +158,9 @@ function validateSaberStableSwapCpi({
   }
   const reserveA = readTokenAccount(get(reserveAKey), state.mintA, derivedAuthority, "reserve A");
   const reserveB = readTokenAccount(get(reserveBKey), state.mintB, derivedAuthority, "reserve B");
+  if (reserveA.amount === 0n || reserveB.amount === 0n) {
+    throw new Error("Saber pool reserve balance is empty");
+  }
   const sourceRaw = get(sourceKey);
   if (!Buffer.isBuffer(sourceRaw.data) || sourceRaw.data.length !== 165) {
     throw new Error("Saber user source token account data is invalid");
