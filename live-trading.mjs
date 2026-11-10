@@ -130,6 +130,15 @@ async function getJupiterOrder({
   if (!transactionAllowList || typeof transactionAllowList !== "object") {
     throw new Error("Trusted transaction program/account allow-list is required");
   }
+  const supportedRouters = new Set(["metis", "jupiterz", "dflow", "okx"]);
+  const allowedRouters = transactionAllowList.allowedRouters;
+  if (!Array.isArray(allowedRouters) || allowedRouters.length !== 1 ||
+      typeof allowedRouters[0] !== "string" || !supportedRouters.has(allowedRouters[0])) {
+    throw new Error("Exactly one explicitly reviewed Jupiter router is required");
+  }
+  if (order.router !== allowedRouters[0]) {
+    throw new Error("Jupiter selected a router outside the explicit router policy");
+  }
   const decoded = await decodeSolanaTransaction(order.transaction, {
     lookupTableResolver
   });
@@ -147,6 +156,7 @@ async function getJupiterOrder({
   // Return inspection metadata only; never expose the unsigned transaction to an executor.
   return Object.freeze({
     requestId: order.requestId,
+    router: order.router,
     inputMint: order.inputMint,
     outputMint: order.outputMint,
     inAmount: String(order.inAmount),
