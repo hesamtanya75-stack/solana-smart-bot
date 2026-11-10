@@ -7,13 +7,20 @@ const TOKEN_PROGRAMS = new Set([
 ]);
 
 async function rpc(method, params = []) {
-  const response = await fetch(DEVNET_RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    signal: AbortSignal.timeout(15000)
-  });
-  if (!response.ok) throw new Error(method + " returned HTTP " + response.status);
+  let response;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    response = await fetch(DEVNET_RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (response.ok) break;
+    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
+      throw new Error(method + " returned HTTP " + response.status);
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+  }
   const payload = await response.json();
   if (payload.error) throw new Error(method + " RPC error: " + (payload.error.message || "unknown"));
   if (!("result" in payload)) throw new Error(method + " response missing result");
