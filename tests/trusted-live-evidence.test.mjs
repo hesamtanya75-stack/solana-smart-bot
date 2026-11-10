@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -12,16 +12,44 @@ function decodeBase58(value) {
   for (let i = 0; i < value.length && value[i] === "1"; i++) bytes.unshift(0);
   return Uint8Array.from(bytes);
 }
-function validUnsignedTransaction() {
+function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
   const systemProgram = new Array(32).fill(0);
   const message = Uint8Array.from([
-    1, 0, 1, 2, ...key, ...systemProgram,
+    1, 0, 1, 2, ...key, ...programIdBytes,
     ...new Array(32).fill(0),
     1, 1, 1, 0, 0
   ]);
-  return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(0), ...message])).toString("base64");
+  return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(signatureByte), ...message])).toString("base64");
 }
+
+test("unknown instruction program is parsed structurally but never semantically trusted", () => {
+  const unknownProgram = new Array(32).fill(17);
+  const parsed = validateUnsignedJupiterTransaction(
+    validUnsignedTransaction(unknownProgram),
+    BOT_WALLET
+  );
+  assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("pre-signed Jupiter transaction is rejected", () => {
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(validUnsignedTransaction(undefined, 1), BOT_WALLET),
+    /must be unsigned/
+  );
+});
+
+test("malformed Jupiter instruction program index is rejected", () => {
+  const encoded = validUnsignedTransaction();
+  const bytes = Buffer.from(encoded, "base64");
+  // The final five bytes are the one-instruction header and its indexes/data.
+  bytes[bytes.length - 5] = 250;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /program index is invalid/
+  );
+});
 
 test("SOL/USD quote is fetched and timestamped by the server", async () => {
   const quote = await fetchTrustedSolUsdQuote(async (url) => {
