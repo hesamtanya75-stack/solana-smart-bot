@@ -21,6 +21,13 @@ Reviewed branch `live-trading-policy-enforcement`. This is a static code and tes
 | Server-side price/risk freshness | Eligibility now requires market and risk fetch timestamps no more than 30 seconds old and no more than 5 seconds in the future. Missing, stale, or future-dated timestamps fail closed. | These timestamps and the price/risk values are still trusted-caller inputs; they are not yet sourced from a trusted scanner/RPC pipeline or wired into the Worker. |
 | Runtime integration | `live-trading.mjs` performs inspection only and `executeLiveOrder()` throws. | `worker.js` does not import or expose the live-trading module; no trusted allow-list, semantic validators, or ALT resolver are configured by the Worker. Keep this isolation. |
 
+## CPI outer-instruction binding hardening (PR #17 follow-up)
+
+The CPI validator now requires a trusted, explicit list of outer instruction indexes whose inner-call trace is expected. For the Metis order path, the caller supplies only the exact decoded Jupiter V6 instruction index. The validator rejects CPI groups attached to other outer instructions, duplicate groups, empty groups, missing expected groups, malformed indexes, and unapproved inner programs/accounts. This prevents a CPI trace for an unrelated top-level instruction from satisfying the Metis route's DEX-program checks.
+
+Regression tests cover wrong outer indexes, duplicate and empty groups, and missing expected groups. This hardening narrows the trace binding but does not prove DEX-specific CPI account semantics, pool/vault/PDA relationships, or that simulation will match later execution. Those remain blockers and require independent protocol review.
+
+
 ## Trusted RPC + strict Jupiter V6 Metis inspection (PR #17 follow-up)
 
 The branch now has a pinned HTTPS JSON-RPC client in `solana-trusted-rpc.mjs`. It rejects endpoint substitution, credentials/query strings, malformed JSON-RPC responses, oversized payloads, and RPC context regressions. The client reads the exact source/destination token accounts with `getMultipleAccounts(jsonParsed)` and a `minContextSlot`, then simulates the exact returned unsigned Base64 transaction with signature verification disabled and inner-instruction tracing requested. The simulation is bound to the decoded transaction's account-index space; all CPI programs/accounts must be on separate trusted allow-lists, and every DEX program required by the decoded route must appear in the CPI trace.
