@@ -36,6 +36,28 @@ function currentUtcDay(now) {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+function constantTimeEqual(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < left.length; i++) mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return mismatch === 0;
+}
+
+function orderIntentFingerprint(body, amountLamports) {
+  const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const inputMint = String(body?.inputMint || "");
+  const outputMint = String(body?.outputMint || "");
+  const destination = String(body?.destination || "");
+  const slippageBps = Number(body?.slippageBps);
+  const quoteId = String(body?.quoteId || "");
+  if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
+      !base58.test(destination) || !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
+      !/^[A-Za-z0-9._:-]{8,128}$/.test(quoteId)) {
+    throw new Error("Complete immutable order intent is required");
+  }
+  return JSON.stringify({ amountLamports, inputMint, outputMint, destination, slippageBps, quoteId });
+}
+
 /**
  * SQLite-backed Durable Object coordinator.
  *
@@ -60,6 +82,12 @@ export class LiveTradeCoordinator {
   }
 
   async fetch(request) {
+    const expectedToken = String(this.env?.COORDINATOR_INTERNAL_TOKEN || "");
+    const authorization = request.headers.get("Authorization") || "";
+    const suppliedToken = authorization.replace(/^Bearer\\s+/i, "");
+    if (expectedToken.length < 32 || !constantTimeEqual(suppliedToken, expectedToken)) {
+      return json({ error: "Unauthorized coordinator request" }, 401);
+    }
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/status") {
       return json(await this.status());
@@ -94,6 +122,7 @@ export class LiveTradeCoordinator {
       throw new Error("Amount must be a positive safe integer in lamports");
     }
 
+    const intentFingerprint = orderIntentFingerprint(body, amountLamports);
     const now = Date.now();
     return this.withState(state => {
       // Resolve retries before checking the kill switch or quote freshness.
@@ -101,8 +130,8 @@ export class LiveTradeCoordinator {
       // because the original quote has since expired.
       const existing = state.reservations[key];
       if (existing) {
-        if (existing.amountLamports !== amountLamports) {
-          throw new Error("Idempotency key reused with a different amount");
+        if (existing.intentFingerprint !== intentFingerprint) {
+          throw new Error("Idempotency key reused with a different order intent");
         }
         return { ok: true, duplicate: true, reservation: existing };
       }
@@ -138,6 +167,7 @@ export class LiveTradeCoordinator {
       const reservation = {
         idempotencyKey: key,
         amountLamports,
+        intentFingerprint,
         amountCents,
         day,
         status: "pending",
