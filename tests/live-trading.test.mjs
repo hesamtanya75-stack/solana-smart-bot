@@ -171,6 +171,7 @@ test("Jupiter order requires semantic validation and returns inspection metadata
       requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
       allowedProgramIds: [SystemProgram.programId.toBase58()],
       allowedAccountKeys,
+      allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()],
       instructionValidators: {
         [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
       }
