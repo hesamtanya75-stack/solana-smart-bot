@@ -71,6 +71,7 @@ function createTrustedSolanaRpc({
 
   const client = Object.freeze({
     endpoint: parsed.href,
+    rpcEndpoint: parsed.href,
     commitment,
     async getAccountInfoAndContext(publicKey, { commitment: requestedCommitment = commitment, minContextSlot = 0 } = {}) {
       if (!publicKey || typeof publicKey.toBase58 !== "function" ||
