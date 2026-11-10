@@ -1,3 +1,6 @@
+import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
+import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";
+
 /**
  * Solana live-trading preparation module.
  * Server-side Jupiter V2 order retrieval only; no signing or submission.
@@ -88,7 +91,7 @@ function evaluateLiveTradeEligibility({
  */
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
-  fetchImpl = fetch
+  fetchImpl = fetch, lookupTableResolver, transactionAllowList
 }) {
   const policy = readLivePolicy(env);
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
@@ -121,11 +124,32 @@ async function getJupiterOrder({
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
-  // Fail closed: syntactically valid Base64 is not proof of a valid or safe
-  // Solana transaction. Until a real message decoder resolves address lookup
-  // tables and validates every instruction/program/account against an explicit
-  // reviewed allow-list, do not return an opaque transaction to any caller.
-  throw new Error("Transaction decoder and program/account allow-list are not implemented; refusing opaque Jupiter transaction");
+  // Do not trust the Jupiter routePlan or browser values to create an allow-list.
+  // A trusted server caller must supply reviewed IDs and a trusted ALT resolver.
+  if (!transactionAllowList || typeof transactionAllowList !== "object") {
+    throw new Error("Trusted transaction program/account allow-list is required");
+  }
+  const decoded = await decodeSolanaTransaction(order.transaction, {
+    lookupTableResolver
+  });
+  const instructionPolicy = validateDecodedSwapTransaction({
+    decoded,
+    expectedSigner: policy.wallet,
+    requiredAccounts: transactionAllowList.requiredAccounts,
+    allowedProgramIds: transactionAllowList.allowedProgramIds,
+    allowedAccountKeys: transactionAllowList.allowedAccountKeys
+  });
+
+  // Structural allow-listing is not yet semantic swap validation. Return only
+  // inspection metadata; never expose the unsigned transaction to an executor.
+  return Object.freeze({
+    requestId: order.requestId,
+    inputMint: order.inputMint,
+    outputMint: order.outputMint,
+    inAmount: String(order.inAmount),
+    outAmount: String(order.outAmount),
+    instructionPolicy
+  });
 }
 
 async function executeLiveOrder() {
