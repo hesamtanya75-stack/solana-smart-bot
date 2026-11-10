@@ -89,23 +89,37 @@ export class LiveTradeCoordinator {
 
   async reserve(body) {
     const key = validateIdempotencyKey(body?.idempotencyKey);
-    const now = Date.now();
-    const quoteTimestamp = Number(body?.quoteTimestamp);
-    if (!Number.isFinite(quoteTimestamp) || quoteTimestamp > now + 5_000 ||
-        now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
-      throw new Error("SOL/USD quote is missing, stale, or from the future");
+    const amountLamports = Number(body?.amountLamports);
+    if (!Number.isSafeInteger(amountLamports) || amountLamports <= 0) {
+      throw new Error("Amount must be a positive safe integer in lamports");
     }
-    if (body?.riskPassed !== true) throw new Error("All server-side risk checks must pass");
-    const amountCents = usdCentsFromLamports(Number(body?.amountLamports), Number(body?.solUsd));
-    if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
 
+    const now = Date.now();
     return this.withState(state => {
-      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
+      // Resolve retries before checking the kill switch or quote freshness.
+      // A retry must never create a second reservation or be blocked merely
+      // because the original quote has since expired.
       const existing = state.reservations[key];
       if (existing) {
-        if (existing.amountCents !== amountCents) throw new Error("Idempotency key reused with a different amount");
+        if (existing.amountLamports !== amountLamports) {
+          throw new Error("Idempotency key reused with a different amount");
+        }
         return { ok: true, duplicate: true, reservation: existing };
       }
+
+      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
+
+      const quoteTimestamp = Number(body?.quoteTimestamp);
+      if (!Number.isFinite(quoteTimestamp) || quoteTimestamp > now + 5_000 ||
+          now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
+        throw new Error("SOL/USD quote is missing, stale, or from the future");
+      }
+      if (body?.riskPassed !== true) {
+        throw new Error("All server-side risk checks must pass");
+      }
+
+      const amountCents = usdCentsFromLamports(amountLamports, Number(body?.solUsd));
+      if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
 
       const day = currentUtcDay(now);
       const records = Object.values(state.reservations);
@@ -123,6 +137,7 @@ export class LiveTradeCoordinator {
 
       const reservation = {
         idempotencyKey: key,
+        amountLamports,
         amountCents,
         day,
         status: "pending",
