@@ -128,7 +128,9 @@ test("Saber validator rejects paused pools, altered reserves, and a mismatched a
   assert.throws(() => validateSaberStableSwapCpi(badReserve.args), /reserve account keys/);
 
   const badAuthority = fixture();
-  badAuthority.args.accounts[1] = Keypair.generate().publicKey.toBase58();
+  const substitutedAuthority = Keypair.generate().publicKey.toBase58();
+  badAuthority.args.accounts[1] = substitutedAuthority;
+  badAuthority.args.decoded.accountMetadata[1].pubkey = substitutedAuthority;
   assert.throws(() => validateSaberStableSwapCpi(badAuthority.args), /authority PDA/);
 });
 
@@ -144,6 +146,7 @@ test("Saber validator rejects wrong vault ownership, mint relationships, fee des
 
   const badFee = fixture();
   badFee.args.accounts[7] = badFee.accounts[4];
+  badFee.args.decoded.accountMetadata[7].pubkey = badFee.accounts[4];
   assert.throws(() => validateSaberStableSwapCpi(badFee.args), /account uniqueness|admin-fee/);
 
   const lowBalance = fixture();
