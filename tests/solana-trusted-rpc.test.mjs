@@ -177,6 +177,28 @@ test("trusted order inspection fails closed on account identity mismatch and fai
   }), /stale or inconsistent|authority does not match|not found|mint does not match/);
 });
 
+test("trusted RPC rejects ALT account responses with missing executable or invalid lamports metadata", async () => {
+  for (const value of [
+    { owner: AddressLookupTableProgram.programId.toBase58(), data: [Buffer.alloc(56).toString("base64"), "base64"], lamports: 1 },
+    { owner: AddressLookupTableProgram.programId.toBase58(), data: [Buffer.alloc(56).toString("base64"), "base64"], executable: false, lamports: -1 }
+  ]) {
+    const rpc = createTrustedSolanaRpc({
+      endpoint, expectedEndpoint: endpoint,
+      fetchImpl: async (_url, options) => {
+        const request = JSON.parse(options.body);
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0", id: request.id,
+          result: { context: { slot: 100 }, value }
+        }), { status: 200 });
+      }
+    });
+    await assert.rejects(
+      () => rpc.getAccountInfoAndContext(Keypair.generate().publicKey),
+      /invalid ALT account response/
+    );
+  }
+});
+
 test("trusted RPC ALT resolver loads the exact v0 lookup table and decoder records loaded account provenance", async () => {
   const payer = Keypair.generate();
   const tableKey = Keypair.generate().publicKey;
