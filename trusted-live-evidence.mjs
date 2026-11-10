@@ -41,6 +41,47 @@ export async function fetchTrustedSolUsdQuote(fetchImpl = fetch) {
   });
 }
 
+async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
+  if (typeof alchemyApiKey !== "string" || alchemyApiKey.length < 16) {
+    throw new Error("Alchemy API key is required for complete paginated holder verification");
+  }
+  const endpoint = "https://solana-mainnet.g.alchemy.com/v2/" + encodeURIComponent(alchemyApiKey);
+  const limit = 1000;
+  const accounts = [];
+  for (let page = 1; page <= 100; page++) {
+    const payload = await fetchJson(fetchImpl, endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: page,
+        method: "getTokenAccounts",
+        params: { mintAddress: mint, page, limit, options: { showZeroBalance: false } }
+      })
+    });
+    if (payload.error) throw new Error("Alchemy getTokenAccounts failed");
+    const result = payload.result;
+    const rows = result?.token_accounts;
+    if (!Array.isArray(rows)) throw new Error("Alchemy holder page has an invalid response shape");
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      throw new Error("Alchemy holder page reported indexing errors");
+    }
+    for (const row of rows) {
+      const amount = Number(row.amount);
+      if (row.mint !== mint || typeof row.owner !== "string" ||
+          !Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Alchemy holder page contains incomplete or mismatched account data");
+      }
+      accounts.push({ owner: row.owner, amount });
+    }
+    if (rows.length < limit) {
+      if (accounts.length === 0) throw new Error("No positive-balance token accounts were found");
+      return accounts;
+    }
+  }
+  throw new Error("Holder pagination exceeded the 100-page safety limit");
+}
+
 async function rpc(fetchImpl, method, params) {
   const payload = await fetchJson(fetchImpl, DEVNET_OR_MAINNET_RPC, {
     method: "POST",
@@ -107,16 +148,16 @@ function parseMintAccount(account) {
  * The largest-20-account sample is NOT a complete holder census, so this
  * module intentionally never marks holderConcentrationSafe true.
  */
-export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch) {
+export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "") {
   if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || mint === SOL_MINT) {
     throw new Error("A valid non-SOL output mint is required for risk inspection");
   }
-  const [dex, rug, mintAccount, largest, supply] = await Promise.all([
+  const [dex, rug, mintAccount, supply, holderAccounts] = await Promise.all([
     fetchJson(fetchImpl, DEX_TOKEN_URL + encodeURIComponent(mint)),
     fetchJson(fetchImpl, RUGCHECK_URL + encodeURIComponent(mint) + "/report"),
     rpc(fetchImpl, "getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "confirmed" }]),
-    rpc(fetchImpl, "getTokenLargestAccounts", [mint, { commitment: "confirmed" }]),
-    rpc(fetchImpl, "getTokenSupply", [mint, { commitment: "confirmed" }])
+    rpc(fetchImpl, "getTokenSupply", [mint, { commitment: "confirmed" }]),
+    fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey)
   ]);
   const pair = (dex?.pairs || [])
     .filter(item => item.chainId === "solana" && item.baseToken?.address === mint)
@@ -132,35 +173,30 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch) {
   }
   const mintSafety = parseMintAccount(mintAccount);
   const supplyAmount = Number(supply?.value?.amount);
-  const largestAccounts = largest?.value;
-  if (!Number.isFinite(supplyAmount) || supplyAmount <= 0 ||
-      !Array.isArray(largestAccounts) || largestAccounts.length === 0) {
+  if (!Number.isFinite(supplyAmount) || supplyAmount <= 0 || holderAccounts.length === 0) {
     throw new Error("Holder account data is incomplete");
   }
 
-  // Owner aggregation over the largest 20 is only a lower-bound sample.
-  // Never present it as a verified top-ten wallet concentration result.
-  const sampleAddresses = largestAccounts.slice(0, 20).map(item => item.address);
-  const ownerResult = await rpc(fetchImpl, "getMultipleAccounts", [
-    sampleAddresses, { encoding: "jsonParsed", commitment: "confirmed" }
-  ]);
+  // Alchemy DAS pages every positive-balance token account for this mint.
+  // Aggregate multiple token accounts belonging to the same wallet owner.
   const ownerBalances = new Map();
-  for (const account of ownerResult?.value || []) {
-    const info = account?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount);
-    if (!owner || !Number.isFinite(amount) || amount < 0) {
-      throw new Error("Holder owner aggregation is incomplete");
-    }
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+  let totalAccountBalance = 0;
+  for (const account of holderAccounts) {
+    ownerBalances.set(account.owner, (ownerBalances.get(account.owner) || 0) + account.amount);
+    totalAccountBalance += account.amount;
   }
-  if (ownerBalances.size === 0) throw new Error("Holder owners could not be resolved");
+  if (ownerBalances.size === 0 || totalAccountBalance !== supplyAmount) {
+    throw new Error("Complete holder census does not reconcile to on-chain token supply");
+  }
+  const topTenBalance = [...ownerBalances.values()].sort((a, b) => b - a)
+    .slice(0, 10).reduce((sum, amount) => sum + amount, 0);
+  const top10OwnerConcentrationPct = (topTenBalance / supplyAmount) * 100;
 
   const checks = {
     mintAuthoritySafe: mintSafety.mintAuthoritySafe,
     freezeAuthoritySafe: mintSafety.freezeAuthoritySafe,
     token2022ExtensionsSafe: mintSafety.token2022ExtensionsSafe,
-    holderConcentrationSafe: false,
+    holderConcentrationSafe: top10OwnerConcentrationPct <= 50,
     sellRouteAvailable: false,
     marketLiquiditySafe: liquidityUsd >= 10000,
     marketVolumeSafe: volume24hUsd >= 1000 && sells24h > 0,
@@ -175,17 +211,19 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch) {
     volume24hUsd,
     sells24h,
     rugScore: Number(rug.score),
-    sampleOwnerCount: ownerBalances.size,
-    holderSampleOnly: true,
+    holderAccountCount: holderAccounts.length,
+    holderOwnerCount: ownerBalances.size,
+    holderSampleOnly: false,
+    top10OwnerConcentrationPct,
     checks,
     passed: Object.values(checks).every(value => value === true)
   });
 }
 
-export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch) {
+export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch, alchemyApiKey = "") {
   const [quote, risk] = await Promise.all([
     fetchTrustedSolUsdQuote(fetchImpl),
-    fetchTrustedTokenRisk(mint, fetchImpl)
+    fetchTrustedTokenRisk(mint, fetchImpl, alchemyApiKey)
   ]);
   return Object.freeze({ quote, risk, passed: risk.passed });
 }
