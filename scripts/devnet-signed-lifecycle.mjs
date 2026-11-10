@@ -50,7 +50,44 @@ async function main() {
   // Fresh ephemeral keys exist only in this CI process; no user wallet or secret is used.
   const payer = Keypair.generate();
   const recipient = Keypair.generate();
-  const airdropSignature = await requestDevnetAirdrop(connection, payer.publicKey);
+  // Verify local signing first; this does not submit anything to a cluster.
+  const offlineBlockhash = await connection.getLatestBlockhash("confirmed");
+  const offlineTransaction = new Transaction({
+    feePayer: payer.publicKey,
+    recentBlockhash: offlineBlockhash.blockhash
+  }).add(SystemProgram.transfer({
+    fromPubkey: payer.publicKey,
+    toPubkey: recipient.publicKey,
+    lamports: TRANSFER_LAMPORTS
+  }));
+  offlineTransaction.sign(payer);
+  if (!offlineTransaction.verifySignatures()) {
+    throw new Error("Ephemeral Devnet transaction signature failed local verification");
+  }
+
+  let airdropSignature;
+  try {
+    airdropSignature = await requestDevnetAirdrop(connection, payer.publicKey);
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
+      console.log("::warning::Devnet RPC faucet is closed; offline signature verified but no on-chain transaction was submitted.");
+      console.log(JSON.stringify({
+        ok: true,
+        status: "blocked",
+        cluster: "devnet",
+        genesisHash: genesis,
+        offlineSignatureVerified: true,
+        onChainSubmission: "blocked: public Devnet RPC faucet returned HTTP 410",
+        userPrivateKeysUsed: false,
+        mainnetTouched: false,
+        swapExecuted: false
+      }, null, 2));
+      return;
+    }
+    throw error;
+  }
+
   const payerBalance = await connection.getBalance(payer.publicKey, "confirmed");
   if (payerBalance < TRANSFER_LAMPORTS + 10_000) {
     throw new Error("Devnet airdrop balance is insufficient for the test transfer and fee");
@@ -66,6 +103,9 @@ async function main() {
     lamports: TRANSFER_LAMPORTS
   }));
   transaction.sign(payer);
+  if (!transaction.verifySignatures()) {
+    throw new Error("Ephemeral Devnet transaction signature failed local verification");
+  }
 
   const signature = await connection.sendRawTransaction(transaction.serialize(), {
     skipPreflight: false,
