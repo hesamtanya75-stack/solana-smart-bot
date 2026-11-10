@@ -69,7 +69,8 @@ function validateMetisJupiterV6Instruction({
   routePlan,
   dexProgramBySwapVariant,
   dexLabelsBySwapVariant,
-  allowedDexProgramIds
+  allowedDexProgramIds,
+  dexSemanticValidatorsBySwapVariant
 } = {}) {
   const jupiterInstructions = Array.isArray(decoded?.instructions)
     ? decoded.instructions.filter((item) => item.programId === JUPITER_V6_PROGRAM_ID)
@@ -142,8 +143,10 @@ function validateMetisJupiterV6Instruction({
 
   if (!dexProgramBySwapVariant || typeof dexProgramBySwapVariant !== "object" ||
       !dexLabelsBySwapVariant || typeof dexLabelsBySwapVariant !== "object" ||
+      !dexSemanticValidatorsBySwapVariant || typeof dexSemanticValidatorsBySwapVariant !== "object" ||
+      Array.isArray(dexSemanticValidatorsBySwapVariant) ||
       !Array.isArray(allowedDexProgramIds) || allowedDexProgramIds.length === 0) {
-    throw new Error("Pinned Metis DEX program and label policy is required");
+    throw new Error("Pinned Metis DEX program, label, and semantic-validator policy is required");
   }
   const allowed = new Set(allowedDexProgramIds);
   const requiredCpiProgramIds = [];
@@ -160,6 +163,27 @@ function validateMetisJupiterV6Instruction({
         !quoteStep.swapInfo || !BASE58.test(String(quoteStep.swapInfo.ammKey || "")) ||
         !instruction.accounts.slice(11).includes(quoteStep.swapInfo.ammKey)) {
       throw new Error("Metis on-chain DEX route does not match the pinned program/label policy and Jupiter quote");
+    }
+    const dexSemanticValidator = dexSemanticValidatorsBySwapVariant[String(step.swapVariant)];
+    if (typeof dexSemanticValidator !== "function") {
+      throw new Error("No reviewed DEX-specific CPI account semantic validator exists for this swap variant");
+    }
+    let semanticResult;
+    try {
+      semanticResult = dexSemanticValidator(Object.freeze({
+        swapVariant: step.swapVariant,
+        routeStep: step,
+        quoteStep: Object.freeze({ ...quoteStep, swapInfo: Object.freeze({ ...quoteStep.swapInfo }) }),
+        dexProgramId: programId,
+        ammKey: quoteStep.swapInfo.ammKey,
+        instruction,
+        decoded
+      }));
+    } catch {
+      throw new Error("DEX-specific CPI account semantic validation failed");
+    }
+    if (!semanticResult || semanticResult.allowed !== true) {
+      throw new Error("DEX-specific CPI account semantics were not approved");
     }
     requiredCpiProgramIds.push(programId);
   }
