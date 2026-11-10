@@ -122,7 +122,9 @@ test("Saber validator rejects paused pools, altered reserves, and a mismatched a
   assert.throws(() => validateSaberStableSwapCpi(paused.args), /uninitialized, paused/);
 
   const badReserve = fixture();
-  badReserve.state.fill(0, 107, 139);
+  const substitutedReserve = Keypair.generate().publicKey.toBase58();
+  badReserve.args.accounts[4] = substitutedReserve;
+  badReserve.args.decoded.accountMetadata[4].pubkey = substitutedReserve;
   assert.throws(() => validateSaberStableSwapCpi(badReserve.args), /reserve account keys/);
 
   const badAuthority = fixture();
