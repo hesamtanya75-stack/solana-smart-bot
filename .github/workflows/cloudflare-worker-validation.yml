@@ -8,6 +8,7 @@ on:
       - "live-trade-coordinator.mjs"
       - "wrangler.jsonc"
       - "package.json"
+      - "tests/**"
       - ".github/workflows/cloudflare-worker-validation.yml"
   workflow_dispatch:
 
