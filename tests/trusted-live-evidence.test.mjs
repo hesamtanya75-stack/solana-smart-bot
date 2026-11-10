@@ -33,6 +33,21 @@ test("unknown instruction program is parsed structurally but never semantically 
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("transaction pinned to a different wallet is rejected", () => {
+  const differentWallet = "11111111111111111111111111111111";
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(validUnsignedTransaction(), differentWallet),
+    /not pinned to the expected bot wallet/
+  );
+});
+
+test("non-canonical base64 transaction is rejected", () => {
+  assert.throws(
+    () => validateUnsignedJupiterTransaction("not base64!", BOT_WALLET),
+    /not canonical base64/
+  );
+});
+
 test("pre-signed Jupiter transaction is rejected", () => {
   assert.throws(
     () => validateUnsignedJupiterTransaction(validUnsignedTransaction(undefined, 1), BOT_WALLET),
