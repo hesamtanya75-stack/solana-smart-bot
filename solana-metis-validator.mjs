@@ -175,7 +175,7 @@ function validateMetisJupiterV6Instruction({
         expectedMint: inputMint,
         expectedAuthority: expectedSigner,
         minimumAmount: String(inAmount),
-        allowNative: false,
+        allowNative: inputMint === "So11111111111111111111111111111111111111112",
         allowedExtensions: Object.freeze([])
       }),
       Object.freeze({
@@ -184,7 +184,7 @@ function validateMetisJupiterV6Instruction({
         expectedMint: outputMint,
         expectedAuthority: expectedSigner,
         minimumAmount: "0",
-        allowNative: false,
+        allowNative: outputMint === "So11111111111111111111111111111111111111112",
         allowedExtensions: Object.freeze([])
       })
     ]),
