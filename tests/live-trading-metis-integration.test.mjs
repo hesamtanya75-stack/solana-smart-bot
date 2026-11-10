@@ -177,7 +177,8 @@ test("getJupiterOrder binds Metis route, trusted parsed token accounts, and CPI 
       dexLabelsBySwapVariant: { "0": ["Saber"] },
       allowedDexProgramIds: [dexProgram.toBase58()],
       allowedCpiProgramIds: [dexProgram.toBase58()],
-      allowedCpiAccountKeys: decoded.accountKeys
+      allowedCpiAccountKeys: decoded.accountKeys,
+      supportingCpiProgramIds: []
     },
     fetchImpl: async () => new Response(JSON.stringify(order), {
       status: 200, headers: { "Content-Type": "application/json" }
