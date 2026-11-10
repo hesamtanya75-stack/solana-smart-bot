@@ -175,6 +175,18 @@ test("server-side risk evidence failure blocks reservation even if browser claim
   assert.match(result.body.error, /risk checks/);
 });
 
+test("coordinator blocks reservation when Jupiter instruction semantics are unverified", async () => {
+  const evidence = trustedEvidence();
+  evidence.passed = false;
+  evidence.risk.passed = false;
+  evidence.risk.checks.sellRouteAvailable = false;
+  const { coordinator } = makeCoordinator(async () => evidence);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /risk checks/);
+});
+
 test("ten open reservations block an eleventh", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
