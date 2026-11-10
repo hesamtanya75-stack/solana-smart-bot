@@ -103,7 +103,7 @@ function evaluateLiveTradeEligibility({
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
   fetchImpl = fetch, lookupTableResolver, transactionAllowList,
-  getCurrentBlockHeight
+  trustedRpc, metisPolicy, minContextSlot = 0
 }) {
   const policy = readLivePolicy(env);
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
