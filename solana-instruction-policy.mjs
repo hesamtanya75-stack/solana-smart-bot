@@ -131,7 +131,8 @@ export function validateSimulatedCpi({
   decoded,
   simulationMeta,
   allowedCpiProgramIds,
-  allowedCpiAccountKeys
+  allowedCpiAccountKeys,
+  expectedOuterInstructionIndexes
 } = {}) {
   if (!decoded || !Array.isArray(decoded.instructions) ||
       !Array.isArray(decoded.accountKeys) || decoded.accountKeys.length === 0) {
@@ -141,6 +142,16 @@ export function validateSimulatedCpi({
       !Array.isArray(simulationMeta.innerInstructions)) {
     throw new Error("Successful simulation with an explicit inner-instruction trace is required");
   }
+  if (!Array.isArray(expectedOuterInstructionIndexes) ||
+      expectedOuterInstructionIndexes.length < 1 ||
+      expectedOuterInstructionIndexes.some((index) =>
+        !Number.isInteger(index) || index < 0 || index >= decoded.instructions.length
+      ) ||
+      new Set(expectedOuterInstructionIndexes).size !== expectedOuterInstructionIndexes.length) {
+    throw new Error("Expected CPI outer-instruction indexes are missing or invalid");
+  }
+  const expectedOuterIndexes = new Set(expectedOuterInstructionIndexes);
+  const seenOuterIndexes = new Set();
   const programAllowList = normalizeAllowList(allowedCpiProgramIds, "CPI program");
   const accountAllowList = normalizeAllowList(allowedCpiAccountKeys, "CPI account");
   let instructionCount = 0;
@@ -149,9 +160,12 @@ export function validateSimulatedCpi({
   for (const group of simulationMeta.innerInstructions) {
     if (!group || !Number.isInteger(group.index) || group.index < 0 ||
         group.index >= decoded.instructions.length ||
-        !Array.isArray(group.instructions)) {
-      throw new Error("Simulation returned a malformed CPI instruction group");
+        !expectedOuterIndexes.has(group.index) ||
+        seenOuterIndexes.has(group.index) ||
+        !Array.isArray(group.instructions) || group.instructions.length === 0) {
+      throw new Error("Simulation returned a malformed or unexpected CPI instruction group");
     }
+    seenOuterIndexes.add(group.index);
     for (const inner of group.instructions) {
       if (!inner || !Number.isInteger(inner.programIdIndex) ||
           inner.programIdIndex < 0 || inner.programIdIndex >= decoded.accountKeys.length ||
@@ -175,6 +189,10 @@ export function validateSimulatedCpi({
     }
   }
 
+  if (seenOuterIndexes.size !== expectedOuterIndexes.size ||
+      [...expectedOuterIndexes].some((index) => !seenOuterIndexes.has(index))) {
+    throw new Error("Simulation CPI trace is missing an expected outer instruction group");
+  }
   return Object.freeze({
     allowed: true,
     instructionCount,
