@@ -224,6 +224,7 @@ async function getJupiterOrder({
     routePlan: order.routePlan,
     dexProgramBySwapVariant: metisPolicy.dexProgramBySwapVariant,
     dexLabelsBySwapVariant: metisPolicy.dexLabelsBySwapVariant,
+    dexSemanticValidatorsBySwapVariant: metisPolicy.dexSemanticValidatorsBySwapVariant,
     allowedDexProgramIds: metisPolicy.allowedDexProgramIds
   });
   const instructionValidators = {
