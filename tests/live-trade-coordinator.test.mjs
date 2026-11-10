@@ -162,7 +162,7 @@ test("browser-supplied risk flag is ignored; server evidence controls approval",
   const result = await post(coordinator, "/reserve", validReservation({ riskPassed: false, solUsd: 0.01 }));
   assert.equal(result.status, 200);
   assert.equal(result.body.reservation.solUsd, 200);
-  assert.equal(result.body.reservation.quoteProvider, "test-fixture");
+  assert.equal(result.body.reservation.quoteProvider, "Coinbase");
 });
 
 test("server-side risk evidence failure blocks reservation even if browser claims approval", async () => {
