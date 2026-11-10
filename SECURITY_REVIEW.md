@@ -54,7 +54,7 @@ DexScreener liquidity/volume/sells and RugCheck score are useful signals, not pr
 
 ## Devnet validation boundary
 
-The Devnet preflight workflow added with this review checks the official Devnet genesis hash, RPC health, confirmed slot, and read-only account/supply/largest-account methods against a known Devnet reference mint. It performs **zero signing and zero transaction submissions**.
+The Devnet preflight workflow added with this review checks the official Devnet genesis hash, RPC health, confirmed slot, and read-only parsed mint/supply/largest-account/owner lookups against a known Devnet reference mint. It also validates the response schema and positive SOL/USD spot quote from Coinbase. The quote is a source-connectivity/schema check only; it is not yet wired into the coordinator's reservation calculation. It performs **zero signing and zero transaction submissions**.
 
 Devnet does not provide representative mainnet liquidity or a dependable market-risk dataset. DexScreener/RugCheck mainnet market results must not be presented as Devnet risk validation. A real Devnet transaction lifecycle test would require an explicitly provisioned Devnet-only test wallet and a separately reviewed transaction harness; no private key or wallet secret is included in this repository change.
 
