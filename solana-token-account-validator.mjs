@@ -56,8 +56,13 @@ function validateParsedTokenAccount({
   }
 
   const parsed = value.data?.parsed;
-  if (value.data?.program !== "spl-token" && value.data?.program !== "spl-token-2022") {
-    throw new Error("Token account RPC data is not a parsed SPL token account");
+  const expectedProgramName = expectedTokenProgramId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    ? "spl-token"
+    : expectedTokenProgramId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ? "spl-token-2022"
+      : null;
+  if (!expectedProgramName || value.data?.program !== expectedProgramName) {
+    throw new Error("Token account RPC program label does not match the expected token program");
   }
   if (!parsed || parsed.type !== "account" || !parsed.info) {
     throw new Error("Token account parsed data is missing or malformed");
@@ -93,8 +98,13 @@ function validateParsedTokenAccount({
     throw new Error("Token account balance is below the required minimum");
   }
 
-  const extensions = info.extensions ?? [];
-  if (!Array.isArray(extensions)) {
+  const extensions = info.extensions;
+  if (expectedProgramName === "spl-token-2022" && !Array.isArray(extensions)) {
+    throw new Error("Token-2022 account extension metadata is missing");
+  }
+  if (extensions === undefined && expectedProgramName === "spl-token") {
+    // Classic SPL Token accounts have no Token-2022 extension metadata.
+  } else if (!Array.isArray(extensions)) {
     throw new Error("Token account extension metadata is malformed");
   }
   for (const extension of extensions) {
@@ -112,7 +122,7 @@ function validateParsedTokenAccount({
     amount: tokenAmount.amount,
     decimals: tokenAmount.decimals,
     slot: contextSlot,
-    extensions: Object.freeze(extensions.map((item) =>
+    extensions: Object.freeze((extensions ?? []).map((item) =>
       typeof item === "string" ? item : item.extension
     ))
   });
