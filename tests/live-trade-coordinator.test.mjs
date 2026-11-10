@@ -16,12 +16,19 @@ class MemoryStorage {
 }
 function makeCoordinator() {
   const storage = new MemoryStorage();
-  const coordinator = new LiveTradeCoordinator({ storage }, {});
+  const coordinator = new LiveTradeCoordinator({ storage }, {
+    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters"
+  });
   return { coordinator, storage };
 }
 function validReservation(overrides = {}) {
   return {
     idempotencyKey: "order-key-0001",
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    destination: "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy",
+    slippageBps: 50,
+    quoteId: "coinbase-quote-0001",
     amountLamports: 10_000_000,
     solUsd: 200,
     quoteTimestamp: Date.now(),
@@ -31,7 +38,7 @@ function validReservation(overrides = {}) {
 }
 async function post(coordinator, path, body) {
   const response = await coordinator.fetch(new Request("https://coordinator" + path, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-only-internal-token-32-characters" }, body: JSON.stringify(body)
   }));
   return { status: response.status, body: await response.json() };
 }
@@ -90,7 +97,7 @@ test("idempotency retries succeed after quote expiry and kill switch activation"
   assert.equal(retry.body.reservation.idempotencyKey, "order-key-0001");
 });
 
-test("idempotency key rejects any changed lamport amount, even if USD cents round equally", async () => {
+test("idempotency key rejects any changed immutable order intent", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({ solUsd: 1 }));
@@ -176,4 +183,24 @@ test("emergency stop blocks new reservations immediately", async () => {
   await post(coordinator, "/kill-switch", { enabled: true });
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
+});
+
+
+test("coordinator rejects requests without the internal bearer credential", async () => {
+  const { coordinator } = makeCoordinator();
+  const response = await coordinator.fetch(new Request("https://coordinator/status"));
+  assert.equal(response.status, 401);
+  assert.match((await response.json()).error, /Unauthorized/);
+});
+
+test("idempotency binds mint, destination, slippage and quote identity", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const first = await post(coordinator, "/reserve", validReservation());
+  assert.equal(first.status, 200);
+  const changed = await post(coordinator, "/reserve", validReservation({
+    destination: "11111111111111111111111111111111"
+  }));
+  assert.equal(changed.status, 409);
+  assert.match(changed.body.error, /different order intent/);
 });
