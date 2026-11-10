@@ -98,7 +98,7 @@ function validateSaberStableSwapCpi({
   programId,
   accounts,
   data,
-  expectedSigner,
+  expectedUserAuthority,
   decoded,
   rawAccounts
 } = {}) {
@@ -106,7 +106,7 @@ function validateSaberStableSwapCpi({
       !Array.isArray(accounts) || accounts.length !== 9 ||
       !Array.isArray(decoded?.accountMetadata) ||
       !(rawAccounts instanceof Map) ||
-      typeof expectedSigner !== "string") {
+      typeof expectedUserAuthority !== "string") {
     throw new Error("Saber CPI validation inputs are incomplete or not trusted");
   }
   const instructionData = Buffer.from(bs58.decode(data || ""));
@@ -121,7 +121,7 @@ function validateSaberStableSwapCpi({
 
   const [swapKey, authorityKey, userAuthority, sourceKey, reserveAKey, reserveBKey,
     destinationKey, adminFeeKey, tokenProgramKey] = accounts;
-  if (userAuthority !== expectedSigner || tokenProgramKey !== TOKEN_PROGRAM_ID ||
+  if (userAuthority !== expectedUserAuthority || tokenProgramKey !== TOKEN_PROGRAM_ID ||
       new Set(accounts).size !== accounts.length) {
     throw new Error("Saber CPI signer, token program, or account uniqueness is invalid");
   }
@@ -129,11 +129,9 @@ function validateSaberStableSwapCpi({
   for (let i = 0; i < accounts.length; i += 1) {
     const meta = decoded.accountMetadata.find((item) => item.pubkey === accounts[i]);
     if (!meta) throw new Error("Saber CPI account is absent from decoded transaction metadata");
-    const shouldSign = i === 2;
     const shouldWrite = i >= 3 && i <= 7;
-    if ((shouldSign && meta.isSigner !== true) ||
-        (!shouldSign && meta.isSigner === true) ||
-        meta.isWritable !== shouldWrite) {
+    if ((i !== 2 && meta.isSigner === true) ||
+        (shouldWrite && meta.isWritable !== true)) {
       throw new Error("Saber CPI account signer or writable privilege does not match the official instruction");
     }
   }
@@ -165,13 +163,13 @@ function validateSaberStableSwapCpi({
     throw new Error("Saber user source token account data is invalid");
   }
   const sourceMint = keyAt(sourceRaw.data, 0);
-  const source = readTokenAccount(sourceRaw, sourceMint, expectedSigner, "user source");
+  const source = readTokenAccount(sourceRaw, sourceMint, expectedUserAuthority, "user source");
   const destinationRaw = get(destinationKey);
   if (!Buffer.isBuffer(destinationRaw.data) || destinationRaw.data.length !== 165) {
     throw new Error("Saber user destination token account data is invalid");
   }
   const destinationMint = keyAt(destinationRaw.data, 0);
-  const destination = readTokenAccount(destinationRaw, destinationMint, expectedSigner, "user destination");
+  const destination = readTokenAccount(destinationRaw, destinationMint, expectedUserAuthority, "user destination");
   if (source.amount < amountIn ||
       ![state.mintA, state.mintB].includes(source.mint) ||
       ![state.mintA, state.mintB].includes(destination.mint) ||
