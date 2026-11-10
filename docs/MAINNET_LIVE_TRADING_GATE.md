@@ -16,6 +16,10 @@ This branch is preparation and policy enforcement only. It does not enable live 
 6. Quote and swap through a supported Solana swap provider, validate the returned transaction and all account/program destinations, then sign and submit only after every policy check passes.
 7. Verify confirmed transaction status and reconcile actual token/SOL balances from RPC. Never treat a quote or successful HTTP response as a completed trade.
 
+## User-requested initial trade cap (not yet operational)
+
+The user selected a maximum of **USD $3 per buy**. This is a requested limit only; it is not active, deployed, or enforced by the current Worker. Before implementation, the server must convert the USD cap to lamports using a trusted, fresh SOL/USD price with conservative rounding, and reject the trade if the price is unavailable or stale. A separate daily spend cap, slippage cap, liquidity/volume thresholds, and maximum open-position count still require explicit review. Do not infer or enable those settings from the $3 per-trade choice.
+
 ## Implemented fail-closed policy checks in this branch
 
 - LIVE_TRADING_ENABLED must be exactly true; missing or malformed configuration disables live trading.
