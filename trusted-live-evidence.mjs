@@ -123,7 +123,14 @@ function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     }
   }
   if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
-  return { signatureCount, staticAccountCount: keyCount, instructionCount, messageVersion };
+  return {
+    signatureCount,
+    staticAccountCount: keyCount,
+    instructionCount,
+    messageVersion,
+    // Wire structure is validated, but lookup tables and instruction semantics are not.
+    semanticInstructionVerification: false
+  };
 }
 function positive(value, label) {
   const number = Number(value);
@@ -258,8 +265,9 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
       !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
-      !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
-    throw new Error("Jupiter did not return a complete executable sell order route");
+      !Array.isArray(order.routePlan) || order.routePlan.length === 0 ||
+      order.errorCode != null) {
+    throw new Error("Jupiter did not return a complete sell-order quote response");
   }
   const decodedTransaction = validateUnsignedJupiterTransaction(order.transaction, EXPECTED_BOT_WALLET);
   return Object.freeze({
@@ -272,7 +280,9 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     signatureCount: decodedTransaction.signatureCount,
     staticAccountCount: decodedTransaction.staticAccountCount,
     messageVersion: decodedTransaction.messageVersion,
-    walletTokenBalance: walletTokenBalance.toString()
+    walletTokenBalance: walletTokenBalance.toString(),
+    semanticInstructionVerification: false,
+    routeVerification: "unsigned-transaction-structure-only"
   });
 }
 
@@ -336,15 +346,20 @@ function parseMintAccount(account) {
   return {
     mintAuthoritySafe: mintOption === 0,
     freezeAuthoritySafe: freezeOption === 0,
-    token2022ExtensionsSafe: value.owner === TOKEN_PROGRAM_ID ? bytes.length === 82 : extensions.length === 0
+    // Without a trusted Token-2022 TLV/account-type decoder, accept only
+    // the exact 82-byte base mint. Any extended/raw layout fails closed.
+    token2022ExtensionsSafe: value.owner === TOKEN_PROGRAM_ID
+      ? bytes.length === 82
+      : bytes.length === 82 && extensions.length === 0
   };
 }
 
 /**
  * Risk evidence is generated from server-fetched feeds for the exact mint.
  * Holder concentration is accepted only after all paginated token accounts
- * reconcile exactly to on-chain supply; sell-route evidence requires a fresh
- * Jupiter V2 order response for a capped $3 probe.
+ * reconcile exactly to on-chain supply. Jupiter V2 order responses are
+ * inspected structurally only; semantic instruction verification is not
+ * implemented, so sell-route safety remains false and reservations fail closed.
  */
 export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || mint === SOL_MINT) {
@@ -405,7 +420,8 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
     freezeAuthoritySafe: mintSafety.freezeAuthoritySafe,
     token2022ExtensionsSafe: mintSafety.token2022ExtensionsSafe,
     holderConcentrationSafe: top10OwnerConcentrationPct <= 50,
-    sellRouteAvailable: true,
+    // Structure alone does not verify programs, recipients, or lookup-table addresses.
+    sellRouteAvailable: sellRoute.semanticInstructionVerification === true,
     marketLiquiditySafe: liquidityUsd >= 10000,
     marketVolumeSafe: volume24hUsd >= 1000 && sells24h > 0,
     rugCheckSafe: Number(rug.score) <= 2500
