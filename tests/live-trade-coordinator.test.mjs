@@ -17,7 +17,7 @@ class MemoryStorage {
 function trustedEvidence(overrides = {}) {
   const fetchedAt = Date.now();
   return {
-    quote: { provider: "test-fixture", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "test-quote-" + fetchedAt },
+    quote: { provider: "Coinbase", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "test-quote-" + fetchedAt },
     risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt,
       checks: {
         mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
