@@ -50,31 +50,81 @@ function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   for (let i = sigHeader.offset; i < signaturesEnd; i++) {
     if (bytes[i] !== 0) throw new Error("Jupiter order transaction must be unsigned");
   }
-  const cursor = signaturesEnd;
-  let headerOffset = cursor;
+  const messageStart = signaturesEnd;
+  let cursor = messageStart;
+  let messageVersion = "legacy";
   if ((bytes[cursor] & 0x80) !== 0) {
     if ((bytes[cursor] & 0x7f) !== 0) throw new Error("Unsupported Jupiter transaction message version");
-    headerOffset++;
+    messageVersion = 0;
+    cursor++;
   }
-  if (headerOffset + 3 > bytes.length) throw new Error("Jupiter transaction message is truncated");
-  const requiredSignatures = bytes[headerOffset];
-  if (requiredSignatures !== signatureCount || requiredSignatures < 1) {
-    throw new Error("Jupiter transaction signer count is inconsistent");
+  if (cursor + 3 > bytes.length) throw new Error("Jupiter transaction message is truncated");
+  const requiredSignatures = bytes[cursor++];
+  const readonlySigned = bytes[cursor++];
+  const readonlyUnsigned = bytes[cursor++];
+  if (requiredSignatures !== signatureCount || requiredSignatures < 1 ||
+      readonlySigned > requiredSignatures) {
+    throw new Error("Jupiter transaction signer header is inconsistent");
   }
-  const keysHeader = readShortVector(bytes, headerOffset + 3);
+  const keysHeader = readShortVector(bytes, cursor);
   const keyCount = keysHeader.value;
-  const keysStart = keysHeader.offset;
-  if (keyCount < requiredSignatures || keysStart + keyCount * 32 > bytes.length) {
-    throw new Error("Jupiter transaction account keys are invalid");
+  cursor = keysHeader.offset;
+  if (keyCount < requiredSignatures || readonlyUnsigned > keyCount - requiredSignatures ||
+      cursor + keyCount * 32 + 32 > bytes.length) {
+    throw new Error("Jupiter transaction account keys or blockhash are invalid");
   }
-  const signerBytes = bytes.slice(keysStart, keysStart + 32);
+  const signerBytes = bytes.slice(cursor, cursor + 32);
   const expectedBytes = decodeBase58(expectedSigner);
   if (expectedBytes.length !== 32 || signerBytes.some((byte, i) => byte !== expectedBytes[i])) {
     throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
   }
-  return { signatureCount, staticAccountCount: keyCount, messageVersion: headerOffset === cursor ? "legacy" : 0 };
+  cursor += keyCount * 32;
+  cursor += 32; // recent blockhash
+  const instructionHeader = readShortVector(bytes, cursor);
+  const instructionCount = instructionHeader.value;
+  cursor = instructionHeader.offset;
+  if (instructionCount < 1 || instructionCount > 256) {
+    throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
+  }
+  for (let i = 0; i < instructionCount; i++) {
+    if (cursor >= bytes.length) throw new Error("Jupiter instruction is truncated");
+    const programIdIndex = bytes[cursor++];
+    if (programIdIndex >= keyCount) throw new Error("Jupiter instruction program index is invalid");
+    const accountHeader = readShortVector(bytes, cursor);
+    cursor = accountHeader.offset;
+    if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
+      throw new Error("Jupiter instruction account list is invalid");
+    }
+    for (let j = 0; j < accountHeader.value; j++) {
+      if (bytes[cursor++] >= keyCount) throw new Error("Jupiter instruction account index is invalid");
+    }
+    const dataHeader = readShortVector(bytes, cursor);
+    cursor = dataHeader.offset;
+    if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
+      throw new Error("Jupiter instruction data is invalid");
+    }
+    cursor += dataHeader.value;
+  }
+  if (messageVersion === 0) {
+    const lookupHeader = readShortVector(bytes, cursor);
+    cursor = lookupHeader.offset;
+    if (lookupHeader.value > 64) throw new Error("Jupiter address lookup count is invalid");
+    for (let i = 0; i < lookupHeader.value; i++) {
+      if (cursor + 32 > bytes.length) throw new Error("Jupiter address lookup is truncated");
+      cursor += 32;
+      const writable = readShortVector(bytes, cursor);
+      cursor = writable.offset;
+      if (cursor + writable.value > bytes.length) throw new Error("Jupiter writable lookup indexes are truncated");
+      cursor += writable.value;
+      const readonly = readShortVector(bytes, cursor);
+      cursor = readonly.offset;
+      if (cursor + readonly.value > bytes.length) throw new Error("Jupiter readonly lookup indexes are truncated");
+      cursor += readonly.value;
+    }
+  }
+  if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
+  return { signatureCount, staticAccountCount: keyCount, instructionCount, messageVersion };
 }
-
 function positive(value, label) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) throw new Error(label + " is missing or invalid");

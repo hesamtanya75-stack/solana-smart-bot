@@ -14,7 +14,12 @@ function decodeBase58(value) {
 }
 function validUnsignedTransaction() {
   const key = decodeBase58(BOT_WALLET);
-  const message = Uint8Array.from([1, 0, 0, 1, ...key, ...new Array(32).fill(0), 0]);
+  const systemProgram = new Array(32).fill(0);
+  const message = Uint8Array.from([
+    1, 0, 1, 2, ...key, ...systemProgram,
+    ...new Array(32).fill(0),
+    1, 1, 1, 0, 0
+  ]);
   return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(0), ...message])).toString("base64");
 }
 
