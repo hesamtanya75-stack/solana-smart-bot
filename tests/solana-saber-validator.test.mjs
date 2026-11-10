@@ -174,6 +174,11 @@ test("Saber validator accepts reverse B-to-A reserve ordering and token directio
   f.args.accounts[4] = reserveB;
   f.args.accounts[5] = reserveA;
   f.args.accounts[7] = adminFeeA;
+  f.rawAccounts.set(adminFeeA, {
+    owner: new PublicKey(SABER_TOKEN_PROGRAM_ID),
+    data: f.tokenData(f.mintAKey, f.authority, 0),
+    executable: false
+  });
   f.args.decoded.accountMetadata[4].pubkey = reserveB;
   f.args.decoded.accountMetadata[5].pubkey = reserveA;
   f.args.decoded.accountMetadata[7].pubkey = adminFeeA;
