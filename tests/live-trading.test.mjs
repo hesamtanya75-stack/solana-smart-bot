@@ -56,7 +56,6 @@ async function assertOrderRejected(overrides, pattern, currentBlockHeight = 9999
     eligibility: goodEligibility,
     transactionAllowList: { allowedRouters: ["metis"] },
     ...(currentBlockHeight === null ? {} : {
-      getCurrentBlockHeight: async () => currentBlockHeight,
       trustedRpc: { getBlockHeight: async () => currentBlockHeight }
     }),
     fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
@@ -229,7 +228,6 @@ test("Jupiter order rejects non-Jupiter transactions even when generic policy al
       }
     },
     trustedRpc: { getBlockHeight: async () => 999999900 },
-    getCurrentBlockHeight: async () => 999999900,
     fetchImpl: async () => new Response(JSON.stringify(validOrder({
       requestId: "req-non-metis", transaction: encoded
     })), { status: 200, headers: { "Content-Type": "application/json" } })
@@ -286,7 +284,6 @@ test("Jupiter order rejects invalid serialized transactions even with an allow-l
       allowedProgramIds: ["11111111111111111111111111111111"],
       allowedAccountKeys: [EXPECTED_BOT_WALLET, "11111111111111111111111111111111"]
     },
-    getCurrentBlockHeight: async () => 999999900,
     fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-invalid" })), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /valid Solana transaction/);
 });
