@@ -238,7 +238,8 @@ async function inspectMetisOrderWithTrustedRpc({
   minContextSlot = 0,
   maxSlotLag = 32,
   requiredCpiProgramIds = [],
-  expectedCpiProgramIds = []
+  expectedCpiProgramIds = [],
+  expectedCpiOuterInstructionIndexes
 } = {}) {
   if (!rpc || !trustedRpcClients.has(rpc) || typeof rpc.getSlot !== "function" ||
       typeof rpc.getMultipleParsedTokenAccounts !== "function" ||
@@ -301,7 +302,8 @@ async function inspectMetisOrderWithTrustedRpc({
     decoded: verifiedDecoded,
     simulationMeta: simulation.value,
     allowedCpiProgramIds,
-    allowedCpiAccountKeys
+    allowedCpiAccountKeys,
+    expectedOuterInstructionIndexes: expectedCpiOuterInstructionIndexes
   });
   if (!Array.isArray(requiredCpiProgramIds) ||
       requiredCpiProgramIds.some((programId) => !cpi.programIds.includes(programId))) {
