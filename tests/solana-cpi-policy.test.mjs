@@ -26,6 +26,7 @@ function args(overrides = {}) {
     },
     allowedCpiProgramIds: [program],
     allowedCpiAccountKeys: [signer, account],
+    expectedOuterInstructionIndexes: [0],
     ...overrides
   };
 }
@@ -80,4 +81,30 @@ test("CPI validator rejects malformed group and out-of-range account indexes", (
       }]
     }
   })), /invalid account index/);
+});
+
+test("CPI validator binds trace groups exactly to expected outer instruction indexes", () => {
+  const valid = args();
+  assert.throws(() => validateSimulatedCpi(args({
+    simulationMeta: {
+      err: null,
+      innerInstructions: [{ index: 1, instructions: [{ programIdIndex: 2, accounts: [0, 1] }] }]
+    }
+  })), /malformed or unexpected CPI instruction group/);
+  assert.throws(() => validateSimulatedCpi(args({
+    simulationMeta: {
+      err: null,
+      innerInstructions: [
+        { index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1] }] },
+        { index: 0, instructions: [{ programIdIndex: 2, accounts: [0, 1] }] }
+      ]
+    }
+  })), /malformed or unexpected CPI instruction group/);
+  assert.throws(() => validateSimulatedCpi(args({
+    simulationMeta: { err: null, innerInstructions: [] }
+  })), /missing an expected outer instruction group/);
+  assert.throws(() => validateSimulatedCpi(args({
+    simulationMeta: { err: null, innerInstructions: [{ index: 0, instructions: [] }] }
+  })), /malformed or unexpected CPI instruction group/);
+  assert.equal(validateSimulatedCpi(valid).allowed, true);
 });
