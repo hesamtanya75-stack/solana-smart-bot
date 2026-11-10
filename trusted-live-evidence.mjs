@@ -1,6 +1,8 @@
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+const JUPITER_ORDER_URL = "https://api.jup.ag/swap/v2/order";
 const COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/SOL-USD/spot";
 const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
@@ -82,6 +84,53 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
   throw new Error("Holder pagination exceeded the 100-page safety limit");
 }
 
+async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fetchImpl, jupiterApiKey) {
+  if (typeof jupiterApiKey !== "string" || jupiterApiKey.trim().length < 16) {
+    throw new Error("Jupiter API key is required for server-side sell-route verification");
+  }
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error("Token decimals are unavailable for sell-route verification");
+  }
+  const priceText = String(priceUsd);
+  const match = /^(\\d+)(?:\\.(\\d+))?$/.exec(priceText);
+  if (!match) throw new Error("Token USD price format is unsupported for sell-route verification");
+  const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(12, "0").slice(0, 12));
+  if (priceScaled <= 0n) throw new Error("Token USD price is invalid for sell-route verification");
+  const amount = (3n * (10n ** BigInt(decimals)) * 1_000_000_000_000n) / priceScaled;
+  const maxProbeAmount = supplyAmount / 100n;
+  if (amount <= 0n || maxProbeAmount <= 0n || amount > maxProbeAmount) {
+    throw new Error("A $3 sell-route probe would exceed 1% of token supply or is below token precision");
+  }
+  const params = new URLSearchParams({
+    inputMint: mint,
+    outputMint: SOL_MINT,
+    amount: amount.toString(),
+    taker: EXPECTED_BOT_WALLET,
+    slippageBps: "50"
+  });
+  const order = await fetchJson(fetchImpl, JUPITER_ORDER_URL + "?" + params.toString(), {
+    headers: { "x-api-key": jupiterApiKey.trim(), Accept: "application/json" }
+  });
+  if (!order || typeof order !== "object" ||
+      typeof order.requestId !== "string" || !order.requestId ||
+      typeof order.transaction !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(order.transaction) ||
+      order.inputMint !== mint || order.outputMint !== SOL_MINT ||
+      String(order.inAmount) !== amount.toString() ||
+      !/^\\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
+      !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
+    throw new Error("Jupiter did not return a complete executable sell order route");
+  }
+  return Object.freeze({
+    provider: "Jupiter Swap API V2",
+    requestId: order.requestId,
+    inputAmount: amount.toString(),
+    outputLamports: String(order.outAmount),
+    router: String(order.router || "unknown"),
+    routePlanCount: order.routePlan.length
+  });
+}
+
 async function rpc(fetchImpl, method, params) {
   const payload = await fetchJson(fetchImpl, DEVNET_OR_MAINNET_RPC, {
     method: "POST",
@@ -148,7 +197,7 @@ function parseMintAccount(account) {
  * The largest-20-account sample is NOT a complete holder census, so this
  * module intentionally never marks holderConcentrationSafe true.
  */
-export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "") {
+export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || mint === SOL_MINT) {
     throw new Error("A valid non-SOL output mint is required for risk inspection");
   }
@@ -193,13 +242,21 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
     .slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
   const concentrationScaled = (topTenBalance * 1_000_000n) / supplyAmount;
   const top10OwnerConcentrationPct = Number(concentrationScaled) / 10_000;
+  const sellRoute = await fetchTrustedSellRoute(
+    mint,
+    priceUsd,
+    supplyAmount,
+    supply?.value?.decimals,
+    fetchImpl,
+    jupiterApiKey
+  );
 
   const checks = {
     mintAuthoritySafe: mintSafety.mintAuthoritySafe,
     freezeAuthoritySafe: mintSafety.freezeAuthoritySafe,
     token2022ExtensionsSafe: mintSafety.token2022ExtensionsSafe,
     holderConcentrationSafe: top10OwnerConcentrationPct <= 50,
-    sellRouteAvailable: false,
+    sellRouteAvailable: true,
     marketLiquiditySafe: liquidityUsd >= 10000,
     marketVolumeSafe: volume24hUsd >= 1000 && sells24h > 0,
     rugCheckSafe: Number(rug.score) <= 2500
@@ -217,15 +274,16 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
     holderOwnerCount: ownerBalances.size,
     holderSampleOnly: false,
     top10OwnerConcentrationPct,
+    sellRoute,
     checks,
     passed: Object.values(checks).every(value => value === true)
   });
 }
 
-export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch, alchemyApiKey = "") {
+export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   const [quote, risk] = await Promise.all([
     fetchTrustedSolUsdQuote(fetchImpl),
-    fetchTrustedTokenRisk(mint, fetchImpl, alchemyApiKey)
+    fetchTrustedTokenRisk(mint, fetchImpl, alchemyApiKey, jupiterApiKey)
   ]);
   return Object.freeze({ quote, risk, passed: risk.passed });
 }
