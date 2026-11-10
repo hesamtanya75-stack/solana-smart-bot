@@ -142,8 +142,8 @@ async function getJupiterOrder({
     instructionValidators: transactionAllowList.instructionValidators
   });
 
-  // Structural allow-listing is not yet semantic swap validation. Return only
-  // inspection metadata; never expose the unsigned transaction to an executor.
+  // Only trusted protocol-specific validators can approve instruction semantics.
+  // Return inspection metadata only; never expose the unsigned transaction to an executor.
   return Object.freeze({
     requestId: order.requestId,
     inputMint: order.inputMint,
