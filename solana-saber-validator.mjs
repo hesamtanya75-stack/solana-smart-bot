@@ -146,20 +146,14 @@ function validateSaberStableSwapCpi({
     [new PublicKey(swapKey).toBuffer(), Buffer.from([state.nonce])],
     new PublicKey(SABER_STABLE_SWAP_PROGRAM_ID)
   ).toBase58();
-  if (authorityKey !== derivedAuthority ||
-      reserveAKey !== state.reserveA || reserveBKey !== state.reserveB) {
-    throw new Error("Saber swap authority PDA or reserve account keys do not match SwapInfo");
+  if (authorityKey !== derivedAuthority) {
+    throw new Error("Saber swap authority PDA does not match SwapInfo");
   }
 
   const mintA = readMint(get(state.mintA), state.mintA, "token A");
   const mintB = readMint(get(state.mintB), state.mintB, "token B");
   if (mintA.decimals !== mintB.decimals) {
     throw new Error("Saber pool token mint decimals do not match");
-  }
-  const reserveA = readTokenAccount(get(reserveAKey), state.mintA, derivedAuthority, "reserve A");
-  const reserveB = readTokenAccount(get(reserveBKey), state.mintB, derivedAuthority, "reserve B");
-  if (reserveA.amount === 0n || reserveB.amount === 0n) {
-    throw new Error("Saber pool reserve balance is empty");
   }
   const sourceRaw = get(sourceKey);
   if (!Buffer.isBuffer(sourceRaw.data) || sourceRaw.data.length !== 165) {
@@ -182,9 +176,23 @@ function validateSaberStableSwapCpi({
 
   const aToB = source.mint === state.mintA && destination.mint === state.mintB;
   const bToA = source.mint === state.mintB && destination.mint === state.mintA;
+  const expectedSourceReserve = aToB ? state.reserveA : state.reserveB;
+  const expectedDestinationReserve = aToB ? state.reserveB : state.reserveA;
   const expectedAdminFee = aToB ? state.adminFeeB : state.adminFeeA;
-  if ((!aToB && !bToA) || adminFeeKey !== expectedAdminFee) {
-    throw new Error("Saber direction or destination admin-fee account does not match SwapInfo");
+  if ((!aToB && !bToA) ||
+      reserveAKey !== expectedSourceReserve ||
+      reserveBKey !== expectedDestinationReserve ||
+      adminFeeKey !== expectedAdminFee) {
+    throw new Error("Saber direction, reserve order, or destination admin-fee account does not match SwapInfo");
+  }
+  const reserveSource = readTokenAccount(
+    get(reserveAKey), source.mint, derivedAuthority, "swap source reserve"
+  );
+  const reserveDestination = readTokenAccount(
+    get(reserveBKey), destination.mint, derivedAuthority, "swap destination reserve"
+  );
+  if (reserveSource.amount === 0n || reserveDestination.amount === 0n) {
+    throw new Error("Saber pool reserve balance is empty");
   }
   const adminFee = readTokenAccount(get(adminFeeKey), destination.mint, derivedAuthority, "admin fee destination");
 
@@ -196,8 +204,8 @@ function validateSaberStableSwapCpi({
     direction: aToB ? "A_TO_B" : "B_TO_A",
     amountIn: amountIn.toString(),
     minimumAmountOut: minimumAmountOut.toString(),
-    reserveAAmount: reserveA.amount.toString(),
-    reserveBAmount: reserveB.amount.toString(),
+    sourceReserveAmount: reserveSource.amount.toString(),
+    destinationReserveAmount: reserveDestination.amount.toString(),
     adminFeeMint: adminFee.mint
   });
 }
