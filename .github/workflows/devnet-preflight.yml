@@ -1,0 +1,24 @@
+name: Devnet read-only preflight
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  devnet-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run unit safety tests
+        run: npm test
+      - name: Verify Devnet cluster identity and read-only RPC methods
+        run: node scripts/devnet-preflight.mjs
