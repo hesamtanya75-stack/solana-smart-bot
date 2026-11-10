@@ -174,7 +174,7 @@ async function getJupiterOrder({
   if (typeof getCurrentBlockHeight !== "function") {
     throw new Error("Trusted RPC block-height provider is required");
   }
-  const currentBlockHeight = await getCurrentBlockHeight();
+  const currentBlockHeight = await trustedRpc.getBlockHeight();
   const lastValidBlockHeight = Number(order.lastValidBlockHeight);
   if (!Number.isSafeInteger(currentBlockHeight) || currentBlockHeight < 0 ||
       lastValidBlockHeight <= currentBlockHeight ||
