@@ -147,7 +147,8 @@ export class LiveTradeCoordinator {
     const evidence = await this.fetchLiveEvidence(
       body.outputMint,
       this.env?.FETCH_IMPL || fetch,
-      this.env?.ALCHEMY_API_KEY || ""
+      this.env?.ALCHEMY_API_KEY || "",
+      this.env?.JUPITER_API_KEY || ""
     );
     if (!evidence.passed) {
       throw new Error("Trusted token risk checks did not all pass; reservation blocked");
