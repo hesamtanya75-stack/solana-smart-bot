@@ -58,8 +58,17 @@ export async function decodeSolanaTransaction(
     }
     const table = await lookupTableResolver(lookup.accountKey);
     if (!table || !table.key?.equals?.(lookup.accountKey) ||
-        !Array.isArray(table.state?.addresses)) {
+        !Array.isArray(table.state?.addresses) ||
+        !Array.isArray(lookup.writableIndexes) ||
+        !Array.isArray(lookup.readonlyIndexes)) {
       throw new Error("Address Lookup Table is missing, mismatched, or invalid");
+    }
+    const selectedIndexes = [...lookup.writableIndexes, ...lookup.readonlyIndexes];
+    if (selectedIndexes.some((addressIndex) =>
+      !Number.isInteger(addressIndex) || addressIndex < 0 ||
+      addressIndex >= table.state.addresses.length
+    ) || new Set(selectedIndexes).size !== selectedIndexes.length) {
+      throw new Error("Address Lookup Table contains invalid or duplicate address indexes");
     }
     lookupTableAccounts.push(table);
   }
@@ -87,6 +96,76 @@ export async function decodeSolanaTransaction(
     }
     accountKeys.push(key.toBase58());
   }
+
+  // Solana message privileges are encoded in the message header for static
+  // keys. For v0, ALT-loaded writable keys are ordered before ALT-loaded
+  // readonly keys, across the lookup tables in message order.
+  const staticKeys = version === "legacy" ? message.accountKeys : message.staticAccountKeys;
+  const header = message.header;
+  const staticKeyCount = staticKeys.length;
+  const readonlySigned = header.numReadonlySignedAccounts;
+  const readonlyUnsigned = header.numReadonlyUnsignedAccounts;
+  if (!Number.isInteger(readonlySigned) || readonlySigned < 0 ||
+      readonlySigned > requiredSignatures ||
+      !Number.isInteger(readonlyUnsigned) || readonlyUnsigned < 0 ||
+      readonlyUnsigned > staticKeyCount - requiredSignatures) {
+    throw new Error("Transaction message contains invalid account privilege header values");
+  }
+
+  const loadedWritableCount = lookups.reduce(
+    (count, lookup) => count + lookup.writableIndexes.length, 0
+  );
+  const loadedReadonlyCount = lookups.reduce(
+    (count, lookup) => count + lookup.readonlyIndexes.length, 0
+  );
+  if (staticKeyCount + loadedWritableCount + loadedReadonlyCount !== accountKeyCount) {
+    throw new Error("Resolved account keys do not match static and ALT lookup counts");
+  }
+
+  const accountMetadata = accountKeys.map((pubkey, index) => {
+    let isSigner = false;
+    let isWritable = false;
+    let source;
+    if (index < staticKeyCount) {
+      isSigner = index < requiredSignatures;
+      isWritable = isSigner
+        ? index < requiredSignatures - readonlySigned
+        : index < staticKeyCount - readonlyUnsigned;
+      source = Object.freeze({ type: "static", index });
+    } else {
+      const loadedIndex = index - staticKeyCount;
+      isWritable = loadedIndex < loadedWritableCount;
+      let cursor = 0;
+      let origin = null;
+      for (const lookup of lookups) {
+        const writableCount = lookup.writableIndexes.length;
+        const readonlyCount = lookup.readonlyIndexes.length;
+        if (loadedIndex >= cursor && loadedIndex < cursor + writableCount) {
+          origin = {
+            type: "lookupTable",
+            table: lookup.accountKey.toBase58(),
+            access: "writable",
+            addressIndex: lookup.writableIndexes[loadedIndex - cursor]
+          };
+          break;
+        }
+        cursor += writableCount;
+        if (loadedIndex >= cursor && loadedIndex < cursor + readonlyCount) {
+          origin = {
+            type: "lookupTable",
+            table: lookup.accountKey.toBase58(),
+            access: "readonly",
+            addressIndex: lookup.readonlyIndexes[loadedIndex - cursor]
+          };
+          break;
+        }
+        cursor += readonlyCount;
+      }
+      if (!origin) throw new Error("Unable to map an ALT-loaded account to its lookup table");
+      source = Object.freeze(origin);
+    }
+    return Object.freeze({ pubkey, index, isSigner, isWritable, source });
+  });
 
   const compiledInstructions = version === "legacy"
     ? message.instructions
@@ -142,7 +221,6 @@ export async function decodeSolanaTransaction(
     });
   });
 
-  const staticKeys = version === "legacy" ? message.accountKeys : message.staticAccountKeys;
   const signerPubkeys = staticKeys
     .slice(0, requiredSignatures)
     .map((key) => key.toBase58());
@@ -156,6 +234,7 @@ export async function decodeSolanaTransaction(
       signature.some((byte) => byte !== 0)
     )),
     accountKeys: Object.freeze(accountKeys),
+    accountMetadata: Object.freeze(accountMetadata),
     lookupTableAddresses: Object.freeze(lookups.map((lookup) => lookup.accountKey.toBase58())),
     instructions: Object.freeze(instructions)
   });
