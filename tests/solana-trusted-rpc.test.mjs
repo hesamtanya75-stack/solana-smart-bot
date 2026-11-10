@@ -69,6 +69,31 @@ test("trusted RPC client pins exact HTTPS endpoint and rejects endpoint substitu
   }), /HTTPS/);
 });
 
+test("trusted RPC rejects oversized response bodies before unbounded buffering", async () => {
+  const oversized = new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1_000_001));
+      controller.enqueue(new Uint8Array(1_000_001));
+      controller.close();
+    }
+  }), { status: 200 });
+  const rpc = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async () => oversized
+  });
+  await assert.rejects(() => rpc.getSlot(), /exceeds size limit/);
+
+  const declaredOversized = new Response("{}", {
+    status: 200,
+    headers: { "content-length": "2000001" }
+  });
+  const rpcWithDeclaredLength = createTrustedSolanaRpc({
+    endpoint, expectedEndpoint: endpoint,
+    fetchImpl: async () => declaredOversized
+  });
+  await assert.rejects(() => rpcWithDeclaredLength.getSlot(), /exceeds size limit/);
+});
+
 test("trusted RPC calls validate JSON-RPC and request token accounts with minContextSlot", async () => {
   const fixture = rpcFixture();
   const slot = await fixture.rpc.getSlot();
