@@ -77,6 +77,16 @@ test("Metis validator binds Jupiter V6 route data, mints, signer, and token acco
   assert.deepEqual(result.requiredCpiProgramIds, [dexProgram]);
 });
 
+test("Metis validator rejects an instruction object not taken from the decoded transaction", () => {
+  const f = fixture();
+  const substitutedInstruction = { ...f.instruction };
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded: f.decoded,
+    instruction: substitutedInstruction,
+    ...f.args
+  }), /exact decoded Jupiter V6/);
+});
+
 test("Metis validator rejects non-Metis instruction variants, account mismatches, and quote drift", () => {
   const f = fixture();
   assert.throws(() => validateMetisJupiterV6Instruction({
