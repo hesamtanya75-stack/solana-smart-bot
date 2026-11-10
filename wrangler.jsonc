@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "solana-smart-bot",
+"name": "solana-smart-bot-new",
   "main": "worker.js",
   "compatibility_date": "2026-11-06",
   "assets": {
