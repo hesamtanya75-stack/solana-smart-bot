@@ -84,10 +84,13 @@ test("trusted RPC rejects oversized response bodies before unbounded buffering",
   });
   await assert.rejects(() => rpc.getSlot(), /exceeds size limit/);
 
-  const declaredOversized = new Response("{}", {
+  const declaredOversized = {
     status: 200,
-    headers: { "content-length": "2000001" }
-  });
+    headers: { get: (name) => name.toLowerCase() === "content-length" ? "2000001" : null },
+    body: new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode("{}")); controller.close(); }
+    })
+  };
   const rpcWithDeclaredLength = createTrustedSolanaRpc({
     endpoint, expectedEndpoint: endpoint,
     fetchImpl: async () => declaredOversized
