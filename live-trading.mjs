@@ -86,8 +86,9 @@ function evaluateLiveTradeEligibility({
 }
 
 /**
- * Retrieves an unsigned Jupiter V2 order only. It does not decode or approve
- * transaction instructions, sign, or submit a transaction.
+ * Retrieves and structurally inspects an unsigned Jupiter V2 order using a
+ * trusted caller-supplied allow-list and ALT resolver. This generic structural
+ * check does not semantically approve a swap, sign, or submit a transaction.
  */
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
