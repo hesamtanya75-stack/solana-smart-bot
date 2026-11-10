@@ -1,3 +1,5 @@
+import { PublicKey } from "@solana/web3.js";
+import { createTrustedAltResolver } from "./solana-trusted-alt-resolver.mjs";
 import { validateParsedTokenAccount } from "./solana-token-account-validator.mjs";
 import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 
@@ -70,6 +72,47 @@ function createTrustedSolanaRpc({
   const client = Object.freeze({
     endpoint: parsed.href,
     commitment,
+    async getAccountInfoAndContext(publicKey, { commitment: requestedCommitment = commitment, minContextSlot = 0 } = {}) {
+      if (!publicKey || typeof publicKey.toBase58 !== "function" ||
+          !Number.isSafeInteger(minContextSlot) || minContextSlot < 0) {
+        throw new Error("Trusted ALT account request is invalid");
+      }
+      const result = await call("getAccountInfo", [
+        publicKey.toBase58(),
+        { encoding: "base64", commitment: requestedCommitment, minContextSlot }
+      ]);
+      if (!result || !result.context || !Number.isSafeInteger(result.context.slot) ||
+          !result.value || !Array.isArray(result.value.data) ||
+          result.value.data.length !== 2 || typeof result.value.data[0] !== "string" ||
+          result.value.data[1] !== "base64" ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(result.value.data[0])) {
+        throw new Error("Trusted RPC returned an invalid ALT account response");
+      }
+      const data = Buffer.from(result.value.data[0], "base64");
+      if (data.toString("base64") !== result.value.data[0] || data.length < 56 || data.length > 56 + 256 * 32) {
+        throw new Error("Trusted RPC ALT account data is malformed");
+      }
+      return {
+        context: result.context,
+        value: {
+          owner: new PublicKey(result.value.owner),
+          data,
+          executable: result.value.executable === true,
+          lamports: result.value.lamports,
+          rentEpoch: result.value.rentEpoch
+        }
+      };
+    },
+    async resolveAddressLookupTable(tableKey, { minContextSlot = 0, maxSlotLag = 32 } = {}) {
+      const resolver = createTrustedAltResolver({
+        connection: client,
+        trustedRpcEndpoint: parsed.href,
+        commitment,
+        minContextSlot,
+        maxSlotLag
+      });
+      return resolver(tableKey);
+    },
     async getSlot() {
       const slot = await call("getSlot", [{ commitment }]);
       if (!Number.isSafeInteger(slot) || slot < 0) throw new Error("Trusted RPC returned an invalid slot");
