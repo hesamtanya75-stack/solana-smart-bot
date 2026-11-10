@@ -44,7 +44,7 @@ test("malformed Jupiter instruction program index is rejected", () => {
   const encoded = validUnsignedTransaction();
   const bytes = Buffer.from(encoded, "base64");
   // The final five bytes are the one-instruction header and its indexes/data.
-  bytes[bytes.length - 5] = 250;
+  bytes[bytes.length - 4] = 250;
   assert.throws(
     () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
     /program index is invalid/
