@@ -69,6 +69,18 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         errors: []
       } });
     }
+    if (value.includes("api.jup.ag/swap/v2/order")) {
+      const amount = new URL(value).searchParams.get("amount");
+      return Response.json({
+        requestId: "test-sell-order",
+        transaction: "AQ==",
+        inputMint: mint,
+        outputMint: "So11111111111111111111111111111111111111112",
+        inAmount: amount,
+        outAmount: "1000000",
+        routePlan: [{ swapInfo: { label: "test-route" } }]
+      });
+    }
     if (request.method === "getAccountInfo") return Response.json({ result: {
       value: {
         owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
@@ -80,11 +92,13 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       }
     } });
     if (request.method === "getTokenSupply") return Response.json({ result: {
-      value: { amount: "1001" }
+      value: { amount: "1001", decimals: 0 }
     } });
     throw new Error("Unexpected RPC method " + request.method);
   };
-  const risk = await fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456");
+  const risk = await fetchTrustedTokenRisk(
+    mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"
+  );
   assert.equal(holderPages, 2);
   assert.equal(risk.holderSampleOnly, false);
   assert.equal(risk.holderAccountCount, 1001);
@@ -92,6 +106,8 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   assert.ok(risk.top10OwnerConcentrationPct > 99);
   assert.equal(risk.checks.token2022ExtensionsSafe, false);
   assert.equal(risk.checks.holderConcentrationSafe, false);
-  assert.equal(risk.checks.sellRouteAvailable, false);
+  assert.equal(risk.checks.sellRouteAvailable, true);
+  assert.equal(risk.sellRoute.provider, "Jupiter Swap API V2");
+  assert.equal(risk.sellRoute.requestId, "test-sell-order");
   assert.equal(risk.passed, false);
 });
