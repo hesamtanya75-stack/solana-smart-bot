@@ -21,7 +21,7 @@ function readRoutePlan(data, offset, expectedSteps) {
     throw new Error("Metis on-chain route plan count does not match the quote");
   }
   const steps = [];
-  let percentTotal = 0;
+
   for (let i = 0; i < count; i += 1) {
     if (offset >= data.length) throw new Error("Metis route plan is truncated");
     const swapVariant = data[offset++];
@@ -40,10 +40,10 @@ function readRoutePlan(data, offset, expectedSteps) {
     if (percent < 1 || inputIndex === outputIndex) {
       throw new Error("Metis route step has invalid percent or token indexes");
     }
-    percentTotal += percent;
+
     steps.push(Object.freeze({ swapVariant, percent, inputIndex, outputIndex }));
   }
-  if (percentTotal !== 100) throw new Error("Metis route percentages do not total 100");
+
   return { steps, offset };
 }
 
