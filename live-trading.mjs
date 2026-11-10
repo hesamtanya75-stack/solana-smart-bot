@@ -1,10 +1,6 @@
 /**
  * Solana live-trading preparation module.
- *
- * Server-side Jupiter V2 order retrieval only. It is intentionally not wired
- * into the Worker scheduler and cannot sign or submit a transaction.
- * The dedicated wallet address is pinned in code; it cannot be overridden
- * through a dashboard request or an arbitrary environment value.
+ * Server-side Jupiter V2 order retrieval only; no signing or submission.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -17,14 +13,12 @@ function finitePositive(value, name) {
 }
 
 function readLivePolicy(env = {}) {
-  // Fail closed: both explicit enablement and explicit release of the kill switch are required.
   if (env.LIVE_TRADING_ENABLED !== "true") {
     return Object.freeze({ enabled: false, reason: "Live trading feature flag is not explicitly enabled" });
   }
   if (env.LIVE_TRADING_KILL_SWITCH !== "false") {
     return Object.freeze({ enabled: false, reason: "Emergency kill switch is active" });
   }
-
   const configuredWallet = String(env.BOT_WALLET_PUBLIC_KEY || "").trim();
   if (configuredWallet !== EXPECTED_BOT_WALLET) {
     throw new Error("Configured bot wallet does not match the pinned dedicated wallet");
@@ -46,37 +40,66 @@ function readLivePolicy(env = {}) {
   if (!String(env.JUPITER_API_KEY || "").trim()) throw new Error("JUPITER_API_KEY is required");
 
   return Object.freeze({
-    enabled: true,
-    wallet: EXPECTED_BOT_WALLET,
-    maxTradeLamports,
-    maxDailyLamports,
-    maxSlippageBps,
-    minLiquidityUsd,
-    minVolume24hUsd,
+    enabled: true, wallet: EXPECTED_BOT_WALLET, maxTradeLamports,
+    maxDailyLamports, maxSlippageBps, minLiquidityUsd, minVolume24hUsd,
     maxOpenPositions
   });
 }
 
 /**
- * Fetches an unsigned Jupiter V2 order only. Never submit this transaction
- * without audited Solana message decoding, destination/program allow-listing,
- * dedicated-key signing, and durable idempotency/confirmation handling.
+ * All state and risk-check values must come from trusted, fresh server-side
+ * sources. Missing values fail closed; browser-supplied values are not trusted.
  */
-async function getJupiterOrder({ env, inputMint = SOL_MINT, outputMint, amountLamports, fetchImpl = fetch }) {
-  const policy = readLivePolicy(env);
-  if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
-  if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
-  if (inputMint === outputMint) throw new Error("Input and output mints must differ");
+function evaluateLiveTradeEligibility({
+  policy, amountLamports, dailySpentLamports, openPositions,
+  liquidityUsd, volume24hUsd, riskChecks
+} = {}) {
+  if (!policy || policy.enabled !== true) throw new Error("Live trading policy is disabled");
   if (!Number.isSafeInteger(amountLamports) || amountLamports <= 0 || amountLamports > policy.maxTradeLamports) {
     throw new Error("Trade amount exceeds the configured per-trade limit");
   }
+  if (!Number.isSafeInteger(dailySpentLamports) || dailySpentLamports < 0 ||
+      dailySpentLamports > policy.maxDailyLamports ||
+      amountLamports > policy.maxDailyLamports - dailySpentLamports) {
+    throw new Error("Trade would exceed the configured daily spend limit");
+  }
+  if (!Number.isInteger(openPositions) || openPositions < 0 || openPositions >= policy.maxOpenPositions) {
+    throw new Error("Maximum open positions reached or position count is unavailable");
+  }
+  if (!Number.isFinite(liquidityUsd) || liquidityUsd < policy.minLiquidityUsd) {
+    throw new Error("Token liquidity is below the configured minimum or unavailable");
+  }
+  if (!Number.isFinite(volume24hUsd) || volume24hUsd < policy.minVolume24hUsd) {
+    throw new Error("Token 24-hour volume is below the configured minimum or unavailable");
+  }
+  const requiredChecks = [
+    "mintAuthoritySafe", "freezeAuthoritySafe", "token2022ExtensionsSafe",
+    "holderConcentrationSafe", "sellRouteAvailable"
+  ];
+  if (!riskChecks || requiredChecks.some((key) => riskChecks[key] !== true)) {
+    throw new Error("Token safety checks are missing or did not all pass");
+  }
+  return Object.freeze({ allowed: true });
+}
+
+/**
+ * Retrieves an unsigned Jupiter V2 order only. It does not decode or approve
+ * transaction instructions, sign, or submit a transaction.
+ */
+async function getJupiterOrder({
+  env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
+  fetchImpl = fetch
+}) {
+  const policy = readLivePolicy(env);
+  if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
+  evaluateLiveTradeEligibility({ policy, amountLamports, ...(eligibility || {}) });
+
+  if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
+  if (inputMint === outputMint) throw new Error("Input and output mints must differ");
 
   const params = new URLSearchParams({
-    inputMint,
-    outputMint,
-    amount: String(amountLamports),
-    taker: policy.wallet,
-    slippageBps: String(policy.maxSlippageBps)
+    inputMint, outputMint, amount: String(amountLamports),
+    taker: policy.wallet, slippageBps: String(policy.maxSlippageBps)
   });
   const response = await fetchImpl("https://api.jup.ag/swap/v2/order?" + params.toString(), {
     method: "GET",
@@ -88,7 +111,8 @@ async function getJupiterOrder({ env, inputMint = SOL_MINT, outputMint, amountLa
 
   if (!order || typeof order !== "object" ||
       typeof order.requestId !== "string" || !order.requestId ||
-      typeof order.transaction !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(order.transaction) ||
+      typeof order.transaction !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(order.transaction) ||
       !/^[0-9]+$/.test(String(order.outAmount || "")) ||
       BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
@@ -99,13 +123,9 @@ async function getJupiterOrder({ env, inputMint = SOL_MINT, outputMint, amountLa
   if (order.inAmount && String(order.inAmount) !== String(amountLamports)) throw new Error("Jupiter input amount mismatch");
 
   return Object.freeze({
-    requestId: order.requestId,
-    transaction: order.transaction,
-    inputMint,
-    outputMint,
-    inputAmount: String(amountLamports),
-    outputAmount: String(order.outAmount),
-    router: String(order.router || "unknown"),
+    requestId: order.requestId, transaction: order.transaction,
+    inputMint, outputMint, inputAmount: String(amountLamports),
+    outputAmount: String(order.outAmount), router: String(order.router || "unknown"),
     transactionVersion: order.transactionVersion ?? 0,
     feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null
   });
@@ -115,4 +135,7 @@ async function executeLiveOrder() {
   throw new Error("Live execution is not implemented; no transaction was signed or submitted");
 }
 
-export { SOL_MINT, EXPECTED_BOT_WALLET, readLivePolicy, getJupiterOrder, executeLiveOrder };
+export {
+  SOL_MINT, EXPECTED_BOT_WALLET, readLivePolicy,
+  evaluateLiveTradeEligibility, getJupiterOrder, executeLiveOrder
+};
