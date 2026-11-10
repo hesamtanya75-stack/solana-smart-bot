@@ -10,13 +10,13 @@ Review target: `live-trade-coordinator-prep` at the current PR head.
 
 ### Critical — no end-to-end live-trade path exists
 
-The Worker does not call `LiveTradeCoordinator`; no route exposes it; there is no transaction builder, signer, submitter, confirmation reconciler, or chain-state settlement verification. This is safe as an isolated prototype, but it does not demonstrate that a live order can be constrained end to end.
+The Worker does not call `LiveTradeCoordinator`; no route exposes it. The parent branch contains `live-trading.mjs`, which can retrieve and parse an unsigned Jupiter V2 order, but `executeLiveOrder()` deliberately throws and there is no transaction message decoder, signer, submitter, confirmation reconciler, or chain-state settlement verification. This is safe as a preparation prototype, but it does not demonstrate that a live order can be constrained end to end.
 
 ### High — quote and risk claims are caller-supplied
 
 `reserve()` currently trusts `solUsd`, `quoteTimestamp`, and `riskPassed` from its request body. A caller that can invoke the Durable Object can provide a fabricated price, timestamp, or `riskPassed: true`. The timestamp check only checks the supplied timestamp; it does not establish the quote's source or authenticity.
 
-Required: obtain the SOL/USD quote inside trusted server-side code from an allowlisted provider; validate currency, positive finite price, response shape, and fetch-time freshness. Run token risk inspection server-side for the exact mint immediately before reservation. Never accept a client boolean as risk approval. Bind the quote and risk evidence to the reservation and order identity.
+Required: obtain the SOL/USD quote inside trusted server-side code from an allowlisted provider; validate currency, positive finite price, response shape, and fetch-time freshness. Run token risk inspection server-side for the exact mint immediately before reservation. Never accept a client boolean as risk approval. The parent `getJupiterOrder()` also accepts an `eligibility` object from its caller; before any integration, its values must be built inside the trusted Worker from fresh scanner data and serialized spend state, never from browser input. Bind the quote and risk evidence to the reservation and order identity.
 
 ### High — coordinator endpoints have no local authorization
 
