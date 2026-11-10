@@ -158,7 +158,13 @@ export class LiveTradeCoordinator {
         throw new Error("Only pending reservations can be confirmed");
       }
       if (targetStatus === "failed" && reservation.status !== "pending") {
-        throw new Error("Only definitely unsubmitted pending reservations can be failed");
+        throw new Error("Only pending reservations can be failed");
+      }
+      if (targetStatus === "failed" &&
+          (body?.definitelyNotSubmitted !== true ||
+           typeof body?.resolutionReason !== "string" ||
+           body.resolutionReason.trim().length < 12)) {
+        throw new Error("Fail resolution requires explicit proof of non-submission and a reason of at least 12 characters");
       }
       if (targetStatus === "closed" && reservation.status !== "confirmed") {
         throw new Error("Only confirmed positions can be closed");
