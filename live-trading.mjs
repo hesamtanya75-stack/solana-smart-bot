@@ -139,6 +139,7 @@ async function getJupiterOrder({
     requiredAccounts: transactionAllowList.requiredAccounts,
     allowedProgramIds: transactionAllowList.allowedProgramIds,
     allowedAccountKeys: transactionAllowList.allowedAccountKeys,
+    allowedWritableAccountKeys: transactionAllowList.allowedWritableAccountKeys,
     instructionValidators: transactionAllowList.instructionValidators
   });
 
