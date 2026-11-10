@@ -2,6 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import { createTrustedAltResolver } from "./solana-trusted-alt-resolver.mjs";
 import { validateParsedTokenAccount } from "./solana-token-account-validator.mjs";
 import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
+import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
 
 const MAX_RPC_RESPONSE_BYTES = 2_000_000;
 const MAX_TOKEN_ACCOUNTS = 16;
@@ -208,6 +209,12 @@ async function inspectMetisOrderWithTrustedRpc({
     throw new Error("Token-account expectations contain duplicate addresses");
   }
 
+  const verifiedDecoded = await decodeSolanaTransaction(encodedTransaction, {
+    lookupTableResolver: (tableKey) => rpc.resolveAddressLookupTable(tableKey, { minContextSlot })
+  });
+  if (JSON.stringify(verifiedDecoded) !== JSON.stringify(decoded)) {
+    throw new Error("Decoded transaction does not match the exact serialized transaction being simulated");
+  }
   const slotBefore = await rpc.getSlot();
   if (slotBefore < minContextSlot) throw new Error("Trusted RPC slot is behind the required minimum context");
   const accountResponse = await rpc.getMultipleParsedTokenAccounts(addresses, {
@@ -244,7 +251,7 @@ async function inspectMetisOrderWithTrustedRpc({
     throw new Error("Trusted RPC simulation context is stale or inconsistent");
   }
   const cpi = validateSimulatedCpi({
-    decoded,
+    decoded: verifiedDecoded,
     simulationMeta: simulation.value,
     allowedCpiProgramIds,
     allowedCpiAccountKeys
