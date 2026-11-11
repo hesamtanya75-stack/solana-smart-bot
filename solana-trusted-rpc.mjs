@@ -334,6 +334,16 @@ async function inspectSaberCpiAfterSimulation({
     throw new Error("Post-simulation Saber validation inputs are incomplete or invalid");
   }
 
+  const allSaberCalls = cpiInstructions.filter((item) =>
+    item?.programId === SABER_STABLE_SWAP_PROGRAM_ID
+  );
+  if (expectedPoolKeys.length === 0) {
+    if (allSaberCalls.length !== 0) {
+      throw new Error("Simulated Saber CPI is present without a trusted quote-bound Saber pool");
+    }
+    return Object.freeze([]);
+  }
+
   const outerIndex = expectedOuterInstructionIndexes[0];
   const outer = decoded.instructions[outerIndex];
   if (!outer || outer.programId !== JUPITER_V6_PROGRAM_ID ||
@@ -350,9 +360,6 @@ async function inspectSaberCpiAfterSimulation({
     throw new Error("Jupiter shared-route program authority is not a verified PDA from the pinned derivation set");
   }
 
-  const allSaberCalls = cpiInstructions.filter((item) =>
-    item?.programId === SABER_STABLE_SWAP_PROGRAM_ID
-  );
   if (allSaberCalls.some((item) => item.outerInstructionIndex !== outerIndex) ||
       allSaberCalls.length !== expectedPoolKeys.length) {
     throw new Error("Simulated Saber CPI count or outer-instruction binding differs from the trusted route");
