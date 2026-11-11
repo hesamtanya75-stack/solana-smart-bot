@@ -175,6 +175,32 @@ test("first authenticated state access migrates legacy KV paper trades before up
   assert.equal(migrated.balance, 42.5);
   assert.equal(migrated.trades[0].mint, "LegacyMint");
 
+  const acceptedWrite = await worker.fetch(new Request("https://worker.test/api/state", {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expectedUpdatedAt: migrated.updatedAt,
+      balance: 41.5,
+      trades: migrated.trades,
+      scannedMints: migrated.scannedMints
+    })
+  }), env);
+  assert.equal(acceptedWrite.status, 200);
+  const saved = await acceptedWrite.json();
+  assert.equal(saved.state.balance, 41.5);
+
+  const staleWrite = await worker.fetch(new Request("https://worker.test/api/state", {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expectedUpdatedAt: migrated.updatedAt,
+      balance: 1,
+      trades: [],
+      scannedMints: []
+    })
+  }), env);
+  assert.equal(staleWrite.status, 409);
+
   const updateResponse = await worker.fetch(new Request("https://worker.test/api/automation", {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
@@ -182,7 +208,7 @@ test("first authenticated state access migrates legacy KV paper trades before up
   }), env);
   assert.equal(updateResponse.status, 200);
   const updated = await updateResponse.json();
-  assert.equal(updated.state.balance, 42.5);
+  assert.equal(updated.state.balance, 41.5);
   assert.equal(updated.state.trades[0].mint, "LegacyMint");
   assert.equal(updated.state.paused, true);
 });
