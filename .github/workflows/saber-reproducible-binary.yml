@@ -40,7 +40,9 @@ jobs:
 
       - name: Check out pinned Saber source
         env:
-          SABER_SOURCE_COMMIT: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff
+          # Build the exact source revision tagged v1.8.2; the previous pin was
+          # a later, diverged commit and therefore could not reproduce that release.
+          SABER_SOURCE_COMMIT: a276d24d7469c05cea8fd2e3a088ac05273695b7
         run: |
           git clone https://github.com/saber-hq/stable-swap.git saber-source
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
@@ -52,8 +54,8 @@ jobs:
           set -euo pipefail
           docker version
           cat > Dockerfile.saber-verify <<'DOCKERFILE'
-          # Pin the upstream Anchor build image by immutable digest, then replace
-          # its newer Solana CLI/BPF SDK with the Solana version pinned by the Saber source flake.lock and saber-overlay.
+          # Pin the upstream Anchor build image by immutable digest, then install
+          # the Solana 1.11.10 version declared in Anchor.toml at the v1.8.2 tag.
           FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
           # Fetch the immutable v1.11.10 release asset from GitHub directly.
           # release.solana.com is intermittently unreachable from Docker builds.
@@ -148,7 +150,7 @@ jobs:
 
           {
             echo "## Saber source-to-binary comparison"
-            echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
+            echo "- Source commit (v1.8.2 tag): a276d24d7469c05cea8fd2e3a088ac05273695b7"
             echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.11.10 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
