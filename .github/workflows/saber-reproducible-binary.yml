@@ -122,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.1.so
-          solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.1.so
+          solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.1.so | tee upstream-executable-hash.txt
 
       - name: Compare built executable with Mainnet and Devnet
         id: compare
@@ -131,7 +131,15 @@ jobs:
         run: |
           set -euo pipefail
           executable_hash="$(grep -Eo '[a-f0-9]{64}' ../executable-hash.txt | tail -n 1)"
+          upstream_hash="$(grep -Eo '[a-f0-9]{64}' ../upstream-executable-hash.txt | tail -n 1)"
           test -n "$executable_hash"
+          test -n "$upstream_hash"
+          echo "Rebuilt Saber hash: $executable_hash"
+          echo "Published upstream Saber v1.8.1 hash: $upstream_hash"
+          if [ "$executable_hash" != "$upstream_hash" ]; then
+            echo "::error::Rebuilt Saber binary does not match the published upstream v1.8.1 artifact"
+            exit 1
+          fi
 
           solana-verify get-program-hash -u https://api.mainnet-beta.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../mainnet-hash.txt
           solana-verify get-program-hash -u https://api.devnet.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../devnet-hash.txt
@@ -153,6 +161,7 @@ jobs:
             echo "- Source commit (v1.8.1 tag): 6c0384cbaf305500678ed14e6426244145619249"
             echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.9.12 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
+            echo "- Published upstream v1.8.1 executable hash: $upstream_hash (match: true)"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
             echo "- Devnet program hash: $devnet_hash (match: $devnet_match)"
           } >> "$GITHUB_STEP_SUMMARY"
