@@ -420,6 +420,7 @@ async function inspectSaberCpiAfterSimulation({
       accounts: cpi.accounts,
       data: cpi.data,
       expectedUserAuthority: programAuthority,
+      expectedUserAuthorityIsProgramDerived: true,
       decoded,
       rawAccounts
     });
