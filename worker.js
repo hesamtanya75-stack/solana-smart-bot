@@ -108,14 +108,21 @@ export class BotCoordinator {
       this.ctx.storage.list({ prefix: "mfa:" })
     ]);
     let nextAlarm = Infinity;
-    for (const [key, value] of loginEntries) {
-      if (Number(value.windowUntil || 0) <= now) await this.ctx.storage.delete(key);
-      else nextAlarm = Math.min(nextAlarm, Number(value.windowUntil));
+    for (const [key] of loginEntries) {
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get(key);
+        const expiresAt = Number(current?.windowUntil || 0);
+        if (current && expiresAt <= now) await txn.delete(key);
+        else if (expiresAt > now) nextAlarm = Math.min(nextAlarm, expiresAt);
+      });
     }
-    for (const [key, value] of mfaEntries) {
-      const expiresAt = Number(value.createdAt || 0) + 300000;
-      if (expiresAt <= now) await this.ctx.storage.delete(key);
-      else nextAlarm = Math.min(nextAlarm, expiresAt);
+    for (const [key] of mfaEntries) {
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get(key);
+        const expiresAt = Number(current?.createdAt || 0) + 300000;
+        if (current && expiresAt <= now) await txn.delete(key);
+        else if (current && expiresAt > now) nextAlarm = Math.min(nextAlarm, expiresAt);
+      });
     }
     if (Number.isFinite(nextAlarm)) await this.ctx.storage.setAlarm(nextAlarm);
     else await this.ctx.storage.deleteAlarm();
