@@ -106,34 +106,38 @@ jobs:
           # Solana 1.11.10's bundled BPF cargo dynamically links OpenSSL 1.1.
           # The pinned Nix shell contains the matching library, but its store
           # path is not automatically added to the runtime loader search path.
-          nix shell -L --show-trace .#ci --command bash -euxo pipefail -c '
-            trap '''status=$?; echo "SABER_BUILD_DIAGNOSTIC: command failed at line $LINENO (exit $status)" >&2; echo "HOME=$HOME" >&2; echo "PATH=$PATH" >&2; find "$HOME/.rustup/toolchains" -maxdepth 4 -type f -name cargo -print 2>/dev/null || true; find /nix/store -name "libssl.so*" -print 2>/dev/null | head -40 >&2; exit "$status"''' ERR
-            echo "Checking pinned Nix OpenSSL 1.1 library"
-            ssl_lib="$(find -L /nix/store -name libssl.so.1.1 -print -quit)"
-            if [ -z "$ssl_lib" ]; then
-              echo "ERROR: libssl.so.1.1 was not found in /nix/store" >&2
-              find /nix/store -name "libssl.so*" -print 2>/dev/null | head -40 >&2 || true
-              exit 1
-            fi
-            ssl_dir="$(dirname "$ssl_lib")"
-            export LD_LIBRARY_PATH="$ssl_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-            cargo_bin="$HOME/.rustup/toolchains/bpf/bin/cargo"
-            # cargo-build-bpf installs and rustup-links the pinned BPF
-            # toolchain on its first invocation. Anchor must run before
-            # checking the rustup-linked cargo path.
-            anchor build --program-name stable_swap
+          cat > /tmp/saber-reproducible-build.sh <<'BUILD_SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          trap 'status=$?; echo "SABER_BUILD_DIAGNOSTIC: command failed at line $LINENO (exit $status)" >&2; echo "HOME=$HOME" >&2; echo "PATH=$PATH" >&2; find "$HOME/.rustup/toolchains" -maxdepth 4 -type f -name cargo -print 2>/dev/null || true; find /nix/store -name "libssl.so*" -print 2>/dev/null | head -40 >&2; exit "$status"' ERR
+          echo "Checking pinned Nix OpenSSL 1.1 library"
+          ssl_lib="$(find -L /nix/store -name libssl.so.1.1 -print -quit)"
+          if [ -z "$ssl_lib" ]; then
+            echo "ERROR: libssl.so.1.1 was not found in /nix/store" >&2
+            find /nix/store -name "libssl.so*" -print 2>/dev/null | head -40 >&2 || true
+            exit 1
+          fi
+          ssl_dir="$(dirname "$ssl_lib")"
+          export LD_LIBRARY_PATH="$ssl_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          cargo_bin="$HOME/.rustup/toolchains/bpf/bin/cargo"
+          # cargo-build-bpf installs and rustup-links the pinned BPF
+          # toolchain on its first invocation. Anchor must run before
+          # checking the rustup-linked cargo path.
+          anchor build --program-name stable_swap
 
-            if [ ! -x "$cargo_bin" ]; then
-              echo "ERROR: BPF cargo was not installed at the expected rustup path: $cargo_bin" >&2
-              find "$HOME/.cache/solana" "$HOME/.rustup/toolchains" -maxdepth 7 -type f -name cargo -print 2>/dev/null || true
-              exit 1
-            fi
-            ldd "$cargo_bin" | tee /tmp/saber-bpf-cargo-ldd.txt
-            if grep -q "not found" /tmp/saber-bpf-cargo-ldd.txt; then
-              echo "ERROR: BPF cargo has unresolved shared libraries" >&2
-              exit 1
-            fi
-          '
+          if [ ! -x "$cargo_bin" ]; then
+            echo "ERROR: BPF cargo was not installed at the expected rustup path: $cargo_bin" >&2
+            find "$HOME/.cache/solana" "$HOME/.rustup/toolchains" -maxdepth 7 -type f -name cargo -print 2>/dev/null || true
+            exit 1
+          fi
+          ldd "$cargo_bin" | tee /tmp/saber-bpf-cargo-ldd.txt
+          if grep -q "not found" /tmp/saber-bpf-cargo-ldd.txt; then
+            echo "ERROR: BPF cargo has unresolved shared libraries" >&2
+            exit 1
+          fi
+          BUILD_SCRIPT
+          chmod 0755 /tmp/saber-reproducible-build.sh
+          nix shell -L --show-trace .#ci --command bash -euxo pipefail /tmp/saber-reproducible-build.sh
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
