@@ -147,6 +147,9 @@ export class BotCoordinator extends DurableObject {
     ]);
     let nextAlarm = Infinity;
     for (const [key] of [...loginEntries, ...totpEntries]) {
+      // The replay-protection counter is a scalar with no expiry; only per-IP
+      // TOTP rate-limit records use the totp: prefix and may be garbage-collected.
+      if (key === "totp:last-counter") continue;
       await this.ctx.storage.transaction(async txn => {
         const current = await txn.get(key);
         const expiresAt = Number(current?.windowUntil || 0);
