@@ -598,6 +598,11 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/logout" && request.method === "POST") {
+        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\\s+/i, "");
+        if (token) await env.BOT_STATE.delete("session:" + token);
+        return json({ ok: true, message: "Session revoked" });
+      }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
         return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
