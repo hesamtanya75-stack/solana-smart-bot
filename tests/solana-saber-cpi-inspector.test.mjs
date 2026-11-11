@@ -17,7 +17,7 @@ import {
 
 const endpoint = "https://trusted-rpc.example/";
 
-function makeFixture({ missingAccount = null, slot = 1300 } = {}) {
+function makeFixture({ missingAccountIndex = null, slot = 1300 } = {}) {
   const pool = Keypair.generate().publicKey;
   const programAuthority = deriveJupiterProgramAuthorityId(0);
   const wallet = Keypair.generate().publicKey;
@@ -91,7 +91,7 @@ function makeFixture({ missingAccount = null, slot = 1300 } = {}) {
     [mintA.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }],
     [mintB.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }]
   ]);
-  if (missingAccount) raw.delete(missingAccount);
+  if (Number.isInteger(missingAccountIndex)) raw.delete(accounts[missingAccountIndex]);
 
   const outerAccounts = [
     tokenProgram.toBase58(), programAuthority, wallet.toBase58(), source.toBase58(),
@@ -195,7 +195,7 @@ test("post-simulation Saber inspector rejects quote pool mismatch and missing ra
     expectedPoolKeys: [Keypair.generate().publicKey.toBase58()]
   }), /exactly one simulated Saber CPI/);
 
-  const missing = makeFixture({ missingAccount: f.accounts[5] });
+  const missing = makeFixture({ missingAccountIndex: 5 });
   await assert.rejects(() => inspectSaberCpiAfterSimulation({
     rpc: missing.rpc, decoded: missing.decoded,
     cpiInstructions: missing.cpiInstructions,
