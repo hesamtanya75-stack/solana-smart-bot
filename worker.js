@@ -56,6 +56,14 @@ export class BotCoordinator {
           await txn.delete(key);
           return { ok: true, consumed: true };
         }
+        if (body.op === "backup-consume") {
+          const hash = String(body.hash || "");
+          if (!/^[a-f0-9]{64}$/i.test(hash)) return { ok: true, consumed: false };
+          const key = "backup-used:" + hash;
+          if (await txn.get(key)) return { ok: true, consumed: false };
+          await txn.put(key, { consumedAt: now });
+          return { ok: true, consumed: true };
+        }
         if (body.op === "state-read") {
           return { ok: true, state: (await txn.get("bot_state")) || null };
         }
@@ -71,7 +79,7 @@ export class BotCoordinator {
         if (body.op === "state-patch") {
           const current = (await txn.get("bot_state")) || {};
           const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
-          const next = { ...current, ...patch };
+          const next = cleanState({ ...current, ...patch });
           if (patch.lastScanReport == null) next.lastScanReport = current.lastScanReport || [];
           next.updatedAt = new Date(now).toISOString();
           await txn.put("bot_state", next);
@@ -678,15 +686,21 @@ export default {
         if (attempt.locked) return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        let backupCodeHash = null;
         if (!valid && profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
           if (submittedHash === profile.backupHash) {
             valid = true;
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+            backupCodeHash = submittedHash;
           }
         }
         if (!valid) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        if (backupCodeHash) {
+          const backupUse = await coordinatorRequest(env, { op: "backup-consume", hash: backupCodeHash });
+          if (!backupUse.consumed) return json({ error: "کۆدی گەڕاندنەوە پێشتر بەکارهاتووە" }, 401);
+          profile.backupHash = null;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+        }
         const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
         if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
         const token = crypto.randomUUID();
