@@ -13,7 +13,14 @@ class SerialStorage {
   constructor() {
     this.values = new Map();
     this.tail = Promise.resolve();
+    this.alarm = null;
   }
+  async list({ prefix = "" } = {}) {
+    return [...this.values.entries()].filter(([key]) => key.startsWith(prefix));
+  }
+  async getAlarm() { return this.alarm; }
+  async setAlarm(value) { this.alarm = value; }
+  async deleteAlarm() { this.alarm = null; }
   async transaction(callback) {
     let release;
     const previous = this.tail;
@@ -36,6 +43,7 @@ function setup() {
   const coordinator = new BotCoordinator({ storage });
   return {
     storage,
+    coordinator,
     call: async payload => {
       const response = await coordinator.fetch(new Request("https://coordinator.test/operation", {
         method: "POST",
@@ -214,6 +222,25 @@ test("first authenticated state access migrates legacy KV paper trades before up
   assert.equal(updated.state.paused, true);
 });
 
+
+
+test("coordinator alarm cleanup preserves the TOTP replay counter", async () => {
+  const { call, storage, coordinator } = setup();
+  const counter = Math.floor(Date.now() / 30000);
+  await call({ op: "totp-consume", counter });
+  await storage.transaction(async txn => {
+    await txn.put("totp:198.51.100.21", {
+      count: 5,
+      windowUntil: Date.now() - 1000,
+      lockedUntil: Date.now() - 1000
+    });
+  });
+
+  await coordinator.alarm();
+
+  assert.equal(storage.values.get("totp:last-counter"), counter);
+  assert.equal(storage.values.has("totp:198.51.100.21"), false);
+});
 
 test("a TOTP time-step can be consumed only once across separate login challenges", async () => {
   const { call, storage } = setup();
