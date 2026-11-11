@@ -618,7 +618,14 @@ async function inspectMint(mint, env) {
     const info = account?.data?.parsed?.info;
     const owner = info?.owner;
     const amountRaw = info?.tokenAmount?.amount;
-    if (!account || !tokenProgramIds.has(account.owner) ||
+    const expectedProgramName = account?.owner === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ? "spl-token"
+      : account?.owner === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        ? "spl-token-2022"
+        : null;
+    if (!account || !expectedProgramName ||
+        account.data?.program !== expectedProgramName ||
+        account.data?.parsed?.type !== "account" ||
         info?.mint !== mint ||
         typeof owner !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(owner) ||
         typeof amountRaw !== "string" || !/^(0|[1-9][0-9]*)$/.test(amountRaw)) {
