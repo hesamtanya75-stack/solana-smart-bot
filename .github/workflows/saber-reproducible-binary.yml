@@ -48,54 +48,23 @@ jobs:
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
           test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
 
-      - name: Build pinned legacy Solana 1.9.12 Docker image
-        working-directory: saber-source
+      - name: Pin the exact upstream Anchor 0.24.2 build image
         run: |
           set -euo pipefail
-          docker version
-          cat > Dockerfile.saber-verify <<'DOCKERFILE'
-          # Pin the upstream Anchor build image by immutable digest, then install
-          # the Solana 1.9.12 version declared in Anchor.toml and pinned by Saber upstream CI at the v1.8.1 tag.
-          FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
-          # Fetch the immutable v1.9.12 release asset from GitHub directly.
-          # release.solana.com is intermittently unreachable from Docker builds.
-          RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.9.12/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
-          ENV PATH="/opt/solana-release/bin:${PATH}"
-          # Anchor invokes cargo-build-bpf inside this image; pin its SDK explicitly.
-          ENV BPF_SDK_PATH="/opt/solana-release/bin/sdk/bpf"
-          # Anchor 0.24.2's legacy build container redundantly downloads the
-          # Solana installer from release.solana.com even when the exact
-          # 1.9.12 toolchain is already installed above. That host is flaky
-          # from GitHub Actions; return a no-op installer only for this exact
-          # pinned URL. All other curl requests use the original binary.
-          RUN set -eux; real_curl="$(command -v curl)"; install -m 0755 "$real_curl" /usr/local/bin/curl.real; cat > /usr/local/bin/curl <<'CURL_SHIM'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          for arg in "$@"; do
-            if [ "$arg" = "https://release.solana.com/v1.9.12/install" ]; then
-              output=""
-              previous=""
-              for item in "$@"; do
-                if [ "$previous" = "-o" ]; then output="$item"; fi
-                previous="$item"
-              done
-              test -n "$output"
-              printf '%s\n' '#!/bin/sh' '# Solana 1.9.12 is preinstalled and version-checked in this image.' 'exit 0' > "$output"
-              chmod 0755 "$output"
-              exit 0
-            fi
-          done
-          exec /usr/local/bin/curl.real "$@"
-          CURL_SHIM
-          RUN chmod 0755 /usr/local/bin/curl
-          # Solana 1.9.12 provides the legacy cargo-build-bpf toolchain used by Saber.
-          # The upstream Saber CI pins Rust/Cargo 1.59.0 alongside Solana 1.9.12.
-          # Keep the same host toolchain for byte-for-byte reproducibility.
-          RUN set -eux; test -x "$BPF_SDK_PATH/scripts/strip.sh"; command -v rustup; rustup toolchain install 1.59.0 --profile minimal; rustup default 1.59.0; cargo --version | grep -q "cargo 1\\.59\\.0 "; solana --version | grep -q "^solana-cli 1\\.9\\.12 "; command -v cargo-build-bpf; echo "Pinned BPF_SDK_PATH=$BPF_SDK_PATH"
-          DOCKERFILE
-          docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.9.12 .
-          # Use a non-login shell so /etc/profile cannot replace the pinned PATH.
-          docker run --rm saber-legacy-bpf:solana-1.9.12 bash -c 'set -euo pipefail; solana --version | grep -q "^solana-cli 1\\.9\\.12 "; cargo --version | grep -q "^cargo 1\\.59\\.0 "; command -v cargo-build-bpf; cargo-build-bpf --help >/dev/null'
+          # This is the immutable linux/amd64 digest published for
+          # projectserum/build:v0.24.2 (not the v0.26.0 digest).
+          image="projectserum/build@sha256:33b9c57d3cb5cafcb9349e5be034c2b1e36451b2e44531968b011c1bfc1a9cab"
+          docker pull "$image"
+          docker tag "$image" projectserum/build:v0.24.2
+          docker image inspect projectserum/build:v0.24.2 >/dev/null
+          docker run --rm projectserum/build:v0.24.2 bash -lc '
+            set -euo pipefail
+            solana --version
+            solana --version | grep -q "^solana-cli 1\\.9\\.12 "
+            command -v cargo-build-bpf
+            cargo-build-bpf --help >/dev/null
+            rustup toolchain list
+          '
 
       - name: Install the exact Saber Anchor release toolchain
         uses: cachix/install-nix-action@v22
@@ -106,9 +75,8 @@ jobs:
           set -euo pipefail
           # Saber v0.24.2's own release workflow uses:
           # nix shell .#ci --command anchor build --verifiable --program-name stable_swap
-          # Pin the exact Docker image digest already validated above to the image
-          # tag Anchor 0.24.2 expects, rather than allowing a mutable tag pull.
-          docker tag saber-legacy-bpf:solana-1.9.12 projectserum/build:v0.24.2
+          # The exact upstream v0.24.2 image was pulled by immutable digest
+          # and tagged with the name Anchor 0.24.2 expects.
           nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
           nix shell .#ci --command anchor build --verifiable --program-name stable_swap
           mapfile -t built_binaries < <(find target -type f -name stable_swap.so -print)
