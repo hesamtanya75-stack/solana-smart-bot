@@ -41,10 +41,13 @@ jobs:
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
           test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
 
-      - name: Reproducible build from pinned source
+      - name: Set up the exact upstream Nix build environment
+        uses: cachix/install-nix-action@v22
+
+      - name: Reproducible build from pinned upstream Nix environment
         working-directory: saber-source
         run: |
-          solana-verify build --bpf --library-name stable_swap
+          nix shell .#ci --command anchor build --program-name stable_swap
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
@@ -65,7 +68,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified)"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); source build uses pinned upstream Nix flake"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: ${mainnet_hash:-unavailable}"
             echo "- Devnet program hash: ${devnet_hash:-unavailable}"
