@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install pinned Solana Verify CLI
-        run: cargo install solana-verify --version 0.6.0 --locked
+        run: cargo install solana-verify --version 0.5.2 --locked
 
       - name: Check out pinned Saber source
         env:
@@ -56,7 +56,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
-            echo "- Solana Verify CLI: 0.6.0"
+            echo "- Solana Verify CLI: 0.5.2"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: ${mainnet_hash:-unavailable}"
             echo "- Devnet program hash: ${devnet_hash:-unavailable}"
