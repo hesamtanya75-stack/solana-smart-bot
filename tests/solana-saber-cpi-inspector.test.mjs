@@ -17,7 +17,7 @@ import {
 
 const endpoint = "https://trusted-rpc.example/";
 
-function makeFixture({ missingAccountIndex = null, slot = 1300 } = {}) {
+function makeFixture({ missingAccountIndex = null, slot = 1200 } = {}) {
   const pool = Keypair.generate().publicKey;
   const programAuthority = deriveJupiterProgramAuthorityId(0);
   const wallet = Keypair.generate().publicKey;
@@ -195,10 +195,10 @@ test("post-simulation Saber inspector binds CPI pool, Jupiter PDA, and one consi
   assert.equal(result[0].simulatedAmountOut, "45");
   assert.equal(result[0].simulatedAdminFee, "1");
   assert.equal(result[0].simulationContextSlot, 1200);
-  assert.equal(result[0].accountContextSlot, 1300);
+  assert.equal(result[0].accountContextSlot, 1200);
   assert.equal(f.requests.length, 2);
   assert.equal(f.requests[0].params[0][0], f.pool);
-  assert.equal(f.requests[1].params[1].minContextSlot, 1300);
+  assert.equal(f.requests[1].params[1].minContextSlot, 1200);
 });
 
 test("post-simulation Saber inspector rejects a CPI authority other than the Jupiter program PDA", async () => {
@@ -265,4 +265,14 @@ test("post-simulation Saber inspector rejects incorrect input, output, or admin-
     cpiInstructions: badFee, simulationContextSlot: 1200,
     expectedOuterInstructionIndexes: [0], expectedPoolKeys: [wrongAuthority.pool]
   }), /exactly the three source, output, and admin-fee token transfers/);
+});
+
+test("post-simulation Saber inspector rejects raw-account snapshots newer than the simulation slot", async () => {
+  const f = makeFixture({ slot: 1201 });
+  await assert.rejects(() => inspectSaberCpiAfterSimulation({
+    rpc: f.rpc, decoded: f.decoded, cpiInstructions: f.cpiInstructions,
+    simulationContextSlot: 1200,
+    expectedOuterInstructionIndexes: [0],
+    expectedPoolKeys: [f.pool]
+  }), /exact simulation context slot/);
 });
