@@ -41,6 +41,9 @@ jobs:
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
           test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
 
+      - name: Set up upstream Rust toolchain
+        uses: dtolnay/rust-toolchain@1.59.0
+
       - name: Set up the exact upstream Nix build environment
         uses: cachix/install-nix-action@v22
 
