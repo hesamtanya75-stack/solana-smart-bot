@@ -46,7 +46,7 @@ jobs:
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
           test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
 
-      - name: Build pinned legacy Solana 1.11.10 Docker image
+      - name: Build pinned legacy Solana 1.9.12 Docker image
         working-directory: saber-source
         run: |
           set -euo pipefail
@@ -55,25 +55,25 @@ jobs:
           # Pin the upstream Anchor build image by immutable digest, then replace
           # its newer Solana CLI/BPF SDK with the Solana version pinned by the Saber source flake.lock and saber-overlay.
           FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
-          # Fetch the immutable v1.11.10 release asset from GitHub directly.
+          # Fetch the immutable v1.9.12 release asset from GitHub directly.
           # release.solana.com is intermittently unreachable from Docker builds.
-          RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.11.10/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
+          RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.9.12/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
           ENV PATH="/opt/solana-release/bin:${PATH}"
-          # Solana 1.11.10 provides the legacy cargo-build-bpf toolchain used by Saber.
-          # The upstream Saber CI pins Rust/Cargo 1.59.0 alongside Solana 1.11.10.
+          # Solana 1.9.12 provides the legacy cargo-build-bpf toolchain used by Saber.
+          # The upstream Saber CI pins Rust/Cargo 1.59.0 alongside Solana 1.9.12.
           # Keep the same host toolchain for byte-for-byte reproducibility.
           RUN set -eux; command -v rustup; rustup toolchain install 1.59.0 --profile minimal; rustup default 1.59.0; cargo --version | grep -q "cargo 1\\.59\\.0 "; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf
           DOCKERFILE
-          docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.11.10 .
-          docker run --rm saber-legacy-bpf:solana-1.11.10 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
+          docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.9.12 .
+          docker run --rm saber-legacy-bpf:solana-1.9.12 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
 
       - name: Reproducible build with pinned Solana Verify Docker builder
         working-directory: saber-source
         run: |
           set -euo pipefail
           # --bpf is required for this legacy Anchor program. The explicit image
-          # prevents solana-verify's default 1.13.5 image from overriding 1.11.10.
-          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.11.10 --library-name stable_swap "$PWD" -- -Z unstable-options
+          # prevents solana-verify's default 1.13.5 image from overriding 1.9.12.
+          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.9.12 --library-name stable_swap "$PWD" -- -Z unstable-options
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
@@ -104,7 +104,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.11.10 checked in-image"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.9.12 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
             echo "- Devnet program hash: $devnet_hash (match: $devnet_match)"
