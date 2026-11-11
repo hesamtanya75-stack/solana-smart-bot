@@ -115,6 +115,12 @@ function makeFixture({ missingAccountIndex = null, slot = 1300 } = {}) {
   instructionData[0] = 1;
   instructionData.writeBigUInt64LE(50n, 1);
   instructionData.writeBigUInt64LE(40n, 9);
+  const transferData = (amount) => {
+    const data = Buffer.alloc(9);
+    data[0] = 3;
+    data.writeBigUInt64LE(BigInt(amount), 1);
+    return bs58.encode(data);
+  };
 
   const requests = [];
   const fetchImpl = async (_url, options) => {
@@ -139,12 +145,32 @@ function makeFixture({ missingAccountIndex = null, slot = 1300 } = {}) {
     }), { status: 200 });
   };
   const rpc = createTrustedSolanaRpc({ endpoint, expectedEndpoint: endpoint, fetchImpl });
-  const cpiInstructions = [{
-    outerInstructionIndex: 0,
-    programId: SABER_STABLE_SWAP_PROGRAM_ID,
-    accounts,
-    data: bs58.encode(instructionData)
-  }];
+  const cpiInstructions = [
+    {
+      outerInstructionIndex: 0,
+      programId: SABER_STABLE_SWAP_PROGRAM_ID,
+      accounts,
+      data: bs58.encode(instructionData)
+    },
+    {
+      outerInstructionIndex: 0,
+      programId: SABER_TOKEN_PROGRAM_ID,
+      accounts: [accounts[3], accounts[4], accounts[2]],
+      data: transferData(50)
+    },
+    {
+      outerInstructionIndex: 0,
+      programId: SABER_TOKEN_PROGRAM_ID,
+      accounts: [accounts[5], accounts[6], accounts[1]],
+      data: transferData(45)
+    },
+    {
+      outerInstructionIndex: 0,
+      programId: SABER_TOKEN_PROGRAM_ID,
+      accounts: [accounts[5], accounts[7], accounts[1]],
+      data: transferData(1)
+    }
+  ];
   const decoded = { instructions: [outer], accountKeys, accountMetadata: metadata };
   return {
     rpc, decoded, cpiInstructions, accounts, pool: pool.toBase58(),
@@ -165,6 +191,9 @@ test("post-simulation Saber inspector binds CPI pool, Jupiter PDA, and one consi
   assert.equal(result.length, 1);
   assert.equal(result[0].allowed, true);
   assert.equal(result[0].direction, "A_TO_B");
+  assert.equal(result[0].simulatedAmountIn, "50");
+  assert.equal(result[0].simulatedAmountOut, "45");
+  assert.equal(result[0].simulatedAdminFee, "1");
   assert.equal(result[0].simulationContextSlot, 1200);
   assert.equal(result[0].accountContextSlot, 1300);
   assert.equal(f.requests.length, 2);
@@ -213,4 +242,27 @@ test("post-simulation Saber inspector rejects stale raw-account snapshots", asyn
     expectedOuterInstructionIndexes: [0],
     expectedPoolKeys: [f.pool]
   }), /incomplete or stale/);
+});
+
+test("post-simulation Saber inspector rejects incorrect input, output, or admin-fee token transfers", async () => {
+  const belowMinimum = makeFixture();
+  const badOutput = belowMinimum.cpiInstructions.map((item) => ({ ...item, accounts: [...item.accounts] }));
+  const outputData = Buffer.alloc(9);
+  outputData[0] = 3;
+  outputData.writeBigUInt64LE(39n, 1);
+  badOutput[2].data = bs58.encode(outputData);
+  await assert.rejects(() => inspectSaberCpiAfterSimulation({
+    rpc: belowMinimum.rpc, decoded: belowMinimum.decoded,
+    cpiInstructions: badOutput, simulationContextSlot: 1200,
+    expectedOuterInstructionIndexes: [0], expectedPoolKeys: [belowMinimum.pool]
+  }), /do not satisfy Swap input, slippage, or reserve bounds/);
+
+  const wrongAuthority = makeFixture();
+  const badFee = wrongAuthority.cpiInstructions.map((item) => ({ ...item, accounts: [...item.accounts] }));
+  badFee[3].accounts[2] = wrongAuthority.decoded.instructions[0].accounts[2];
+  await assert.rejects(() => inspectSaberCpiAfterSimulation({
+    rpc: wrongAuthority.rpc, decoded: wrongAuthority.decoded,
+    cpiInstructions: badFee, simulationContextSlot: 1200,
+    expectedOuterInstructionIndexes: [0], expectedPoolKeys: [wrongAuthority.pool]
+  }), /exactly the three source, output, and admin-fee token transfers/);
 });
