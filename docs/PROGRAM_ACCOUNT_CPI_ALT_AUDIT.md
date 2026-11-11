@@ -170,7 +170,7 @@ The automated Mainnet audit completed successfully on 2026-11-11 at context slot
 
 This resolves the earlier upgrade-authority discrepancy in favor of the live Mainnet ProgramData account; the repository deployment config is stale for current authority metadata. The raw ELF SHA-256 is diagnostic only and must not be compared directly with the canonical `solana-verify` executable/program hash.
 
-A new read-only workflow, `.github/workflows/saber-reproducible-binary.yml`, pins the Saber source commit `39d5d4e0e844a009c83d37a3ce63d219fdba0bff` and Solana Verify CLI 0.6.0, builds `stable_swap` in the reproducible Docker build environment, and compares its canonical executable hash against both Mainnet and Devnet program hashes. It performs no signing, deployment, verification-PDA upload, or transaction submission. A hash mismatch or missing program fails closed. This workflow has been added but its first run must complete before any source-to-binary conclusion is made.
+A new read-only workflow, `.github/workflows/saber-reproducible-binary.yml`, pins the Saber source commit `39d5d4e0e844a009c83d37a3ce63d219fdba0bff` and Solana Verify CLI 0.5.2, builds `stable_swap` in the reproducible Docker build environment, and compares its canonical executable hash against both Mainnet and Devnet program hashes. It performs no signing, deployment, verification-PDA upload, or transaction submission. A hash mismatch or missing program fails closed. This workflow has been added but its first run must complete before any source-to-binary conclusion is made.
 
 The existing Node safety tests and the read-only Mainnet metadata audit passed on commit `d07e45c3780e5364916dca723483261a3bdf6f9f`. That success does not imply the Saber executable is source-verified: the verification service explicitly returned `is_verified=false`.
 
@@ -182,3 +182,10 @@ The trusted RPC inspection now has a separate post-simulation Saber inspection p
 Jupiter's current source helper at commit `cc068c9d1df0060c62f9a8a4fc37ea13ea7b9b39` derives `programAuthority` from `[b"authority", authority_id]` and declares 16 IDs. The validator now rejects a Jupiter shared-route account 1 that is not one of those derived PDAs; account 2 remains the user's transfer-authority signer. The Saber CPI account 2 is checked against the Jupiter program-authority PDA, not the user's wallet.
 
 This is still a candidate audit path, not permission to execute. The pinned Jupiter deployed binary/authority range is not yet reproducibly verified; Saber remains rejected before this path can authorize a route; no DEX policy entry has been approved; and Devnet integration has not yet been run. A successful fixture test does not establish Mainnet program provenance or on-chain execution safety.
+
+
+### Latest Mainnet metadata audit refresh
+
+A second finalized read-only Mainnet RPC audit completed successfully on commit `4d2620f7fe3486919cb1592754eb7f8861e49d68` at context slot `467920334`. It independently returned the same ProgramData address, deployment slot, live upgrade authority, executable length, and raw diagnostic SHA-256 recorded above. OtterSec's verification endpoint again returned HTTP 200 with `is_verified=false` and `On chain program not verified`. Thus the ProgramData metadata is repeatable across two snapshots, but the deployed executable is still not source-verified.
+
+The reproducible-build workflow currently pins Solana Verify CLI `0.5.2` (not 0.6.0), upstream Rust `1.59.0`, Saber source commit `39d5d4e0e844a009c83d37a3ce63d219fdba0bff`, and the source repository's Nix CI environment. The latest run has not yet completed; no executable-hash match or Devnet E2E result is claimed.
