@@ -83,9 +83,8 @@ jobs:
           echo "Official Solana $SOLANA_VERSION archive SHA-256: $actual_sha256"
           echo "archive_sha256=$actual_sha256" >> "$GITHUB_OUTPUT"
 
-          # This bootstrap run deliberately fails until the downloaded archive
-          # digest is independently pinned in this workflow.
-          expected_sha256="PIN_REQUIRED"
+          # SHA-256 pinned from the official v1.11.10 release asset.
+          expected_sha256="44edd0fe40ab8e617ae97cdc1282a78fda282928372518e327a4d857705caea7"
           test "$actual_sha256" = "$expected_sha256"
 
           tar -xjf /tmp/solana-release.tar.bz2
