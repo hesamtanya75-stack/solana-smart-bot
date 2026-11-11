@@ -211,7 +211,9 @@ async function coordinatorRequest(env, payload) {
   });
   const result = await response.json();
   if (!response.ok || result?.ok !== true) {
-    throw new Error(result?.error || "Atomic coordinator operation failed");
+    const error = new Error(result?.error || "Atomic coordinator operation failed");
+    error.status = Number.isInteger(result?.status) ? result.status : response.status;
+    throw error;
   }
   return result;
 }
@@ -925,7 +927,9 @@ export default {
           }
           const state = await patchState(env, patch, expectedUpdatedAt);
           return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+        } catch (error) {
+          return json({ error: error?.message || "Invalid state" }, error?.status || 400);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
