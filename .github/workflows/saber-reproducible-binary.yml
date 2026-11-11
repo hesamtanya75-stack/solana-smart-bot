@@ -55,7 +55,7 @@ jobs:
           docker version
           cat > Dockerfile.saber-verify <<'DOCKERFILE'
           # Pin the upstream Anchor build image by immutable digest, then install
-          # the Solana 1.11.10 version declared in Anchor.toml at the v1.8.2 tag.
+          # the Solana 1.11.10 version declared in Anchor.toml at the v1.8.1 tag.
           FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
           # Fetch the immutable v1.11.10 release asset from GitHub directly.
           # release.solana.com is intermittently unreachable from Docker builds.
@@ -118,11 +118,11 @@ jobs:
           test -s "${built_binaries[0]}"
           solana-verify get-executable-hash "${built_binaries[0]}" | tee ../executable-hash.txt
 
-      - name: Hash the published upstream v1.8.2 release binary
+      - name: Hash the published upstream v1.8.1 release binary
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.2.so
-          solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.2.so
+          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.1.so
+          solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.1.so
 
       - name: Compare built executable with Mainnet and Devnet
         id: compare
