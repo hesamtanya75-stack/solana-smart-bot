@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
-const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerSource).toString("base64");
+const nodeCompatibleWorkerSource =
+  "class DurableObject { constructor(ctx) { this.ctx = ctx; } }\\n" +
+  workerSource.replace('import { DurableObject } from "cloudflare:workers";\\n', "");
+const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(nodeCompatibleWorkerSource).toString("base64");
 const { BotCoordinator, default: worker } = await import(workerModuleUrl);
 
 class SerialStorage {
