@@ -23,6 +23,7 @@ function fixture(overrides = {}) {
   }
   assert.ok(authority);
   const wallet = Keypair.generate().publicKey;
+  const adminAuthority = Keypair.generate().publicKey;
   const reserveAKey = Keypair.generate().publicKey;
   const reserveBKey = Keypair.generate().publicKey;
   const mintAKey = Keypair.generate().publicKey;
@@ -74,7 +75,7 @@ function fixture(overrides = {}) {
     [accounts[4], { owner: tokenProgram, data: tokenData(mintAKey, authority, 5000), executable: false }],
     [accounts[5], { owner: tokenProgram, data: tokenData(mintBKey, authority, 6000), executable: false }],
     [accounts[6], { owner: tokenProgram, data: tokenData(mintBKey, wallet, 0), executable: false }],
-    [accounts[7], { owner: tokenProgram, data: tokenData(mintBKey, authority, 0), executable: false }],
+    [accounts[7], { owner: tokenProgram, data: tokenData(mintBKey, adminAuthority, 0), executable: false }],
     [mintAKey.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }],
     [mintBKey.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }]
   ]);
@@ -93,7 +94,7 @@ function fixture(overrides = {}) {
     decoded: { accountMetadata: metadata },
     rawAccounts
   };
-  return { args, state, accounts, rawAccounts, mintAKey, mintBKey, wallet, authority, tokenData };
+  return { args, state, accounts, rawAccounts, mintAKey, mintBKey, wallet, authority, adminAuthority, tokenData };
 }
 
 test("Saber validator accepts official Swap ABI and matching SwapInfo, PDA, vaults, mints and fee account", () => {
@@ -105,6 +106,19 @@ test("Saber validator accepts official Swap ABI and matching SwapInfo, PDA, vaul
   assert.equal(result.minimumAmountOut, "40");
   assert.equal(result.sourceReserveAmount, "5000");
   assert.equal(result.destinationReserveAmount, "6000");
+});
+
+test("Saber validator accepts admin-owned fee accounts while still pinning fee mint and key", () => {
+  const f = fixture();
+  const fee = f.rawAccounts.get(f.accounts[7]);
+  assert.equal(new PublicKey(fee.data.subarray(32, 64)).toBase58(), f.adminAuthority.toBase58());
+  const result = validateSaberStableSwapCpi(f.args);
+  assert.equal(result.adminFeeMint, f.mintBKey.toBase58());
+
+  const wrongFeeMint = fixture();
+  const wrongMint = Keypair.generate().publicKey;
+  wrongMint.toBuffer().copy(wrongFeeMint.rawAccounts.get(wrongFeeMint.accounts[7]).data, 0);
+  assert.throws(() => validateSaberStableSwapCpi(wrongFeeMint.args), /admin fee destination mint/);
 });
 
 test("Saber validator rejects malformed instruction data and zero swap amounts", () => {
@@ -176,7 +190,7 @@ test("Saber validator accepts reverse B-to-A reserve ordering and token directio
   f.args.accounts[7] = adminFeeA;
   f.rawAccounts.set(adminFeeA, {
     owner: new PublicKey(SABER_TOKEN_PROGRAM_ID),
-    data: f.tokenData(f.mintAKey, f.authority, 0),
+    data: f.tokenData(f.mintAKey, f.adminAuthority, 0),
     executable: false
   });
   f.args.decoded.accountMetadata[4].pubkey = reserveB;
