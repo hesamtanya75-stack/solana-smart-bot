@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: saber-reproducible-binary-${{ github.ref }}
+  # Give each commit its own queue so an older long-running build cannot block the corrected build.
+  group: saber-reproducible-binary-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -45,14 +46,30 @@ jobs:
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
           test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
 
+      - name: Build pinned legacy Solana 1.11.10 Docker image
+        working-directory: saber-source
+        run: |
+          set -euo pipefail
+          docker version
+          cat > Dockerfile.saber-verify <<'DOCKERFILE'
+          # Pin the upstream Anchor build image by immutable digest, then replace
+          # its newer Solana CLI/BPF SDK with the exact version declared by Saber.
+          FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
+          RUN sh -c "$(curl --fail --location --silent --show-error https://release.solana.com/v1.11.10/install)"
+          ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+          RUN test "$(solana --version)" = "solana-cli 1.11.10" \\
+              && command -v cargo-build-bpf
+          DOCKERFILE
+          docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.11.10 .
+          docker run --rm saber-legacy-bpf:solana-1.11.10 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
+
       - name: Reproducible build with pinned Solana Verify Docker builder
         working-directory: saber-source
         run: |
           set -euo pipefail
-          # Saber targets the legacy BPF toolchain (Solana 1.11.10), not SBF.
-          # solana-verify build uses its version-pinned deterministic Docker image.
-          docker version
-          solana-verify build --bpf --library-name stable_swap .
+          # --bpf is required for this legacy Anchor program. The explicit image
+          # prevents solana-verify's default 1.13.5 image from overriding 1.11.10.
+          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.11.10 --library-name stable_swap .
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
@@ -83,7 +100,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); source build uses pinned upstream Nix flake"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Solana CLI/BPF SDK 1.11.10 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
             echo "- Devnet program hash: $devnet_hash (match: $devnet_match)"
