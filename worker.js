@@ -530,31 +530,72 @@ async function inspectMint(mint, env) {
   ]);
   const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
-  const supplyAmount = Number(supply?.value?.amount || 0);
-  const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
+  const supplyRaw = supply?.value?.amount;
+  const supplyAmount = typeof supplyRaw === "string" && /^(0|[1-9][0-9]*)$/.test(supplyRaw)
+    ? BigInt(supplyRaw)
+    : 0n;
+  const largestAccounts = Array.isArray(largest?.value) ? largest.value.slice(0, 20) : [];
+  if (supplyAmount <= 0n || largestAccounts.length === 0 ||
+      !Number.isSafeInteger(largest?.context?.slot) ||
+      !Number.isSafeInteger(supply?.context?.slot)) {
+    throw new Error("Holder supply or largest-account data is unavailable or malformed");
+  }
+  if (largestAccounts.some(account =>
+    !account || typeof account.address !== "string" ||
+    !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(account.address) ||
+    typeof account.amount !== "string" || !/^(0|[1-9][0-9]*)$/.test(account.amount)
+  )) {
+    throw new Error("Largest-holder account list contains incomplete or malformed entries");
+  }
   // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
+  // Resolve every returned account and fail closed rather than silently
+  // calculating concentration from a partial subset.
+  const holderMinContextSlot = Math.max(largest.context.slot, supply.context.slot);
   const accountDetails = await rpc(
     "getMultipleAccounts",
-    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
+    [largestAccounts.map(account => account.address), {
+      encoding: "jsonParsed",
+      commitment: "confirmed",
+      minContextSlot: holderMinContextSlot
+    }],
     env
   );
+  if (!Array.isArray(accountDetails?.value) ||
+      accountDetails.value.length !== largestAccounts.length ||
+      !Number.isSafeInteger(accountDetails?.context?.slot) ||
+      accountDetails.context.slot < holderMinContextSlot ||
+      accountDetails.context.slot - Math.min(largest.context.slot, supply.context.slot) > 32) {
+    throw new Error("Holder account details are incomplete or from inconsistent RPC contexts");
+  }
+  const tokenProgramIds = new Set([
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  ]);
   const ownerBalances = new Map();
   for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
+    const account = accountDetails.value[i];
     const info = account?.data?.parsed?.info;
     const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+    const amountRaw = info?.tokenAmount?.amount;
+    if (!account || !tokenProgramIds.has(account.owner) ||
+        info?.mint !== mint ||
+        typeof owner !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(owner) ||
+        typeof amountRaw !== "string" || !/^(0|[1-9][0-9]*)$/.test(amountRaw)) {
+      throw new Error("A largest-holder token account could not be verified completely");
+    }
+    const amount = BigInt(amountRaw);
+    ownerBalances.set(owner, (ownerBalances.get(owner) || 0n) + amount);
   }
   if (!ownerBalances.size) throw new Error("Token account owners unavailable");
-  const ownerPercentages = [...ownerBalances.values()]
-    .map(amount => amount / supplyAmount * 100)
-    .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
+  // These are wallet-owner aggregates across the top 20 largest token
+  // accounts, not a complete scan of every token account on the network.
+  const sortedOwnerAmounts = [...ownerBalances.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+  const largestOwnerAmount = sortedOwnerAmounts[0] || 0n;
+  const topTenOwnerAmount = sortedOwnerAmounts.slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
+  const largestPct = Number(largestOwnerAmount * 10000n / supplyAmount) / 100;
+  const topTenPct = Number(topTenOwnerAmount * 10000n / supplyAmount) / 100;
+  const largestOverLimit = largestOwnerAmount * 100n > supplyAmount * 30n;
+  const topTenOverLimit = topTenOwnerAmount * 100n > supplyAmount * 50n;
   const liquidity = Number(market.liquidity?.usd || 0);
   const volume = Number(market.volume?.h24 || 0);
   const sells = Number(market.txns?.h24?.sells || 0);
@@ -563,8 +604,8 @@ async function inspectMint(mint, env) {
   if (volume < 1000) reasons.push("24h volume below $1,000");
   if (sells <= 0) reasons.push("No 24h sells");
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
+  if (largestOverLimit) reasons.push("Largest holder above 30%");
+  if (topTenOverLimit) reasons.push("Top 10 holders above 50%");
   if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
