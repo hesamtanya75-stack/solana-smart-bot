@@ -11,12 +11,13 @@ function fixture({ authority = Keypair.generate().publicKey, tag = 1 } = {}) {
   const programId = Keypair.generate().publicKey.toBase58();
   const programDataAddress = Keypair.generate().publicKey;
   const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 1, 2, 3, 4, 5]);
-  const programData = Buffer.alloc(45 + elf.length);
+  const executableOffset = tag === 1 ? 45 : 13;
+  const programData = Buffer.alloc(executableOffset + elf.length);
   programData.writeUInt32LE(3, 0);
   programData.writeBigUInt64LE(119721738n, 4);
   programData[12] = tag;
   if (tag === 1) authority.toBuffer().copy(programData, 13);
-  elf.copy(programData, tag === 1 ? 45 : 13);
+  elf.copy(programData, executableOffset);
   const program = Buffer.alloc(36);
   program.writeUInt32LE(2, 0);
   programDataAddress.toBuffer().copy(program, 4);
