@@ -66,6 +66,19 @@ test("TOTP challenge attempts are counted atomically and cannot be reused", asyn
   assert.equal((await call({ op: "mfa-consume", challengeId })).consumed, false);
 });
 
+test("TOTP rate limits apply across newly created challenges from the same IP", async () => {
+  const { call } = setup();
+  const challengeIds = Array.from({ length: 8 }, (_, index) =>
+    "123e4567-e89b-42d3-a456-" + String(index).padStart(12, "0")
+  );
+  await Promise.all(challengeIds.map(challengeId => call({ op: "mfa-create", challengeId })));
+  const attempts = await Promise.all(challengeIds.map(challengeId =>
+    call({ op: "mfa-attempt", challengeId, ip: "198.51.100.8" })
+  ));
+  assert.equal(attempts.filter(result => result.allowed).length, 5);
+  assert.equal(attempts.filter(result => result.locked).length, 3);
+});
+
 test("a recovery code can be consumed only once under concurrency", async () => {
   const { call } = setup();
   const hash = "a".repeat(64);
