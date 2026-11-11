@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm install
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Read Saber Program and ProgramData (read-only)
         env:
           SOLANA_MAINNET_RPC_URL: ${{ inputs.mainnet_rpc_url || 'https://api.mainnet-beta.solana.com' }}
