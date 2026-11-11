@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerSource).toString("base64");
-const { BotCoordinator } = await import(workerModuleUrl);
+const { BotCoordinator, default: worker } = await import(workerModuleUrl);
 
 class SerialStorage {
   constructor() {
@@ -42,6 +42,17 @@ function setup() {
       return response.json();
     }
   };
+}
+
+class MemoryKV {
+  constructor(entries = []) { this.values = new Map(entries); }
+  async get(key, type) {
+    const value = this.values.get(key);
+    if (value === undefined) return null;
+    return type === "json" ? JSON.parse(value) : value;
+  }
+  async put(key, value) { this.values.set(key, value); }
+  async delete(key) { this.values.delete(key); }
 }
 
 test("concurrent login failures cannot exceed the five-attempt limit", async () => {
@@ -119,4 +130,56 @@ test("stale scheduled state writes are rejected instead of overwriting newer sta
   assert.equal(stale.ok, false);
   assert.equal(stale.status, 409);
   assert.equal(storage.values.get("bot_state").balance, 90);
+});
+
+test("first authenticated state access migrates legacy KV paper trades before updates", async () => {
+  const storage = new SerialStorage();
+  const coordinator = new BotCoordinator({ storage });
+  const kv = new MemoryKV([[
+    "bot_state",
+    JSON.stringify({
+      balance: 42.5,
+      trades: [{ mint: "LegacyMint", amount: 5, buyPrice: 1, tokens: 5, sold: false }],
+      autoEnabled: true,
+      paused: false,
+      scannedMints: [],
+      deferredMints: [],
+      lastScanReport: [],
+      updatedAt: "legacy-version"
+    })
+  ]]);
+  const env = {
+    BOT_STATE: kv,
+    BOT_LOGIN_PASSWORD: "test-password",
+    BOT_COORDINATOR: {
+      idFromName: name => name,
+      get: () => ({ fetch: request => coordinator.fetch(request) })
+    }
+  };
+  const login = await worker.fetch(new Request("https://worker.test/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.9" },
+    body: JSON.stringify({ password: "test-password" })
+  }), env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+
+  const stateResponse = await worker.fetch(new Request("https://worker.test/api/state", {
+    headers: { Authorization: "Bearer " + token }
+  }), env);
+  assert.equal(stateResponse.status, 200);
+  const migrated = await stateResponse.json();
+  assert.equal(migrated.balance, 42.5);
+  assert.equal(migrated.trades[0].mint, "LegacyMint");
+
+  const updateResponse = await worker.fetch(new Request("https://worker.test/api/automation", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ paused: true })
+  }), env);
+  assert.equal(updateResponse.status, 200);
+  const updated = await updateResponse.json();
+  assert.equal(updated.state.balance, 42.5);
+  assert.equal(updated.state.trades[0].mint, "LegacyMint");
+  assert.equal(updated.state.paused, true);
 });
