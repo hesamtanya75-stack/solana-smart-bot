@@ -21,7 +21,9 @@ export class BotCoordinator {
           const windowActive = Number(record?.windowUntil || 0) > now;
           const count = windowActive ? Number(record.count || 0) : 0;
           const next = count + 1;
-          const windowUntil = windowActive ? record.windowUntil : now + 900000;
+          const windowUntil = next >= 5
+            ? now + 900000
+            : (windowActive ? record.windowUntil : now + 900000);
           const lockedUntil = next >= 5 ? windowUntil : 0;
           await txn.put(key, { count: next, windowUntil, lockedUntil });
           return { ok: true, allowed: true, locked: false, attempts: next };
