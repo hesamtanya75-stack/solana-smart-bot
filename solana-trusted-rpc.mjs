@@ -1,10 +1,11 @@
 import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
 import { createTrustedAltResolver } from "./solana-trusted-alt-resolver.mjs";
 import { validateParsedTokenAccount } from "./solana-token-account-validator.mjs";
 import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
 import { inspectUpgradeableProgramAccounts } from "./solana-upgradeable-program.mjs";
-import { validateSaberStableSwapCpi, SABER_STABLE_SWAP_PROGRAM_ID } from "./solana-saber-validator.mjs";
+import { validateSaberStableSwapCpi, SABER_STABLE_SWAP_PROGRAM_ID, SABER_TOKEN_PROGRAM_ID } from "./solana-saber-validator.mjs";
 import { JUPITER_V6_PROGRAM_ID } from "./solana-jupiter-authority.mjs";
 import { identifyJupiterProgramAuthority } from "./solana-jupiter-authority.mjs";
 
@@ -421,8 +422,63 @@ async function inspectSaberCpiAfterSimulation({
     if (result.swapKey !== expectedPoolKey) {
       throw new Error("Saber validator returned a pool different from the trusted route quote");
     }
+
+    const [swapKey, swapAuthority, userAuthority, userSource, swapSource,
+      swapDestination, userDestination, adminDestination] = cpi.accounts;
+    const relevantTokenTransfers = cpiInstructions.filter((item) =>
+      item?.outerInstructionIndex === outerIndex &&
+      item.programId === SABER_TOKEN_PROGRAM_ID &&
+      Array.isArray(item.accounts) && item.accounts.length === 3 &&
+      item.accounts.some((key) => [
+        userSource, swapSource, swapDestination, userDestination, adminDestination
+      ].includes(key))
+    );
+    const decodeTransferAmount = (item) => {
+      if (typeof item.data !== "string") {
+        throw new Error("Saber simulated token transfer data is missing");
+      }
+      let bytes;
+      try { bytes = bs58.decode(item.data); } catch {
+        throw new Error("Saber simulated token transfer data is malformed");
+      }
+      if (bytes.length !== 9 || bytes[0] !== 3) {
+        throw new Error("Saber simulated CPI is not an exact SPL Token Transfer instruction");
+      }
+      return bytes.readBigUInt64LE(1);
+    };
+    const matchesTransfer = (item, source, destination, authority) =>
+      item.accounts[0] === source &&
+      item.accounts[1] === destination &&
+      item.accounts[2] === authority;
+    const inputTransfers = relevantTokenTransfers.filter((item) =>
+      matchesTransfer(item, userSource, swapSource, userAuthority)
+    );
+    const outputTransfers = relevantTokenTransfers.filter((item) =>
+      matchesTransfer(item, swapDestination, userDestination, swapAuthority)
+    );
+    const feeTransfers = relevantTokenTransfers.filter((item) =>
+      matchesTransfer(item, swapDestination, adminDestination, swapAuthority)
+    );
+    if (relevantTokenTransfers.length !== 3 ||
+        inputTransfers.length !== 1 ||
+        outputTransfers.length !== 1 ||
+        feeTransfers.length !== 1) {
+      throw new Error("Saber CPI must contain exactly the three source, output, and admin-fee token transfers");
+    }
+    const simulatedAmountIn = decodeTransferAmount(inputTransfers[0]);
+    const simulatedAmountOut = decodeTransferAmount(outputTransfers[0]);
+    const simulatedAdminFee = decodeTransferAmount(feeTransfers[0]);
+    if (simulatedAmountIn !== BigInt(result.amountIn) ||
+        simulatedAmountOut < BigInt(result.minimumAmountOut) ||
+        simulatedAmountOut + simulatedAdminFee > BigInt(result.destinationReserveAmount)) {
+      throw new Error("Saber simulated token-transfer amounts do not satisfy Swap input, slippage, or reserve bounds");
+    }
+
     validations.push(Object.freeze({
       ...result,
+      simulatedAmountIn: simulatedAmountIn.toString(),
+      simulatedAmountOut: simulatedAmountOut.toString(),
+      simulatedAdminFee: simulatedAdminFee.toString(),
       accountContextSlot: snapshot.context.slot,
       simulationContextSlot
     }));
