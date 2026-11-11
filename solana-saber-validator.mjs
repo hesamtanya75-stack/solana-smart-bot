@@ -55,7 +55,13 @@ function readSwapInfo(account) {
   return Object.freeze(state);
 }
 
-function readTokenAccount(account, expectedMint, expectedAuthority, name) {
+function readTokenAccount(
+  account,
+  expectedMint,
+  expectedAuthority,
+  name,
+  { allowDelegateAndCloseAuthority = false } = {}
+) {
   if (!account || account.executable === true ||
       account.owner?.toBase58?.() !== TOKEN_PROGRAM_ID ||
       !Buffer.isBuffer(account.data) || account.data.length !== 165) {
@@ -70,7 +76,8 @@ function readTokenAccount(account, expectedMint, expectedAuthority, name) {
   const closeAuthority = readCOptionKey(data, 129, name + " close authority");
   if (mint !== expectedMint ||
       (expectedAuthority !== null && authority !== expectedAuthority) ||
-      delegate !== null || closeAuthority !== null || state !== 1) {
+      (!allowDelegateAndCloseAuthority && (delegate !== null || closeAuthority !== null)) ||
+      state !== 1) {
     throw new Error("Saber " + name + " mint, authority, delegate, close authority, or state is invalid");
   }
   return Object.freeze({ mint, authority, amount, state });
@@ -197,7 +204,15 @@ function validateSaberStableSwapCpi({
   }
   // Saber initialization pins the admin-fee account key and mint, but does
   // not require its token authority to be the pool PDA. It is commonly admin-owned.
-  const adminFee = readTokenAccount(get(adminFeeKey), destination.mint, null, "admin fee destination");
+  // Saber only pins this destination's key and mint for incoming transfers.
+  // Existing delegates/close authorities do not affect receipt of the pool transfer.
+  const adminFee = readTokenAccount(
+    get(adminFeeKey),
+    destination.mint,
+    null,
+    "admin fee destination",
+    { allowDelegateAndCloseAuthority: true }
+  );
 
   return Object.freeze({
     allowed: true,
