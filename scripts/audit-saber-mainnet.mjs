@@ -14,6 +14,33 @@ function assertHttpsEndpoint(value) {
   return url.href;
 }
 
+async function readBoundedText(response, maxBytes) {
+  const declared = response.headers.get("content-length");
+  if (declared !== null && (!/^(0|[1-9][0-9]*)$/.test(declared) || Number(declared) > maxBytes)) {
+    throw new Error("HTTP response exceeds configured size limit");
+  }
+  if (!response.body) throw new Error("HTTP response body is unavailable");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new Error("HTTP response exceeds configured size limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total);
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 async function rpcGetMultipleAccounts(pubkeys, minContextSlot = 0) {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -28,8 +55,7 @@ async function rpcGetMultipleAccounts(pubkeys, minContextSlot = 0) {
     })
   });
   if (!response.ok) throw new Error("Mainnet RPC HTTP status " + response.status);
-  const body = await response.text();
-  if (body.length > 2_000_000) throw new Error("Mainnet RPC response exceeds 2 MB");
+  const body = await readBoundedText(response, 2_000_000);
   let json;
   try { json = JSON.parse(body); } catch { throw new Error("Mainnet RPC returned invalid JSON"); }
   if (json.error || !json.result || !json.result.context ||
@@ -87,8 +113,8 @@ async function main() {
       "https://verify.osec.io/status/" + PROGRAM_ID,
       { redirect: "error", signal: AbortSignal.timeout(12_000) }
     );
-    const text = await verifyResponse.text();
-    if (text.length <= 200_000) {
+    const text = await readBoundedText(verifyResponse, 200_000);
+    {
       let payload;
       try { payload = JSON.parse(text); } catch { payload = { raw: text.slice(0, 1000) }; }
       verificationService = {
