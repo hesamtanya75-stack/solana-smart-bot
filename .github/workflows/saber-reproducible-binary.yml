@@ -51,6 +51,11 @@ jobs:
       - name: Set up the exact upstream Nix build environment
         uses: cachix/install-nix-action@v22
 
+      - name: Configure the upstream Saber Nix binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: saber
+
       - name: Download and verify the upstream-pinned Solana BPF toolchain
         working-directory: saber-source
         env:
