@@ -148,7 +148,7 @@ test("first authenticated state access migrates legacy KV paper trades before up
       scannedMints: [],
       deferredMints: [],
       lastScanReport: [],
-      updatedAt: "legacy-version"
+      updatedAt: null
     })
   ]]);
   const env = {
