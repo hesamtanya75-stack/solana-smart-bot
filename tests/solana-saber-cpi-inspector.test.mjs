@@ -162,12 +162,14 @@ function makeFixture({ missingAccountIndex = null, slot = 1200 } = {}) {
     },
     {
       outerInstructionIndex: 0,
+      stackHeight: 3,
       programId: SABER_TOKEN_PROGRAM_ID,
       accounts: [accounts[5], accounts[6], accounts[1]],
       data: transferData(45)
     },
     {
       outerInstructionIndex: 0,
+      stackHeight: 3,
       programId: SABER_TOKEN_PROGRAM_ID,
       accounts: [accounts[5], accounts[7], accounts[1]],
       data: transferData(1)
