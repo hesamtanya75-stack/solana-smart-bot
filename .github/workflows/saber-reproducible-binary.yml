@@ -76,7 +76,7 @@ jobs:
                 previous="$item"
               done
               test -n "$output"
-              printf '%s\\n' '#!/bin/sh' '# Solana 1.11.10 is preinstalled and version-checked in this image.' 'exit 0' > "$output"
+              printf '%s\n' '#!/bin/sh' '# Solana 1.11.10 is preinstalled and version-checked in this image.' 'exit 0' > "$output"
               chmod 0755 "$output"
               exit 0
             fi
