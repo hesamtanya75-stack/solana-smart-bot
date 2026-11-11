@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - mainnet-live-trading-prep
+      - live-trading-policy-enforcement
 
 jobs:
   test:
