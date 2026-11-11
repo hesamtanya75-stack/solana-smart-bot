@@ -292,3 +292,19 @@ test("post-simulation Saber inspector rejects token transfers outside the direct
     expectedPoolKeys: [f.pool]
   }), /exactly the three source, output, and admin-fee token transfers/);
 });
+
+test("post-simulation Saber inspector rejects a reordered token-transfer trace", async () => {
+  const f = makeFixture();
+  const reordered = [
+    f.cpiInstructions[0],
+    f.cpiInstructions[2],
+    f.cpiInstructions[1],
+    f.cpiInstructions[3]
+  ];
+  await assert.rejects(() => inspectSaberCpiAfterSimulation({
+    rpc: f.rpc, decoded: f.decoded, cpiInstructions: reordered,
+    simulationContextSlot: 1200,
+    expectedOuterInstructionIndexes: [0],
+    expectedPoolKeys: [f.pool]
+  }), /source-defined invocation order/);
+});
