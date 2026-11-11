@@ -179,5 +179,5 @@ test("Metis validator rejects a non-derived Jupiter program authority PDA", () =
   const decoded = { ...f.decoded, instructions: [altered], accountMetadata: metadata };
   assert.throws(() => validateMetisJupiterV6Instruction({
     decoded, instruction: altered, ...f.args
-  }), /pinned signer, token programs/);
+  }), /signer or source\/destination token-account privileges/);
 });
