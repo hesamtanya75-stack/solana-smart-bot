@@ -59,6 +59,31 @@ jobs:
           # release.solana.com is intermittently unreachable from Docker builds.
           RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.11.10/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
           ENV PATH="/opt/solana-release/bin:${PATH}"
+          # Anchor 0.24.2's legacy build container redundantly downloads the
+          # Solana installer from release.solana.com even when the exact
+          # 1.11.10 toolchain is already installed above. That host is flaky
+          # from GitHub Actions; return a no-op installer only for this exact
+          # pinned URL. All other curl requests use the original binary.
+          RUN set -eux; real_curl="$(command -v curl)"; install -m 0755 "$real_curl" /usr/local/bin/curl.real; cat > /usr/local/bin/curl <<'CURL_SHIM'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          for arg in "$@"; do
+            if [ "$arg" = "https://release.solana.com/v1.11.10/install" ]; then
+              output=""
+              previous=""
+              for item in "$@"; do
+                if [ "$previous" = "-o" ]; then output="$item"; fi
+                previous="$item"
+              done
+              test -n "$output"
+              printf '%s\\n' '#!/bin/sh' '# Solana 1.11.10 is preinstalled and version-checked in this image.' 'exit 0' > "$output"
+              chmod 0755 "$output"
+              exit 0
+            fi
+          done
+          exec /usr/local/bin/curl.real "$@"
+          CURL_SHIM
+          RUN chmod 0755 /usr/local/bin/curl
           # Solana 1.11.10 provides the legacy cargo-build-bpf toolchain used by Saber.
           # The upstream Saber CI pins Rust/Cargo 1.59.0 alongside Solana 1.11.10.
           # Keep the same host toolchain for byte-for-byte reproducibility.
