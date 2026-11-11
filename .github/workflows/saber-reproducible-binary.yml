@@ -106,8 +106,8 @@ jobs:
           # Solana 1.11.10's bundled BPF cargo dynamically links OpenSSL 1.1.
           # The pinned Nix shell contains the matching library, but its store
           # path is not automatically added to the runtime loader search path.
-          nix shell .#ci --command bash -euo pipefail -c '
-            ssl_lib="$(find /nix/store -type f -name libssl.so.1.1 -print -quit)"
+          nix shell -L --show-trace .#ci --command bash -euo pipefail -c '
+            ssl_lib="$(find -L /nix/store -name libssl.so.1.1 -print -quit)"
             test -n "$ssl_lib"
             ssl_dir="$(dirname "$ssl_lib")"
             export LD_LIBRARY_PATH="$ssl_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
