@@ -224,10 +224,12 @@ async function readState(env) {
   const legacy = await env.BOT_STATE.get("bot_state", "json");
   if (legacy && typeof legacy === "object") {
     try {
+      const migratedState = cleanState(legacy);
+      if (!migratedState.updatedAt) migratedState.updatedAt = new Date().toISOString();
       await coordinatorRequest(env, {
         op: "state-save",
         expectedUpdatedAt: null,
-        state: cleanState(legacy)
+        state: migratedState
       });
     } catch {
       // Another request may have won the one-time migration race. Re-read the
