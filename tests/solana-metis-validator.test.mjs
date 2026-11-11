@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { PublicKey } from "@solana/web3.js";
 import {
   JUPITER_V6_PROGRAM_ID, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
   validateMetisJupiterV6Instruction
@@ -24,9 +25,13 @@ function fixture(overrides = {}) {
     50, 0, // slippage 50 bps
     0 // no platform fee
   ]);
+  const [programAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from("authority"), Buffer.from([0])],
+    new PublicKey(JUPITER_V6_PROGRAM_ID)
+  );
   const instruction = {
     index: 0, programId: JUPITER_V6_PROGRAM_ID,
-    accounts: [TOKEN_PROGRAM_ID, "11111111111111111111111111111115", wallet, source,
+    accounts: [TOKEN_PROGRAM_ID, programAuthority.toBase58(), wallet, source,
       "11111111111111111111111111111116", "11111111111111111111111111111117",
       destination, sourceMint, destinationMint, "11111111111111111111111111111118",
       TOKEN_2022_PROGRAM_ID, dexProgram, amm],
@@ -79,6 +84,8 @@ test("Metis validator binds Jupiter V6 route data, mints, signer, and token acco
   });
   assert.equal(result.allowed, true);
   assert.equal(result.instructionName, "sharedAccountsRouteV2");
+  assert.equal(result.programAuthority, f.instruction.accounts[1]);
+  assert.equal(result.jupiterProgramAuthorityIndex, 0);
   assert.equal(result.tokenAccountExpectations[0].address, source);
   assert.equal(result.tokenAccountExpectations[1].expectedMint, destinationMint);
   assert.deepEqual(result.requiredCpiProgramIds, [dexProgram]);
@@ -161,4 +168,16 @@ test("Metis validator rejects unknown swap variants, route percentage drift, and
       "0": () => ({ allowed: false })
     }
   }), /DEX-specific CPI account semantics were not approved/);
+});
+
+test("Metis validator rejects a non-derived Jupiter program authority PDA", () => {
+  const f = fixture();
+  const altered = { ...f.instruction, accounts: [...f.instruction.accounts] };
+  altered.accounts[1] = "11111111111111111111111111111115";
+  const metadata = f.decoded.accountMetadata.map(item => ({ ...item }));
+  metadata[1] = { ...metadata[1], pubkey: altered.accounts[1] };
+  const decoded = { ...f.decoded, instructions: [altered], accountMetadata: metadata };
+  assert.throws(() => validateMetisJupiterV6Instruction({
+    decoded, instruction: altered, ...f.args
+  }), /pinned signer, token programs/);
 });
