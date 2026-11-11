@@ -18,11 +18,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install pinned Solana Verify CLI
-        run: cargo install solana-verify --version 0.5.2 --locked
+      - name: Install pinned Solana Verify CLI release and verify checksum
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          expected="$(awk '{print $1}' /tmp/solana-verify.sha256)"
+          actual="$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')"
+          test -n "$expected"
+          test "$actual" = "$expected"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          solana-verify --version
 
       - name: Check out pinned Saber source
         env:
@@ -56,7 +65,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
-            echo "- Solana Verify CLI: 0.5.2"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified)"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: ${mainnet_hash:-unavailable}"
             echo "- Devnet program hash: ${devnet_hash:-unavailable}"
