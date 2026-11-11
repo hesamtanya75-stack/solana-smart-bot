@@ -893,7 +893,34 @@ export default {
               (body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string")) {
             return json({ error: "State version is required; sync before saving" }, 428);
           }
-          const { expectedUpdatedAt, ...patch } = body;
+          const { expectedUpdatedAt } = body;
+          const patch = {};
+          if (Object.prototype.hasOwnProperty.call(body, "balance")) {
+            if (!Number.isFinite(body.balance) || body.balance < 0) return json({ error: "Invalid paper balance" }, 400);
+            patch.balance = body.balance;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "trades")) {
+            if (!Array.isArray(body.trades) || body.trades.length > 500 ||
+                body.trades.some(trade => !trade || typeof trade !== "object" || Array.isArray(trade))) {
+              return json({ error: "Invalid paper trades" }, 400);
+            }
+            patch.trades = body.trades;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "autoEnabled")) {
+            if (typeof body.autoEnabled !== "boolean") return json({ error: "Invalid automation setting" }, 400);
+            patch.autoEnabled = body.autoEnabled;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "paused")) {
+            if (typeof body.paused !== "boolean") return json({ error: "Invalid automation setting" }, 400);
+            patch.paused = body.paused;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "scannedMints")) {
+            if (!Array.isArray(body.scannedMints) || body.scannedMints.length > 1000 ||
+                body.scannedMints.some(mint => typeof mint !== "string")) {
+              return json({ error: "Invalid scan history" }, 400);
+            }
+            patch.scannedMints = body.scannedMints;
+          }
           const state = await patchState(env, patch, expectedUpdatedAt);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
