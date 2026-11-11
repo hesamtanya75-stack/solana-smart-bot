@@ -695,14 +695,14 @@ export default {
           }
         }
         if (!valid) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
+        if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
         if (backupCodeHash) {
           const backupUse = await coordinatorRequest(env, { op: "backup-consume", hash: backupCodeHash });
           if (!backupUse.consumed) return json({ error: "کۆدی گەڕاندنەوە پێشتر بەکارهاتووە" }, 401);
           profile.backupHash = null;
           await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
         }
-        const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
-        if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
