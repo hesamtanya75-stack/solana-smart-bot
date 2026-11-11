@@ -121,6 +121,27 @@ test("Saber validator accepts admin-owned fee accounts while still pinning fee m
   assert.throws(() => validateSaberStableSwapCpi(wrongFeeMint.args), /admin fee destination mint/);
 });
 
+test("Saber validator permits admin fee delegate and close authority because Saber only receives into that account", () => {
+  const f = fixture();
+  const fee = f.rawAccounts.get(f.accounts[7]).data;
+  const delegate = Keypair.generate().publicKey;
+  const closeAuthority = Keypair.generate().publicKey;
+  fee.writeUInt32LE(1, 72);
+  delegate.toBuffer().copy(fee, 76);
+  fee.writeUInt32LE(1, 129);
+  closeAuthority.toBuffer().copy(fee, 133);
+
+  const result = validateSaberStableSwapCpi(f.args);
+  assert.equal(result.allowed, true);
+  assert.equal(result.adminFeeMint, f.mintBKey.toBase58());
+
+  const reserveWithDelegate = fixture();
+  const reserve = reserveWithDelegate.rawAccounts.get(reserveWithDelegate.accounts[4]).data;
+  reserve.writeUInt32LE(1, 72);
+  Keypair.generate().publicKey.toBuffer().copy(reserve, 76);
+  assert.throws(() => validateSaberStableSwapCpi(reserveWithDelegate.args), /swap source reserve/);
+});
+
 test("Saber validator rejects malformed instruction data and zero swap amounts", () => {
   const f = fixture();
   assert.throws(() => validateSaberStableSwapCpi({ ...f.args, data: bs58.encode(Buffer.from([1, 2])) }), /17-byte Swap/);
