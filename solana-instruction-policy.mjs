@@ -190,8 +190,13 @@ export function validateSimulatedCpi({
         }
       }
       programIds.add(programId);
+      if (inner.stackHeight !== undefined &&
+          (!Number.isInteger(inner.stackHeight) || inner.stackHeight < 2 || inner.stackHeight > 64)) {
+        throw new Error("Simulation returned an invalid CPI stack height");
+      }
       cpiInstructions.push(Object.freeze({
         outerInstructionIndex: group.index,
+        stackHeight: Number.isInteger(inner.stackHeight) ? inner.stackHeight : null,
         programId,
         accounts: Object.freeze(inner.accounts.map((index) => decoded.accountKeys[index])),
         data: typeof inner.data === "string" ? inner.data : null
