@@ -138,7 +138,10 @@ function validateSaberStableSwapCpi({
     const meta = decoded.accountMetadata.find((item) => item.pubkey === accounts[i]);
     if (!meta) throw new Error("Saber CPI account is absent from decoded transaction metadata");
     const shouldWrite = i >= 3 && i <= 7;
-    if ((i !== 2 && meta.isSigner === true) ||
+    // The user-authority account must be an actual transaction signer.
+    // Merely matching the expected public key is not sufficient authorization.
+    if ((i === 2 && meta.isSigner !== true) ||
+        (i !== 2 && meta.isSigner === true) ||
         (shouldWrite && meta.isWritable !== true)) {
       throw new Error("Saber CPI account signer or writable privilege does not match the official instruction");
     }
