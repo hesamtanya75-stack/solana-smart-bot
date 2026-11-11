@@ -1,0 +1,69 @@
+name: Saber reproducible binary verification
+
+on:
+  push:
+    branches:
+      - live-trading-policy-enforcement
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saber-reproducible-binary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare-source-build-to-mainnet-and-devnet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pinned Solana Verify CLI
+        run: cargo install solana-verify --version 0.6.0 --locked
+
+      - name: Check out pinned Saber source
+        env:
+          SABER_SOURCE_COMMIT: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff
+        run: |
+          git clone https://github.com/saber-hq/stable-swap.git saber-source
+          git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
+          test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
+
+      - name: Reproducible build from pinned source
+        working-directory: saber-source
+        run: |
+          solana-verify build --library-name stable_swap
+          test -s target/deploy/stable_swap.so
+          solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
+
+      - name: Compare built executable with Mainnet and Devnet
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable_hash="$(grep -Eo '[a-f0-9]{64}' ../executable-hash.txt | tail -n 1)"
+          test -n "$executable_hash"
+
+          solana-verify get-program-hash -u https://api.mainnet-beta.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../mainnet-hash.txt
+          solana-verify get-program-hash -u https://api.devnet.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../devnet-hash.txt
+
+          mainnet_hash="$(grep -Eo '[a-f0-9]{64}' ../mainnet-hash.txt | tail -n 1)"
+          devnet_hash="$(grep -Eo '[a-f0-9]{64}' ../devnet-hash.txt | tail -n 1)"
+
+          {
+            echo "## Saber source-to-binary comparison"
+            echo "- Source commit: 39d5d4e0e844a009c83d37a3ce63d219fdba0bff"
+            echo "- Solana Verify CLI: 0.6.0"
+            echo "- Rebuilt executable hash: $executable_hash"
+            echo "- Mainnet program hash: ${mainnet_hash:-unavailable}"
+            echo "- Devnet program hash: ${devnet_hash:-unavailable}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test -n "$mainnet_hash"
+          test -n "$devnet_hash"
+          test "$executable_hash" = "$mainnet_hash"
+          test "$executable_hash" = "$devnet_hash"
+          echo "Saber source build matches both Mainnet and Devnet executable hashes."
