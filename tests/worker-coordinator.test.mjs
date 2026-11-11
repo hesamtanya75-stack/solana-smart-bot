@@ -105,11 +105,12 @@ test("a recovery code can be consumed only once under concurrency", async () => 
 
 test("concurrent state patches preserve independent updates", async () => {
   const { call, storage } = setup();
-  await Promise.all([
+  const updates = await Promise.all([
     call({ op: "state-patch", patch: { autoEnabled: true } }),
     call({ op: "state-patch", patch: { paused: true } }),
     call({ op: "state-patch", patch: { balance: 77 } })
   ]);
+  assert.equal(new Set(updates.map(result => result.state.updatedAt)).size, 3);
   const state = storage.values.get("bot_state");
   assert.equal(state.autoEnabled, true);
   assert.equal(state.paused, true);
