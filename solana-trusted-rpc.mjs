@@ -385,6 +385,9 @@ async function inspectSaberCpiAfterSimulation({
       [expectedPoolKey],
       { minContextSlot: simulationContextSlot }
     );
+    if (firstRead.context.slot !== simulationContextSlot) {
+      throw new Error("Saber pool account read is not from the exact simulation context slot");
+    }
     const pool = firstRead.value[0];
     if (!pool ||
         pool.owner.toBase58() !== SABER_STABLE_SWAP_PROGRAM_ID ||
@@ -404,9 +407,9 @@ async function inspectSaberCpiAfterSimulation({
       addresses,
       { minContextSlot: firstRead.context.slot }
     );
-    if (snapshot.context.slot < firstRead.context.slot ||
-        snapshot.context.slot < simulationContextSlot) {
-      throw new Error("Saber raw-account snapshot is older than the simulation or pool-state read");
+    if (snapshot.context.slot !== simulationContextSlot ||
+        snapshot.context.slot !== firstRead.context.slot) {
+      throw new Error("Saber raw-account snapshot is not from the exact simulation context slot");
     }
     const rawAccounts = new Map(
       addresses.map((address, index) => [address, snapshot.value[index]])
