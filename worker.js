@@ -1,3 +1,91 @@
+export class BotCoordinator {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+  async fetch(request) {
+    if (request.method !== "POST") return Response.json({ ok: false, error: "Method not allowed" }, { status: 405 });
+    let body;
+    try { body = await request.json(); } catch { return Response.json({ ok: false, error: "Invalid request" }, { status: 400 }); }
+    try {
+      const result = await this.ctx.storage.transaction(async txn => {
+        const now = Date.now();
+        if (body.op === "login-attempt") {
+          const ip = String(body.ip || "unknown").slice(0, 64);
+          const key = "login:" + ip;
+          const record = await txn.get(key);
+          if (record?.until > now) return { ok: true, allowed: false, locked: true };
+          if (body.success === true) {
+            await txn.delete(key);
+            return { ok: true, allowed: true, locked: false };
+          }
+          const count = record?.until > now ? Number(record.count || 0) : 0;
+          const next = count + 1;
+          await txn.put(key, { count: next, until: now + 900000 });
+          return { ok: true, allowed: true, locked: false, attempts: next };
+        }
+        if (body.op === "mfa-create") {
+          const id = String(body.challengeId || "");
+          if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, status: 400, error: "Invalid challenge" };
+          await txn.put("mfa:" + id, { createdAt: now, attempts: 0, consumed: false });
+          return { ok: true };
+        }
+        if (body.op === "mfa-attempt") {
+          const id = String(body.challengeId || "");
+          const key = "mfa:" + id;
+          const challenge = await txn.get(key);
+          if (!challenge || challenge.consumed || now - Number(challenge.createdAt || 0) > 300000) {
+            await txn.delete(key);
+            return { ok: true, allowed: false, expired: true };
+          }
+          if (Number(challenge.attempts || 0) >= 5) {
+            await txn.delete(key);
+            return { ok: true, allowed: false, locked: true };
+          }
+          challenge.attempts = Number(challenge.attempts || 0) + 1;
+          await txn.put(key, challenge);
+          return { ok: true, allowed: true, attempts: challenge.attempts };
+        }
+        if (body.op === "mfa-consume") {
+          const id = String(body.challengeId || "");
+          const key = "mfa:" + id;
+          const challenge = await txn.get(key);
+          if (!challenge || challenge.consumed || now - Number(challenge.createdAt || 0) > 300000) {
+            await txn.delete(key);
+            return { ok: true, consumed: false };
+          }
+          await txn.delete(key);
+          return { ok: true, consumed: true };
+        }
+        if (body.op === "state-read") {
+          return { ok: true, state: (await txn.get("bot_state")) || null };
+        }
+        if (body.op === "state-save") {
+          const current = await txn.get("bot_state");
+          const actualVersion = current?.updatedAt ?? null;
+          if (actualVersion !== (body.expectedUpdatedAt ?? null)) {
+            return { ok: false, status: 409, error: "State changed during processing; stale write rejected" };
+          }
+          await txn.put("bot_state", body.state);
+          return { ok: true, state: body.state };
+        }
+        if (body.op === "state-patch") {
+          const current = (await txn.get("bot_state")) || {};
+          const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
+          const next = { ...current, ...patch };
+          if (patch.lastScanReport == null) next.lastScanReport = current.lastScanReport || [];
+          next.updatedAt = new Date(now).toISOString();
+          await txn.put("bot_state", next);
+          return { ok: true, state: next };
+        }
+        return { ok: false, status: 400, error: "Unknown operation" };
+      });
+      return Response.json(result, { status: result.status || (result.ok ? 200 : 400) });
+    } catch {
+      return Response.json({ ok: false, error: "Atomic coordinator storage failure" }, { status: 503 });
+    }
+  }
+}
+
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -44,12 +132,32 @@ function cleanState(value) {
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
+async function coordinatorRequest(env, payload) {
+  if (!env.BOT_COORDINATOR) throw new Error("Atomic coordinator binding unavailable");
+  const id = env.BOT_COORDINATOR.idFromName("solana-smart-bot-global");
+  const response = await env.BOT_COORDINATOR.get(id).fetch("https://coordinator.internal/operation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json();
+  if (!response.ok || result?.ok !== true) {
+    throw new Error(result?.error || "Atomic coordinator operation failed");
+  }
+  return result;
+}
 async function readState(env) {
-  return cleanState(await env.BOT_STATE.get("bot_state", "json"));
+  const result = await coordinatorRequest(env, { op: "state-read" });
+  return cleanState(result.state);
 }
 async function saveState(env, state) {
+  const expectedUpdatedAt = state.updatedAt ?? null;
   state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  await coordinatorRequest(env, { op: "state-save", expectedUpdatedAt, state });
+}
+async function patchState(env, patch) {
+  const result = await coordinatorRequest(env, { op: "state-patch", patch });
+  return cleanState(result.state);
 }
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -542,22 +650,17 @@ export default {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginKey = "login_fail:" + ip;
-        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
-        if (Number(failures.count || 0) >= 5) {
-          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
         if (!expected || typeof password !== "string" || password !== expected) {
-          await env.BOT_STATE.put(loginKey, JSON.stringify({
-            count: Number(failures.count || 0) + 1
-          }), { expirationTtl: 900 });
+          const attempt = await coordinatorRequest(env, { op: "login-attempt", ip, success: false });
+          if (attempt.locked) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(loginKey);
+        const loginAllowed = await coordinatorRequest(env, { op: "login-attempt", ip, success: true });
+        if (!loginAllowed.allowed) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         const profile = await readProfile(env);
         if (profile.totpEnabled && profile.totpSecret) {
           const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          await coordinatorRequest(env, { op: "mfa-create", challengeId });
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
@@ -570,10 +673,9 @@ export default {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
-        const key = "mfa_challenge:" + challengeId;
-        const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
-        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
+        const attempt = await coordinatorRequest(env, { op: "mfa-attempt", challengeId });
+        if (attempt.expired) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (attempt.locked) return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
         if (!valid && profile.backupHash) {
@@ -584,12 +686,9 @@ export default {
             await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
           }
         }
-        if (!valid) {
-          challenge.attempts = Number(challenge.attempts || 0) + 1;
-          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
-          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-        }
-        await env.BOT_STATE.delete(key);
+        if (!valid) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
+        if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
@@ -687,19 +786,17 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
-          const current = await readState(env);
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          await saveState(env, state);
+          const state = await patchState(env, body);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
+          const patch = {};
+          if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
+          if (typeof body.paused === "boolean") patch.paused = body.paused;
+          const state = await patchState(env, patch);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid settings" }, 400); }
       }
@@ -782,7 +879,12 @@ export default {
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
         : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
+      try {
+        await saveState(env, state);
+      } catch (error) {
+        console.error("Server cycle state write rejected; newer state was preserved", String(error?.message || error));
+        return;
+      }
 
       // Safe operational log: never include secrets, wallet data, or API keys.
       console.info("Server cycle finished", {
