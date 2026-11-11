@@ -377,6 +377,7 @@ async function inspectSaberCpiAfterSimulation({
     }
     const cpi = matching[0];
     if (cpi.accounts.length !== 9 || cpi.accounts[2] !== programAuthority ||
+        !Number.isInteger(cpi.stackHeight) || cpi.stackHeight < 2 ||
         typeof cpi.data !== "string") {
       throw new Error("Saber CPI account order or Jupiter program-authority binding is invalid");
     }
@@ -431,6 +432,7 @@ async function inspectSaberCpiAfterSimulation({
     const relevantTokenTransfers = cpiInstructions.filter((item) =>
       item?.outerInstructionIndex === outerIndex &&
       item.programId === SABER_TOKEN_PROGRAM_ID &&
+      item.stackHeight === cpi.stackHeight + 1 &&
       Array.isArray(item.accounts) && item.accounts.length === 3 &&
       item.accounts.some((key) => [
         userSource, swapSource, swapDestination, userDestination, adminDestination
