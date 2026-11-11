@@ -59,6 +59,8 @@ jobs:
           # release.solana.com is intermittently unreachable from Docker builds.
           RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.11.10/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
           ENV PATH="/opt/solana-release/bin:${PATH}"
+          # Anchor invokes cargo-build-bpf inside this image; pin its SDK explicitly.
+          ENV BPF_SDK_PATH="/opt/solana-release/bin/sdk/bpf"
           # Anchor 0.24.2's legacy build container redundantly downloads the
           # Solana installer from release.solana.com even when the exact
           # 1.11.10 toolchain is already installed above. That host is flaky
@@ -87,7 +89,7 @@ jobs:
           # Solana 1.11.10 provides the legacy cargo-build-bpf toolchain used by Saber.
           # The upstream Saber CI pins Rust/Cargo 1.59.0 alongside Solana 1.11.10.
           # Keep the same host toolchain for byte-for-byte reproducibility.
-          RUN set -eux; command -v rustup; rustup toolchain install 1.59.0 --profile minimal; rustup default 1.59.0; cargo --version | grep -q "cargo 1\\.59\\.0 "; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf
+          RUN set -eux; test -x "$BPF_SDK_PATH/scripts/strip.sh"; command -v rustup; rustup toolchain install 1.59.0 --profile minimal; rustup default 1.59.0; cargo --version | grep -q "cargo 1\\.59\\.0 "; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf; echo "Pinned BPF_SDK_PATH=$BPF_SDK_PATH"
           DOCKERFILE
           docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.11.10 .
           # Use a non-login shell so /etc/profile cannot replace the pinned PATH.
@@ -107,8 +109,12 @@ jobs:
           docker tag saber-legacy-bpf:solana-1.11.10 projectserum/build:v0.24.2
           nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
           nix shell .#ci --command anchor build --verifiable --program-name stable_swap
-          test -s target/deploy/stable_swap.so
-          solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
+          mapfile -t built_binaries < <(find target -type f -name stable_swap.so -print)
+          printf "Found %s stable_swap.so build artifact(s):\\n" "${#built_binaries[@]}"
+          printf "%s\\n" "${built_binaries[@]}"
+          test "${#built_binaries[@]}" -eq 1
+          test -s "${built_binaries[0]}"
+          solana-verify get-executable-hash "${built_binaries[0]}" | tee ../executable-hash.txt
 
       - name: Compare built executable with Mainnet and Devnet
         id: compare
