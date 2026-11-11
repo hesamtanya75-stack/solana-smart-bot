@@ -1,3 +1,4 @@
+import { deriveJupiterProgramAuthorityId, identifyJupiterProgramAuthority } from "./solana-jupiter-authority.mjs";
 const JUPITER_V6_PROGRAM_ID = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 // Saber StableSwap mainnet program. Source is available, but the deployed
 // mainnet binary has not been independently verified against that source.
@@ -98,7 +99,7 @@ function validateMetisJupiterV6Instruction({
     throw new Error("Metis quote amounts, slippage, fee, or route plan are invalid");
   }
   const accounts = instruction.accounts;
-  const [tokenProgram, , authority, sourceTokenAccount, , , destinationTokenAccount, sourceMint, destinationMint, , token2022Program] = accounts;
+  const [tokenProgram, programAuthority, authority, sourceTokenAccount, , , destinationTokenAccount, sourceMint, destinationMint, , token2022Program] = accounts;
   if (tokenProgram !== TOKEN_PROGRAM_ID ||
       token2022Program !== TOKEN_2022_PROGRAM_ID ||
       authority !== expectedSigner ||
@@ -106,11 +107,15 @@ function validateMetisJupiterV6Instruction({
       sourceTokenAccount === destinationTokenAccount) {
     throw new Error("Metis route accounts do not match the pinned signer, token programs, and requested mints");
   }
+  const programAuthorityIndex = instruction.accountIndexes?.[1];
   const authorityIndex = instruction.accountIndexes?.[2];
   const sourceIndex = instruction.accountIndexes?.[3];
   const destinationIndex = instruction.accountIndexes?.[6];
   const metadata = decoded.accountMetadata;
   if (!Array.isArray(metadata) ||
+      metadata[programAuthorityIndex]?.pubkey !== programAuthority ||
+      metadata[programAuthorityIndex]?.isSigner === true ||
+      !identifyJupiterProgramAuthority(programAuthority) ||
       metadata[authorityIndex]?.pubkey !== expectedSigner ||
       metadata[authorityIndex]?.isSigner !== true ||
       metadata[sourceIndex]?.pubkey !== sourceTokenAccount ||
@@ -202,6 +207,8 @@ function validateMetisJupiterV6Instruction({
     destinationTokenAccount,
     sourceMint,
     destinationMint,
+    programAuthority,
+    jupiterProgramAuthorityIndex: identifyJupiterProgramAuthority(programAuthority),
     tokenProgramId: tokenProgram,
     tokenAccountExpectations: Object.freeze([
       Object.freeze({
