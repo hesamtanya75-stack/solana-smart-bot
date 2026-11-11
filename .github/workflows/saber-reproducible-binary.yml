@@ -118,14 +118,9 @@ jobs:
             ssl_dir="$(dirname "$ssl_lib")"
             export LD_LIBRARY_PATH="$ssl_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
             cargo_bin="$HOME/.rustup/toolchains/bpf/bin/cargo"
-            if [ ! -x "$cargo_bin" ]; then
-              echo "ERROR: expected pinned BPF cargo is missing: $cargo_bin" >&2
-              find "$HOME/.rustup/toolchains" -maxdepth 5 -type f -name cargo -print 2>/dev/null || true
-              exit 1
-            fi
             # cargo-build-bpf installs and rustup-links the pinned BPF
-            # toolchain on its first invocation. Do not check its cargo path
-            # before Anchor triggers that installation.
+            # toolchain on its first invocation. Anchor must run before
+            # checking the rustup-linked cargo path.
             anchor build --program-name stable_swap
 
             if [ ! -x "$cargo_bin" ]; then
