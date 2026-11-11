@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           # --bpf is required for this legacy Anchor program. The explicit image
           # prevents solana-verify's default 1.13.5 image from overriding 1.11.10.
-          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.11.10 --library-name stable_swap . -- -Z unstable-options
+          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.11.10 --library-name stable_swap "$PWD" -- -Z unstable-options
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
