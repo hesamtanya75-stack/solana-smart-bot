@@ -148,12 +148,14 @@ function makeFixture({ missingAccountIndex = null, slot = 1200 } = {}) {
   const cpiInstructions = [
     {
       outerInstructionIndex: 0,
+      stackHeight: 2,
       programId: SABER_STABLE_SWAP_PROGRAM_ID,
       accounts,
       data: bs58.encode(instructionData)
     },
     {
       outerInstructionIndex: 0,
+      stackHeight: 3,
       programId: SABER_TOKEN_PROGRAM_ID,
       accounts: [accounts[3], accounts[4], accounts[2]],
       data: transferData(50)
@@ -275,4 +277,16 @@ test("post-simulation Saber inspector rejects raw-account snapshots newer than t
     expectedOuterInstructionIndexes: [0],
     expectedPoolKeys: [f.pool]
   }), /exact simulation context slot/);
+});
+
+test("post-simulation Saber inspector rejects token transfers outside the direct Saber CPI stack", async () => {
+  const f = makeFixture();
+  const altered = f.cpiInstructions.map((item) => ({ ...item, accounts: [...item.accounts] }));
+  altered[1].stackHeight = 2;
+  await assert.rejects(() => inspectSaberCpiAfterSimulation({
+    rpc: f.rpc, decoded: f.decoded, cpiInstructions: altered,
+    simulationContextSlot: 1200,
+    expectedOuterInstructionIndexes: [0],
+    expectedPoolKeys: [f.pool]
+  }), /exactly the three source, output, and admin-fee token transfers/);
 });
