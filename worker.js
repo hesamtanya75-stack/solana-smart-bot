@@ -490,37 +490,66 @@ async function getDexJson(url, env, ttlSeconds = 30) {
 
 function mintDetails(account) {
   const value = account?.value;
-  if (!value) throw new Error("Mint account unavailable");
-  let mintAuthority = null, freezeAuthority = null, extensions = [];
-  const parsed = value.data?.parsed?.info;
-  if (parsed) {
-    mintAuthority = !!parsed.mintAuthority;
-    freezeAuthority = !!parsed.freezeAuthority;
+  const tokenProgramIds = new Set([
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  ]);
+  if (!value || !tokenProgramIds.has(value.owner)) {
+    throw new Error("Mint account is not owned by the canonical SPL Token or Token-2022 program");
   }
   const raw = value.data;
-  if (Array.isArray(raw) && typeof raw[0] === "string") {
-    const bytes = Uint8Array.from(atob(raw[0]), c => c.charCodeAt(0));
-    if (bytes.length >= 82) {
-      const u32 = i => (bytes[i] | (bytes[i+1] << 8) | (bytes[i+2] << 16) | (bytes[i+3] << 24)) >>> 0;
-      const ma = u32(0), fa = u32(46);
-      if (ma <= 1 && fa <= 1) {
-        mintAuthority = ma === 1;
-        freezeAuthority = fa === 1;
-      }
+  if (!Array.isArray(raw) || raw.length !== 2 || raw[1] !== "base64" ||
+      typeof raw[0] !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw[0])) {
+    throw new Error("Mint account data is not canonical base64");
+  }
+  const binary = atob(raw[0]);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  if (bytes.length < 82 || bytes.length > 10240 ||
+      (value.owner === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" && bytes.length !== 82)) {
+    throw new Error("Mint account data length does not match its token program");
+  }
+  const readU32 = i =>
+    (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24)) >>> 0;
+  const mintOption = readU32(0);
+  const freezeOption = readU32(46);
+  if ((mintOption !== 0 && mintOption !== 1) ||
+      (freezeOption !== 0 && freezeOption !== 1) ||
+      bytes[45] !== 1) {
+    throw new Error("Mint authority options or initialized flag are invalid");
+  }
+  const extensions = [];
+  if (bytes.length > 82) {
+    if (value.owner !== "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" ||
+        bytes.length < 166 || bytes[165] !== 1) {
+      throw new Error("Token-2022 mint extension header is invalid");
     }
-    if (bytes.length >= 166) {
-      let offset = 166;
-      while (offset + 4 <= bytes.length) {
-        const type = bytes[offset] | (bytes[offset+1] << 8);
-        const length = bytes[offset+2] | (bytes[offset+3] << 8);
-        if (type === 0 && length === 0) break;
-        if (offset + 4 + length > bytes.length) break;
-        extensions.push(type);
-        offset += 4 + length;
+    let offset = 166;
+    while (offset < bytes.length) {
+      if (offset + 4 > bytes.length) {
+        throw new Error("Token-2022 mint extension header is truncated");
       }
+      const type = bytes[offset] | (bytes[offset + 1] << 8);
+      const length = bytes[offset + 2] | (bytes[offset + 3] << 8);
+      if (type === 0 && length === 0) {
+        if (bytes.subarray(offset).some(byte => byte !== 0)) {
+          throw new Error("Token-2022 mint extension padding is malformed");
+        }
+        break;
+      }
+      if (type === 0 || offset + 4 + length > bytes.length) {
+        throw new Error("Token-2022 mint extension length or type is invalid");
+      }
+      extensions.push(type);
+      offset += 4 + length;
     }
   }
-  return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
+  return {
+    mintAuthority: mintOption === 1,
+    freezeAuthority: freezeOption === 1,
+    extensions,
+    owner: value.owner
+  };
 }
 async function inspectMint(mint, env) {
   // Check for a real Solana market first. New-token profile entries can exist
