@@ -25,10 +25,14 @@ jobs:
           base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
           curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
           curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
-          expected="$(awk '{print $1}' /tmp/solana-verify.sha256)"
-          actual="$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')"
-          test -n "$expected"
-          test "$actual" = "$expected"
+          checksum_file_sha256="e72ee837ee95c845d59065fcdb9896ea459347ef88e6d73f8f1e082ca6ce235b"
+          expected_binary_sha256="b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          actual_checksum_file_sha256="$(sha256sum /tmp/solana-verify.sha256 | awk '{print $1}')"
+          expected_from_file="$(awk '{print $1}' /tmp/solana-verify.sha256)"
+          actual_binary_sha256="$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')"
+          test "$actual_checksum_file_sha256" = "$checksum_file_sha256"
+          test "$expected_from_file" = "$expected_binary_sha256"
+          test "$actual_binary_sha256" = "$expected_binary_sha256"
           chmod 0755 "$HOME/.local/bin/solana-verify"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           solana-verify --version
