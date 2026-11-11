@@ -68,7 +68,8 @@ function readTokenAccount(account, expectedMint, expectedAuthority, name) {
   const delegate = readCOptionKey(data, 72, name + " delegate");
   const state = data[108];
   const closeAuthority = readCOptionKey(data, 129, name + " close authority");
-  if (mint !== expectedMint || authority !== expectedAuthority ||
+  if (mint !== expectedMint ||
+      (expectedAuthority !== null && authority !== expectedAuthority) ||
       delegate !== null || closeAuthority !== null || state !== 1) {
     throw new Error("Saber " + name + " mint, authority, delegate, close authority, or state is invalid");
   }
@@ -194,7 +195,9 @@ function validateSaberStableSwapCpi({
   if (reserveSource.amount === 0n || reserveDestination.amount === 0n) {
     throw new Error("Saber pool reserve balance is empty");
   }
-  const adminFee = readTokenAccount(get(adminFeeKey), destination.mint, derivedAuthority, "admin fee destination");
+  // Saber initialization pins the admin-fee account key and mint, but does
+  // not require its token authority to be the pool PDA. It is commonly admin-owned.
+  const adminFee = readTokenAccount(get(adminFeeKey), destination.mint, null, "admin fee destination");
 
   return Object.freeze({
     allowed: true,
