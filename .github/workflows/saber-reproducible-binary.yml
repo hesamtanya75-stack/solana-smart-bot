@@ -65,7 +65,8 @@ jobs:
           RUN set -eux; command -v rustup; rustup toolchain install 1.59.0 --profile minimal; rustup default 1.59.0; cargo --version | grep -q "cargo 1\\.59\\.0 "; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf
           DOCKERFILE
           docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.9.12 .
-          docker run --rm saber-legacy-bpf:solana-1.9.12 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
+          # Use a non-login shell so /etc/profile cannot replace the pinned PATH.
+          docker run --rm saber-legacy-bpf:solana-1.9.12 bash -c 'set -euo pipefail; solana --version | grep -q "^solana-cli 1\\.9\\.12 "; cargo --version | grep -q "^cargo 1\\.59\\.0 "; command -v cargo-build-bpf; cargo-build-bpf --help >/dev/null'
 
       - name: Reproducible build with pinned Solana Verify Docker builder
         working-directory: saber-source
