@@ -67,6 +67,18 @@ export class BotCoordinator extends DurableObject {
           await txn.put(key, challenge);
           return { ok: true, allowed: true, attempts: challenge.attempts, ipAttempts: nextIpCount };
         }
+        if (body.op === "totp-consume") {
+          const counter = Number(body.counter);
+          if (!Number.isSafeInteger(counter) || counter < 0) {
+            return { ok: true, consumed: false, invalid: true };
+          }
+          const lastCounter = await txn.get("totp:last-counter");
+          if (Number.isSafeInteger(lastCounter) && counter <= lastCounter) {
+            return { ok: true, consumed: false, replayed: true };
+          }
+          await txn.put("totp:last-counter", counter);
+          return { ok: true, consumed: true };
+        }
         if (body.op === "mfa-consume") {
           const id = String(body.challengeId || "");
           const key = "mfa:" + id;
@@ -733,12 +745,19 @@ async function totpCode(secret, time = Date.now()) {
   const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
   return String(binary % 1000000).padStart(6, "0");
 }
-async function verifyTotp(secret, code) {
-  if (!/^\d{6}$/.test(String(code || ""))) return false;
-  for (const drift of [-30000, 0, 30000]) {
-    if (await totpCode(secret, Date.now() + drift) === String(code)) return true;
+async function matchingTotpCounter(secret, code, time = Date.now()) {
+  if (!/^\d{6}$/.test(String(code || ""))) return null;
+  const currentCounter = Math.floor(time / 30000);
+  let matchedCounter = null;
+  for (const drift of [-1, 0, 1]) {
+    const counter = currentCounter + drift;
+    if (counter < 0) continue;
+    if (await totpCode(secret, counter * 30000) === String(code) &&
+        (matchedCounter === null || counter > matchedCounter)) {
+      matchedCounter = counter;
+    }
   }
-  return false;
+  return matchedCounter;
 }
 async function hashText(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -819,7 +838,10 @@ export default {
         if (attempt.expired) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (attempt.locked) return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
         const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        const matchedTotpCounter = profile.totpEnabled && profile.totpSecret
+          ? await matchingTotpCounter(profile.totpSecret, code)
+          : null;
+        let valid = matchedTotpCounter !== null;
         let backupCodeHash = null;
         if (!valid && profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
@@ -831,6 +853,13 @@ export default {
         if (!valid) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
         if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
+        if (matchedTotpCounter !== null) {
+          const totpUse = await coordinatorRequest(env, {
+            op: "totp-consume",
+            counter: matchedTotpCounter
+          });
+          if (!totpUse.consumed) return json({ error: "ئەم کۆدی Authenticator پێشتر بەکارهاتووە؛ کۆدی نوێ بەکاربهێنە" }, 401);
+        }
         if (backupCodeHash) {
           const backupUse = await coordinatorRequest(env, { op: "backup-consume", hash: backupCodeHash });
           if (!backupUse.consumed) return json({ error: "کۆدی گەڕاندنەوە پێشتر بەکارهاتووە" }, 401);
@@ -892,7 +921,13 @@ export default {
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const matchedCounter = await matchingTotpCounter(p.pendingTotpSecret, code);
+          if (matchedCounter === null) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const counterUse = await coordinatorRequest(env, {
+            op: "totp-consume",
+            counter: matchedCounter
+          });
+          if (!counterUse.consumed) return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدی نوێ بەکاربهێنە" }, 401);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
