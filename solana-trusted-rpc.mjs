@@ -4,6 +4,9 @@ import { validateParsedTokenAccount } from "./solana-token-account-validator.mjs
 import { validateSimulatedCpi } from "./solana-instruction-policy.mjs";
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
 import { inspectUpgradeableProgramAccounts } from "./solana-upgradeable-program.mjs";
+import { validateSaberStableSwapCpi, SABER_STABLE_SWAP_PROGRAM_ID } from "./solana-saber-validator.mjs";
+import { JUPITER_V6_PROGRAM_ID } from "./solana-jupiter-authority.mjs";
+import { identifyJupiterProgramAuthority } from "./solana-jupiter-authority.mjs";
 
 const MAX_RPC_RESPONSE_BYTES = 2_000_000;
 const MAX_TOKEN_ACCOUNTS = 16;
@@ -308,6 +311,118 @@ function createTrustedSolanaRpc({
  * Expectations and allow-lists must be constructed by trusted server code.
  * No values are accepted from browser input or Jupiter routePlan.
  */
+async function inspectSaberCpiAfterSimulation({
+  rpc,
+  decoded,
+  cpiInstructions,
+  simulationContextSlot,
+  expectedOuterInstructionIndexes,
+  expectedPoolKeys
+} = {}) {
+  if (!rpc || !trustedRpcClients.has(rpc) ||
+      typeof rpc.getMultipleRawAccountInfos !== "function" ||
+      !decoded || !Array.isArray(decoded.instructions) ||
+      !Array.isArray(decoded.accountMetadata) ||
+      !Array.isArray(cpiInstructions) ||
+      !Number.isSafeInteger(simulationContextSlot) || simulationContextSlot < 0 ||
+      !Array.isArray(expectedOuterInstructionIndexes) ||
+      expectedOuterInstructionIndexes.length !== 1 ||
+      !Number.isInteger(expectedOuterInstructionIndexes[0]) ||
+      !Array.isArray(expectedPoolKeys) || expectedPoolKeys.length > 16 ||
+      expectedPoolKeys.some((key) => typeof key !== "string") ||
+      new Set(expectedPoolKeys).size !== expectedPoolKeys.length) {
+    throw new Error("Post-simulation Saber validation inputs are incomplete or invalid");
+  }
+
+  const outerIndex = expectedOuterInstructionIndexes[0];
+  const outer = decoded.instructions[outerIndex];
+  if (!outer || outer.programId !== JUPITER_V6_PROGRAM_ID ||
+      !Array.isArray(outer.accounts) || outer.accounts.length < 3 ||
+      !Array.isArray(outer.accountIndexes) || outer.accountIndexes.length < 3) {
+    throw new Error("Saber CPI is not bound to the exact pinned Jupiter shared-route instruction");
+  }
+  const programAuthority = outer.accounts[1];
+  const programAuthorityMeta = decoded.accountMetadata[outer.accountIndexes[1]];
+  if (!programAuthorityMeta ||
+      programAuthorityMeta.pubkey !== programAuthority ||
+      programAuthorityMeta.isSigner === true ||
+      identifyJupiterProgramAuthority(programAuthority) === null) {
+    throw new Error("Jupiter shared-route program authority is not a verified PDA from the pinned derivation set");
+  }
+
+  const allSaberCalls = cpiInstructions.filter((item) =>
+    item?.programId === SABER_STABLE_SWAP_PROGRAM_ID
+  );
+  if (allSaberCalls.some((item) => item.outerInstructionIndex !== outerIndex) ||
+      allSaberCalls.length !== expectedPoolKeys.length) {
+    throw new Error("Simulated Saber CPI count or outer-instruction binding differs from the trusted route");
+  }
+
+  const validations = [];
+  for (const expectedPoolKey of expectedPoolKeys) {
+    assertPublicKey(expectedPoolKey, "Expected Saber pool");
+    const matching = allSaberCalls.filter((item) =>
+      Array.isArray(item.accounts) && item.accounts[0] === expectedPoolKey
+    );
+    if (matching.length !== 1) {
+      throw new Error("Expected Saber pool does not map to exactly one simulated Saber CPI");
+    }
+    const cpi = matching[0];
+    if (cpi.accounts.length !== 9 || cpi.accounts[2] !== programAuthority ||
+        typeof cpi.data !== "string") {
+      throw new Error("Saber CPI account order or Jupiter program-authority binding is invalid");
+    }
+
+    const firstRead = await rpc.getMultipleRawAccountInfos(
+      [expectedPoolKey],
+      { minContextSlot: simulationContextSlot }
+    );
+    const pool = firstRead.value[0];
+    if (!pool ||
+        pool.owner.toBase58() !== SABER_STABLE_SWAP_PROGRAM_ID ||
+        pool.executable === true ||
+        pool.data.length !== 395 ||
+        pool.data[0] !== 1 ||
+        pool.data[1] !== 0) {
+      throw new Error("Simulated Saber pool account is missing, wrongly owned, or has invalid SwapInfo state");
+    }
+    const mintA = new PublicKey(pool.data.subarray(203, 235)).toBase58();
+    const mintB = new PublicKey(pool.data.subarray(235, 267)).toBase58();
+    const addresses = [...new Set([...cpi.accounts, mintA, mintB])];
+    if (addresses.length > 11) {
+      throw new Error("Saber raw-account snapshot exceeds the bounded account set");
+    }
+    const snapshot = await rpc.getMultipleRawAccountInfos(
+      addresses,
+      { minContextSlot: firstRead.context.slot }
+    );
+    if (snapshot.context.slot < firstRead.context.slot ||
+        snapshot.context.slot < simulationContextSlot) {
+      throw new Error("Saber raw-account snapshot is older than the simulation or pool-state read");
+    }
+    const rawAccounts = new Map(
+      addresses.map((address, index) => [address, snapshot.value[index]])
+    );
+    const result = validateSaberStableSwapCpi({
+      programId: SABER_STABLE_SWAP_PROGRAM_ID,
+      accounts: cpi.accounts,
+      data: cpi.data,
+      expectedUserAuthority: programAuthority,
+      decoded,
+      rawAccounts
+    });
+    if (result.swapKey !== expectedPoolKey) {
+      throw new Error("Saber validator returned a pool different from the trusted route quote");
+    }
+    validations.push(Object.freeze({
+      ...result,
+      accountContextSlot: snapshot.context.slot,
+      simulationContextSlot
+    }));
+  }
+  return Object.freeze(validations);
+}
+
 async function inspectMetisOrderWithTrustedRpc({
   rpc,
   encodedTransaction,
@@ -319,7 +434,8 @@ async function inspectMetisOrderWithTrustedRpc({
   maxSlotLag = 32,
   requiredCpiProgramIds = [],
   expectedCpiProgramIds = [],
-  expectedCpiOuterInstructionIndexes
+  expectedCpiOuterInstructionIndexes,
+  expectedSaberPoolKeys = []
 } = {}) {
   if (!rpc || !trustedRpcClients.has(rpc) || typeof rpc.getSlot !== "function" ||
       typeof rpc.getMultipleParsedTokenAccounts !== "function" ||
@@ -395,14 +511,24 @@ async function inspectMetisOrderWithTrustedRpc({
     throw new Error("Trusted CPI trace differs from the exact expected DEX/supporting-program set");
   }
 
+  const saberCpiValidations = await inspectSaberCpiAfterSimulation({
+    rpc,
+    decoded: verifiedDecoded,
+    cpiInstructions: cpi.instructions,
+    simulationContextSlot: simulation.context.slot,
+    expectedOuterInstructionIndexes: expectedCpiOuterInstructionIndexes,
+    expectedPoolKeys: expectedSaberPoolKeys
+  });
+
   return Object.freeze({
     allowed: true,
     rpcEndpoint: rpc.endpoint,
     accountContextSlot: accountResponse.context.slot,
     simulationContextSlot: simulation.context.slot,
     tokenAccounts: Object.freeze(tokenAccounts),
-    cpi
+    cpi,
+    saberCpiValidations
   });
 }
 
-export { createTrustedSolanaRpc, inspectMetisOrderWithTrustedRpc };
+export { createTrustedSolanaRpc, inspectMetisOrderWithTrustedRpc, inspectSaberCpiAfterSimulation };
