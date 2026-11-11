@@ -1,6 +1,6 @@
 import { decodeSolanaTransaction } from "./solana-transaction-decoder.mjs";
 import { validateDecodedSwapTransaction } from "./solana-instruction-policy.mjs";
-import { validateMetisJupiterV6Instruction } from "./solana-metis-validator.mjs";
+import { validateMetisJupiterV6Instruction, SABER_STABLE_SWAP_PROGRAM_ID } from "./solana-metis-validator.mjs";
 import { inspectMetisOrderWithTrustedRpc } from "./solana-trusted-rpc.mjs";
 
 /**
@@ -252,6 +252,9 @@ async function getJupiterOrder({
     requiredCpiProgramIds: metisInstruction.requiredCpiProgramIds,
     expectedCpiProgramIds: [...new Set([...metisInstruction.requiredCpiProgramIds, ...metisPolicy.supportingCpiProgramIds])],
     expectedCpiOuterInstructionIndexes: [jupiterInstructions[0].index],
+    expectedSaberPoolKeys: metisInstruction.dexRouteSteps
+      .filter((step) => step.programId === SABER_STABLE_SWAP_PROGRAM_ID)
+      .map((step) => step.ammKey),
     minContextSlot
   });
 
