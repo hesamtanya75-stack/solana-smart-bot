@@ -123,12 +123,21 @@ jobs:
               find "$HOME/.rustup/toolchains" -maxdepth 5 -type f -name cargo -print 2>/dev/null || true
               exit 1
             fi
+            # cargo-build-bpf installs and rustup-links the pinned BPF
+            # toolchain on its first invocation. Do not check its cargo path
+            # before Anchor triggers that installation.
+            anchor build --program-name stable_swap
+
+            if [ ! -x "$cargo_bin" ]; then
+              echo "ERROR: BPF cargo was not installed at the expected rustup path: $cargo_bin" >&2
+              find "$HOME/.cache/solana" "$HOME/.rustup/toolchains" -maxdepth 7 -type f -name cargo -print 2>/dev/null || true
+              exit 1
+            fi
             ldd "$cargo_bin" | tee /tmp/saber-bpf-cargo-ldd.txt
             if grep -q "not found" /tmp/saber-bpf-cargo-ldd.txt; then
               echo "ERROR: BPF cargo has unresolved shared libraries" >&2
               exit 1
             fi
-            anchor build --program-name stable_swap
           '
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
