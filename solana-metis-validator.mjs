@@ -1,4 +1,4 @@
-import { deriveJupiterProgramAuthorityId, identifyJupiterProgramAuthority } from "./solana-jupiter-authority.mjs";
+import { identifyJupiterProgramAuthority } from "./solana-jupiter-authority.mjs";
 const JUPITER_V6_PROGRAM_ID = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 // Saber StableSwap mainnet program. Source is available, but the deployed
 // mainnet binary has not been independently verified against that source.
@@ -115,7 +115,7 @@ function validateMetisJupiterV6Instruction({
   if (!Array.isArray(metadata) ||
       metadata[programAuthorityIndex]?.pubkey !== programAuthority ||
       metadata[programAuthorityIndex]?.isSigner === true ||
-      !identifyJupiterProgramAuthority(programAuthority) ||
+      identifyJupiterProgramAuthority(programAuthority) === null ||
       metadata[authorityIndex]?.pubkey !== expectedSigner ||
       metadata[authorityIndex]?.isSigner !== true ||
       metadata[sourceIndex]?.pubkey !== sourceTokenAccount ||
