@@ -12,6 +12,10 @@ on:
         type: string
         default: https://api.mainnet-beta.solana.com
 
+concurrency:
+  group: saber-mainnet-audit-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
