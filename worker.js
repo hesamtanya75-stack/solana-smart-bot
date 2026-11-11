@@ -237,6 +237,9 @@ async function saveState(env, state) {
   await coordinatorRequest(env, { op: "state-save", expectedUpdatedAt, state });
 }
 async function patchState(env, patch) {
+  // Ensure legacy KV state is migrated before any API mutation can create a
+  // new Durable Object record and accidentally shadow existing demo trades.
+  await readState(env);
   const result = await coordinatorRequest(env, { op: "state-patch", patch });
   return cleanState(result.state);
 }
