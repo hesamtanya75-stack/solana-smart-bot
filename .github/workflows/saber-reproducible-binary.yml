@@ -51,6 +51,22 @@ jobs:
       - name: Set up the exact upstream Nix build environment
         uses: cachix/install-nix-action@v22
 
+      - name: Install the upstream-pinned Solana BPF toolchain
+        working-directory: saber-source
+        env:
+          SOLANA_VERSION: "1.11.10"
+        run: |
+          set -euo pipefail
+          # The upstream Saber CI installs the full Solana release separately:
+          # the Nix "solana-basic" package intentionally omits cargo-build-bpf.
+          nix shell .#ci --command solana-install init "$SOLANA_VERSION"
+          solana_bin="$HOME/.local/share/solana/install/active_release/bin"
+          test -x "$solana_bin/cargo-build-bpf"
+          echo "$solana_bin" >> "$GITHUB_PATH"
+          export PATH="$solana_bin:$PATH"
+          solana --version
+          cargo build-bpf --help >/dev/null
+
       - name: Reproducible build from pinned upstream Nix environment
         working-directory: saber-source
         run: |
