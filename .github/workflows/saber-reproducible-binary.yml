@@ -51,21 +51,54 @@ jobs:
       - name: Set up the exact upstream Nix build environment
         uses: cachix/install-nix-action@v22
 
-      - name: Install the upstream-pinned Solana BPF toolchain
+      - name: Download and verify the upstream-pinned Solana BPF toolchain
         working-directory: saber-source
         env:
           SOLANA_VERSION: "1.11.10"
+          SOLANA_RELEASE_COMMIT: "843e018c77678de5ef75dc6e5e5a72f2da5caa48"
+          SOLANA_RELEASE_ASSET_ID: "75977007"
+          SOLANA_RELEASE_ASSET_SIZE: "290441766"
         run: |
           set -euo pipefail
-          # The upstream Saber CI installs the full Solana release separately:
-          # the Nix "solana-basic" package intentionally omits cargo-build-bpf.
-          nix shell .#ci --command solana-install init "$SOLANA_VERSION"
-          solana_bin="$HOME/.local/share/solana/install/active_release/bin"
+          # The legacy solana-install command enumerates every GitHub release.
+          # GitHub's 1,000-result API ceiling hides this older release, so fetch
+          # its exact official release asset and verify its immutable identity.
+          release_api="$(curl --fail --location --silent --show-error \
+            https://api.github.com/repos/solana-labs/solana/releases/tags/v"$SOLANA_VERSION")"
+          jq -e --arg tag "v$SOLANA_VERSION" \
+            --argjson asset_id "$SOLANA_RELEASE_ASSET_ID" \
+            --argjson asset_size "$SOLANA_RELEASE_ASSET_SIZE" '
+              .tag_name == $tag and
+              ([.assets[] | select(
+                .id == $asset_id and
+                .name == "solana-release-x86_64-unknown-linux-gnu.tar.bz2" and
+                .size == $asset_size
+              )] | length == 1)
+            ' <<<"$release_api" >/dev/null
+
+          archive_url="https://github.com/solana-labs/solana/releases/download/v$SOLANA_VERSION/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          curl --fail --location --retry 3 --retry-all-errors --silent --show-error \
+            "$archive_url" -o /tmp/solana-release.tar.bz2
+          actual_sha256="$(sha256sum /tmp/solana-release.tar.bz2 | awk '{print $1}')"
+          echo "Official Solana $SOLANA_VERSION archive SHA-256: $actual_sha256"
+          echo "archive_sha256=$actual_sha256" >> "$GITHUB_OUTPUT"
+
+          # This bootstrap run deliberately fails until the downloaded archive
+          # digest is independently pinned in this workflow.
+          expected_sha256="PIN_REQUIRED"
+          test "$actual_sha256" = "$expected_sha256"
+
+          tar -xjf /tmp/solana-release.tar.bz2
+          test -f solana-release/version.yml
+          grep -Fq "commit: $SOLANA_RELEASE_COMMIT" solana-release/version.yml
+          grep -Fq "channel: v$SOLANA_VERSION" solana-release/version.yml
+          solana_bin="$PWD/solana-release/bin"
+          test -x "$solana_bin/solana"
           test -x "$solana_bin/cargo-build-bpf"
           echo "$solana_bin" >> "$GITHUB_PATH"
           export PATH="$solana_bin:$PATH"
           solana --version
-          cargo build-bpf --help >/dev/null
+          cargo-build-bpf --help >/dev/null
 
       - name: Reproducible build from pinned upstream Nix environment
         working-directory: saber-source
