@@ -20,6 +20,20 @@
       "id": "2e205fdb0eff44f78786e7500ae401a1"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BOT_COORDINATOR",
+        "class_name": "BotCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BotCoordinator"]
+    }
+  ],
   "previews": {
     "kv_namespaces": [
       {
