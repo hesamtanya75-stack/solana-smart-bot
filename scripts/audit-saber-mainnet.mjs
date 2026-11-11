@@ -122,8 +122,6 @@ async function main() {
         httpStatus: verifyResponse.status,
         payload
       };
-    } else {
-      verificationService = { available: false, reason: "verification response exceeded size limit" };
     }
   } catch (error) {
     verificationService = { available: false, reason: String(error).slice(0, 300) };
