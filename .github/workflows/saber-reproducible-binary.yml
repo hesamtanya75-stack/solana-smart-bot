@@ -59,7 +59,10 @@ jobs:
           # release.solana.com is intermittently unreachable from Docker builds.
           RUN set -eux; curl --fail --location --retry 5 --retry-delay 2 --show-error https://github.com/solana-labs/solana/releases/download/v1.11.10/solana-release-x86_64-unknown-linux-gnu.tar.bz2 --output /tmp/solana-release.tar.bz2 && mkdir -p /opt && tar -xjf /tmp/solana-release.tar.bz2 -C /opt && test -x /opt/solana-release/bin/solana && rm /tmp/solana-release.tar.bz2
           ENV PATH="/opt/solana-release/bin:${PATH}"
-          RUN set -eux; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf
+          # Solana 1.11.10's cargo-build-sbf passes Cargo's --config option.
+          # Cargo 1.70.0 supports that option on stable; pin it rather than
+          # relying on the older Cargo shipped in the historical Anchor image.
+          RUN set -eux; command -v rustup; rustup toolchain install 1.70.0 --profile minimal; rustup default 1.70.0; cargo --version | grep -q "cargo 1\\.70\\.0 "; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; command -v cargo-build-bpf
           DOCKERFILE
           docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.11.10 .
           docker run --rm saber-legacy-bpf:solana-1.11.10 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
