@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: saber-reproducible-binary-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   compare-source-build-to-mainnet-and-devnet:
