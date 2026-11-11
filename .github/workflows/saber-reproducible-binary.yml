@@ -44,7 +44,7 @@ jobs:
       - name: Reproducible build from pinned source
         working-directory: saber-source
         run: |
-          solana-verify build --library-name stable_swap
+          solana-verify build --bpf --library-name stable_swap
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
