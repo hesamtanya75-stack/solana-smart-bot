@@ -60,7 +60,7 @@ jobs:
           docker run --rm projectserum/build:v0.24.2 bash -lc '
             set -euo pipefail
             solana --version
-            solana --version | grep -q "^solana-cli 1\\.9\\.12 "
+            solana --version | grep -q "^solana-cli 1\\.9\\.13 "
             command -v cargo-build-bpf
             cargo-build-bpf --help >/dev/null
             rustup toolchain list
@@ -127,7 +127,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit (v1.8.1 tag): 6c0384cbaf305500678ed14e6426244145619249"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.9.12 checked in-image"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.9.13 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Published upstream v1.8.1 executable hash: $upstream_hash (match: true)"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
