@@ -213,3 +213,16 @@ test("first authenticated state access migrates legacy KV paper trades before up
   assert.equal(updated.state.trades[0].mint, "LegacyMint");
   assert.equal(updated.state.paused, true);
 });
+
+
+test("a TOTP time-step can be consumed only once across separate login challenges", async () => {
+  const { call, storage } = setup();
+  const counter = Math.floor(Date.now() / 30000);
+  const results = await Promise.all(Array.from({ length: 12 }, () =>
+    call({ op: "totp-consume", counter })
+  ));
+  assert.equal(results.filter(result => result.consumed).length, 1);
+  assert.equal(results.filter(result => result.replayed).length, 11);
+  assert.equal(storage.values.get("totp:last-counter"), counter);
+  assert.equal((await call({ op: "totp-consume", counter })).consumed, false);
+});
