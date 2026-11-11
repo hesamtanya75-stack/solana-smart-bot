@@ -438,7 +438,7 @@ async function inspectSaberCpiAfterSimulation({
         throw new Error("Saber simulated token transfer data is missing");
       }
       let bytes;
-      try { bytes = bs58.decode(item.data); } catch {
+      try { bytes = Buffer.from(bs58.decode(item.data)); } catch {
         throw new Error("Saber simulated token transfer data is malformed");
       }
       if (bytes.length !== 9 || bytes[0] !== 3) {
