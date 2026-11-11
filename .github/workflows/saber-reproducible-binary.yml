@@ -57,8 +57,7 @@ jobs:
           FROM projectserum/build@sha256:75b75eab447ebcca1f471c98583d9b5d82c4be122c470852a022afcf9c98bead
           RUN sh -c "$(curl --fail --location --silent --show-error https://release.solana.com/v1.11.10/install)"
           ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
-          RUN test "$(solana --version)" = "solana-cli 1.11.10" \\
-              && command -v cargo-build-bpf
+          RUN test "$(solana --version)" = "solana-cli 1.11.10" && command -v cargo-build-bpf
           DOCKERFILE
           docker build --pull --file Dockerfile.saber-verify --tag saber-legacy-bpf:solana-1.11.10 .
           docker run --rm saber-legacy-bpf:solana-1.11.10 bash -lc 'solana --version && cargo-build-bpf --help >/dev/null'
