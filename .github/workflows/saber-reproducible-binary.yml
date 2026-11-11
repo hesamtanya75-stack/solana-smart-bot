@@ -68,13 +68,20 @@ jobs:
           # Use a non-login shell so /etc/profile cannot replace the pinned PATH.
           docker run --rm saber-legacy-bpf:solana-1.11.10 bash -c 'set -euo pipefail; solana --version | grep -q "^solana-cli 1\\.11\\.10 "; cargo --version | grep -q "^cargo 1\\.59\\.0 "; command -v cargo-build-bpf; cargo-build-bpf --help >/dev/null'
 
-      - name: Reproducible build with pinned Solana Verify Docker builder
+      - name: Install the exact Saber Anchor release toolchain
+        uses: cachix/install-nix-action@v22
+
+      - name: Reproducible build using Saber upstream release command
         working-directory: saber-source
         run: |
           set -euo pipefail
-          # --bpf is required for this legacy Anchor program. The explicit image
-          # prevents solana-verify's default 1.13.5 image from overriding 1.11.10.
-          solana-verify build --bpf --base-image saber-legacy-bpf:solana-1.11.10 --library-name stable_swap "$PWD" -- -Z unstable-options
+          # Saber v0.24.2's own release workflow uses:
+          # nix shell .#ci --command anchor build --verifiable --program-name stable_swap
+          # Pin the exact Docker image digest already validated above to the image
+          # tag Anchor 0.24.2 expects, rather than allowing a mutable tag pull.
+          docker tag saber-legacy-bpf:solana-1.11.10 projectserum/build:v0.24.2
+          nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
+          nix shell .#ci --command anchor build --verifiable --program-name stable_swap
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
