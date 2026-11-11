@@ -136,3 +136,23 @@ At the pinned Saber source commit `39d5d4e0e844a009c83d37a3ce63d219fdba0bff`, `A
 The Anchor.so page reports the program as **Unverified Binary**, canonical hash `c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38`, upgrade authority `EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEVO`, and deployment slot `119721738`. The source-side deployment config lists `GSmjrpT8zNtp6Ke8y2xS5P1kREEjqZCjwxF8VbxDJAV8`; that file does not establish the current on-chain authority. The exact Mainnet account bytes and ProgramData metadata have not yet been fetched from a trusted Mainnet RPC in this environment, and the on-chain canonical hash has not been matched to a reproducible build. **Binary verification remains blocked.**
 
 Latest CI for the earlier fully integrated source commit `01494649a81f6db6d0800756ba53dd988bf22aa8` completed successfully. CI for the newer ProgramData parser/RPC additions must also complete successfully before treating those additions as tested. PR #17 remains open and unmerged; production Worker remains unchanged.
+
+
+### Direct Mainnet RPC snapshot (read-only; 2026-11-11)
+
+The new GitHub Actions audit successfully read the live Mainnet program through the official public Solana Mainnet RPC using `getMultipleAccounts` with `finalized` commitment. Snapshot context slot: `467914880`.
+
+Observed on-chain metadata:
+- Program ID: `SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ`
+- ProgramData address: `54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt`
+- Deployment slot: `119721738`
+- Upgrade authority (direct RPC): `EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEV`
+- Immutable: `false`
+- ELF bytes returned after the ProgramData header: `609792`
+- Raw SHA-256 over those returned ELF bytes: `383f720f2e0d47ce616dfda2f9f263ccd83fc6d38a2629b472dcbfad9dfb4504`
+
+The OSEC Verified Builds status endpoint returned HTTP 200 and explicitly reported `is_verified: false`, `message: "On chain program not verified"`, blank `on_chain_hash` and `executable_hash`, and no repository/commit verification record. This is direct evidence that the program is currently not verified by that service. The direct RPC authority differs from the source repository's deployment-config value `GSmjrpT8zNtp6Ke8y2xS5P1kREEjqZCjwxF8VbxDJAV8`; the live chain value is the one to use for current metadata.
+
+The raw SHA-256 above is **not** asserted to equal the canonical hash reported by Anchor.so or by `solana-verify`; the ProgramData allocation may include padding and the canonicalization rules are tool-specific. The next binary gate is to run the official `solana-verify get-program-hash` against this Mainnet program and then perform a reproducible `verify-from-repo` build at the pinned Saber source commit/toolchain. No signing or transaction submission occurred during this audit.
+
+The read-only Mainnet audit workflow completed successfully on commit `b60285acd9cb8cdb481c9408cf0d60b60eef06b2`. Separately, Node safety tests passed **77/77** on commit `7c1f8d7c238bb151b9a083ab7ee4be7701b2cdce`. These establish the parser/RPC test behavior and live account metadata retrieval, not source-to-binary equivalence. Saber remains blocked.
