@@ -231,7 +231,7 @@ jobs:
               try {
                 await sendAndConfirmTransactionWithTitle("expected slippage rejection", connection, transaction, payer, owner);
               } catch (error) {
-                rejectionText = [String(error), ...(error?.logs ?? [])].join(String.fromCharCode(10));
+                rejectionText = [String(error), ...((error as { logs?: string[] } | undefined)?.logs ?? [])].join(String.fromCharCode(10));
               }
               expect(rejectionText).toMatch(/Swap instruction exceeds desired slippage limit|custom program error: 0x11/i);
 
