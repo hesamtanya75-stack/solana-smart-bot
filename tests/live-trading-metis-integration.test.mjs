@@ -11,12 +11,13 @@ import {
 } from "../solana-metis-validator.mjs";
 import { createTrustedSolanaRpc } from "../solana-trusted-rpc.mjs";
 import { decodeSolanaTransaction } from "../solana-transaction-decoder.mjs";
+import { deriveJupiterProgramAuthorityId } from "../solana-jupiter-authority.mjs";
 
 const wallet = new PublicKey(EXPECTED_BOT_WALLET);
 const outputMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const sourceToken = Keypair.generate().publicKey;
 const destinationToken = Keypair.generate().publicKey;
-const programAuthority = Keypair.generate().publicKey;
+const programAuthority = new PublicKey(deriveJupiterProgramAuthorityId(0));
 const programSource = Keypair.generate().publicKey;
 const programDestination = Keypair.generate().publicKey;
 const feeAccount = Keypair.generate().publicKey;
