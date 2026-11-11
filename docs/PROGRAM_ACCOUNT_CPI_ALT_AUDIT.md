@@ -156,3 +156,20 @@ The OSEC Verified Builds status endpoint returned HTTP 200 and explicitly report
 The raw SHA-256 above is **not** asserted to equal the canonical hash reported by Anchor.so or by `solana-verify`; the ProgramData allocation may include padding and the canonicalization rules are tool-specific. The next binary gate is to run the official `solana-verify get-program-hash` against this Mainnet program and then perform a reproducible `verify-from-repo` build at the pinned Saber source commit/toolchain. No signing or transaction submission occurred during this audit.
 
 The read-only Mainnet audit workflow completed successfully on commit `b60285acd9cb8cdb481c9408cf0d60b60eef06b2`. Separately, Node safety tests passed **77/77** on commit `7c1f8d7c238bb151b9a083ab7ee4be7701b2cdce`. These establish the parser/RPC test behavior and live account metadata retrieval, not source-to-binary equivalence. Saber remains blocked.
+
+
+### Fresh Mainnet RPC evidence (read-only audit run)
+
+The automated Mainnet audit completed successfully on 2026-11-11 at context slot `467915130`. It fetched the actual Program and ProgramData accounts at a consistent finalized snapshot and decoded:
+
+- ProgramData: `54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt`
+- Deployment slot: `119721738`
+- Current on-chain upgrade authority: `EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEV`
+- Executable bytes: 609,792 bytes; diagnostic raw ELF SHA-256: `383f720f2e0d47ce616dfda2f9f263ccd83fc6d38a2629b472dcbfad9dfb4504`
+- OtterSec verification status: `is_verified=false`, message `On chain program not verified`
+
+This resolves the earlier upgrade-authority discrepancy in favor of the live Mainnet ProgramData account; the repository deployment config is stale for current authority metadata. The raw ELF SHA-256 is diagnostic only and must not be compared directly with the canonical `solana-verify` executable/program hash.
+
+A new read-only workflow, `.github/workflows/saber-reproducible-binary.yml`, pins the Saber source commit `39d5d4e0e844a009c83d37a3ce63d219fdba0bff` and Solana Verify CLI 0.6.0, builds `stable_swap` in the reproducible Docker build environment, and compares its canonical executable hash against both Mainnet and Devnet program hashes. It performs no signing, deployment, verification-PDA upload, or transaction submission. A hash mismatch or missing program fails closed. This workflow has been added but its first run must complete before any source-to-binary conclusion is made.
+
+The existing Node safety tests and the read-only Mainnet metadata audit passed on commit `d07e45c3780e5364916dca723483261a3bdf6f9f`. That success does not imply the Saber executable is source-verified: the verification service explicitly returned `is_verified=false`.
