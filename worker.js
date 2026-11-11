@@ -613,6 +613,7 @@ async function inspectMint(mint, env) {
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
   ]);
   const ownerBalances = new Map();
+  let verifiedTopAccountsAmount = 0n;
   for (let i = 0; i < largestAccounts.length; i++) {
     const account = accountDetails.value[i];
     const info = account?.data?.parsed?.info;
@@ -632,7 +633,16 @@ async function inspectMint(mint, env) {
       throw new Error("A largest-holder token account could not be verified completely");
     }
     const amount = BigInt(amountRaw);
+    // Cross-check the parsed account snapshot against the exact largest-account
+    // amount returned by the same RPC cycle; never aggregate conflicting views.
+    if (amount !== BigInt(largestAccounts[i].amount)) {
+      throw new Error("Largest-holder amount differs from its parsed token-account snapshot");
+    }
+    verifiedTopAccountsAmount += amount;
     ownerBalances.set(owner, (ownerBalances.get(owner) || 0n) + amount);
+  }
+  if (verifiedTopAccountsAmount > supplyAmount) {
+    throw new Error("Verified largest token-account balances exceed the mint supply");
   }
   if (!ownerBalances.size) throw new Error("Token account owners unavailable");
   // These are wallet-owner aggregates across the top 20 largest token
