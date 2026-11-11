@@ -40,9 +40,9 @@ jobs:
 
       - name: Check out pinned Saber source
         env:
-          # Build the exact source revision tagged v1.8.2; the previous pin was
+          # Build the exact source revision tagged v1.8.1; v1.8.1 is the release associated with the recorded on-chain deployment.
           # a later, diverged commit and therefore could not reproduce that release.
-          SABER_SOURCE_COMMIT: a276d24d7469c05cea8fd2e3a088ac05273695b7
+          SABER_SOURCE_COMMIT: 6c0384cbaf305500678ed14e6426244145619249
         run: |
           git clone https://github.com/saber-hq/stable-swap.git saber-source
           git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
@@ -121,7 +121,7 @@ jobs:
       - name: Hash the published upstream v1.8.2 release binary
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.2/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.2.so
+          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.2.so
           solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.2.so
 
       - name: Compare built executable with Mainnet and Devnet
@@ -150,7 +150,7 @@ jobs:
 
           {
             echo "## Saber source-to-binary comparison"
-            echo "- Source commit (v1.8.2 tag): a276d24d7469c05cea8fd2e3a088ac05273695b7"
+            echo "- Source commit (v1.8.1 tag): 6c0384cbaf305500678ed14e6426244145619249"
             echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.11.10 checked in-image"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
