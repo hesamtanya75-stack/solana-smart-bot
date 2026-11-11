@@ -230,3 +230,17 @@ test("Saber validator accepts reverse B-to-A reserve ordering and token directio
   assert.equal(result.destinationReserveAmount, "5000");
   assert.equal(result.adminFeeMint, f.mintAKey.toBase58());
 });
+
+
+test("Saber validator rejects a user authority that is not a transaction signer", () => {
+  const f = fixture();
+  const authorityMeta = f.args.decoded.accountMetadata.find(
+    (item) => item.pubkey === f.accounts[2]
+  );
+  assert.ok(authorityMeta);
+  authorityMeta.isSigner = false;
+  assert.throws(
+    () => validateSaberStableSwapCpi(f.args),
+    /signer or writable privilege/
+  );
+});
