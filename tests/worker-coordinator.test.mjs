@@ -153,7 +153,7 @@ test("first authenticated state access migrates legacy KV paper trades before up
     BOT_LOGIN_PASSWORD: "test-password",
     BOT_COORDINATOR: {
       idFromName: name => name,
-      get: () => ({ fetch: request => coordinator.fetch(request) })
+      get: () => ({ fetch: (input, init) => coordinator.fetch(new Request(input, init)) })
     }
   };
   const login = await worker.fetch(new Request("https://worker.test/api/login", {
