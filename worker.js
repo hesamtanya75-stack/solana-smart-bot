@@ -46,9 +46,24 @@ export class BotCoordinator {
             await txn.delete(key);
             return { ok: true, allowed: false, locked: true };
           }
+          const ip = String(body.ip || "unknown").slice(0, 64);
+          const ipKey = "totp:" + ip;
+          const ipRecord = await txn.get(ipKey);
+          if (ipRecord?.lockedUntil > now) return { ok: true, allowed: false, locked: true };
+          const ipWindowActive = Number(ipRecord?.windowUntil || 0) > now;
+          const ipCount = ipWindowActive ? Number(ipRecord.count || 0) : 0;
+          const nextIpCount = ipCount + 1;
+          const ipWindowUntil = nextIpCount >= 5
+            ? now + 900000
+            : (ipWindowActive ? ipRecord.windowUntil : now + 900000);
+          await txn.put(ipKey, {
+            count: nextIpCount,
+            windowUntil: ipWindowUntil,
+            lockedUntil: nextIpCount >= 5 ? ipWindowUntil : 0
+          });
           challenge.attempts = Number(challenge.attempts || 0) + 1;
           await txn.put(key, challenge);
-          return { ok: true, allowed: true, attempts: challenge.attempts };
+          return { ok: true, allowed: true, attempts: challenge.attempts, ipAttempts: nextIpCount };
         }
         if (body.op === "mfa-consume") {
           const id = String(body.challengeId || "");
@@ -105,12 +120,13 @@ export class BotCoordinator {
   }
   async alarm() {
     const now = Date.now();
-    const [loginEntries, mfaEntries] = await Promise.all([
+    const [loginEntries, totpEntries, mfaEntries] = await Promise.all([
       this.ctx.storage.list({ prefix: "login:" }),
+      this.ctx.storage.list({ prefix: "totp:" }),
       this.ctx.storage.list({ prefix: "mfa:" })
     ]);
     let nextAlarm = Infinity;
-    for (const [key] of loginEntries) {
+    for (const [key] of [...loginEntries, ...totpEntries]) {
       await this.ctx.storage.transaction(async txn => {
         const current = await txn.get(key);
         const expiresAt = Number(current?.windowUntil || 0);
@@ -738,7 +754,8 @@ export default {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
-        const attempt = await coordinatorRequest(env, { op: "mfa-attempt", challengeId });
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const attempt = await coordinatorRequest(env, { op: "mfa-attempt", challengeId, ip });
         if (attempt.expired) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (attempt.locked) return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
         const profile = await readProfile(env);
