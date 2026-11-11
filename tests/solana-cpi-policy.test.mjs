@@ -114,6 +114,7 @@ test("CPI validator returns the exact inner program, account-key order and instr
   const result = validateSimulatedCpi(args());
   assert.deepEqual(result.instructions, [{
     outerInstructionIndex: 0,
+    stackHeight: null,
     programId: program,
     accounts: [signer, account],
     data: ""
