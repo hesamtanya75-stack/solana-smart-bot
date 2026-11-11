@@ -200,6 +200,16 @@ function validateMetisJupiterV6Instruction({
     requiredCpiProgramIds.push(programId);
   }
 
+  const dexRouteSteps = parsed.steps.map((step, index) => Object.freeze({
+    swapVariant: step.swapVariant,
+    percent: step.percent,
+    inputIndex: step.inputIndex,
+    outputIndex: step.outputIndex,
+    programId: dexProgramBySwapVariant[String(step.swapVariant)],
+    label: routePlan[index].swapInfo.label,
+    ammKey: routePlan[index].swapInfo.ammKey
+  }));
+
   return Object.freeze({
     allowed: true,
     instructionName: "sharedAccountsRouteV2",
@@ -231,7 +241,8 @@ function validateMetisJupiterV6Instruction({
       })
     ]),
     requiredCpiProgramIds: Object.freeze([...new Set(requiredCpiProgramIds)]),
-    routeSteps: Object.freeze(parsed.steps)
+    routeSteps: Object.freeze(parsed.steps),
+    dexRouteSteps: Object.freeze(dexRouteSteps)
   });
 }
 
