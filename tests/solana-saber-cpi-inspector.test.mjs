@@ -87,7 +87,7 @@ function makeFixture({ missingAccountIndex = null, slot = 1300 } = {}) {
     [accounts[4], { owner: tokenProgram, data: tokenData(mintA, saberAuthority, 5000), executable: false }],
     [accounts[5], { owner: tokenProgram, data: tokenData(mintB, saberAuthority, 6000), executable: false }],
     [accounts[6], { owner: tokenProgram, data: tokenData(mintB, programAuthority, 0), executable: false }],
-    [accounts[7], { owner: tokenProgram, data: tokenData(mintB, saberAuthority, 0), executable: false }],
+    [accounts[7], { owner: tokenProgram, data: tokenData(mintB, Keypair.generate().publicKey, 0), executable: false }],
     [mintA.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }],
     [mintB.toBase58(), { owner: tokenProgram, data: mintData(), executable: false }]
   ]);
