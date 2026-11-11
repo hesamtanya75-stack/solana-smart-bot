@@ -13,14 +13,17 @@ export class BotCoordinator {
           const ip = String(body.ip || "unknown").slice(0, 64);
           const key = "login:" + ip;
           const record = await txn.get(key);
-          if (record?.until > now) return { ok: true, allowed: false, locked: true };
+          if (record?.lockedUntil > now) return { ok: true, allowed: false, locked: true };
           if (body.success === true) {
             await txn.delete(key);
             return { ok: true, allowed: true, locked: false };
           }
-          const count = record?.until > now ? Number(record.count || 0) : 0;
+          const windowActive = Number(record?.windowUntil || 0) > now;
+          const count = windowActive ? Number(record.count || 0) : 0;
           const next = count + 1;
-          await txn.put(key, { count: next, until: now + 900000 });
+          const windowUntil = windowActive ? record.windowUntil : now + 900000;
+          const lockedUntil = next >= 5 ? windowUntil : 0;
+          await txn.put(key, { count: next, windowUntil, lockedUntil });
           return { ok: true, allowed: true, locked: false, attempts: next };
         }
         if (body.op === "mfa-create") {
@@ -87,10 +90,35 @@ export class BotCoordinator {
         }
         return { ok: false, status: 400, error: "Unknown operation" };
       });
+      if (["login-attempt", "mfa-create", "mfa-attempt"].includes(body.op) &&
+          typeof this.ctx.storage.setAlarm === "function") {
+        const due = Date.now() + (body.op === "login-attempt" ? 900000 : 300000);
+        const existing = await this.ctx.storage.getAlarm();
+        if (!existing || due < existing) await this.ctx.storage.setAlarm(due);
+      }
       return Response.json(result, { status: result.status || (result.ok ? 200 : 400) });
     } catch {
       return Response.json({ ok: false, error: "Atomic coordinator storage failure" }, { status: 503 });
     }
+  }
+  async alarm() {
+    const now = Date.now();
+    const [loginEntries, mfaEntries] = await Promise.all([
+      this.ctx.storage.list({ prefix: "login:" }),
+      this.ctx.storage.list({ prefix: "mfa:" })
+    ]);
+    let nextAlarm = Infinity;
+    for (const [key, value] of loginEntries) {
+      if (Number(value.windowUntil || 0) <= now) await this.ctx.storage.delete(key);
+      else nextAlarm = Math.min(nextAlarm, Number(value.windowUntil));
+    }
+    for (const [key, value] of mfaEntries) {
+      const expiresAt = Number(value.createdAt || 0) + 300000;
+      if (expiresAt <= now) await this.ctx.storage.delete(key);
+      else nextAlarm = Math.min(nextAlarm, expiresAt);
+    }
+    if (Number.isFinite(nextAlarm)) await this.ctx.storage.setAlarm(nextAlarm);
+    else await this.ctx.storage.deleteAlarm();
   }
 }
 
