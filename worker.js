@@ -1,6 +1,8 @@
-export class BotCoordinator {
-  constructor(ctx) {
-    this.ctx = ctx;
+import { DurableObject } from "cloudflare:workers";
+
+export class BotCoordinator extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
   }
   async fetch(request) {
     if (request.method !== "POST") return Response.json({ ok: false, error: "Method not allowed" }, { status: 405 });
