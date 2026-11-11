@@ -470,6 +470,16 @@ async function inspectSaberCpiAfterSimulation({
         feeTransfers.length !== 1) {
       throw new Error("Saber CPI must contain exactly the three source, output, and admin-fee token transfers");
     }
+    const saberTraceIndex = cpiInstructions.indexOf(cpi);
+    const inputTraceIndex = cpiInstructions.indexOf(inputTransfers[0]);
+    const outputTraceIndex = cpiInstructions.indexOf(outputTransfers[0]);
+    const feeTraceIndex = cpiInstructions.indexOf(feeTransfers[0]);
+    if (saberTraceIndex < 0 ||
+        !(saberTraceIndex < inputTraceIndex &&
+          inputTraceIndex < outputTraceIndex &&
+          outputTraceIndex < feeTraceIndex)) {
+      throw new Error("Saber CPI token transfers are not in the source-defined invocation order");
+    }
     const simulatedAmountIn = decodeTransferAmount(inputTransfers[0]);
     const simulatedAmountOut = decodeTransferAmount(outputTransfers[0]);
     const simulatedAdminFee = decodeTransferAmount(feeTransfers[0]);
