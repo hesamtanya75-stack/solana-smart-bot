@@ -100,6 +100,12 @@ export class BotCoordinator extends DurableObject {
         }
         if (body.op === "state-patch") {
           const current = (await txn.get("bot_state")) || {};
+          if (Object.prototype.hasOwnProperty.call(body, "expectedUpdatedAt")) {
+            const actualVersion = current.updatedAt ?? null;
+            if (actualVersion !== (body.expectedUpdatedAt ?? null)) {
+              return { ok: false, status: 409, error: "State changed since the browser last synced; refresh before saving" };
+            }
+          }
           const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
           const next = cleanState({ ...current, ...patch });
           if (patch.lastScanReport == null) next.lastScanReport = current.lastScanReport || [];
@@ -238,11 +244,13 @@ async function saveState(env, state) {
   state.updatedAt = new Date().toISOString();
   await coordinatorRequest(env, { op: "state-save", expectedUpdatedAt, state });
 }
-async function patchState(env, patch) {
+async function patchState(env, patch, expectedUpdatedAt) {
   // Ensure legacy KV state is migrated before any API mutation can create a
   // new Durable Object record and accidentally shadow existing demo trades.
   await readState(env);
-  const result = await coordinatorRequest(env, { op: "state-patch", patch });
+  const payload = { op: "state-patch", patch };
+  if (expectedUpdatedAt !== undefined) payload.expectedUpdatedAt = expectedUpdatedAt;
+  const result = await coordinatorRequest(env, payload);
   return cleanState(result.state);
 }
 async function authorized(request, env) {
@@ -879,7 +887,12 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
-          const state = await patchState(env, body);
+          if (!Object.prototype.hasOwnProperty.call(body, "expectedUpdatedAt") ||
+              (body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string")) {
+            return json({ error: "State version is required; sync before saving" }, 428);
+          }
+          const { expectedUpdatedAt, ...patch } = body;
+          const state = await patchState(env, patch, expectedUpdatedAt);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
       }
