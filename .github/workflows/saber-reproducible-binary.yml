@@ -131,6 +131,7 @@ jobs:
               const reserveABefore = await mintA.getAccountInfo(tokenAccountA);
               const reserveBBefore = await mintB.getAccountInfo(tokenAccountB);
               const destinationBefore = await mintB.getAccountInfo(userDestination);
+              const adminFeeBefore = await mintB.getAccountInfo(adminFeeAccountB);
 
               const transaction = new Transaction().add(stableSwap.swap({
                 userAuthority: owner.publicKey,
@@ -154,10 +155,12 @@ jobs:
               const reserveAAfter = await mintA.getAccountInfo(tokenAccountA);
               const reserveBAfter = await mintB.getAccountInfo(tokenAccountB);
               const destinationAfter = await mintB.getAccountInfo(userDestination);
+              const adminFeeAfter = await mintB.getAccountInfo(adminFeeAccountB);
               expect(sourceAfter.amount.toString()).toBe(sourceBefore.amount.toString());
               expect(reserveAAfter.amount.toString()).toBe(reserveABefore.amount.toString());
               expect(reserveBAfter.amount.toString()).toBe(reserveBBefore.amount.toString());
               expect(destinationAfter.amount.toString()).toBe(destinationBefore.amount.toString());
+              expect(adminFeeAfter.amount.toString()).toBe(adminFeeBefore.amount.toString());
             });
           `;
           tests = tests.slice(0, insertAt) + String.fromCharCode(10) + negativeTest + tests.slice(insertAt);
