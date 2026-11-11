@@ -109,7 +109,7 @@ export class BotCoordinator extends DurableObject {
           const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
           const next = cleanState({ ...current, ...patch });
           if (patch.lastScanReport == null) next.lastScanReport = current.lastScanReport || [];
-          next.updatedAt = new Date(now).toISOString();
+          next.updatedAt = new Date(now).toISOString() + ":" + crypto.randomUUID();
           await txn.put("bot_state", next);
           return { ok: true, state: next };
         }
@@ -225,7 +225,9 @@ async function readState(env) {
   if (legacy && typeof legacy === "object") {
     try {
       const migratedState = cleanState(legacy);
-      if (!migratedState.updatedAt) migratedState.updatedAt = new Date().toISOString();
+      if (!migratedState.updatedAt) {
+        migratedState.updatedAt = new Date().toISOString() + ":" + crypto.randomUUID();
+      }
       await coordinatorRequest(env, {
         op: "state-save",
         expectedUpdatedAt: null,
@@ -243,7 +245,7 @@ async function readState(env) {
 }
 async function saveState(env, state) {
   const expectedUpdatedAt = state.updatedAt ?? null;
-  state.updatedAt = new Date().toISOString();
+  state.updatedAt = new Date().toISOString() + ":" + crypto.randomUUID();
   await coordinatorRequest(env, { op: "state-save", expectedUpdatedAt, state });
 }
 async function patchState(env, patch, expectedUpdatedAt) {
