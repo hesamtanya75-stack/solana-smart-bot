@@ -102,7 +102,21 @@ jobs:
       - name: Reproducible build from pinned upstream Nix environment
         working-directory: saber-source
         run: |
-          nix shell .#ci --command anchor build --program-name stable_swap
+          set -euo pipefail
+          # Solana 1.11.10's bundled BPF cargo dynamically links OpenSSL 1.1.
+          # The pinned Nix shell contains the matching library, but its store
+          # path is not automatically added to the runtime loader search path.
+          nix shell .#ci --command bash -euo pipefail -c '
+            ssl_lib="$(find /nix/store -type f -name libssl.so.1.1 -print -quit)"
+            test -n "$ssl_lib"
+            ssl_dir="$(dirname "$ssl_lib")"
+            export LD_LIBRARY_PATH="$ssl_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            cargo_bin="$HOME/.rustup/toolchains/bpf/bin/cargo"
+            test -x "$cargo_bin"
+            ldd "$cargo_bin" | tee /tmp/saber-bpf-cargo-ldd.txt
+            ! grep -q "not found" /tmp/saber-bpf-cargo-ldd.txt
+            anchor build --program-name stable_swap
+          '
           test -s target/deploy/stable_swap.so
           solana-verify get-executable-hash target/deploy/stable_swap.so | tee ../executable-hash.txt
 
