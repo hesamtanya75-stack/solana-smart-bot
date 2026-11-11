@@ -156,7 +156,27 @@ async function coordinatorRequest(env, payload) {
 }
 async function readState(env) {
   const result = await coordinatorRequest(env, { op: "state-read" });
-  return cleanState(result.state);
+  if (result.state) return cleanState(result.state);
+
+  // One-time, race-safe migration preserves existing paper balances and trades
+  // from KV when the Durable Object coordinator is first introduced.
+  const legacy = await env.BOT_STATE.get("bot_state", "json");
+  if (legacy && typeof legacy === "object") {
+    try {
+      await coordinatorRequest(env, {
+        op: "state-save",
+        expectedUpdatedAt: null,
+        state: cleanState(legacy)
+      });
+    } catch {
+      // Another request may have won the one-time migration race. Re-read the
+      // authoritative Durable Object state; never overwrite it with stale KV.
+    }
+    const migrated = await coordinatorRequest(env, { op: "state-read" });
+    if (migrated.state) return cleanState(migrated.state);
+    throw new Error("Legacy paper state migration could not be confirmed");
+  }
+  return cleanState(null);
 }
 async function saveState(env, state) {
   const expectedUpdatedAt = state.updatedAt ?? null;
