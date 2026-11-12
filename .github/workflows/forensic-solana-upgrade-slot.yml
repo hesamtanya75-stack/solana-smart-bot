@@ -1,0 +1,66 @@
+name: Forensic Solana upgrade-slot lookup
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+
+permissions:
+  contents: read
+
+jobs:
+  lookup-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch finalized Solana block
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOLANA_ARCHIVE_RPC_URL:-}" ]; then
+            echo "::error::Repository secret SOLANA_ARCHIVE_RPC_URL is missing."
+            exit 1
+          fi
+
+          printf '%s' '{"jsonrpc":"2.0","id":1,"method":"getBlock","params":[119721738,{"commitment":"finalized","encoding":"jsonParsed","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]}' > request.json
+
+          http_code="$(curl --silent --show-error --output block.json --write-out '%{http_code}' \
+            --request POST "$SOLANA_ARCHIVE_RPC_URL" \
+            --header 'Content-Type: application/json' \
+            --data-binary @request.json)"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Solana RPC returned HTTP $http_code. The endpoint value is intentionally not printed."
+            exit 1
+          fi
+
+          if ! jq -e '.result != null' block.json >/dev/null; then
+            echo "RPC error response (with credentials omitted):"
+            jq '{error: .error}' block.json
+            exit 1
+          fi
+
+          jq '{
+            slot: .result.parentSlot + 1,
+            blockhash: .result.blockhash,
+            upgrade_candidates: [
+              .result.transactions[]? as $tx
+              | $tx.transaction.message.instructions[]?
+              | select(.program == "bpf-upgradeable-loader" and .parsed.type == "upgrade")
+              | {
+                  signature: $tx.transaction.signatures[0],
+                  info: .parsed.info
+                }
+            ]
+          }' block.json > upgrade-candidates.json
+
+          echo "Block retrieved. Upgrade candidates:"
+          jq '.upgrade_candidates' upgrade-candidates.json
+
+      - name: Upload sanitized upgrade candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: solana-upgrade-slot-119721738
+          path: upgrade-candidates.json
+          retention-days: 2
