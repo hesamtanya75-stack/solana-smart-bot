@@ -84,6 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           cp "$GITHUB_WORKSPACE/.github/patches/anchor-0.24.2-solana-installer.patch" .
+          # Nix git flakes omit untracked files; stage this ephemeral patch so it enters the flake source.
+          git add -f anchor-0.24.2-solana-installer.patch
           python3 "$GITHUB_WORKSPACE/.github/scripts/patch-saber-anchor.py"
           grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
           grep -Fq 'SOLANA_RELEASE=v' anchor-0.24.2-solana-installer.patch
