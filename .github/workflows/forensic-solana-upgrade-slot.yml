@@ -86,8 +86,8 @@ jobs:
                           if program_id != loader:
                               continue
                           loader_count += 1
-                          if raw:
-                              discriminator = raw[0]
+                          if len(raw) >= 4:
+                              discriminator = int.from_bytes(raw[:4], "little")
                               discriminators[str(discriminator)] = discriminators.get(str(discriminator), 0) + 1
                               if discriminator == 3:
                                   account_indexes = ix.get("accounts", [])
@@ -136,13 +136,20 @@ jobs:
               return b"\x00" * (len(value) - len(value.lstrip("1"))) + raw
 
           def rpc(method, params):
+              import time
               body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
-              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
-              with urllib.request.urlopen(req, timeout=45) as response:
-                  result = json.loads(response.read())
-              if result.get("error"):
-                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
-              return result.get("result")
+              for attempt in range(7):
+                  req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=45) as response:
+                          result = json.loads(response.read())
+                      if result.get("error"):
+                          raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+                      return result.get("result")
+                  except Exception:
+                      if attempt == 6:
+                          raise
+                      time.sleep(min(2 ** attempt, 30))
 
           signatures = rpc("getSignaturesForAddress", [BUFFER, {"commitment":"finalized","limit":1000}]) or []
           signatures = [item for item in signatures if item.get("slot", 0) <= 119721738]
@@ -163,7 +170,7 @@ jobs:
                   return item, None, str(exc)
 
           writes = []
-          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+          with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
               for item, tx, error in pool.map(fetch_tx, signatures):
                   if error:
                       report["errors"].append({"signature":item["signature"],"error":error})
@@ -186,14 +193,18 @@ jobs:
                           if pi is None or pi >= len(all_keys) or all_keys[pi] != LOADER:
                               continue
                           raw = b58decode(ix.get("data", ""))
-                          if not raw or raw[0] != 1:
+                          if len(raw) < 16 or int.from_bytes(raw[:4], "little") != 1:
                               continue
                           account_indexes = ix.get("accounts", [])
                           account_keys = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
                           if not account_keys or account_keys[0] != BUFFER or len(raw) < 5:
                               continue
-                          offset = struct.unpack("<I", raw[1:5])[0]
-                          chunk = raw[5:]
+                          offset = struct.unpack("<I", raw[4:8])[0]
+                          declared_length = struct.unpack("<Q", raw[8:16])[0]
+                          chunk = raw[16:16 + declared_length]
+                          if len(chunk) != declared_length:
+                              report["errors"].append({"signature":item["signature"],"error":"truncated bincode Write payload"})
+                              continue
                           writes.append((offset, chunk, item["signature"], item["slot"]))
                           report["write_instructions"].append({
                               "signature": item["signature"], "slot": item["slot"],
