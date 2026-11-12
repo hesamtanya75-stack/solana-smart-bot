@@ -432,34 +432,9 @@ jobs:
           seq=int.from_bytes(wr[65:69],"little"); count=int.from_bytes(wr[69:77],"little")
           owner_count=int.from_bytes(wr[77:81],"little")
           current=[b58(wr[81+32*i:113+32*i]) for i in range(owner_count)]
-          # Recover the original seqno-0 owner set and dated owner-change events from Anchor logs.
-          event_discs={name:hashlib.sha256(("event:"+name).encode()).digest()[:8] for name in ("WalletCreateEvent","WalletSetOwnersEvent")}
+          # Event logs are not required for the creation transaction check; avoid bulk log RPC requests.
           wallet_events=[]
           sigs=rpc("getSignaturesForAddress",[WALLET,{"limit":1000,"commitment":"finalized"}]) or []
-          for item in sigs:
-              tr=rpc("getTransaction",[item["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
-              if not tr: continue
-              for line in ((tr.get("meta") or {}).get("logMessages") or []):
-                  if not line.startswith("Program data: "): continue
-                  try: ev=base64.b64decode(line.split(" ",2)[2])
-                  except Exception: continue
-                  for name,disc in event_discs.items():
-                      if ev[:8]!=disc: continue
-                      try:
-                          pos=8
-                          wallet_bytes=ev[pos:pos+32]; pos+=32
-                          if len(wallet_bytes)!=32 or b58(wallet_bytes)!=WALLET: continue
-                          n,pos=u32(ev,pos)
-                          if n>100: continue
-                          owners=[b58(ev[pos+32*i:pos+32*(i+1)]) for i in range(n)]
-                          pos+=32*n
-                          event={"event":name,"signature":item["signature"],"slot":tr.get("slot"),"block_time_unix":tr.get("blockTime"),"owners":owners}
-                          if name=="WalletCreateEvent":
-                              event["threshold"]=int.from_bytes(ev[pos:pos+8],"little"); pos+=8
-                              event["minimum_delay_seconds"]=int.from_bytes(ev[pos:pos+8],"little",signed=True); pos+=8
-                          event["event_timestamp_unix"]=int.from_bytes(ev[pos:pos+8],"little",signed=True)
-                          wallet_events.append(event)
-                      except Exception: pass
           pid=Pubkey.from_string(GOKI); wallet_pk=Pubkey.from_string(WALLET)
           owner_disc=hashlib.sha256(b"global:set_owners").digest()[:8]
           changes=[]; scanned=0; missing=[]
