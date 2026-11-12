@@ -44,26 +44,22 @@ jobs:
           print("Endpoint format check passed; the secret value was not displayed.")
           PY
 
-      - name: Fetch finalized Solana block and inspect raw loader instructions
+      - name: Fetch nearby finalized blocks and inspect raw loader instructions
         env:
           SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
         run: |
           set -euo pipefail
-          printf '%s' '{"jsonrpc":"2.0","id":1,"method":"getBlock","params":[119721738,{"commitment":"finalized","encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]}' > request.json
-
-          http_code="$(curl --silent --show-error --output block.json --write-out '%{http_code}' \
-            --request POST "$SOLANA_ARCHIVE_RPC_URL" \
-            --header 'Content-Type: application/json' \
-            --data-binary @request.json)"
-          if [ "$http_code" != "200" ]; then
-            echo "::error::Solana RPC returned HTTP $http_code. The endpoint value is intentionally not printed."
-            exit 1
-          fi
-          if ! jq -e '.result != null' block.json >/dev/null; then
-            echo "RPC error response (with credentials omitted):"
-            jq '{error: .error}' block.json
-            exit 1
-          fi
+          for SLOT in 119721736 119721737 119721738 119721739 119721740; do
+            printf '%s' "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getBlock\",\"params\":[${SLOT},{\"commitment\":\"finalized\",\"encoding\":\"json\",\"transactionDetails\":\"full\",\"maxSupportedTransactionVersion\":0,\"rewards\":false}]}" > request.json
+            http_code="$(curl --silent --show-error --output "block-${SLOT}.json" --write-out '%{http_code}' \
+              --request POST "$SOLANA_ARCHIVE_RPC_URL" \
+              --header 'Content-Type: application/json' \
+              --data-binary @request.json)"
+            if [ "$http_code" != "200" ] || ! jq -e '.result != null' "block-${SLOT}.json" >/dev/null; then
+              echo "::error::Solana RPC failed for slot ${SLOT}; endpoint value is intentionally not printed."
+              exit 1
+            fi
+          done
 
           python3 - <<'PY'
           import json
@@ -75,72 +71,58 @@ jobs:
               raw = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
               return b"\\x00" * (len(value) - len(value.lstrip("1"))) + raw
 
-          data = json.load(open("block.json"))
-          block = data["result"]
           loader = "BPFLoaderUpgradeab1e11111111111111111111111"
-          found = []
-          loader_instruction_count = 0
-          loader_discriminators = {}
-          unresolved_program_indexes = 0
-          first_byte_three = []
-          program_id_samples = {}
-          for tx in block.get("transactions", []):
-              transaction = tx.get("transaction", {})
-              message = transaction.get("message", {})
-              meta = tx.get("meta") or {}
-              keys = message.get("accountKeys", [])
-              keys = [k.get("pubkey") if isinstance(k, dict) else k for k in keys]
-              loaded = meta.get("loadedAddresses") or {}
-              all_keys = keys + loaded.get("writable", []) + loaded.get("readonly", [])
-              signatures = transaction.get("signatures", [])
-              for ix in message.get("instructions", []):
-                  pid_index = ix.get("programIdIndex")
-                  if pid_index is None or pid_index >= len(all_keys):
-                      unresolved_program_indexes += 1
-                      continue
-                  program_id = all_keys[pid_index]
-                  program_id_samples[program_id] = program_id_samples.get(program_id, 0) + 1
-                  raw_data = b58decode(ix.get("data", ""))
-                  if raw_data and raw_data[0] == 3 and len(first_byte_three) < 25:
-                      first_byte_three.append({
-                          "signature": (transaction.get("signatures") or [None])[0],
-                          "program_id": program_id,
-                          "program_id_index": pid_index,
-                          "data_prefix": ix.get("data", "")[:24]
-                      })
-                  if program_id != loader:
-                      continue
-                  loader_instruction_count += 1
-                  raw = b58decode(ix.get("data", ""))
-                  if not raw:
-                      continue
-                  discriminator = raw[0]
-                  loader_discriminators[str(discriminator)] = loader_discriminators.get(str(discriminator), 0) + 1
-                  if discriminator != 3:
-                      continue
-                  account_indexes = ix.get("accounts", [])
-                  account_values = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
-                  names = ["programData", "program", "buffer", "spill", "rent", "clock", "authority"]
-                  found.append({
-                      "signature": signatures[0] if signatures else None,
-                      "instruction_index": message.get("instructions", []).index(ix),
-                      "loader_program": loader,
-                      "discriminator": discriminator,
-                      "accounts": dict(zip(names, account_values)),
-                      "raw_account_indexes": account_indexes
-                  })
-
-          output = {
-              "slot": block.get("parentSlot", 0) + 1,
-              "blockhash": block.get("blockhash"),
-              "transaction_count": len(block.get("transactions", [])),
-              "loader_instruction_count": loader_instruction_count,
-              "loader_discriminators": loader_discriminators,
-              "unresolved_program_indexes": unresolved_program_indexes,
-              "most_used_program_ids": sorted(program_id_samples.items(), key=lambda item: item[1], reverse=True)[:20],
-              "instructions_with_first_byte_3": first_byte_three,
-              "upgrade_candidates": found
-          }
+          reports = []
+          for slot in range(119721736, 119721741):
+              block = json.load(open(f"block-{slot}.json"))["result"]
+              found, loader_count, discriminators, program_ids = [], 0, {}, {}
+              for tx in block.get("transactions", []):
+                  transaction = tx.get("transaction", {})
+                  message = transaction.get("message", {})
+                  meta = tx.get("meta") or {}
+                  keys = message.get("accountKeys", [])
+                  keys = [k.get("pubkey") if isinstance(k, dict) else k for k in keys]
+                  loaded = meta.get("loadedAddresses") or {}
+                  all_keys = keys + loaded.get("writable", []) + loaded.get("readonly", [])
+                  signatures = transaction.get("signatures", [])
+                  instruction_groups = [("outer", message.get("instructions", []))]
+                  instruction_groups += [(f"inner-{group.get('index')}", group.get("instructions", []))
+                                          for group in meta.get("innerInstructions", [])]
+                  for group_name, instructions in instruction_groups:
+                      for ix_index, ix in enumerate(instructions):
+                          pid_index = ix.get("programIdIndex")
+                          if pid_index is None or pid_index >= len(all_keys):
+                              continue
+                          program_id = all_keys[pid_index]
+                          program_ids[program_id] = program_ids.get(program_id, 0) + 1
+                          raw = b58decode(ix.get("data", ""))
+                          if program_id != loader:
+                              continue
+                          loader_count += 1
+                          if raw:
+                              discriminator = raw[0]
+                              discriminators[str(discriminator)] = discriminators.get(str(discriminator), 0) + 1
+                              if discriminator == 3:
+                                  account_indexes = ix.get("accounts", [])
+                                  account_values = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
+                                  names = ["programData", "program", "buffer", "spill", "rent", "clock", "authority"]
+                                  found.append({
+                                      "signature": signatures[0] if signatures else None,
+                                      "instruction_group": group_name,
+                                      "instruction_index": ix_index,
+                                      "discriminator": discriminator,
+                                      "accounts": dict(zip(names, account_values))
+                                  })
+              reports.append({
+                  "slot": slot,
+                  "blockhash": block.get("blockhash"),
+                  "transaction_count": len(block.get("transactions", [])),
+                  "loader_instruction_count": loader_count,
+                  "loader_discriminators": discriminators,
+                  "upgrade_candidates": found,
+                  "loader_program_present": loader in program_ids
+              })
+          output = {"slot_window": [119721736, 119721740], "reports": reports}
           with open("upgrade-candidates.json", "w") as f:
               json.dump(output, f, indent=2)
           print(json.dumps(output, indent=2))
