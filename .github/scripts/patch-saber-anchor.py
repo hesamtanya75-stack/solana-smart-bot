@@ -7,8 +7,8 @@ import re
 flake = Path("flake.nix")
 source = flake.read_text()
 pattern = re.compile(
-    r"(?m)^(\\s*)pkgs = import nixpkgs \\{ inherit system; \\}\\s*\\n"
-    r"\\s*// saber-overlay\\.packages\\.\\$\\{system\\};"
+    r"(?m)^(\s*)pkgs = import nixpkgs \{ inherit system; \}\s*\n"
+    r"\s*// saber-overlay\.packages\.\$\{system\};"
 )
 
 
