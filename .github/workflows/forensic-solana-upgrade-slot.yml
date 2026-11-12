@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - forensics/upgrade-slot-119721738
+  workflow_dispatch:
 
 permissions:
   contents: read
