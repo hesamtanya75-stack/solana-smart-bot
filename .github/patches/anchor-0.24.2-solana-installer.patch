@@ -1,10 +1,10 @@
 diff --git a/cli/src/lib.rs b/cli/src/lib.rs
 --- a/cli/src/lib.rs
 +++ b/cli/src/lib.rs
-@@ -1085,16 +1085,24 @@
+@@ -1051,17 +1051,24 @@
      if let Some(solana_version) = &build_config.solana_version {
          println!("Using solana version: {}", solana_version);
-
+ 
          // Install Solana CLI
          docker_exec(
              container_name,
