@@ -31,6 +31,7 @@ jobs:
           PROGRAM = "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ"
           PROGRAM_DATA = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
           BUFFER = "9kDwyNPvePGfAhVoY9pezC4jJRzBetQnfttzkBuHmiW9"
+          GOKI_PROGRAM = "GokivDYuQXPZCWRkwMhdH2h91KpDQXBEmpgBgs55bnpH"
           EXPECTED_SIGNATURE = "5ygvjFAXLwknuRLZVFNCCExmdPcvaTYEeYxHXv8JAWCT1cz6dgbnJ734mZaaCMcZeDQpdxFegrcwcwGKCratGiwb"
           LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
           EXPECTED_MAINNET_HASH = "c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38"
@@ -48,6 +49,13 @@ jobs:
 
           def account(pubkey):
               return rpc("getAccountInfo", [pubkey, {"encoding":"base64","commitment":"finalized"}]).get("value")
+
+          def account_summary(pubkey):
+              value = account(pubkey)
+              if not value:
+                  return None
+              raw = base64.b64decode(value["data"][0])
+              return {"address":pubkey,"owner":value["owner"],"executable":value["executable"],"lamports":value["lamports"],"data_length":len(raw),"data_prefix_hex":raw[:16].hex()}
 
           def b58decode(value):
               alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -157,6 +165,16 @@ jobs:
                               "meta_err":(candidate.get("meta") or {}).get("err")
                           })
 
+          authority_accounts = {
+              "upgrade_authority_at_2022_upgrade":account_summary(upgrade_authority_at_time),
+              "current_programdata_upgrade_authority":account_summary(current_authority),
+              "2022_upgrade_transaction_fee_payer":account_summary(signers[0] if signers else ""),
+              "goki_smart_wallet_program":account_summary(GOKI_PROGRAM)
+          }
+          authority_change_signatures = {
+              "former_authority":rpc("getSignaturesForAddress",[upgrade_authority_at_time,{"limit":10,"commitment":"finalized"}]) if upgrade_authority_at_time else [],
+              "current_authority":rpc("getSignaturesForAddress",[current_authority,{"limit":10,"commitment":"finalized"}]) if current_authority else []
+          }
           report = {
               "scope":"read-only finalized Solana Mainnet audit; no transactions submitted",
               "program":PROGRAM,"program_data":PROGRAM_DATA,"buffer":BUFFER,
@@ -196,6 +214,8 @@ jobs:
                   "suffix_sha256":hashlib.sha256(suffix).hexdigest() if suffix else None
               },
               "buffer_account_exists_now":buf is not None,
+              "authority_account_ownership_and_recent_activity":authority_accounts,
+              "authority_account_recent_signatures":authority_change_signatures,
               "later_loader_upgrade_or_authority_change_in_recent_40_programdata_signatures":later_loader_changes
           }
           with open("saber-mainnet-upgrade-audit.json","w") as f:
