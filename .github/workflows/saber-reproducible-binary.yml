@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Check out this repository for the pinned Anchor patch
+        uses: actions/checkout@v4
+
       - name: Install pinned Solana Verify CLI release and verify checksum
         run: |
           set -euo pipefail
@@ -69,6 +72,32 @@ jobs:
       - name: Install the exact Saber Anchor release toolchain
         uses: cachix/install-nix-action@v22
 
+      - name: Patch only Anchor 0.24.2 installer transport, preserving Solana 1.9.12
+        working-directory: saber-source
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/.github/patches/anchor-0.24.2-solana-installer.patch" .
+          python3 - <<'PY'
+          from pathlib import Path
+
+          flake = Path("flake.nix")
+          source = flake.read_text()
+          old = '''          pkgs = import nixpkgs { inherit system; }
+            // saber-overlay.packages.${system};'''
+          new = '''          pkgs = (import nixpkgs { inherit system; })
+            // saber-overlay.packages.${system}
+            // {
+              anchor-0_24_2 = saber-overlay.packages.${system}.anchor-0_24_2.overrideAttrs (old: {
+                patches = (old.patches or []) ++ [ ./anchor-0.24.2-solana-installer.patch ];
+              });
+            };'''
+          if source.count(old) != 1:
+              raise SystemExit("Expected exactly one pinned Saber flake package expression")
+          flake.write_text(source.replace(old, new))
+          PY
+          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
+          grep -Fq 'SOLANA_RELEASE=v' anchor-0.24.2-solana-installer.patch
+
       - name: Reproducible build using Saber upstream release command
         working-directory: saber-source
         run: |
@@ -78,9 +107,10 @@ jobs:
           # The exact upstream v0.24.2 image was pulled by immutable digest
           # and tagged with the name Anchor 0.24.2 expects.
           nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
-          # The pinned 2022 Solana installer host can intermittently reset TLS
-          # connections from hosted runners. Retry only that transport failure;
-          # never retry a compiler, source, or verification failure.
+          # Anchor 0.24.2 now fetches its official v1.9.12 install-init script
+          # from the matching Solana GitHub release and pins SOLANA_RELEASE.
+          # Keep retries limited to transport failures; never retry a compiler,
+          # source, or verification failure.
           build_succeeded=false
           for attempt in 1 2 3; do
             build_log="/tmp/saber-anchor-build-${attempt}.log"
