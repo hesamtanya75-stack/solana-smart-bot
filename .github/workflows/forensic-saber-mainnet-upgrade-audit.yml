@@ -427,9 +427,9 @@ jobs:
           curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
             https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so -o official-v172.so
           sha256sum mainnet-active-prefix.bin mainnet-trimmed.so official-v172.so | tee raw-file-hashes.txt
-          readelf -h -S --wide mainnet-trimmed.so > mainnet-elf-sections.txt
+          readelf -h -S --wide mainnet-active-prefix.bin > mainnet-elf-sections.txt
           readelf -h -S --wide official-v172.so > official-v172-elf-sections.txt
-          readelf -s --wide mainnet-trimmed.so > mainnet-elf-symbols.txt || true
+          readelf -s --wide mainnet-active-prefix.bin > mainnet-elf-symbols.txt || true
           readelf -s --wide official-v172.so > official-v172-elf-symbols.txt || true
           python3 - <<'PY'
           import hashlib,json
@@ -447,7 +447,7 @@ jobs:
                               if sym.name:
                                   out["symbols"].append({"name":sym.name,"value":int(sym["st_value"]),"size":int(sym["st_size"]),"type":str(sym["st_info"]["type"]),"bind":str(sym["st_info"]["bind"]),"section":str(sym["st_shndx"])})
               return out
-          a=inspect("mainnet-trimmed.so"); b=inspect("official-v172.so")
+          a=inspect("mainnet-active-prefix.bin"); b=inspect("official-v172.so")
           amap={x["name"]:x for x in a["sections"]}; bmap={x["name"]:x for x in b["sections"]}
           report={"mainnet":a,"official_v172":b,"section_comparison":[]}
           for name in sorted(set(amap)|set(bmap)):
@@ -458,7 +458,7 @@ jobs:
           PY
           python3 - <<'PY'
           import json
-          a=open("mainnet-trimmed.so","rb").read()
+          a=open("mainnet-active-prefix.bin","rb").read()
           b=open("official-v172.so","rb").read()
           n=min(len(a),len(b))
           diffs=[i for i in range(n) if a[i]!=b[i]]
@@ -466,7 +466,13 @@ jobs:
           while prefix<n and a[prefix]==b[prefix]: prefix+=1
           suffix=0
           while suffix<n-prefix and a[len(a)-1-suffix]==b[len(b)-1-suffix]: suffix+=1
-          report={"mainnet_length":len(a),"release_length":len(b),"common_prefix_bytes":prefix,"common_suffix_bytes":suffix,"different_byte_positions_within_common_length":len(diffs),"first_64_different_offsets":diffs[:64],"mainnet_only_trailing_bytes":len(a)-n,"release_only_trailing_bytes":len(b)-n}
+          ranges=[]
+for p in diffs:
+    if not ranges or p>ranges[-1][1]+1: ranges.append([p,p])
+    else: ranges[-1][1]=p
+text_diffs=[p for p in diffs if 232<=p<190896]
+data_diffs=[p for p in diffs if 213432<=p<216120]
+report={"mainnet_length":len(a),"release_length":len(b),"common_prefix_bytes":prefix,"common_suffix_bytes":suffix,"different_byte_positions_within_common_length":len(diffs),"first_64_different_offsets":diffs[:64],"different_ranges":ranges,"text_diff_count":len(text_diffs),"text_diff_offsets_mod_instruction_8":[(p-232)%8 for p in text_diffs],"data_rel_ro_diff_offsets":data_diffs,"mainnet_only_trailing_bytes":len(a)-n,"release_only_trailing_bytes":len(b)-n}
           open("binary-byte-diff.json","w").write(json.dumps(report,indent=2))
           print(json.dumps(report,indent=2))
           PY
