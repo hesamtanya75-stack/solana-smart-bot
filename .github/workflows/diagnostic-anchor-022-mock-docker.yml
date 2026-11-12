@@ -48,60 +48,10 @@ jobs:
           cat > /tmp/anchor-probe/Cargo.toml <<'CARGO'
           [workspace]
           members = ["programs/dummy"]
-          resolver = "2"
-          CARGO
-
-          cat > /tmp/anchor-probe/programs/dummy/Cargo.toml <<'CARGO'
-          [package]
-          name = "dummy"
-          version = "0.1.0"
-          edition = "2021"
-          [lib]
-          crate-type = ["cdylib", "lib"]
-          [features]
-          no-entrypoint = []
-          no-idl = []
-          no-log-ix-name = []
-          cpi = ["no-entrypoint"]
-          default = []
-          [dependencies]
-          anchor-lang = "0.22.1"
-          CARGO
-
-          cat > /tmp/anchor-probe/programs/dummy/src/lib.rs <<'RS'
-          use anchor_lang::prelude::*;
-          declare_id!("Fg6PaFpoGXkYsidMpWxTWqkZ8W2Qp8Y7wY7Q7Q7Q7Q7Q");
-          #[program]
-          pub mod dummy {
-              use super::*;
-              pub fn initialize(_ctx: Context<Initialize>) -> Result<()> { Ok(()) }
-          }
-          #[derive(Accounts)]
-          pub struct Initialize {}
-          RS
-
-          run_probe() {
-            local label="$1"
-            local include_solana="$2"
-            local log="/tmp/${label}.docker.log"
-            rm -f "$log"
-            cat > /tmp/anchor-probe/Anchor.toml <<ANCHOR
-          [features]
-          seeds = false
-          [programs.localnet]
-          dummy = "Fg6PaFpoGXkYsidMpWxTWqkZ8W2Qp8Y7wY7Q7Q7Q7Q7Q"
-          [provider]
-          cluster = "localnet"
-          wallet = "~/.config/solana/id.json"
-          [scripts]
-          test = "echo no-tests"
-          [workspace]
-          members = ["programs/dummy"]
+          anchor_version = "0.22.0"
           ANCHOR
             if [ "$include_solana" = "yes" ]; then
-              printf '\n[workspace]\nanchor_version = "0.22.0"\nsolana_version = "1.8.14"\n' >> /tmp/anchor-probe/Anchor.toml
-            else
-              printf '\n[workspace]\nanchor_version = "0.22.0"\n' >> /tmp/anchor-probe/Anchor.toml
+              echo 'solana_version = "1.8.14"' >> /tmp/anchor-probe/Anchor.toml
             fi
             echo "=== probe: $label ==="
             (cd /tmp/anchor-probe && PATH="/tmp/mock-bin:$PATH" DOCKER_LOG="$log" nix shell "$GITHUB_WORKSPACE#ci" --command anchor build --verifiable --program-name dummy --docker-image saber-anchor022-solana1814-preloaded) || true
