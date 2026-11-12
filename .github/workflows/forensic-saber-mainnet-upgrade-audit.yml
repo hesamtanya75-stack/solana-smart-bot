@@ -141,30 +141,120 @@ jobs:
               expected = hashlib.sha256(b"account:Transaction").digest()[:8]
               if raw[:8] != expected:
                   return None
+
+              off = 8
+              def take(size, label):
+                  nonlocal off
+                  if size < 0 or off + size > len(raw):
+                      raise ValueError(f"{label} exceeds account data at offset {off}; need {size}, have {len(raw)-off}")
+                  out = raw[off:off+size]
+                  off += size
+                  return out
+
+              def read_u32(label):
+                  return int.from_bytes(take(4, label), "little")
+
+              def read_u64(label):
+                  return int.from_bytes(take(8, label), "little")
+
+              def read_i64(label):
+                  return int.from_bytes(take(8, label), "little", signed=True)
+
               try:
-                  off = 8
-                  smart_wallet = b58encode(raw[off:off+32]); off += 32
-                  index = int.from_bytes(raw[off:off+8],"little"); off += 8
-                  bump = raw[off]; off += 1
-                  proposer = b58encode(raw[off:off+32]); off += 32
-                  ix_program = b58encode(raw[off:off+32]); off += 32
-                  key_count = int.from_bytes(raw[off:off+4],"little"); off += 4
-                  ix_keys = []
-                  for _ in range(key_count):
-                      ix_keys.append({"pubkey":b58encode(raw[off:off+32]),"is_signer":bool(raw[off+32]),"is_writable":bool(raw[off+33])})
-                      off += 34
-                  data_len = int.from_bytes(raw[off:off+4],"little"); off += 4
-                  ix_data = raw[off:off+data_len]; off += data_len
-                  signer_count = int.from_bytes(raw[off:off+4],"little"); off += 4
-                  approvals = [bool(x) for x in raw[off:off+signer_count]]; off += signer_count
-                  owner_set_seqno = int.from_bytes(raw[off:off+4],"little"); off += 4
-                  eta = int.from_bytes(raw[off:off+8],"little",signed=True); off += 8
-                  executor = b58encode(raw[off:off+32]); off += 32
-                  executed_at = int.from_bytes(raw[off:off+8],"little",signed=True); off += 8
-                  loader_disc = int.from_bytes(ix_data[:4],"little") if len(ix_data)>=4 and ix_program==LOADER else None
-                  return {"transaction_account":pubkey,"smart_wallet":smart_wallet,"index":index,"bump":bump,"proposer":proposer,"instruction_program_id":ix_program,"instruction_accounts":ix_keys,"instruction_data_length":data_len,"loader_instruction_discriminator":loader_disc,"approval_vector":approvals,"approval_count":sum(approvals),"approval_slots":signer_count,"owner_set_seqno":owner_set_seqno,"eta_unix":eta,"executor":executor,"executed_at_unix":executed_at,"decoded_bytes":off,"account_data_length":len(raw)}
+                  smart_wallet = b58encode(take(32, "smart_wallet"))
+                  index = read_u64("index")
+                  bump = take(1, "bump")[0]
+                  proposer = b58encode(take(32, "proposer"))
+
+                  # Anchor/Borsh serializes Vec<TXInstruction> as u32 length + entries.
+                  instruction_count = read_u32("instructions vector length")
+                  if instruction_count > 64:
+                      raise ValueError(f"implausible instruction count: {instruction_count}")
+                  instructions = []
+                  for instruction_index in range(instruction_count):
+                      ix_program = b58encode(take(32, f"instruction[{instruction_index}].program_id"))
+                      key_count = read_u32(f"instruction[{instruction_index}].keys vector length")
+                      if key_count > 256:
+                          raise ValueError(f"implausible key count in instruction {instruction_index}: {key_count}")
+                      ix_keys = []
+                      for key_index in range(key_count):
+                          key_raw = take(34, f"instruction[{instruction_index}].key[{key_index}]")
+                          signer_flag, writable_flag = key_raw[32], key_raw[33]
+                          if signer_flag not in (0, 1) or writable_flag not in (0, 1):
+                              raise ValueError(f"invalid account-meta boolean in instruction {instruction_index}, key {key_index}")
+                          ix_keys.append({
+                              "pubkey": b58encode(key_raw[:32]),
+                              "is_signer": bool(signer_flag),
+                              "is_writable": bool(writable_flag)
+                          })
+                      data_len = read_u32(f"instruction[{instruction_index}].data vector length")
+                      if data_len > 1_000_000:
+                          raise ValueError(f"implausible instruction data length: {data_len}")
+                      ix_data = take(data_len, f"instruction[{instruction_index}].data")
+                      loader_disc = int.from_bytes(ix_data[:4], "little") if len(ix_data) >= 4 and ix_program == LOADER else None
+                      instructions.append({
+                          "instruction_index": instruction_index,
+                          "program_id": ix_program,
+                          "accounts": ix_keys,
+                          "data_length": data_len,
+                          "data_hex": ix_data.hex(),
+                          "loader_instruction_discriminator": loader_disc
+                      })
+
+                  # signers is Vec<bool>; each bool is one byte in Borsh.
+                  signer_count = read_u32("signers vector length")
+                  if signer_count > 256:
+                      raise ValueError(f"implausible signer count: {signer_count}")
+                  signer_raw = take(signer_count, "signers vector")
+                  if any(flag not in (0, 1) for flag in signer_raw):
+                      raise ValueError("invalid boolean value in signers vector")
+                  approvals = [bool(flag) for flag in signer_raw]
+                  owner_set_seqno = read_u32("owner_set_seqno")
+                  eta = read_i64("eta")
+                  executor = b58encode(take(32, "executor"))
+                  executed_at = read_i64("executed_at")
+
+                  wallet_state = decode_goki_smart_wallet(smart_wallet)
+                  owners = wallet_state.get("owners", []) if wallet_state and wallet_state.get("recognized_as_smart_wallet") else []
+                  approval_mapping = []
+                  for owner_index, approved in enumerate(approvals):
+                      approval_mapping.append({
+                          "owner_index": owner_index,
+                          "owner": owners[owner_index] if owner_index < len(owners) else None,
+                          "approved": approved
+                      })
+                  return {
+                      "transaction_account": pubkey,
+                      "smart_wallet": smart_wallet,
+                      "index": index,
+                      "bump": bump,
+                      "proposer": proposer,
+                      "instructions": instructions,
+                      "instruction_count": instruction_count,
+                      "approval_vector": approvals,
+                      "approval_count": sum(approvals),
+                      "approval_slots": signer_count,
+                      "approval_owner_mapping": approval_mapping,
+                      "wallet_owner_count": len(owners),
+                      "approval_vector_matches_wallet_owner_count": len(owners) == signer_count if owners else None,
+                      "owner_set_seqno": owner_set_seqno,
+                      "owner_set_seqno_matches_current_wallet": wallet_state.get("owner_set_seqno") == owner_set_seqno if wallet_state and wallet_state.get("recognized_as_smart_wallet") else None,
+                      "eta_unix": eta,
+                      "executor": executor,
+                      "executed_at_unix": executed_at,
+                      "is_executed": executed_at != -1,
+                      "decoded_bytes": off,
+                      "trailing_bytes": len(raw) - off,
+                      "trailing_bytes_are_zero": not any(raw[off:]),
+                      "account_data_length": len(raw)
+                  }
               except Exception as exc:
-                  return {"transaction_account":pubkey,"decode_error":str(exc),"account_data_length":len(raw)}
+                  return {
+                      "transaction_account": pubkey,
+                      "decode_error": str(exc),
+                      "decode_offset": off,
+                      "account_data_length": len(raw)
+                  }
 
           def find_goki_transactions(tx):
               found = []
