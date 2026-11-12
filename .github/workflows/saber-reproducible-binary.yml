@@ -78,7 +78,26 @@ jobs:
           # The exact upstream v0.24.2 image was pulled by immutable digest
           # and tagged with the name Anchor 0.24.2 expects.
           nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
-          nix shell .#ci --command anchor build --verifiable --program-name stable_swap
+          # The pinned 2022 Solana installer host can intermittently reset TLS
+          # connections from hosted runners. Retry only that transport failure;
+          # never retry a compiler, source, or verification failure.
+          build_succeeded=false
+          for attempt in 1 2 3; do
+            build_log="/tmp/saber-anchor-build-${attempt}.log"
+            if nix shell .#ci --command anchor build --verifiable --program-name stable_swap 2>&1 | tee "$build_log"; then
+              build_succeeded=true
+              break
+            fi
+            if ! grep -Eq 'curl: \(35\)|SSL_ERROR_SYSCALL' "$build_log"; then
+              echo "::error::Saber build failed for a reason other than the known transient Solana installer TLS error"
+              exit 1
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Transient Solana installer TLS failure (attempt $attempt/3); retrying after a short delay"
+              sleep "$((attempt * 20))"
+            fi
+          done
+          test "$build_succeeded" = true
           mapfile -t built_binaries < <(find target -type f -name stable_swap.so -print)
           printf "Found %s stable_swap.so build artifact(s):\\n" "${#built_binaries[@]}"
           printf "%s\\n" "${built_binaries[@]}"
