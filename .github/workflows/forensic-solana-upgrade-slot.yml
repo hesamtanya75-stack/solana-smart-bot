@@ -44,45 +44,84 @@ jobs:
           print("Endpoint format check passed; the secret value was not displayed.")
           PY
 
-      - name: Fetch finalized Solana block
+      - name: Fetch finalized Solana block and inspect raw loader instructions
         env:
           SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
         run: |
           set -euo pipefail
-          printf '%s' '{"jsonrpc":"2.0","id":1,"method":"getBlock","params":[119721738,{"commitment":"finalized","encoding":"jsonParsed","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]}' > request.json
+          printf '%s' '{"jsonrpc":"2.0","id":1,"method":"getBlock","params":[119721738,{"commitment":"finalized","encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]}' > request.json
 
           http_code="$(curl --silent --show-error --output block.json --write-out '%{http_code}' \
             --request POST "$SOLANA_ARCHIVE_RPC_URL" \
             --header 'Content-Type: application/json' \
             --data-binary @request.json)"
-
           if [ "$http_code" != "200" ]; then
             echo "::error::Solana RPC returned HTTP $http_code. The endpoint value is intentionally not printed."
             exit 1
           fi
-
           if ! jq -e '.result != null' block.json >/dev/null; then
             echo "RPC error response (with credentials omitted):"
             jq '{error: .error}' block.json
             exit 1
           fi
 
-          jq '{
-            slot: (.result.parentSlot + 1),
-            blockhash: .result.blockhash,
-            upgrade_candidates: [
-              .result.transactions[]? as $tx
-              | $tx.transaction.message.instructions[]?
-              | select(.program == "bpf-upgradeable-loader" and .parsed.type == "upgrade")
-              | {
-                  signature: $tx.transaction.signatures[0],
-                  info: .parsed.info
-                }
-            ]
-          }' block.json > upgrade-candidates.json
+          python3 - <<'PY'
+          import json
+          alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+          def b58decode(value):
+              n = 0
+              for ch in value:
+                  n = n * 58 + alphabet.index(ch)
+              raw = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
+              return b"\\x00" * (len(value) - len(value.lstrip("1"))) + raw
 
-          echo "Block retrieved. Upgrade candidates:"
-          jq '.upgrade_candidates' upgrade-candidates.json
+          data = json.load(open("block.json"))
+          block = data["result"]
+          loader = "BPFLoaderUpgradeab1e11111111111111111111111"
+          found = []
+          for tx in block.get("transactions", []):
+              transaction = tx.get("transaction", {})
+              message = transaction.get("message", {})
+              meta = tx.get("meta") or {}
+              keys = message.get("accountKeys", [])
+              keys = [k.get("pubkey") if isinstance(k, dict) else k for k in keys]
+              loaded = meta.get("loadedAddresses") or {}
+              all_keys = keys + loaded.get("writable", []) + loaded.get("readonly", [])
+              signatures = transaction.get("signatures", [])
+              for ix in message.get("instructions", []):
+                  pid_index = ix.get("programIdIndex")
+                  if pid_index is None or pid_index >= len(all_keys):
+                      continue
+                  if all_keys[pid_index] != loader:
+                      continue
+                  raw = b58decode(ix.get("data", ""))
+                  if not raw:
+                      continue
+                  discriminator = raw[0]
+                  if discriminator != 3:
+                      continue
+                  account_indexes = ix.get("accounts", [])
+                  account_values = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
+                  names = ["programData", "program", "buffer", "spill", "rent", "clock", "authority"]
+                  found.append({
+                      "signature": signatures[0] if signatures else None,
+                      "instruction_index": message.get("instructions", []).index(ix),
+                      "loader_program": loader,
+                      "discriminator": discriminator,
+                      "accounts": dict(zip(names, account_values)),
+                      "raw_account_indexes": account_indexes
+                  })
+
+          output = {
+              "slot": block.get("parentSlot", 0) + 1,
+              "blockhash": block.get("blockhash"),
+              "transaction_count": len(block.get("transactions", [])),
+              "upgrade_candidates": found
+          }
+          with open("upgrade-candidates.json", "w") as f:
+              json.dump(output, f, indent=2)
+          print(json.dumps(output, indent=2))
+          PY
 
       - name: Upload sanitized upgrade candidates
         uses: actions/upload-artifact@v4
