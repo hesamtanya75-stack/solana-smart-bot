@@ -1,4 +1,4 @@
-name: Diagnose Anchor 0.22.0 verifiable build invocation with mocked Docker
+name: Diagnose Anchor 0.22.0 CLI with mock Docker (no Saber build)
 
 on:
   push:
@@ -10,69 +10,61 @@ permissions:
   contents: read
 
 jobs:
-  inspect-anchor022-docker-invocation:
+  inspect-anchor022-cli:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact Saber v1.7.2 source and build configuration
+        uses: actions/checkout@v4
+        with:
+          repository: saber-hq/stable-swap
+          ref: v1.7.2
+          path: stable-swap
 
-      - name: Report exact Anchor CLI version and build options
+      - name: Install Nix on GitHub runner
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify historical Anchor CLI 0.22.0 and docker-image option
         shell: bash
+        working-directory: stable-swap
         run: |
           set -euo pipefail
           nix shell .#ci --command bash -lc '
             set -euo pipefail
-            anchor --version
+            anchor --version | tee /tmp/anchor-version.txt
+            grep -F "anchor-cli 0.22.0" /tmp/anchor-version.txt
             anchor build --help | tee /tmp/anchor-build-help.txt
             grep -E -- "--docker-image|--verifiable|--program-name" /tmp/anchor-build-help.txt
           '
+          cp /tmp/anchor-version.txt "$GITHUB_WORKSPACE/"
+          cp /tmp/anchor-build-help.txt "$GITHUB_WORKSPACE/"
 
-      - name: Run minimal workspace probes with Docker replaced by a logger
+      - name: Confirm exact source-level installer guard and image override
         shell: bash
+        working-directory: stable-swap
         run: |
           set -euo pipefail
-          mkdir -p /tmp/mock-bin /tmp/anchor-probe/programs/dummy/src
-          cat > /tmp/mock-bin/docker <<'DOCKER_MOCK'
-          #!/usr/bin/env bash
-          set -u
-          {
-            printf 'docker_call='
-            printf '%q ' "$@"
-            printf '\n'
-          } >> "${DOCKER_LOG:?}"
-          # Deliberately do not run a container or any build.
-          exit 0
-          DOCKER_MOCK
-          chmod +x /tmp/mock-bin/docker
+          # This checks source behavior already inspected from the upstream v0.22.0 tag.
+          # No Anchor build command is invoked in this step.
+          git clone --depth 1 --branch v0.22.0 https://github.com/project-serum/anchor.git /tmp/anchor-v022
+          cd /tmp/anchor-v022
+          grep -n -B 5 -A 10 'docker_image: Option<String>' cli/src/lib.rs
+          grep -n -B 5 -A 10 'docker_image.unwrap_or_else(|| cfg.docker())' cli/src/lib.rs
+          grep -n -B 5 -A 22 'if let Some(solana_version) = &build_config.solana_version' cli/src/lib.rs
+          grep -q 'docker_image.unwrap_or_else(|| cfg.docker())' cli/src/lib.rs
+          grep -q 'if let Some(solana_version) = &build_config.solana_version' cli/src/lib.rs
+          grep -q 'https://release.solana.com/v{0}/install' cli/src/lib.rs
+          echo "anchor_022_cli_source_contract=PASS"
 
-          cat > /tmp/anchor-probe/Cargo.toml <<'CARGO'
-          [workspace]
-          members = ["programs/dummy"]
-          anchor_version = "0.22.0"
-          ANCHOR
-            if [ "$include_solana" = "yes" ]; then
-              echo 'solana_version = "1.8.14"' >> /tmp/anchor-probe/Anchor.toml
-            fi
-            echo "=== probe: $label ==="
-            (cd /tmp/anchor-probe && PATH="/tmp/mock-bin:$PATH" DOCKER_LOG="$log" nix shell "$GITHUB_WORKSPACE#ci" --command anchor build --verifiable --program-name dummy --docker-image saber-anchor022-solana1814-preloaded) || true
-            if [ -f "$log" ]; then
-              cat "$log"
-            else
-              echo "NO_DOCKER_CALL_CAPTURED"
-            fi
-          }
-
-          run_probe "with-solana-version" "yes"
-          run_probe "without-solana-version" "no"
-
-      - name: Upload diagnostic logs
+      - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: anchor-022-mock-docker-diagnostic
+          name: anchor-022-cli-no-build-diagnostic
           path: |
-            /tmp/anchor-build-help.txt
-            /tmp/with-solana-version.docker.log
-            /tmp/without-solana-version.docker.log
+            anchor-version.txt
+            anchor-build-help.txt
           if-no-files-found: warn
           retention-days: 7
