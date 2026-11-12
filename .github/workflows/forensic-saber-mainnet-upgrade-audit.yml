@@ -512,7 +512,7 @@ jobs:
                               item["initial_minimum_delay_seconds"]=int.from_bytes(raw[pos:pos+8],"little",signed=True)
                       decoded.append(item)
                   oldest_wallet_tx={"signature":oldest["signature"],"slot":tr.get("slot"),"block_time_unix":tr.get("blockTime"),"goki_instructions":decoded,"log_tail":((tr.get("meta") or {}).get("logMessages") or [])[-12:]}
-                    report={"wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,"num_transactions":count,"transaction_accounts_scanned":scanned,"missing_transaction_indices":missing,"set_owners_transactions":changes,"wallet_creation_and_owner_change_events":wallet_events,"wallet_signatures_scanned":len(sigs),"oldest_wallet_transaction":oldest_wallet_tx,"scope":"read-only finalized Mainnet RPC; no transactions submitted"}
+          report={"wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,"num_transactions":count,"transaction_accounts_scanned":scanned,"missing_transaction_indices":missing,"set_owners_transactions":changes,"wallet_creation_and_owner_change_events":wallet_events,"wallet_signatures_scanned":len(sigs),"oldest_wallet_transaction":oldest_wallet_tx,"scope":"read-only finalized Mainnet RPC; no transactions submitted"}
           with open("goki-owner-history.json","w") as f: json.dump(report,f,indent=2)
           print(json.dumps(report,indent=2))
           PY
