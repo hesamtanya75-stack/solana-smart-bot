@@ -1,0 +1,51 @@
+name: Diagnostic Anchor CLI 0.22.0 source audit
+
+on:
+  push:
+    branches:
+      - diagnostic/anchor-022-preloaded-solana
+    paths:
+      - .github/workflows/diagnostic-anchor-022-source-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-anchor-022-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch exact upstream Anchor v0.22.0 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init anchor-upstream
+          cd anchor-upstream
+          git remote add origin https://github.com/project-serum/anchor.git
+          git fetch --depth=1 origin refs/tags/v0.22.0
+          git checkout --detach FETCH_HEAD
+          echo "anchor_source_commit=$(git rev-parse HEAD)"
+          echo "anchor_source_tag=$(git describe --tags --exact-match HEAD)"
+          echo "=== Build command docker-image option ==="
+          grep -n -B 8 -A 8 'docker_image: Option<String>' cli/src/lib.rs
+          echo "=== BuildConfig selection ==="
+          grep -n -B 8 -A 12 'solana_version: solana_version' cli/src/lib.rs
+          echo "=== docker_prep exact implementation ==="
+          line="$(grep -n '^fn docker_prep' cli/src/lib.rs | cut -d: -f1)"
+          test -n "$line"
+          start=$((line > 8 ? line - 8 : 1))
+          end=$((line + 55))
+          sed -n "${start},${end}p" cli/src/lib.rs
+          echo "=== Assertions ==="
+          grep -q 'docker_image: Option<String>' cli/src/lib.rs
+          grep -q 'if let Some(solana_version) = &build_config.solana_version' cli/src/lib.rs
+          grep -q 'solana_installer.sh' cli/src/lib.rs
+          echo "anchor_022_source_audit=PASS"
+      - name: Upload source audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-022-source-audit
+          path: |
+            anchor-upstream/cli/src/lib.rs
+          retention-days: 7
