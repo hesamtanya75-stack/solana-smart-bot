@@ -1,0 +1,100 @@
+name: Mock Anchor 0.22.0 Docker invocation (no Saber build)
+
+on:
+  push:
+    branches:
+      - diagnostic/anchor-022-mock-docker
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mock-verifiable-build-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact Saber v1.7.2 source and build configuration
+        uses: actions/checkout@v4
+        with:
+          repository: saber-hq/stable-swap
+          ref: v1.7.2
+          path: stable-swap
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build pinned Anchor 0.22.0 CLI only
+        working-directory: stable-swap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/anchor-only
+          cp flake.lock /tmp/anchor-only/flake.lock
+          cat > /tmp/anchor-only/flake.nix <<'EOF'
+          {
+            description = "Pinned Anchor 0.22.0 CLI for mock invocation test";
+            inputs = {
+              nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+              saber-overlay.url = "github:saber-hq/saber-overlay";
+              flake-utils.url = "github:numtide/flake-utils";
+            };
+            outputs = { self, saber-overlay, ... }: {
+              packages.x86_64-linux.default =
+                saber-overlay.packages.x86_64-linux.anchor-0_22_0;
+            };
+          }
+          EOF
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command bash -lc 'anchor --version; anchor build --help | grep -E -- "--docker-image|--verifiable"'
+
+      - name: Exercise Anchor CLI against a recording mock Docker (no program compilation)
+        working-directory: stable-swap
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="saber-anchor-022-solana-1814-preloaded:diagnostic"
+          MOCK_DIR="$(mktemp -d)"
+          ORIGINAL_CONFIG="$(mktemp)"
+          cp Anchor.toml "$ORIGINAL_CONFIG"
+          restore_config() { cp "$ORIGINAL_CONFIG" Anchor.toml; rm -f "$ORIGINAL_CONFIG"; }
+          trap restore_config EXIT
+
+          # Remove only the Solana installer selector from this disposable checkout.
+          grep -q '^solana_version[[:space:]]*=' Anchor.toml
+          sed '/^solana_version[[:space:]]*=/d' "$ORIGINAL_CONFIG" > Anchor.toml
+          ! grep -q '^solana_version[[:space:]]*=' Anchor.toml
+
+          cat > "$MOCK_DIR/docker" <<'MOCK'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          printf '%s\n' "$*" >> "${MOCK_DOCKER_LOG:?}"
+          exit 0
+          MOCK
+          chmod +x "$MOCK_DIR/docker"
+          export MOCK_DOCKER_LOG="$RUNNER_TEMP/mock-docker-commands.log"
+          export PATH="$MOCK_DIR:$PATH"
+          : > "$MOCK_DOCKER_LOG"
+
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command             anchor build --verifiable --docker-image "$IMAGE"
+
+          echo "--- Recorded Docker invocations ---"
+          cat "$MOCK_DOCKER_LOG"
+          grep -F "$IMAGE" "$MOCK_DOCKER_LOG"
+          if grep -E 'release\.solana\.com|solana_installer\.sh' "$MOCK_DOCKER_LOG"; then
+            echo "Unexpected legacy Solana installer invocation detected" >&2
+            exit 1
+          fi
+          echo "mock_docker_image_override=PASS"
+          echo "legacy_solana_installer_skipped=PASS"
+          echo "saber_program_build=NOT_RUN"
+
+      - name: Upload mock invocation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-022-mock-docker-invocation-evidence
+          path: ${{ runner.temp }}/mock-docker-commands.log
+          if-no-files-found: warn
+          retention-days: 7
