@@ -31,6 +31,10 @@ jobs:
           grep -n -B 8 -A 8 'docker_image: Option<String>' cli/src/lib.rs
           echo "=== BuildConfig selection ==="
           grep -n -B 8 -A 12 'solana_version: solana_version' cli/src/lib.rs
+          echo "=== custom docker image selection and use ==="
+          grep -n -B 10 -A 18 'build_config.docker_image' cli/src/lib.rs
+          echo "=== docker_prep call site ==="
+          grep -n -B 10 -A 18 'docker_prep(' cli/src/lib.rs
           echo "=== docker_prep exact implementation ==="
           line="$(grep -n '^fn docker_prep' cli/src/lib.rs | cut -d: -f1)"
           test -n "$line"
@@ -39,6 +43,8 @@ jobs:
           sed -n "${start},${end}p" cli/src/lib.rs
           echo "=== Assertions ==="
           grep -q 'docker_image: Option<String>' cli/src/lib.rs
+          grep -q 'docker_image.unwrap_or_else(|| cfg.docker())' cli/src/lib.rs
+          grep -q 'build_config.docker_image' cli/src/lib.rs
           grep -q 'if let Some(solana_version) = &build_config.solana_version' cli/src/lib.rs
           grep -q 'solana_installer.sh' cli/src/lib.rs
           echo "anchor_022_source_audit=PASS"
