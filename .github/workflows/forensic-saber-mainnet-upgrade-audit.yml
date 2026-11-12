@@ -215,7 +215,14 @@ jobs:
                   executed_at = read_i64("executed_at")
 
                   wallet_state = decode_goki_smart_wallet(smart_wallet)
-                  owners = wallet_state.get("owners", []) if wallet_state and wallet_state.get("recognized_as_smart_wallet") else []
+                  owner_mapping_valid = bool(
+                      wallet_state
+                      and wallet_state.get("recognized_as_smart_wallet")
+                      and wallet_state.get("owner_set_seqno") == owner_set_seqno
+                  )
+                  # Approval bits use the owner set active when this transaction was created.
+                  # Never label historical approvals with the wallet's current owner list.
+                  owners = wallet_state.get("owners", []) if owner_mapping_valid else []
                   approval_mapping = []
                   for owner_index, approved in enumerate(approvals):
                       approval_mapping.append({
@@ -237,6 +244,7 @@ jobs:
                       "approval_owner_mapping": approval_mapping,
                       "wallet_owner_count": len(owners),
                       "approval_vector_matches_wallet_owner_count": len(owners) == signer_count if owners else None,
+                      "approval_mapping_uses_current_owner_set": owner_mapping_valid,
                       "owner_set_seqno": owner_set_seqno,
                       "owner_set_seqno_matches_current_wallet": wallet_state.get("owner_set_seqno") == owner_set_seqno if wallet_state and wallet_state.get("recognized_as_smart_wallet") else None,
                       "eta_unix": eta,
