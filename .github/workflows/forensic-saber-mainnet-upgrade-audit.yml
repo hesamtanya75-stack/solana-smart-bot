@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, os, urllib.request
+          import base64, datetime, hashlib, json, os, urllib.request
 
           URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
           if not URL.startswith("https://") or "/v2/" not in URL:
@@ -55,11 +55,11 @@ jobs:
               for ch in value:
                   n = n * 58 + alphabet.index(ch)
               raw = n.to_bytes((n.bit_length()+7)//8, "big") if n else b""
-              return b"\\x00" * (len(value)-len(value.lstrip("1"))) + raw
+              return bytes([0]) * (len(value)-len(value.lstrip("1"))) + raw
 
           def b58encode(raw):
               alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-              zeros = len(raw) - len(raw.lstrip(b"\\x00"))
+              zeros = len(raw) - len(raw.lstrip(bytes([0])))
               n = int.from_bytes(raw, "big")
               out = ""
               while n:
@@ -88,6 +88,16 @@ jobs:
                       found.append({"group":group,"instruction_index":index,"discriminator":disc,"accounts":accts})
               return found
 
+          def outer_programs(tx):
+              message = tx["transaction"]["message"]
+              keys = message.get("accountKeys", [])
+              key_values = [k.get("pubkey") if isinstance(k,dict) else k for k in keys]
+              result = []
+              for ix in message.get("instructions", []):
+                  idx = ix.get("programIdIndex")
+                  result.append(ix.get("programId") or (key_values[idx] if idx is not None and idx < len(key_values) else None))
+              return result
+
           tx = rpc("getTransaction", [EXPECTED_SIGNATURE, {
               "encoding":"json", "commitment":"finalized", "maxSupportedTransactionVersion":0
           }])
@@ -103,12 +113,6 @@ jobs:
           if meta.get("err") is not None or not target_upgrade:
               raise SystemExit("Recorded transaction did not successfully upgrade the target program.")
           upgrade_authority_at_time = target_upgrade[0]["accounts"][6] if len(target_upgrade[0]["accounts"]) > 6 else None
-          outer = message.get("instructions", [])
-          outer_callers = []
-          for item in outer:
-              idx = item.get("programIdIndex")
-              pid = item.get("programId") or (key_values[idx] if idx is not None and idx < len(key_values) else None)
-              outer_callers.append(pid)
 
           pd = account(PROGRAM_DATA)
           prog = account(PROGRAM)
@@ -123,7 +127,7 @@ jobs:
           current_authority = b58encode(pd_raw[13:45]) if auth_option == 1 and len(pd_raw)>=45 else None
           payload = pd_raw[45:] if len(pd_raw)>=45 else b""
           active_prefix = payload[:EXPECTED_BUFFER_LENGTH]
-          active_trimmed = active_prefix.rstrip(b"\\x00")
+          active_trimmed = active_prefix.rstrip(bytes([0]))
           suffix = payload[EXPECTED_BUFFER_LENGTH:]
           prog_raw = base64.b64decode(prog["data"][0])
           program_state_tag = int.from_bytes(prog_raw[:4],"little") if len(prog_raw)>=4 else None
@@ -139,7 +143,19 @@ jobs:
               for ix in loader_ixs(candidate):
                   if ix["accounts"] and ix["accounts"][0] == PROGRAM_DATA and ix["discriminator"] in (3,4,7):
                       if candidate.get("slot",0) > deployment_slot:
-                          later_loader_changes.append({"signature":item["signature"],"slot":candidate.get("slot"),"discriminator":ix["discriminator"],"accounts":ix["accounts"],"meta_err":(candidate.get("meta") or {}).get("err")})
+                          later_loader_changes.append({
+                              "signature":item["signature"],"slot":candidate.get("slot"),
+                              "block_time_unix":candidate.get("blockTime"),
+                              "discriminator":ix["discriminator"],"accounts":ix["accounts"],
+                              "top_level_signers":[
+                                  (candidate["transaction"]["message"].get("accountKeys",[])[i].get("pubkey")
+                                   if isinstance(candidate["transaction"]["message"].get("accountKeys",[])[i],dict)
+                                   else candidate["transaction"]["message"].get("accountKeys",[])[i])
+                                  for i in range((candidate["transaction"]["message"].get("header") or {}).get("numRequiredSignatures",0))
+                              ],
+                              "outer_instruction_program_ids":outer_programs(candidate),
+                              "meta_err":(candidate.get("meta") or {}).get("err")
+                          })
 
           report = {
               "scope":"read-only finalized Solana Mainnet audit; no transactions submitted",
@@ -147,12 +163,13 @@ jobs:
               "upgrade_signature":EXPECTED_SIGNATURE,
               "transaction":{
                   "slot":tx_slot,"block_time_unix":tx.get("blockTime"),
+                  "block_time_utc":datetime.datetime.fromtimestamp(tx["blockTime"],datetime.timezone.utc).isoformat() if tx.get("blockTime") else None,
                   "meta_err":meta.get("err"),"fee_lamports":meta.get("fee"),
                   "required_signatures":required,"top_level_signers":signers,
                   "upgrade_instruction":target_upgrade[0],
                   "upgrade_authority_account_at_upgrade":upgrade_authority_at_time,
                   "upgrade_authority_account_is_top_level_signer":upgrade_authority_at_time in signers if upgrade_authority_at_time else False,
-                  "outer_instruction_program_ids":outer_callers
+                  "outer_instruction_program_ids":outer_programs(tx)
               },
               "program_account":{
                   "owner":prog["owner"],"executable":prog["executable"],
