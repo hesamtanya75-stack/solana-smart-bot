@@ -1,10 +1,22 @@
 diff --git a/cli/src/lib.rs b/cli/src/lib.rs
 --- a/cli/src/lib.rs
 +++ b/cli/src/lib.rs
-@@ -1 +1 @@
+@@ -1085,16 +1085,24 @@
+     if let Some(solana_version) = &build_config.solana_version {
+         println!("Using solana version: {}", solana_version);
+
+         // Install Solana CLI
+         docker_exec(
+             container_name,
+             &[
+                 "curl",
+                 "-sSfL",
 -                &format!("https://release.solana.com/v{0}/install", solana_version,),
 +                &format!("https://raw.githubusercontent.com/solana-labs/solana/v{0}/install/solana-install-init.sh", solana_version,),
-@@ -1 +1 @@
+                 "-o",
+                 "solana_installer.sh",
+             ],
+         )?;
 -        docker_exec(container_name, &["sh", "solana_installer.sh"])?;
 +        docker_exec(
 +            container_name,
@@ -15,3 +27,5 @@ diff --git a/cli/src/lib.rs b/cli/src/lib.rs
 +                "solana_installer.sh",
 +            ],
 +        )?;
+         docker_exec(container_name, &["rm", "-f", "solana_installer.sh"])?;
+     }
