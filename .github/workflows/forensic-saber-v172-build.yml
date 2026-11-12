@@ -77,10 +77,13 @@ jobs:
             echo preloaded_toolchain_check=PASS
           ' | tee preloaded-toolchain-check.txt
 
-      - name: Install Nix and build pinned Anchor 0.22.0 CLI
+      - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build pinned Anchor 0.22.0 CLI only
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/anchor-only
@@ -101,8 +104,8 @@ jobs:
           EOF
           nix shell /tmp/anchor-only#packages.x86_64-linux.default --command bash -lc '
             set -euo pipefail
-            anchor --version | tee /tmp/anchor-version.txt
-            grep -F "anchor-cli 0.22.0" /tmp/anchor-version.txt
+            anchor --version | tee "$GITHUB_WORKSPACE/anchor-version.txt"
+            grep -F "anchor-cli 0.22.0" "$GITHUB_WORKSPACE/anchor-version.txt"
           '
 
       - name: Build Saber v1.7.2 with preloaded Solana 1.8.14
@@ -168,7 +171,7 @@ jobs:
             solana-archive-evidence.txt
             derived-image.txt
             preloaded-toolchain-check.txt
-            /tmp/anchor-version.txt
+            anchor-version.txt
             saber-v172-build.log
             v172-built-file-sha256.txt
             v172-built-hash.txt
