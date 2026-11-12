@@ -1,0 +1,145 @@
+name: Forensic Saber Mainnet upgrade audit (read-only)
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-saber-mainnet-upgrade-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Audit finalized upgrade transaction and current ProgramData
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+
+          URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not URL.startswith("https://") or "/v2/" not in URL:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+
+          PROGRAM = "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ"
+          PROGRAM_DATA = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          BUFFER = "9kDwyNPvePGfAhVoY9pezC4jJRzBetQnfttzkBuHmiW9"
+          EXPECTED_SIGNATURE = "5ygvjFAXLwknuRLZVFNCCExmdPcvaTYEeYxHXv8JAWCT1cz6dgbnJ734mZaaCMcZeDQpdxFegrcwcwGKCratGiwb"
+          LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
+          EXPECTED_HASH = "c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38"
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  result = json.load(response)
+              if result.get("error"):
+                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+              return result.get("result")
+
+          def account(pubkey):
+              return rpc("getAccountInfo", [pubkey, {"encoding":"base64","commitment":"finalized"}])
+
+          def b58decode(value):
+              alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+              n = 0
+              for ch in value:
+                  n = n * 58 + alphabet.index(ch)
+              raw = n.to_bytes((n.bit_length()+7)//8, "big") if n else b""
+              return b"\\x00" * (len(value)-len(value.lstrip("1"))) + raw
+
+          tx = rpc("getTransaction", [EXPECTED_SIGNATURE, {
+              "encoding":"json", "commitment":"finalized", "maxSupportedTransactionVersion":0
+          }])
+          if tx is None:
+              raise SystemExit("Upgrade transaction not found at finalized commitment.")
+
+          message = tx["transaction"]["message"]
+          meta = tx.get("meta") or {}
+          keys = message.get("accountKeys", [])
+          key_values = [k.get("pubkey") if isinstance(k,dict) else k for k in keys]
+          signers = [k.get("pubkey") for k in keys if isinstance(k,dict) and k.get("signer")]
+          groups = [("outer", message.get("instructions", []))]
+          groups += [("inner-"+str(g.get("index")), g.get("instructions", [])) for g in meta.get("innerInstructions", [])]
+          upgrades = []
+          for group, instructions in groups:
+              for index, ix in enumerate(instructions):
+                  pid = ix.get("programId")
+                  if pid is None and ix.get("programIdIndex") is not None:
+                      pidx = ix["programIdIndex"]
+                      pid = key_values[pidx] if pidx < len(key_values) else None
+                  if pid != LOADER:
+                      continue
+                  raw = b58decode(ix.get("data",""))
+                  disc = int.from_bytes(raw[:4],"little") if len(raw)>=4 else None
+                  if disc == 3:
+                      accts = [key_values[i] if i < len(key_values) else None for i in ix.get("accounts",[])]
+                      upgrades.append({"group":group,"instruction_index":index,"accounts":accts})
+
+          pd = account(PROGRAM_DATA).get("value")
+          prog = account(PROGRAM).get("value")
+          buf = account(BUFFER).get("value")
+          pd_report = {"exists": pd is not None}
+          if pd:
+              raw = base64.b64decode(pd["data"][0])
+              state_tag = int.from_bytes(raw[:4],"little") if len(raw)>=4 else None
+              deployment_slot = int.from_bytes(raw[4:12],"little") if len(raw)>=12 else None
+              auth_option = raw[12] if len(raw)>12 else None
+              authority = base64.b64encode(raw[13:45]).decode() if auth_option == 1 and len(raw)>=45 else None
+              payload = raw[45:] if len(raw)>=45 else b""
+              trimmed = payload.rstrip(b"\\x00")
+              pd_report.update({
+                  "owner":pd["owner"],"executable":pd["executable"],"data_length":len(raw),
+                  "loader_state_tag":state_tag,"last_deployment_slot":deployment_slot,
+                  "upgrade_authority_option":auth_option,
+                  "upgrade_authority_pubkey_bytes_base64":authority,
+                  "program_payload_length":len(payload),
+                  "program_payload_trimmed_length":len(trimmed),
+                  "program_payload_sha256_trimmed":hashlib.sha256(trimmed).hexdigest(),
+                  "matches_previous_mainnet_hash":hashlib.sha256(trimmed).hexdigest()==EXPECTED_HASH
+              })
+
+          report = {
+              "scope":"read-only finalized Solana Mainnet audit; no transactions submitted",
+              "program":PROGRAM,"program_data":PROGRAM_DATA,"buffer":BUFFER,
+              "upgrade_signature":EXPECTED_SIGNATURE,
+              "transaction":{"slot":tx.get("slot"),"block_time":tx.get("blockTime"),
+                  "meta_err":meta.get("err"),"fee_lamports":meta.get("fee"),
+                  "compute_units_consumed":meta.get("computeUnitsConsumed"),
+                  "signers":signers,"upgrade_instructions":upgrades,
+                  "log_messages":meta.get("logMessages",[])},
+              "program_account":None if not prog else {
+                  "owner":prog["owner"],"executable":prog["executable"],
+                  "data_length":len(base64.b64decode(prog["data"][0]))},
+              "program_data_account":pd_report,
+              "buffer_account":None if not buf else {
+                  "owner":buf["owner"],"executable":buf["executable"],
+                  "lamports":buf["lamports"],"data_length":len(base64.b64decode(buf["data"][0]))},
+              "recent_program_data_signatures":rpc("getSignaturesForAddress",[PROGRAM_DATA,{"limit":20,"commitment":"finalized"}]),
+              "recent_program_signatures":rpc("getSignaturesForAddress",[PROGRAM,{"limit":20,"commitment":"finalized"}])
+          }
+          with open("saber-mainnet-upgrade-audit.json","w") as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2))
+          if meta.get("err") is not None:
+              raise SystemExit("Upgrade transaction meta.err is not null.")
+          if not upgrades:
+              raise SystemExit("No Upgrade instruction found in the recorded transaction.")
+          if not pd or not pd_report.get("matches_previous_mainnet_hash"):
+              raise SystemExit("Current ProgramData hash did not match the independently recorded Mainnet hash.")
+          PY
+
+      - name: Upload sanitized read-only audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-mainnet-upgrade-audit
+          path: saber-mainnet-upgrade-audit.json
+          retention-days: 7
+          if-no-files-found: error
