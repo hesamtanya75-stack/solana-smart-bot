@@ -50,7 +50,8 @@ jobs:
               };
           }
           EOF
-          nix shell /tmp/anchor-only#default --command bash -lc '
+          nix flake show /tmp/anchor-only
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command bash -lc '
             set -euo pipefail
             anchor --version | tee /tmp/anchor-version.txt
             grep -F "anchor-cli 0.22.0" /tmp/anchor-version.txt
