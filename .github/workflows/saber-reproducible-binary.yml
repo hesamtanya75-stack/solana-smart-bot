@@ -120,6 +120,15 @@ jobs:
             fi
           done
           test "$build_succeeded" = true
+          # Prove which SDK actually compiled the ELF inside Anchor's build container.
+          # The pinned base image starts at 1.9.13, but Anchor's patched installer
+          # must switch the active BPF SDK to the required 1.9.12 before compilation.
+          grep -Fq '/releases/1.9.12/solana-release/bin/sdk/bpf/' "$build_log"
+          if grep -Fq '/releases/1.9.13/solana-release/bin/sdk/bpf/' "$build_log"; then
+            echo "::error::Build log shows Solana BPF SDK 1.9.13; expected 1.9.12"
+            exit 1
+          fi
+          echo "Verified actual compiler path: Solana BPF SDK 1.9.12"
           mapfile -t built_binaries < <(find target -type f -name stable_swap.so -print)
           printf "Found %s stable_swap.so build artifact(s):\\n" "${#built_binaries[@]}"
           printf "%s\\n" "${built_binaries[@]}"
@@ -168,7 +177,7 @@ jobs:
           {
             echo "## Saber source-to-binary comparison"
             echo "- Source commit (v1.8.1 tag): 6c0384cbaf305500678ed14e6426244145619249"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); Docker base digest pinned; Rust 1.59.0 and Solana CLI/BPF SDK 1.9.13 checked in-image"
+            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); immutable Anchor Docker base pinned; Rust 1.59.0; actual build log must prove Solana BPF SDK 1.9.12"
             echo "- Rebuilt executable hash: $executable_hash"
             echo "- Published upstream v1.8.1 executable hash: $upstream_hash (match: true)"
             echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
