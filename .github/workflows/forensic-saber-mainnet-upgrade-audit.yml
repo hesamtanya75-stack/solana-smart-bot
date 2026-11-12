@@ -65,9 +65,9 @@ jobs:
               while n:
                   n, rem = divmod(n, 58)
                   out = alphabet[rem] + out
-              return "1" * zeros + (out or ("" if zeros else "1"))
+              return "1" * zeros + out
 
-          def upgrade_ixs(tx):
+          def loader_ixs(tx):
               message = tx["transaction"]["message"]
               keys = message.get("accountKeys", [])
               key_values = [k.get("pubkey") if isinstance(k,dict) else k for k in keys]
@@ -84,9 +84,8 @@ jobs:
                           continue
                       raw = b58decode(ix.get("data",""))
                       disc = int.from_bytes(raw[:4],"little") if len(raw)>=4 else None
-                      if disc == 3:
-                          accts = [key_values[i] if i < len(key_values) else None for i in ix.get("accounts",[])]
-                          found.append({"group":group,"instruction_index":index,"accounts":accts})
+                      accts = [key_values[i] if i < len(key_values) else None for i in ix.get("accounts",[])]
+                      found.append({"group":group,"instruction_index":index,"discriminator":disc,"accounts":accts})
               return found
 
           tx = rpc("getTransaction", [EXPECTED_SIGNATURE, {
@@ -99,10 +98,17 @@ jobs:
           key_values = [k.get("pubkey") if isinstance(k,dict) else k for k in message.get("accountKeys", [])]
           required = (message.get("header") or {}).get("numRequiredSignatures", 0)
           signers = key_values[:required]
-          upgrades = upgrade_ixs(tx)
-          target_upgrade = [u for u in upgrades if len(u["accounts"]) > 2 and u["accounts"][0] == PROGRAM_DATA and u["accounts"][1] == PROGRAM and u["accounts"][2] == BUFFER]
+          all_loader_ixs = loader_ixs(tx)
+          target_upgrade = [u for u in all_loader_ixs if u["discriminator"] == 3 and len(u["accounts"]) > 2 and u["accounts"][0] == PROGRAM_DATA and u["accounts"][1] == PROGRAM and u["accounts"][2] == BUFFER]
           if meta.get("err") is not None or not target_upgrade:
               raise SystemExit("Recorded transaction did not successfully upgrade the target program.")
+          upgrade_authority_at_time = target_upgrade[0]["accounts"][6] if len(target_upgrade[0]["accounts"]) > 6 else None
+          outer = message.get("instructions", [])
+          outer_callers = []
+          for item in outer:
+              idx = item.get("programIdIndex")
+              pid = item.get("programId") or (key_values[idx] if idx is not None and idx < len(key_values) else None)
+              outer_callers.append(pid)
 
           pd = account(PROGRAM_DATA)
           prog = account(PROGRAM)
@@ -114,7 +120,7 @@ jobs:
           pd_state_tag = int.from_bytes(pd_raw[:4],"little")
           deployment_slot = int.from_bytes(pd_raw[4:12],"little")
           auth_option = pd_raw[12] if len(pd_raw)>12 else None
-          authority = b58encode(pd_raw[13:45]) if auth_option == 1 and len(pd_raw)>=45 else None
+          current_authority = b58encode(pd_raw[13:45]) if auth_option == 1 and len(pd_raw)>=45 else None
           payload = pd_raw[45:] if len(pd_raw)>=45 else b""
           active_prefix = payload[:EXPECTED_BUFFER_LENGTH]
           active_trimmed = active_prefix.rstrip(b"\\x00")
@@ -123,7 +129,18 @@ jobs:
           program_state_tag = int.from_bytes(prog_raw[:4],"little") if len(prog_raw)>=4 else None
           program_data_from_program = b58encode(prog_raw[4:36]) if len(prog_raw)>=36 else None
           tx_slot = tx.get("slot")
-          authority_is_signer = authority in signers if authority else False
+
+          recent = rpc("getSignaturesForAddress",[PROGRAM_DATA,{"limit":40,"commitment":"finalized"}]) or []
+          later_loader_changes = []
+          for item in recent:
+              candidate = rpc("getTransaction",[item["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
+              if not candidate:
+                  continue
+              for ix in loader_ixs(candidate):
+                  if ix["accounts"] and ix["accounts"][0] == PROGRAM_DATA and ix["discriminator"] in (3,4,7):
+                      if candidate.get("slot",0) > deployment_slot:
+                          later_loader_changes.append({"signature":item["signature"],"slot":candidate.get("slot"),"discriminator":ix["discriminator"],"accounts":ix["accounts"],"meta_err":(candidate.get("meta") or {}).get("err")})
+
           report = {
               "scope":"read-only finalized Solana Mainnet audit; no transactions submitted",
               "program":PROGRAM,"program_data":PROGRAM_DATA,"buffer":BUFFER,
@@ -131,9 +148,11 @@ jobs:
               "transaction":{
                   "slot":tx_slot,"block_time_unix":tx.get("blockTime"),
                   "meta_err":meta.get("err"),"fee_lamports":meta.get("fee"),
-                  "required_signatures":required,"signers":signers,
-                  "upgrade_instructions":target_upgrade,
-                  "authority_is_transaction_signer":authority_is_signer
+                  "required_signatures":required,"top_level_signers":signers,
+                  "upgrade_instruction":target_upgrade[0],
+                  "upgrade_authority_account_at_upgrade":upgrade_authority_at_time,
+                  "upgrade_authority_account_is_top_level_signer":upgrade_authority_at_time in signers if upgrade_authority_at_time else False,
+                  "outer_instruction_program_ids":outer_callers
               },
               "program_account":{
                   "owner":prog["owner"],"executable":prog["executable"],
@@ -146,8 +165,9 @@ jobs:
                   "data_length":len(pd_raw),"loader_state_tag":pd_state_tag,
                   "last_deployment_slot":deployment_slot,
                   "deployment_slot_matches_upgrade_transaction":deployment_slot==tx_slot,
-                  "upgrade_authority":authority,"upgrade_authority_option":auth_option,
-                  "upgrade_authority_is_upgrade_signer":authority_is_signer,
+                  "current_upgrade_authority":current_authority,
+                  "upgrade_authority_option":auth_option,
+                  "upgrade_authority_changed_since_upgrade":current_authority != upgrade_authority_at_time,
                   "program_payload_capacity":len(payload),
                   "active_prefix_length_from_buffer_history":len(active_prefix),
                   "active_prefix_full_sha256":hashlib.sha256(active_prefix).hexdigest(),
@@ -158,17 +178,9 @@ jobs:
                   "bytes_after_buffer_payload_length":len(suffix),
                   "suffix_sha256":hashlib.sha256(suffix).hexdigest() if suffix else None
               },
-              "buffer_account_exists_now":buf is not None
+              "buffer_account_exists_now":buf is not None,
+              "later_loader_upgrade_or_authority_change_in_recent_40_programdata_signatures":later_loader_changes
           }
-          recent = rpc("getSignaturesForAddress",[PROGRAM_DATA,{"limit":30,"commitment":"finalized"}]) or []
-          later_upgrade_signatures = []
-          for item in recent:
-              if item["signature"] == EXPECTED_SIGNATURE:
-                  continue
-              candidate = rpc("getTransaction",[item["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
-              if candidate and any(u["accounts"] and u["accounts"][0] == PROGRAM_DATA and len(u["accounts"])>1 and u["accounts"][1] == PROGRAM for u in upgrade_ixs(candidate)):
-                  later_upgrade_signatures.append({"signature":item["signature"],"slot":candidate.get("slot"),"meta_err":(candidate.get("meta") or {}).get("err")})
-          report["later_upgrade_instructions_for_same_program_in_recent_30_programdata_signatures"] = later_upgrade_signatures
           with open("saber-mainnet-upgrade-audit.json","w") as f:
               json.dump(report,f,indent=2)
           print(json.dumps(report,indent=2))
@@ -176,10 +188,9 @@ jobs:
               meta.get("err") is None,
               deployment_slot == tx_slot,
               program_data_from_program == PROGRAM_DATA,
-              authority_is_signer,
               hashlib.sha256(active_prefix).hexdigest() == EXPECTED_BUFFER_FULL_SHA256,
               hashlib.sha256(active_trimmed).hexdigest() == EXPECTED_MAINNET_HASH,
-              not later_upgrade_signatures
+              not [x for x in later_loader_changes if x["discriminator"] == 3]
           ]
           if not all(checks):
               raise SystemExit("One or more forensic consistency checks failed; see report.")
