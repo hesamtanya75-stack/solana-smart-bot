@@ -110,7 +110,8 @@ jobs:
               raise SystemExit(f"Expected one Saber pkgs/overlay expression; found {count}")
           flake.write_text(source)
           
-PY          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
+          PY
+          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
           grep -Fq 'SOLANA_RELEASE=v' anchor-0.24.2-solana-installer.patch
 
       - name: Reproducible build using Saber upstream release command
