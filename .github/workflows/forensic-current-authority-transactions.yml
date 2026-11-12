@@ -1,0 +1,254 @@
+name: Forensic current Upgrade Authority transactions (read-only)
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-current-authority-transactions.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-current-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch and decode latest ten finalized transactions for current ProgramData authority
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, datetime, hashlib, json, os, time, urllib.request
+
+          URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not URL.startswith("https://") or "/v2/" not in URL:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+
+          PROGRAM = "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ"
+          PROGRAM_DATA = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  result = json.load(response)
+              if result.get("error"):
+                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+              return result.get("result")
+
+          def b58decode(value):
+              alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+              n = 0
+              for ch in value:
+                  n = n * 58 + alphabet.index(ch)
+              raw = n.to_bytes((n.bit_length()+7)//8, "big") if n else b""
+              return bytes([0]) * (len(value)-len(value.lstrip("1"))) + raw
+
+          def b58encode(raw):
+              alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+              zeros = len(raw) - len(raw.lstrip(bytes([0])))
+              n = int.from_bytes(raw, "big")
+              out = ""
+              while n:
+                  n, rem = divmod(n, 58)
+                  out = alphabet[rem] + out
+              return "1" * zeros + out
+
+          def key_text(k):
+              return k.get("pubkey") if isinstance(k, dict) else k
+
+          def account_keys(tx):
+              msg = tx["transaction"]["message"]
+              keys = [key_text(k) for k in msg.get("accountKeys", [])]
+              loaded = (tx.get("meta") or {}).get("loadedAddresses") or {}
+              keys += loaded.get("writable", []) + loaded.get("readonly", [])
+              return keys
+
+          def instruction_record(ix, keys, group, index):
+              pid = ix.get("programId")
+              if pid is None and ix.get("programIdIndex") is not None:
+                  p = ix["programIdIndex"]
+                  pid = keys[p] if p < len(keys) else None
+              account_indices = ix.get("accounts", [])
+              account_names = []
+              for item in account_indices:
+                  if isinstance(item, int):
+                      account_names.append(keys[item] if item < len(keys) else None)
+                  else:
+                      account_names.append(item)
+              data = ix.get("data", "")
+              try:
+                  raw = b58decode(data) if data else b""
+                  data_hex = raw.hex()
+              except Exception:
+                  raw, data_hex = b"", None
+              disc = int.from_bytes(raw[:4], "little") if pid == LOADER and len(raw) >= 4 else None
+              return {
+                  "group": group,
+                  "instruction_index": index,
+                  "program_id": pid,
+                  "accounts": account_names,
+                  "data_base58": data or None,
+                  "data_hex": data_hex,
+                  "loader_instruction_discriminator": disc,
+                  "references_programdata": PROGRAM_DATA in account_names
+              }
+
+          def amount_delta(pre, post):
+              return post - pre
+
+          def inspect_transaction(signature):
+              tx = rpc("getTransaction", [signature, {
+                  "encoding":"json", "commitment":"finalized",
+                  "maxSupportedTransactionVersion":0
+              }])
+              if tx is None:
+                  return {"signature":signature,"retrieved":False,"classification":"unavailable"}
+              msg = tx["transaction"]["message"]
+              meta = tx.get("meta") or {}
+              keys = account_keys(tx)
+              required = (msg.get("header") or {}).get("numRequiredSignatures", 0)
+              signers = keys[:required]
+              instructions = []
+              for i, ix in enumerate(msg.get("instructions", [])):
+                  instructions.append(instruction_record(ix, keys, "outer", i))
+              for group in meta.get("innerInstructions", []) or []:
+                  for i, ix in enumerate(group.get("instructions", [])):
+                      instructions.append(instruction_record(ix, keys, "inner-" + str(group.get("index")), i))
+
+              pre = meta.get("preBalances") or []
+              post = meta.get("postBalances") or []
+              sol_changes = []
+              for i, (a, b) in enumerate(zip(pre, post)):
+                  if a != b:
+                      sol_changes.append({
+                          "account": keys[i] if i < len(keys) else None,
+                          "pre_lamports": a, "post_lamports": b,
+                          "delta_lamports": amount_delta(a, b)
+                      })
+
+              def token_map(items):
+                  out = {}
+                  for item in items or []:
+                      key = (item.get("accountIndex"), item.get("mint"), item.get("owner"))
+                      amount = item.get("uiTokenAmount", {}).get("amount")
+                      out[key] = amount
+                  return out
+              tpre, tpost = token_map(meta.get("preTokenBalances")), token_map(meta.get("postTokenBalances"))
+              token_changes = []
+              for key in sorted(set(tpre) | set(tpost), key=str):
+                  a, b = tpre.get(key, "0"), tpost.get(key, "0")
+                  if a != b:
+                      idx, mint, owner = key
+                      token_changes.append({
+                          "account_index":idx,
+                          "account":keys[idx] if isinstance(idx,int) and idx < len(keys) else None,
+                          "mint":mint, "owner":owner,
+                          "pre_amount_base_units":a, "post_amount_base_units":b
+                      })
+
+              loader = [x for x in instructions if x["program_id"] == LOADER]
+              programdata_mentions = [x for x in instructions if x["references_programdata"]]
+              authority_mentions = [x for x in instructions if x["program_id"] == LOADER and x["loader_instruction_discriminator"] == 4]
+              block_time = tx.get("blockTime")
+              return {
+                  "signature":signature,
+                  "retrieved":True,
+                  "slot":tx.get("slot"),
+                  "block_time_unix":block_time,
+                  "block_time_utc":datetime.datetime.fromtimestamp(block_time, datetime.timezone.utc).isoformat() if block_time else None,
+                  "meta_err":meta.get("err"),
+                  "finalized_success":meta.get("err") is None,
+                  "fee_lamports":meta.get("fee"),
+                  "top_level_signers":signers,
+                  "account_key_count_including_loaded":len(keys),
+                  "programdata_is_in_account_keys":PROGRAM_DATA in keys,
+                  "loader_instructions":loader,
+                  "programdata_referencing_instructions":programdata_mentions,
+                  "set_authority_instructions":authority_mentions,
+                  "all_instructions":instructions,
+                  "sol_balance_changes":sol_changes,
+                  "token_balance_changes":token_changes,
+                  "log_messages":(meta.get("logMessages") or [])[-80:]
+              }
+
+          pd = rpc("getAccountInfo", [PROGRAM_DATA, {"encoding":"base64","commitment":"finalized"}])
+          value = (pd or {}).get("value")
+          if not value:
+              raise SystemExit("Target ProgramData account not found at finalized commitment.")
+          pd_raw = base64.b64decode(value["data"][0])
+          if int.from_bytes(pd_raw[:4], "little") != 3:
+              raise SystemExit("Target account is not an Upgradeable Loader ProgramData account.")
+          if len(pd_raw) < 45 or pd_raw[12] != 1:
+              raise SystemExit("ProgramData has no decoded upgrade authority.")
+          authority = b58encode(pd_raw[13:45])
+
+          signatures = rpc("getSignaturesForAddress", [authority, {"limit":10,"commitment":"finalized"}]) or []
+          reports = []
+          for item in signatures:
+              try:
+                  reports.append(inspect_transaction(item["signature"]))
+              except Exception as exc:
+                  reports.append({
+                      "signature":item.get("signature"),
+                      "slot_from_signature_list":item.get("slot"),
+                      "block_time_from_signature_list":item.get("blockTime"),
+                      "retrieved":False,
+                      "retrieval_error":str(exc)
+                  })
+              time.sleep(0.15)
+
+          summary = {
+              "scope":"read-only finalized Solana Mainnet RPC; no transactions submitted",
+              "program":PROGRAM,
+              "program_data":PROGRAM_DATA,
+              "current_upgrade_authority":authority,
+              "programdata_deployment_slot":int.from_bytes(pd_raw[4:12],"little"),
+              "signature_count_returned":len(signatures),
+              "transactions_retrieved":sum(1 for x in reports if x.get("retrieved")),
+              "transactions_unavailable_or_failed":sum(1 for x in reports if not x.get("retrieved")),
+              "classification_counts":{
+                  "loader_upgrade_or_authority_change":sum(1 for x in reports if x.get("loader_instructions") and any(i.get("loader_instruction_discriminator") in (3,4,7) for i in x["loader_instructions"])),
+                  "references_programdata":sum(1 for x in reports if x.get("programdata_referencing_instructions")),
+                  "successful":sum(1 for x in reports if x.get("finalized_success") is True),
+                  "failed":sum(1 for x in reports if x.get("finalized_success") is False)
+              },
+              "transactions":reports
+          }
+          with open("current-authority-last-ten-transactions.json","w") as f:
+              json.dump(summary,f,indent=2)
+          print(json.dumps({
+              "scope":summary["scope"],
+              "current_upgrade_authority":authority,
+              "signature_count_returned":len(signatures),
+              "transactions_retrieved":summary["transactions_retrieved"],
+              "transactions_unavailable_or_failed":summary["transactions_unavailable_or_failed"],
+              "classification_counts":summary["classification_counts"],
+              "transactions":[{
+                  "signature":x.get("signature"),
+                  "slot":x.get("slot",x.get("slot_from_signature_list")),
+                  "block_time_utc":x.get("block_time_utc"),
+                  "retrieved":x.get("retrieved"),
+                  "meta_err":x.get("meta_err"),
+                  "signers":x.get("top_level_signers"),
+                  "loader_instructions":x.get("loader_instructions"),
+                  "programdata_referencing_instructions":x.get("programdata_referencing_instructions"),
+                  "sol_balance_changes":x.get("sol_balance_changes"),
+                  "token_balance_changes":x.get("token_balance_changes"),
+                  "retrieval_error":x.get("retrieval_error")
+              } for x in reports]
+          },indent=2))
+          PY
+      - name: Upload transaction-level forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-authority-last-ten-transactions
+          path: current-authority-last-ten-transactions.json
+          if-no-files-found: warn
+          retention-days: 7
