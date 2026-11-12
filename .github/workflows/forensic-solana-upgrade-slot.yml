@@ -13,16 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Validate archive RPC endpoint without exposing it
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          value = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not value:
+              raise SystemExit("::error::SOLANA_ARCHIVE_RPC_URL is empty or unavailable to this workflow.")
+          if value != value.strip():
+              raise SystemExit("::error::The secret has spaces or a newline at its beginning or end. Copy the HTTPS endpoint again without extra spaces.")
+          if any(ch.isspace() for ch in value):
+              raise SystemExit("::error::The secret contains an internal space or newline. It must be one continuous URL.")
+          if value.startswith(("'", '"')) or value.endswith(("'", '"')):
+              raise SystemExit("::error::Remove quotation marks around the URL in the GitHub secret.")
+          try:
+              parsed = urlsplit(value)
+              host = parsed.hostname
+          except Exception:
+              raise SystemExit("::error::The secret is not a valid URL. Copy the full HTTPS endpoint.")
+          if parsed.scheme != "https" or not host:
+              raise SystemExit("::error::The secret must be a complete URL beginning with https:// and a hostname.")
+          if not parsed.path.startswith("/v2/") or len(parsed.path) <= 4:
+              raise SystemExit("::error::The URL path is incomplete. For Alchemy, copy the full HTTPS endpoint including /v2/ and its API key.")
+          print("Endpoint format check passed; the secret value was not displayed.")
+          PY
+
       - name: Fetch finalized Solana block
         env:
           SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${SOLANA_ARCHIVE_RPC_URL:-}" ]; then
-            echo "::error::Repository secret SOLANA_ARCHIVE_RPC_URL is missing."
-            exit 1
-          fi
-
           printf '%s' '{"jsonrpc":"2.0","id":1,"method":"getBlock","params":[119721738,{"commitment":"finalized","encoding":"jsonParsed","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]}' > request.json
 
           http_code="$(curl --silent --show-error --output block.json --write-out '%{http_code}' \
