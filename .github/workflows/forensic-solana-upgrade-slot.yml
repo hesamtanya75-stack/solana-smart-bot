@@ -20,28 +20,96 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os
-          from urllib.parse import urlsplit
+          import json
+          alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+          def b58decode(value):
+              n = 0
+              for ch in value:
+                  n = n * 58 + alphabet.index(ch)
+              raw = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
+              return b"\x00" * (len(value) - len(value.lstrip("1"))) + raw
 
-          value = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
-          if not value:
-              raise SystemExit("::error::SOLANA_ARCHIVE_RPC_URL is empty or unavailable to this workflow.")
-          if value != value.strip():
-              raise SystemExit("::error::The secret has spaces or a newline at its beginning or end. Copy the HTTPS endpoint again without extra spaces.")
-          if any(ch.isspace() for ch in value):
-              raise SystemExit("::error::The secret contains an internal space or newline. It must be one continuous URL.")
-          if value.startswith(("'", '"')) or value.endswith(("'", '"')):
-              raise SystemExit("::error::Remove quotation marks around the URL in the GitHub secret.")
-          try:
-              parsed = urlsplit(value)
-              host = parsed.hostname
-          except Exception:
-              raise SystemExit("::error::The secret is not a valid URL. Copy the full HTTPS endpoint.")
-          if parsed.scheme != "https" or not host:
-              raise SystemExit("::error::The secret must be a complete URL beginning with https:// and a hostname.")
-          if not parsed.path.startswith("/v2/") or len(parsed.path) <= 4:
-              raise SystemExit("::error::The URL path is incomplete. For Alchemy, copy the full HTTPS endpoint including /v2/ and its API key.")
-          print("Endpoint format check passed; the secret value was not displayed.")
+          data = json.load(open("block.json"))
+          block = data["result"]
+          loader = "BPFLoaderUpgradeab1e11111111111111111111111"
+          target_program = "SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ"
+          target_program_data = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          found, inner_loader, target_transactions = [], [], []
+          loader_instruction_count, unresolved_program_indexes = 0, 0
+          loader_discriminators, program_id_samples = {}, {}
+
+          for tx in block.get("transactions", []):
+              transaction = tx.get("transaction", {})
+              message = transaction.get("message", {})
+              meta = tx.get("meta") or {}
+              keys = message.get("accountKeys", [])
+              keys = [k.get("pubkey") if isinstance(k, dict) else k for k in keys]
+              loaded = meta.get("loadedAddresses") or {}
+              all_keys = keys + loaded.get("writable", []) + loaded.get("readonly", [])
+              signatures = transaction.get("signatures", [])
+              signature = signatures[0] if signatures else None
+
+              if target_program in all_keys or target_program_data in all_keys:
+                  target_transactions.append({
+                      "signature": signature,
+                      "contains_program": target_program in all_keys,
+                      "contains_program_data": target_program_data in all_keys
+                  })
+
+              groups = [("top_level", message.get("instructions", []))]
+              groups += [("inner", g.get("instructions", [])) for g in meta.get("innerInstructions", [])]
+              for source, instructions in groups:
+                  for ix_index, ix in enumerate(instructions):
+                      pid_index = ix.get("programIdIndex")
+                      if pid_index is None or pid_index >= len(all_keys):
+                          unresolved_program_indexes += 1
+                          continue
+                      program_id = all_keys[pid_index]
+                      program_id_samples[program_id] = program_id_samples.get(program_id, 0) + 1
+                      raw = b58decode(ix.get("data", ""))
+                      if program_id != loader:
+                          continue
+                      loader_instruction_count += 1
+                      if not raw:
+                          continue
+                      discriminator = raw[0]
+                      loader_discriminators[str(discriminator)] = loader_discriminators.get(str(discriminator), 0) + 1
+                      if source == "inner":
+                          inner_loader.append({
+                              "signature": signature,
+                              "instruction_index": ix_index,
+                              "discriminator": discriminator,
+                              "data_prefix": ix.get("data", "")[:30]
+                          })
+                      if discriminator != 3:
+                          continue
+                      account_indexes = ix.get("accounts", [])
+                      account_values = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
+                      names = ["programData", "program", "buffer", "spill", "rent", "clock", "authority"]
+                      found.append({
+                          "signature": signature,
+                          "source": source,
+                          "instruction_index": ix_index,
+                          "discriminator": discriminator,
+                          "accounts": dict(zip(names, account_values)),
+                          "raw_account_indexes": account_indexes
+                      })
+
+          output = {
+              "slot": block.get("parentSlot", 0) + 1,
+              "blockhash": block.get("blockhash"),
+              "transaction_count": len(block.get("transactions", [])),
+              "loader_instruction_count": loader_instruction_count,
+              "loader_discriminators": loader_discriminators,
+              "unresolved_program_indexes": unresolved_program_indexes,
+              "most_used_program_ids": sorted(program_id_samples.items(), key=lambda item: item[1], reverse=True)[:20],
+              "target_program_transactions": target_transactions,
+              "inner_loader_instructions": inner_loader,
+              "upgrade_candidates": found
+          }
+          with open("upgrade-candidates.json", "w") as f:
+              json.dump(output, f, indent=2)
+          print(json.dumps(output, indent=2))
           PY
 
       - name: Fetch nearby finalized blocks and inspect raw loader instructions
