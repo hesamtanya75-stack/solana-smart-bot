@@ -41,13 +41,10 @@ jobs:
               saber-overlay.url = "github:saber-hq/saber-overlay";
               flake-utils.url = "github:numtide/flake-utils";
             };
-            outputs = { nixpkgs, saber-overlay, flake-utils }:
-              let
-                system = "x86_64-linux";
-                pkgs = import nixpkgs { inherit system; } // saber-overlay.packages.${system};
-              in {
-                packages.${system}.default = pkgs.anchor-0_22_0;
-              };
+            outputs = { self, saber-overlay, ... }: {
+              packages.x86_64-linux.default =
+                saber-overlay.packages.x86_64-linux.anchor-0_22_0;
+            };
           }
           EOF
           nix flake show /tmp/anchor-only
