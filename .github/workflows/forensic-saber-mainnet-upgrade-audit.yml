@@ -482,7 +482,37 @@ jobs:
                       if c>100: raise ValueError("implausible set_owners vector")
                       owners=[b58(data[pos+32*i:pos+32*(i+1)]) for i in range(c)]
                       changes.append({"transaction_index":idx,"transaction_account":str(addr),"owner_set_seqno_before":int.from_bytes(raw[off:off+4],"little") if False else None,"new_owner_count":c,"new_owners":owners,"instruction_data_length":dl})
-          report={"wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,"num_transactions":count,"transaction_accounts_scanned":scanned,"missing_transaction_indices":missing,"set_owners_transactions":changes,"wallet_creation_and_owner_change_events":wallet_events,"wallet_signatures_scanned":len(sigs),"scope":"read-only finalized Mainnet RPC; no transactions submitted"}
+          # Inspect the earliest wallet signature for the original create_smart_wallet instruction.
+          oldest_wallet_tx=None
+          if sigs:
+              oldest=sigs[-1]
+              tr=rpc("getTransaction",[oldest["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
+              if tr:
+                  msg=tr["transaction"]["message"]; keys=[k.get("pubkey") if isinstance(k,dict) else k for k in msg.get("accountKeys",[])]
+                  alphabet="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+                  def b58dec(s):
+                      v=0
+                      for ch in s: v=v*58+alphabet.index(ch)
+                      b=v.to_bytes((v.bit_length()+7)//8,"big") if v else b""
+                      return bytes([0])*(len(s)-len(s.lstrip("1")))+b
+                  create_disc=hashlib.sha256(b"global:create_smart_wallet").digest()[:8]
+                  decoded=[]
+                  for ix in msg.get("instructions",[]):
+                      pi=ix.get("programId") or (keys[ix["programIdIndex"]] if "programIdIndex" in ix else None)
+                      if pi!=GOKI: continue
+                      raw=b58dec(ix.get("data",""))
+                      item={"data_length":len(raw),"data_prefix_hex":raw[:48].hex(),"accounts":[keys[i] for i in ix.get("accounts",[]) if i<len(keys)]}
+                      if raw[:8]==create_disc:
+                          pos=8+1+1
+                          n,pos=u32(raw,pos)
+                          if n<=100:
+                              item["decoded_initial_owners"]=[b58(raw[pos+32*i:pos+32*(i+1)]) for i in range(n)]
+                              pos+=32*n
+                              item["initial_threshold"]=int.from_bytes(raw[pos:pos+8],"little"); pos+=8
+                              item["initial_minimum_delay_seconds"]=int.from_bytes(raw[pos:pos+8],"little",signed=True)
+                      decoded.append(item)
+                  oldest_wallet_tx={"signature":oldest["signature"],"slot":tr.get("slot"),"block_time_unix":tr.get("blockTime"),"goki_instructions":decoded,"log_tail":((tr.get("meta") or {}).get("logMessages") or [])[-12:]}
+                    report={"wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,"num_transactions":count,"transaction_accounts_scanned":scanned,"missing_transaction_indices":missing,"set_owners_transactions":changes,"wallet_creation_and_owner_change_events":wallet_events,"wallet_signatures_scanned":len(sigs),"oldest_wallet_transaction":oldest_wallet_tx,"scope":"read-only finalized Mainnet RPC; no transactions submitted"}
           with open("goki-owner-history.json","w") as f: json.dump(report,f,indent=2)
           print(json.dumps(report,indent=2))
           PY
