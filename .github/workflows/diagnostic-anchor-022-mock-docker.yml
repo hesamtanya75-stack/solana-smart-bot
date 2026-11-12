@@ -26,12 +26,31 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify historical Anchor CLI 0.22.0 and docker-image option
+      - name: Build only the pinned Anchor 0.22.0 CLI from Saber lockfile
         shell: bash
         working-directory: stable-swap
         run: |
           set -euo pipefail
-          nix shell .#ci --command bash -lc '
+          mkdir -p /tmp/anchor-only
+          cp flake.lock /tmp/anchor-only/flake.lock
+          cat > /tmp/anchor-only/flake.nix <<'EOF'
+          {
+            description = "Minimal pinned Anchor 0.22.0 CLI validation";
+            inputs = {
+              nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+              saber-overlay.url = "github:saber-hq/saber-overlay";
+              flake-utils.url = "github:numtide/flake-utils";
+            };
+            outputs = { nixpkgs, saber-overlay, flake-utils }:
+              let
+                system = "x86_64-linux";
+                pkgs = import nixpkgs { inherit system; } // saber-overlay.packages.${system};
+              in {
+                packages.${system}.default = pkgs.anchor-0_22_0;
+              };
+          }
+          EOF
+          nix shell /tmp/anchor-only#default --command bash -lc '
             set -euo pipefail
             anchor --version | tee /tmp/anchor-version.txt
             grep -F "anchor-cli 0.22.0" /tmp/anchor-version.txt
@@ -46,8 +65,6 @@ jobs:
         working-directory: stable-swap
         run: |
           set -euo pipefail
-          # This checks source behavior already inspected from the upstream v0.22.0 tag.
-          # No Anchor build command is invoked in this step.
           git clone --depth 1 --branch v0.22.0 https://github.com/project-serum/anchor.git /tmp/anchor-v022
           cd /tmp/anchor-v022
           grep -n -B 5 -A 10 'docker_image: Option<String>' cli/src/lib.rs
