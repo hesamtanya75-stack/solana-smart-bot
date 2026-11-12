@@ -467,12 +467,12 @@ jobs:
           suffix=0
           while suffix<n-prefix and a[len(a)-1-suffix]==b[len(b)-1-suffix]: suffix+=1
           ranges=[]
-for p in diffs:
-    if not ranges or p>ranges[-1][1]+1: ranges.append([p,p])
-    else: ranges[-1][1]=p
-text_diffs=[p for p in diffs if 232<=p<190896]
-data_diffs=[p for p in diffs if 213432<=p<216120]
-report={"mainnet_length":len(a),"release_length":len(b),"common_prefix_bytes":prefix,"common_suffix_bytes":suffix,"different_byte_positions_within_common_length":len(diffs),"first_64_different_offsets":diffs[:64],"different_ranges":ranges,"text_diff_count":len(text_diffs),"text_diff_offsets_mod_instruction_8":[(p-232)%8 for p in text_diffs],"data_rel_ro_diff_offsets":data_diffs,"mainnet_only_trailing_bytes":len(a)-n,"release_only_trailing_bytes":len(b)-n}
+          for p in diffs:
+              if not ranges or p>ranges[-1][1]+1: ranges.append([p,p])
+              else: ranges[-1][1]=p
+          text_diffs=[p for p in diffs if 232<=p<190896]
+          data_diffs=[p for p in diffs if 213432<=p<216120]
+          report={"mainnet_length":len(a),"release_length":len(b),"common_prefix_bytes":prefix,"common_suffix_bytes":suffix,"different_byte_positions_within_common_length":len(diffs),"first_64_different_offsets":diffs[:64],"different_ranges":ranges,"text_diff_count":len(text_diffs),"text_diff_offsets_mod_instruction_8":[(p-232)%8 for p in text_diffs],"data_rel_ro_diff_offsets":data_diffs,"mainnet_only_trailing_bytes":len(a)-n,"release_only_trailing_bytes":len(b)-n}
           open("binary-byte-diff.json","w").write(json.dumps(report,indent=2))
           print(json.dumps(report,indent=2))
           PY
