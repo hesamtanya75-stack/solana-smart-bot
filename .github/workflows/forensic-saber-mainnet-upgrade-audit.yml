@@ -396,6 +396,100 @@ jobs:
               raise SystemExit("One or more forensic consistency checks failed; see report.")
           PY
 
+      - name: Compare Mainnet ELF sections and bytes with official Saber v1.7.2
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyelftools
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          URL=os.environ["SOLANA_ARCHIVE_RPC_URL"]
+          PROGRAM_DATA="54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          EXPECTED_LENGTH=217192
+          body=json.dumps({"jsonrpc":"2.0","id":1,"method":"getAccountInfo","params":[PROGRAM_DATA,{"encoding":"base64","commitment":"finalized"}]}).encode()
+          req=urllib.request.Request(URL,data=body,headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=60) as r: result=json.load(r)["result"]["value"]
+          if not result: raise SystemExit("ProgramData missing")
+          raw=base64.b64decode(result["data"][0])
+          if int.from_bytes(raw[:4],"little")!=3: raise SystemExit("Unexpected ProgramData loader state")
+          slot=int.from_bytes(raw[4:12],"little")
+          payload=raw[45:]
+          active=payload[:EXPECTED_LENGTH]
+          if len(active)!=EXPECTED_LENGTH: raise SystemExit("Unexpected active payload length")
+          trimmed=active.rstrip(b"\0")
+          open("mainnet-active-prefix.bin","wb").write(active)
+          open("mainnet-trimmed.so","wb").write(trimmed)
+          with open("mainnet-elf-input.json","w") as f:
+              json.dump({"program_data":PROGRAM_DATA,"deployment_slot":slot,"active_prefix_length":len(active),"trimmed_length":len(trimmed),"active_prefix_sha256":hashlib.sha256(active).hexdigest(),"trimmed_sha256":hashlib.sha256(trimmed).hexdigest()},f,indent=2)
+          print(json.dumps({"deployment_slot":slot,"active_prefix_length":len(active),"trimmed_length":len(trimmed),"active_prefix_sha256":hashlib.sha256(active).hexdigest(),"trimmed_sha256":hashlib.sha256(trimmed).hexdigest()},indent=2))
+          PY
+          curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
+            https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so -o official-v172.so
+          sha256sum mainnet-active-prefix.bin mainnet-trimmed.so official-v172.so | tee raw-file-hashes.txt
+          readelf -h -S --wide mainnet-trimmed.so > mainnet-elf-sections.txt
+          readelf -h -S --wide official-v172.so > official-v172-elf-sections.txt
+          readelf -s --wide mainnet-trimmed.so > mainnet-elf-symbols.txt || true
+          readelf -s --wide official-v172.so > official-v172-elf-symbols.txt || true
+          python3 - <<'PY'
+          import hashlib,json
+          from elftools.elf.elffile import ELFFile
+          def inspect(path):
+              out={"file":path,"sections":[],"symbols":[]}
+              with open(path,"rb") as f:
+                  elf=ELFFile(f)
+                  out["elf_header"]={"class":elf.elfclass,"little_endian":elf.little_endian,"machine":elf.header["e_machine"],"type":elf.header["e_type"],"entry":int(elf.header["e_entry"])}
+                  for sec in elf.iter_sections():
+                      data=sec.data()
+                      out["sections"].append({"name":sec.name,"type":str(sec["sh_type"]),"flags":int(sec["sh_flags"]),"addr":int(sec["sh_addr"]),"offset":int(sec["sh_offset"]),"size":int(sec["sh_size"]),"sha256":hashlib.sha256(data).hexdigest()})
+                      if sec.name in (".symtab",".dynsym"):
+                          for sym in sec.iter_symbols():
+                              if sym.name:
+                                  out["symbols"].append({"name":sym.name,"value":int(sym["st_value"]),"size":int(sym["st_size"]),"type":str(sym["st_info"]["type"]),"bind":str(sym["st_info"]["bind"]),"section":str(sym["st_shndx"])})
+              return out
+          a=inspect("mainnet-trimmed.so"); b=inspect("official-v172.so")
+          amap={x["name"]:x for x in a["sections"]}; bmap={x["name"]:x for x in b["sections"]}
+          report={"mainnet":a,"official_v172":b,"section_comparison":[]}
+          for name in sorted(set(amap)|set(bmap)):
+              x=amap.get(name); y=bmap.get(name)
+              report["section_comparison"].append({"name":name,"mainnet_size":x["size"] if x else None,"release_size":y["size"] if y else None,"mainnet_sha256":x["sha256"] if x else None,"release_sha256":y["sha256"] if y else None,"exact_match":bool(x and y and x["size"]==y["size"] and x["sha256"]==y["sha256"])})
+          open("elf-section-comparison.json","w").write(json.dumps(report,indent=2))
+          print(json.dumps({"mainnet_header":a["elf_header"],"release_header":b["elf_header"],"sections":report["section_comparison"],"mainnet_symbol_count":len(a["symbols"]),"release_symbol_count":len(b["symbols"]),"symbol_names_match":sorted(x["name"] for x in a["symbols"])==sorted(x["name"] for x in b["symbols"])},indent=2))
+          PY
+          python3 - <<'PY'
+          import json
+          a=open("mainnet-trimmed.so","rb").read()
+          b=open("official-v172.so","rb").read()
+          n=min(len(a),len(b))
+          diffs=[i for i in range(n) if a[i]!=b[i]]
+          prefix=0
+          while prefix<n and a[prefix]==b[prefix]: prefix+=1
+          suffix=0
+          while suffix<n-prefix and a[len(a)-1-suffix]==b[len(b)-1-suffix]: suffix+=1
+          report={"mainnet_length":len(a),"release_length":len(b),"common_prefix_bytes":prefix,"common_suffix_bytes":suffix,"different_byte_positions_within_common_length":len(diffs),"first_64_different_offsets":diffs[:64],"mainnet_only_trailing_bytes":len(a)-n,"release_only_trailing_bytes":len(b)-n}
+          open("binary-byte-diff.json","w").write(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload ELF and byte-difference evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-mainnet-v172-elf-diff
+          path: |
+            mainnet-elf-input.json
+            mainnet-active-prefix.bin
+            mainnet-trimmed.so
+            official-v172.so
+            raw-file-hashes.txt
+            mainnet-elf-sections.txt
+            official-v172-elf-sections.txt
+            mainnet-elf-symbols.txt
+            official-v172-elf-symbols.txt
+            elf-section-comparison.json
+            binary-byte-diff.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Trace Goki owner-set transactions, approvals, and execution signatures
         env:
           SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
