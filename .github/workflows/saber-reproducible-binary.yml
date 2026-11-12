@@ -91,25 +91,26 @@ jobs:
           flake = Path("flake.nix")
           source = flake.read_text()
           pattern = re.compile(
-              r"(?m)^(\\s*)pkgs = import nixpkgs \\{ inherit system; \\}\\s*\\n\\s*// saber-overlay\\.packages\\.\\$\\{system\\};"
+              r"(?m)^(\s*)pkgs = import nixpkgs \{ inherit system; \}\s*\n\s*// saber-overlay\.packages\.\$\{system\};"
           )
           def replace(match):
               indent = match.group(1)
               inner = indent + "  "
               return (
-                  f"{indent}pkgs = (import nixpkgs {{ inherit system; }})\\n"
-                  f"{inner}// saber-overlay.packages.${{system}}\\n"
-                  f"{inner}// {{\\n"
-                  f"{inner}  anchor-0_24_2 = saber-overlay.packages.${{system}}.anchor-0_24_2.overrideAttrs (old: {{\\n"
-                  f"{inner}    patches = (old.patches or []) ++ [ ./anchor-0.24.2-solana-installer.patch ];\\n"
-                  f"{inner}  }});\\n"
+                  f"{indent}pkgs = (import nixpkgs {{ inherit system; }})\n"
+                  f"{inner}// saber-overlay.packages.${{system}}\n"
+                  f"{inner}// {{\n"
+                  f"{inner}  anchor-0_24_2 = saber-overlay.packages.${{system}}.anchor-0_24_2.overrideAttrs (old: {{\n"
+                  f"{inner}    patches = (old.patches or []) ++ [ ./anchor-0.24.2-solana-installer.patch ];\n"
+                  f"{inner}  }});\n"
                   f"{inner}}};"
               )
           source, count = pattern.subn(replace, source)
           if count != 1:
               raise SystemExit(f"Expected one Saber pkgs/overlay expression; found {count}")
           flake.write_text(source)
-          PY          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
+          
+PY          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
           grep -Fq 'SOLANA_RELEASE=v' anchor-0.24.2-solana-installer.patch
 
       - name: Reproducible build using Saber upstream release command
