@@ -1,0 +1,78 @@
+name: Validate preloaded Solana 1.8.14 in Anchor 0.22 builder image
+
+on:
+  push:
+    branches:
+      - diagnostic/anchor-022-preloaded-solana
+
+permissions:
+  contents: read
+
+jobs:
+  validate-preloaded-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download official Solana 1.8.14 release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            -o solana-release.tar.bz2
+          echo "archive_sha256=$(sha256sum solana-release.tar.bz2 | awk '{print $1}')"
+          test "$(wc -c < solana-release.tar.bz2)" -eq 277903704
+
+      - name: Build a derived image from the exact historical Anchor builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > Dockerfile <<'DOCKERFILE'
+          FROM projectserum/build@sha256:4d1a34040df16afbb34c621cc42263d6e225c47406e4a565763adbcae9f1b5f5
+          COPY solana-release.tar.bz2 /tmp/solana-release.tar.bz2
+          RUN mkdir -p /root/.local/share/solana/install/releases/1.8.14 \
+              && tar -xjf /tmp/solana-release.tar.bz2 -C /tmp \
+              && mv /tmp/solana-release /root/.local/share/solana/install/releases/1.8.14/solana-release \
+              && ln -sfn /root/.local/share/solana/install/releases/1.8.14/solana-release /root/.local/share/solana/install/active_release \
+              && rm -f /tmp/solana-release.tar.bz2
+          ENV PATH="/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          DOCKERFILE
+          docker build --pull=false -t saber-anchor022-solana1814-preloaded .
+          docker image inspect saber-anchor022-solana1814-preloaded \
+            --format 'derived_image_id={{.Id}} base_layers={{json .RootFS.Layers}}' \
+            | tee derived-image.txt
+
+      - name: Verify Anchor-compatible paths and pinned tool versions without building Saber
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash saber-anchor022-solana1814-preloaded -c '
+            set -euo pipefail
+            echo "=== Solana CLI ==="
+            command -v solana
+            solana --version
+            solana --version | grep -F "solana-cli 1.8.14 (src:9c01d90c;"
+            echo "=== BPF build command ==="
+            command -v cargo-build-bpf
+            cargo-build-bpf --help >/tmp/cargo-build-bpf-help.txt
+            head -n 25 /tmp/cargo-build-bpf-help.txt
+            echo "=== BPF SDK ==="
+            test -d /root/.local/share/solana/install/active_release/bin/sdk/bpf
+            test -f /root/.local/share/solana/install/active_release/bin/sdk/bpf/env.sh
+            echo "sdk_bpf_path=/root/.local/share/solana/install/active_release/bin/sdk/bpf"
+            echo "=== Toolchain paths ==="
+            printf "%s\n" "$PATH"
+            echo "preloaded_toolchain_check=PASS"
+          ' 2>&1 | tee preloaded-toolchain-check.txt
+
+      - name: Upload preloaded toolchain validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-022-preloaded-solana-1814-validation
+          path: |
+            derived-image.txt
+            preloaded-toolchain-check.txt
+          if-no-files-found: warn
+          retention-days: 7
