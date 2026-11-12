@@ -82,6 +82,8 @@ jobs:
           loader_instruction_count = 0
           loader_discriminators = {}
           unresolved_program_indexes = 0
+          first_byte_three = []
+          program_id_samples = {}
           for tx in block.get("transactions", []):
               transaction = tx.get("transaction", {})
               message = transaction.get("message", {})
@@ -96,7 +98,17 @@ jobs:
                   if pid_index is None or pid_index >= len(all_keys):
                       unresolved_program_indexes += 1
                       continue
-                  if all_keys[pid_index] != loader:
+                  program_id = all_keys[pid_index]
+                  program_id_samples[program_id] = program_id_samples.get(program_id, 0) + 1
+                  raw_data = b58decode(ix.get("data", ""))
+                  if raw_data and raw_data[0] == 3 and len(first_byte_three) < 25:
+                      first_byte_three.append({
+                          "signature": (transaction.get("signatures") or [None])[0],
+                          "program_id": program_id,
+                          "program_id_index": pid_index,
+                          "data_prefix": ix.get("data", "")[:24]
+                      })
+                  if program_id != loader:
                       continue
                   loader_instruction_count += 1
                   raw = b58decode(ix.get("data", ""))
@@ -125,6 +137,8 @@ jobs:
               "loader_instruction_count": loader_instruction_count,
               "loader_discriminators": loader_discriminators,
               "unresolved_program_indexes": unresolved_program_indexes,
+              "most_used_program_ids": sorted(program_id_samples.items(), key=lambda item: item[1], reverse=True)[:20],
+              "instructions_with_first_byte_3": first_byte_three,
               "upgrade_candidates": found
           }
           with open("upgrade-candidates.json", "w") as f:
