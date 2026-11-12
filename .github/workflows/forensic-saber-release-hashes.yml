@@ -1,0 +1,72 @@
+name: Forensic Saber historical release hash comparison
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare-historical-releases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install pinned Solana Verify CLI 0.5.2
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          test "$(sha256sum /tmp/solana-verify.sha256 | awk '{print $1}')" = "e72ee837ee95c845d59065fcdb9896ea459347ef88e6d73f8f1e082ca6ce235b"
+          test "$(awk '{print $1}' /tmp/solana-verify.sha256)" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          test "$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          solana-verify --version
+
+      - name: Compare published Saber release binaries with the deployed Mainnet hash
+        env:
+          PROGRAM_ID: SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ
+          EXPECTED_MAINNET_HASH: c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38
+        run: |
+          set -euo pipefail
+          actual_mainnet_hash="$(solana-verify get-program-hash -u https://api.mainnet-beta.solana.com "$PROGRAM_ID" | grep -Eo '[a-f0-9]{64}' | tail -n 1)"
+          echo "Current Mainnet hash: $actual_mainnet_hash"
+          test "$actual_mainnet_hash" = "$EXPECTED_MAINNET_HASH"
+
+          versions="v1.8.2 v1.8.1 v1.8.0 v1.7.3 v1.7.2 v1.7.0 v1.6.8 v1.6.7 v1.6.6 v1.6.5 v1.6.4 v1.6.3 v1.6.2 v1.6.1"
+          matches=0
+          : > release-hash-results.txt
+          for version in $versions; do
+            file="/tmp/stable_swap-${version}.so"
+            url="https://github.com/saber-hq/stable-swap/releases/download/${version}/stable_swap.so"
+            echo "Checking ${version}"
+            if ! curl --fail --location --silent --show-error "$url" -o "$file"; then
+              echo "${version} asset unavailable" | tee -a release-hash-results.txt
+              continue
+            fi
+            hash="$(solana-verify get-executable-hash "$file" | grep -Eo '[a-f0-9]{64}' | tail -n 1)"
+            size="$(wc -c < "$file" | tr -d ' ')"
+            match=false
+            if [ "$hash" = "$EXPECTED_MAINNET_HASH" ]; then
+              match=true
+              matches=$((matches + 1))
+            fi
+            printf '%s size=%s hash=%s mainnet_match=%s\n' "$version" "$size" "$hash" "$match" | tee -a release-hash-results.txt
+          done
+          cat release-hash-results.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "Matching published release count: $matches" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$matches" -eq 0 ]; then
+            echo "No published Saber release artifact matched the deployed Mainnet binary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload historical release hash results
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-historical-release-hashes
+          path: release-hash-results.txt
+          retention-days: 7
