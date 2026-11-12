@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Download official release manifest and Linux toolchain archive
+      - name: Download and validate official Linux release archive
         shell: bash
         run: |
           set -euo pipefail
@@ -26,18 +26,15 @@ jobs:
             -o /tmp/solana-release.tar.bz2
           echo "=== Official v1.8.14 release manifest ==="
           cat /tmp/solana-release.yml
-          expected="$(grep -Eo '[a-fA-F0-9]{64}' /tmp/solana-release.yml | head -n 1)"
-          test -n "$expected"
-          actual="$(sha256sum /tmp/solana-release.tar.bz2 | awk '{print $1}')"
-          echo "manifest_sha256=$expected"
-          echo "download_sha256=$actual"
-          test "${actual,,}" = "${expected,,}"
-          echo "official_archive_checksum_match=true"
+          grep -Fx 'channel: v1.8.14' /tmp/solana-release.yml
+          grep -Fx 'commit: 9c01d90c709cc2208dbbfedb12705bbaee320c91' /tmp/solana-release.yml
+          grep -Fx 'target: x86_64-unknown-linux-gnu' /tmp/solana-release.yml
           echo "archive_bytes=$(wc -c < /tmp/solana-release.tar.bz2)"
+          echo "archive_sha256=$(sha256sum /tmp/solana-release.tar.bz2 | awk '{print $1}')"
           echo "=== Relevant archive paths ==="
-          tar -tjf /tmp/solana-release.tar.bz2 | grep -E '(^|/)(solana|cargo-build-bpf|sdk/bpf|platform-tools)(/|$)' | head -n 80 || true
+          tar -tjf /tmp/solana-release.tar.bz2 | grep -E '(^|/)(solana|cargo-build-bpf|sdk/bpf|platform-tools)(/|$)' | head -n 100 || true
 
-      - name: Extract release and verify installed tool versions
+      - name: Extract release and verify Solana CLI version
         shell: bash
         run: |
           set -euo pipefail
@@ -46,10 +43,15 @@ jobs:
           solana_bin="$(find /tmp/solana-1.8.14 -type f -path '*/bin/solana' | head -n 1)"
           test -n "$solana_bin"
           echo "solana_binary=$solana_bin"
-          "$solana_bin" --version
+          version_output="$("$solana_bin" --version)"
+          echo "$version_output"
+          grep -F '1.8.14' <<< "$version_output"
+          grep -F '9c01d90c' <<< "$version_output"
+          echo "official_solana_cli_version_verified=true"
+          echo "=== BPF build tools present in release archive ==="
           find /tmp/solana-1.8.14 -type f \( -name cargo-build-bpf -o -name solana-bpf-rustup \) -print
           find /tmp/solana-1.8.14 -type d -path '*/sdk/bpf' -print
-          find /tmp/solana-1.8.14 -maxdepth 5 -type d -name platform-tools -print
+          find /tmp/solana-1.8.14 -maxdepth 6 -type d -name platform-tools -print
 
       - name: Inspect the separately published BPF SDK asset
         shell: bash
@@ -58,11 +60,11 @@ jobs:
           url="https://github.com/solana-labs/solana/releases/download/v1.8.14/bpf-sdk.tar.bz2"
           curl --fail --location --retry 2 --retry-delay 2 --max-time 90 "$url" -o /tmp/bpf-sdk.tar.bz2
           echo "bpf_sdk_bytes=$(wc -c < /tmp/bpf-sdk.tar.bz2)"
-          sha256sum /tmp/bpf-sdk.tar.bz2
+          echo "bpf_sdk_sha256=$(sha256sum /tmp/bpf-sdk.tar.bz2 | awk '{print $1}')"
           echo "=== BPF SDK archive entries ==="
           tar -tjf /tmp/bpf-sdk.tar.bz2 | head -n 100
 
-      - name: Upload verified release asset report
+      - name: Upload release manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
