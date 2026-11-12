@@ -57,6 +57,21 @@ jobs:
               raw = base64.b64decode(value["data"][0])
               return {"address":pubkey,"owner":value["owner"],"executable":value["executable"],"lamports":value["lamports"],"data_length":len(raw),"data_prefix_hex":raw[:16].hex()}
 
+          def decode_goki_smart_wallet(pubkey):
+              value = account(pubkey)
+              if not value:
+                  return None
+              raw = base64.b64decode(value["data"][0])
+              expected = hashlib.sha256(b"account:SmartWallet").digest()[:8]
+              if raw[:8] != expected or len(raw) < 81:
+                  return {"address":pubkey,"recognized_as_smart_wallet":False,"data_length":len(raw),"discriminator_hex":raw[:8].hex()}
+              owner_count = int.from_bytes(raw[77:81],"little")
+              owners_end = 81 + 32 * owner_count
+              if owners_end > len(raw):
+                  return {"address":pubkey,"recognized_as_smart_wallet":True,"decode_error":"owner vector exceeds account data","owner_count":owner_count}
+              owners = [b58encode(raw[81+32*i:113+32*i]) for i in range(owner_count)]
+              return {"address":pubkey,"recognized_as_smart_wallet":True,"base":b58encode(raw[8:40]),"bump":raw[40],"threshold":int.from_bytes(raw[41:49],"little"),"minimum_delay_seconds":int.from_bytes(raw[49:57],"little",signed=True),"grace_period_seconds":int.from_bytes(raw[57:65],"little",signed=True),"owner_set_seqno":int.from_bytes(raw[65:69],"little"),"num_transactions":int.from_bytes(raw[69:77],"little"),"owner_count":owner_count,"owners":owners,"remaining_bytes_after_owner_vector":len(raw)-owners_end}
+
           def b58decode(value):
               alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
               n = 0
@@ -167,6 +182,7 @@ jobs:
 
           authority_accounts = {
               "upgrade_authority_at_2022_upgrade":account_summary(upgrade_authority_at_time),
+              "decoded_2022_upgrade_authority_smart_wallet":decode_goki_smart_wallet(upgrade_authority_at_time),
               "current_programdata_upgrade_authority":account_summary(current_authority),
               "2022_upgrade_transaction_fee_payer":account_summary(signers[0] if signers else ""),
               "goki_smart_wallet_program":account_summary(GOKI_PROGRAM)
