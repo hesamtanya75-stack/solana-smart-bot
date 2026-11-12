@@ -79,6 +79,9 @@ jobs:
           block = data["result"]
           loader = "BPFLoaderUpgradeab1e11111111111111111111111"
           found = []
+          loader_instruction_count = 0
+          loader_discriminators = {}
+          unresolved_program_indexes = 0
           for tx in block.get("transactions", []):
               transaction = tx.get("transaction", {})
               message = transaction.get("message", {})
@@ -91,13 +94,16 @@ jobs:
               for ix in message.get("instructions", []):
                   pid_index = ix.get("programIdIndex")
                   if pid_index is None or pid_index >= len(all_keys):
+                      unresolved_program_indexes += 1
                       continue
                   if all_keys[pid_index] != loader:
                       continue
+                  loader_instruction_count += 1
                   raw = b58decode(ix.get("data", ""))
                   if not raw:
                       continue
                   discriminator = raw[0]
+                  loader_discriminators[str(discriminator)] = loader_discriminators.get(str(discriminator), 0) + 1
                   if discriminator != 3:
                       continue
                   account_indexes = ix.get("accounts", [])
@@ -116,6 +122,9 @@ jobs:
               "slot": block.get("parentSlot", 0) + 1,
               "blockhash": block.get("blockhash"),
               "transaction_count": len(block.get("transactions", [])),
+              "loader_instruction_count": loader_instruction_count,
+              "loader_discriminators": loader_discriminators,
+              "unresolved_program_indexes": unresolved_program_indexes,
               "upgrade_candidates": found
           }
           with open("upgrade-candidates.json", "w") as f:
