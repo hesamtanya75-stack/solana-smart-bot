@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - live-trading-policy-enforcement
+  pull_request:
+    branches:
+      - mainnet-live-trading-prep
+    types:
+      - opened
+      - synchronize
+      - reopened
   workflow_dispatch:
 
 permissions:
