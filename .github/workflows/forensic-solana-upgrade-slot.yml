@@ -196,6 +196,120 @@ jobs:
           print(json.dumps(output, indent=2))
           PY
 
+      - name: Retrieve Buffer history and reconstruct written bytes
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          cat > reconstruct.py <<'PY'
+          import concurrent.futures, hashlib, json, os, struct, urllib.request
+
+          URL = os.environ["SOLANA_ARCHIVE_RPC_URL"]
+          BUFFER = "9kDwyNPvePGfAhVoY9pezC4jJRzBetQnfttzkBuHmiW9"
+          LOADER = "BPFLoaderUpgradeab1e11111111111111111111111"
+          ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+          def b58decode(value):
+              n = 0
+              for ch in value:
+                  n = n * 58 + ALPHABET.index(ch)
+              raw = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
+              return b"\x00" * (len(value) - len(value.lstrip("1"))) + raw
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=45) as response:
+                  result = json.loads(response.read())
+              if result.get("error"):
+                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+              return result.get("result")
+
+          signatures = rpc("getSignaturesForAddress", [BUFFER, {"commitment":"finalized","limit":1000}]) or []
+          signatures = [item for item in signatures if item.get("slot", 0) <= 119721738]
+          signatures.sort(key=lambda item: (item.get("slot",0), item.get("blockTime") or 0))
+          report = {
+              "buffer": BUFFER,
+              "signature_count": len(signatures),
+              "signature_slots": [{"signature": x["signature"], "slot": x["slot"], "err": x.get("err")} for x in signatures],
+              "write_instructions": [],
+              "errors": []
+          }
+
+          def fetch_tx(item):
+              try:
+                  tx = rpc("getTransaction", [item["signature"], {"commitment":"finalized","encoding":"json","maxSupportedTransactionVersion":0}])
+                  return item, tx, None
+              except Exception as exc:
+                  return item, None, str(exc)
+
+          writes = []
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              for item, tx, error in pool.map(fetch_tx, signatures):
+                  if error:
+                      report["errors"].append({"signature":item["signature"],"error":error})
+                      continue
+                  if not tx:
+                      report["errors"].append({"signature":item["signature"],"error":"transaction unavailable"})
+                      continue
+                  transaction = tx.get("transaction", {})
+                  message = transaction.get("message", {})
+                  meta = tx.get("meta") or {}
+                  keys = message.get("accountKeys", [])
+                  keys = [k.get("pubkey") if isinstance(k, dict) else k for k in keys]
+                  loaded = meta.get("loadedAddresses") or {}
+                  all_keys = keys + loaded.get("writable", []) + loaded.get("readonly", [])
+                  groups = [("outer", message.get("instructions", []))]
+                  groups += [("inner", g.get("instructions", [])) for g in meta.get("innerInstructions", [])]
+                  for group_name, instructions in groups:
+                      for ix_index, ix in enumerate(instructions):
+                          pi = ix.get("programIdIndex")
+                          if pi is None or pi >= len(all_keys) or all_keys[pi] != LOADER:
+                              continue
+                          raw = b58decode(ix.get("data", ""))
+                          if not raw or raw[0] != 1:
+                              continue
+                          account_indexes = ix.get("accounts", [])
+                          account_keys = [all_keys[i] if i < len(all_keys) else None for i in account_indexes]
+                          if not account_keys or account_keys[0] != BUFFER or len(raw) < 5:
+                              continue
+                          offset = struct.unpack("<I", raw[1:5])[0]
+                          chunk = raw[5:]
+                          writes.append((offset, chunk, item["signature"], item["slot"]))
+                          report["write_instructions"].append({
+                              "signature": item["signature"], "slot": item["slot"],
+                              "group": group_name, "instruction_index": ix_index,
+                              "offset": offset, "length": len(chunk)
+                          })
+
+          if writes:
+              end = max(offset + len(chunk) for offset, chunk, _, _ in writes)
+              image = bytearray(end)
+              coverage = bytearray(end)
+              for offset, chunk, _, _ in writes:
+                  image[offset:offset+len(chunk)] = chunk
+                  coverage[offset:offset+len(chunk)] = b"\x01" * len(chunk)
+              raw_bytes = bytes(image)
+              trimmed = raw_bytes.rstrip(b"\x00")
+              report["reconstruction"] = {
+                  "buffer_payload_length": end,
+                  "covered_bytes": sum(coverage),
+                  "gap_bytes": coverage.count(0),
+                  "sha256_full_payload": hashlib.sha256(raw_bytes).hexdigest(),
+                  "sha256_trimmed_trailing_zeroes": hashlib.sha256(trimmed).hexdigest(),
+                  "trimmed_length": len(trimmed),
+                  "write_count": len(writes)
+              }
+              open("reconstructed-buffer.bin", "wb").write(raw_bytes)
+          else:
+              report["reconstruction"] = {"status":"no Buffer Write instructions found"}
+
+          with open("buffer-history-report.json", "w") as f:
+              json.dump(report, f, indent=2)
+          print(json.dumps(report, indent=2))
+          PY
+          python3 reconstruct.py
+
       - name: Upload sanitized upgrade candidates
         uses: actions/upload-artifact@v4
         with:
