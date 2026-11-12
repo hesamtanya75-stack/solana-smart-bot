@@ -1,0 +1,245 @@
+name: Forensic Governance Realm and mint role verification (read-only)
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-governance-realm-mint-role.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-realm-mint-role:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read finalized Realm, Governance, ProgramData, mint and holding accounts
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet solders==0.21.0
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          from solders.pubkey import Pubkey
+
+          URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not URL.startswith("https://") or "/v2/" not in URL:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+
+          GOV_PROGRAM = "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
+          GOVERNANCE = "5Nn7GMBt1YrPWuzZ7nwY8kBsLkaUhCunnQM9nYaD1MZm"
+          REALM = "Dsh5QZbhK7MLoC8cxaNwL5Nta2rrLiDWuRA4gnkLfopi"
+          EXPECTED_TREASURY = "EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEV"
+          PROGRAM_DATA = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          TARGET_MINT = "2ZQpGLCUBs4uL1MC1CTU7QhyCGs7TL6jUXN72pb13giq"
+          HOLDING = "Aj568fNWtseS9K57fHFG7D97rH8KwGYTAHGEQsokCJou"
+          TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          SYSTEM_PROGRAM = "11111111111111111111111111111111"
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  result = json.load(response)
+              if result.get("error"):
+                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+              return result.get("result")
+
+          def b58encode(raw):
+              alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+              zeros = len(raw) - len(raw.lstrip(bytes([0])))
+              n = int.from_bytes(raw, "big")
+              out = ""
+              while n:
+                  n, rem = divmod(n, 58)
+                  out = alphabet[rem] + out
+              return "1" * zeros + out
+
+          def read_account(address):
+              result = rpc("getAccountInfo", [address, {"encoding":"base64","commitment":"finalized"}])
+              value = (result or {}).get("value")
+              if value is None:
+                  raise RuntimeError("Account absent at finalized commitment: " + address)
+              raw = base64.b64decode(value["data"][0])
+              return {
+                  "address": address, "owner": value["owner"],
+                  "lamports": value["lamports"], "executable": value["executable"],
+                  "space": value["space"], "data_length": len(raw),
+                  "data_sha256": hashlib.sha256(raw).hexdigest(), "raw": raw
+              }
+
+          def key(raw):
+              return str(Pubkey.from_bytes(raw))
+
+          governance = read_account(GOVERNANCE)
+          realm = read_account(REALM)
+          programdata = read_account(PROGRAM_DATA)
+          mint = read_account(TARGET_MINT)
+          holding = read_account(HOLDING)
+          treasury = read_account(EXPECTED_TREASURY)
+
+          # SPL Governance GovernanceV2: enum tag 18, followed by Realm pubkey.
+          gov_raw = governance["raw"]
+          if len(gov_raw) < 33 or gov_raw[0] != 18:
+              raise SystemExit("Governance account is not the expected GovernanceV2 layout.")
+          governance_realm = key(gov_raw[1:33])
+
+          # SPL Governance RealmV2 enum tag 16; RealmV1 tag 1.
+          raw = realm["raw"]
+          if realm["owner"] != GOV_PROGRAM or len(raw) < 59:
+              raise SystemExit("Realm owner or data length is invalid.")
+          account_type = raw[0]
+          if account_type not in (1, 16):
+              raise SystemExit("Target account is not an SPL Governance RealmV1/RealmV2.")
+          community_mint = key(raw[1:33])
+
+          # RealmConfig Borsh fields: two bools, 6 reserved bytes, u64,
+          # MintMaxVoteWeightSource enum + u64, then Option<Pubkey> council mint.
+          offset = 33
+          use_community_addin = bool(raw[offset]); offset += 1
+          use_max_community_addin = bool(raw[offset]); offset += 1
+          offset += 6
+          min_community_weight = int.from_bytes(raw[offset:offset+8], "little"); offset += 8
+          vote_weight_source_tag = raw[offset]; offset += 1
+          vote_weight_source_value = int.from_bytes(raw[offset:offset+8], "little"); offset += 8
+          council_option = raw[offset]; offset += 1
+          if council_option == 1:
+              if len(raw) < offset + 32:
+                  raise SystemExit("Realm council mint field is truncated.")
+              council_mint = key(raw[offset:offset+32]); offset += 32
+          elif council_option == 0:
+              council_mint = None
+          else:
+              raise SystemExit("Realm council mint Option tag is invalid.")
+
+          # Remaining Realm fields are reserved, voting count, optional authority, name.
+          offset += 6
+          voting_proposal_count = int.from_bytes(raw[offset:offset+2], "little"); offset += 2
+          authority_option = raw[offset]; offset += 1
+          realm_authority = key(raw[offset:offset+32]) if authority_option == 1 else None
+          if authority_option == 1:
+              offset += 32
+          elif authority_option != 0:
+              raise SystemExit("Realm authority Option tag is invalid.")
+          realm_name = None
+          if len(raw) >= offset + 4:
+              name_len = int.from_bytes(raw[offset:offset+4], "little")
+              offset += 4
+              if len(raw) >= offset + name_len:
+                  realm_name = raw[offset:offset+name_len].decode("utf-8", errors="replace")
+
+          if len(mint["raw"]) < 82:
+              raise SystemExit("Target mint account data is shorter than SPL Token Mint layout.")
+          mint_raw = mint["raw"]
+          mint_authority_option = int.from_bytes(mint_raw[0:4], "little")
+          mint_authority = key(mint_raw[4:36]) if mint_authority_option == 1 else None
+          mint_supply = int.from_bytes(mint_raw[36:44], "little")
+          mint_decimals = mint_raw[44]
+          mint_initialized = bool(mint_raw[45])
+          freeze_option = int.from_bytes(mint_raw[46:50], "little")
+          freeze_authority = key(mint_raw[50:82]) if freeze_option == 1 else None
+
+          if len(holding["raw"]) < 165:
+              raise SystemExit("Holding token account data is shorter than SPL Token Account layout.")
+          holding_raw = holding["raw"]
+          holding_mint = key(holding_raw[0:32])
+          holding_owner = key(holding_raw[32:64])
+          holding_amount = int.from_bytes(holding_raw[64:72], "little")
+
+          pd_raw = programdata["raw"]
+          if programdata["owner"] != "BPFLoaderUpgradeab1e11111111111111111111111" or len(pd_raw) < 45:
+              raise SystemExit("ProgramData account is not a valid upgradeable-loader ProgramData account.")
+          if int.from_bytes(pd_raw[:4], "little") != 3 or pd_raw[12] != 1:
+              raise SystemExit("ProgramData does not contain a decoded upgrade authority.")
+          current_upgrade_authority = b58encode(pd_raw[13:45])
+
+          derived_treasury, treasury_bump = Pubkey.find_program_address(
+              [b"native-treasury", bytes(Pubkey.from_string(GOVERNANCE))],
+              Pubkey.from_string(GOV_PROGRAM)
+          )
+          derived_treasury = str(derived_treasury)
+
+          if mint["owner"] != TOKEN_PROGRAM or holding["owner"] != TOKEN_PROGRAM:
+              raise SystemExit("Mint or holding account is not owned by the legacy SPL Token program.")
+
+          if TARGET_MINT == community_mint:
+              mint_role = "community"
+          elif council_mint is not None and TARGET_MINT == council_mint:
+              mint_role = "council"
+          else:
+              mint_role = "neither_community_nor_council"
+
+          report = {
+              "scope": "read-only finalized Solana Mainnet RPC; no transactions submitted",
+              "governance_account": {
+                  **{k:v for k,v in governance.items() if k != "raw"},
+                  "account_type_tag": gov_raw[0],
+                  "decoded_realm": governance_realm,
+                  "is_expected_governance_v2": gov_raw[0] == 18
+              },
+              "realm_account": {
+                  **{k:v for k,v in realm.items() if k != "raw"},
+                  "account_type_tag": account_type,
+                  "account_type": "RealmV2" if account_type == 16 else "RealmV1",
+                  "realm_name": realm_name,
+                  "community_mint": community_mint,
+                  "council_mint": council_mint,
+                  "use_community_voter_weight_addin": use_community_addin,
+                  "use_max_community_voter_weight_addin": use_max_community_addin,
+                  "min_community_weight_to_create_governance": min_community_weight,
+                  "community_mint_max_vote_weight_source_tag": vote_weight_source_tag,
+                  "community_mint_max_vote_weight_source_value": vote_weight_source_value,
+                  "voting_proposal_count": voting_proposal_count,
+                  "realm_authority": realm_authority
+              },
+              "target_mint": {
+                  **{k:v for k,v in mint.items() if k != "raw"},
+                  "mint_role_in_realm": mint_role,
+                  "mint_authority": mint_authority,
+                  "supply_base_units": mint_supply,
+                  "decimals": mint_decimals,
+                  "initialized": mint_initialized,
+                  "freeze_authority": freeze_authority
+              },
+              "holding_token_account": {
+                  **{k:v for k,v in holding.items() if k != "raw"},
+                  "mint": holding_mint,
+                  "token_owner": holding_owner,
+                  "amount_base_units": holding_amount
+              },
+              "programdata_current_upgrade_authority": current_upgrade_authority,
+              "native_treasury": {
+                  "expected_address": EXPECTED_TREASURY,
+                  "derived_address": derived_treasury,
+                  "bump": treasury_bump,
+                  "account_owner": treasury["owner"],
+                  "data_length": treasury["data_length"],
+                  "lamports": treasury["lamports"]
+              },
+              "verification": {
+                  "governance_account_is_governance_v2": gov_raw[0] == 18 and governance["owner"] == GOV_PROGRAM,
+                  "governance_points_to_expected_realm": governance_realm == REALM,
+                  "realm_is_owned_by_governance_program": realm["owner"] == GOV_PROGRAM,
+                  "target_mint_is_realm_community_or_council_mint": mint_role in ("community", "council"),
+                  "target_mint_authority_is_native_treasury": mint_authority == EXPECTED_TREASURY,
+                  "holding_account_mint_matches_target": holding_mint == TARGET_MINT,
+                  "holding_account_owner_matches_realm": holding_owner == REALM,
+                  "current_program_upgrade_authority_matches_native_treasury": current_upgrade_authority == derived_treasury == EXPECTED_TREASURY
+              }
+          }
+          with open("governance-realm-mint-role-verification.json", "w") as f:
+              json.dump(report, f, indent=2)
+          print(json.dumps(report, indent=2))
+          PY
+      - name: Upload read-only Realm and mint-role evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-realm-mint-role-verification
+          path: governance-realm-mint-role-verification.json
+          if-no-files-found: warn
+          retention-days: 7
