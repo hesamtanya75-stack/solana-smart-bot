@@ -1,0 +1,128 @@
+name: Diagnose Anchor 0.22.0 verifiable build invocation with mocked Docker
+
+on:
+  push:
+    branches:
+      - diagnostic/anchor-022-mock-docker
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-anchor022-docker-invocation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report exact Anchor CLI version and build options
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix shell .#ci --command bash -lc '
+            set -euo pipefail
+            anchor --version
+            anchor build --help | tee /tmp/anchor-build-help.txt
+            grep -E -- "--docker-image|--verifiable|--program-name" /tmp/anchor-build-help.txt
+          '
+
+      - name: Run minimal workspace probes with Docker replaced by a logger
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mock-bin /tmp/anchor-probe/programs/dummy/src
+          cat > /tmp/mock-bin/docker <<'DOCKER_MOCK'
+          #!/usr/bin/env bash
+          set -u
+          {
+            printf 'docker_call='
+            printf '%q ' "$@"
+            printf '\n'
+          } >> "${DOCKER_LOG:?}"
+          # Deliberately do not run a container or any build.
+          exit 0
+          DOCKER_MOCK
+          chmod +x /tmp/mock-bin/docker
+
+          cat > /tmp/anchor-probe/Cargo.toml <<'CARGO'
+          [workspace]
+          members = ["programs/dummy"]
+          resolver = "2"
+          CARGO
+
+          cat > /tmp/anchor-probe/programs/dummy/Cargo.toml <<'CARGO'
+          [package]
+          name = "dummy"
+          version = "0.1.0"
+          edition = "2021"
+          [lib]
+          crate-type = ["cdylib", "lib"]
+          [features]
+          no-entrypoint = []
+          no-idl = []
+          no-log-ix-name = []
+          cpi = ["no-entrypoint"]
+          default = []
+          [dependencies]
+          anchor-lang = "0.22.1"
+          CARGO
+
+          cat > /tmp/anchor-probe/programs/dummy/src/lib.rs <<'RS'
+          use anchor_lang::prelude::*;
+          declare_id!("Fg6PaFpoGXkYsidMpWxTWqkZ8W2Qp8Y7wY7Q7Q7Q7Q7Q");
+          #[program]
+          pub mod dummy {
+              use super::*;
+              pub fn initialize(_ctx: Context<Initialize>) -> Result<()> { Ok(()) }
+          }
+          #[derive(Accounts)]
+          pub struct Initialize {}
+          RS
+
+          run_probe() {
+            local label="$1"
+            local include_solana="$2"
+            local log="/tmp/${label}.docker.log"
+            rm -f "$log"
+            cat > /tmp/anchor-probe/Anchor.toml <<ANCHOR
+          [features]
+          seeds = false
+          [programs.localnet]
+          dummy = "Fg6PaFpoGXkYsidMpWxTWqkZ8W2Qp8Y7wY7Q7Q7Q7Q7Q"
+          [provider]
+          cluster = "localnet"
+          wallet = "~/.config/solana/id.json"
+          [scripts]
+          test = "echo no-tests"
+          [workspace]
+          members = ["programs/dummy"]
+          ANCHOR
+            if [ "$include_solana" = "yes" ]; then
+              printf '\n[workspace]\nanchor_version = "0.22.0"\nsolana_version = "1.8.14"\n' >> /tmp/anchor-probe/Anchor.toml
+            else
+              printf '\n[workspace]\nanchor_version = "0.22.0"\n' >> /tmp/anchor-probe/Anchor.toml
+            fi
+            echo "=== probe: $label ==="
+            (cd /tmp/anchor-probe && PATH="/tmp/mock-bin:$PATH" DOCKER_LOG="$log" nix shell "$GITHUB_WORKSPACE#ci" --command anchor build --verifiable --program-name dummy --docker-image saber-anchor022-solana1814-preloaded) || true
+            if [ -f "$log" ]; then
+              cat "$log"
+            else
+              echo "NO_DOCKER_CALL_CAPTURED"
+            fi
+          }
+
+          run_probe "with-solana-version" "yes"
+          run_probe "without-solana-version" "no"
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-022-mock-docker-diagnostic
+          path: |
+            /tmp/anchor-build-help.txt
+            /tmp/with-solana-version.docker.log
+            /tmp/without-solana-version.docker.log
+          if-no-files-found: warn
+          retention-days: 7
