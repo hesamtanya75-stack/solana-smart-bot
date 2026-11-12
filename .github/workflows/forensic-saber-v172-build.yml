@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - forensics/upgrade-slot-119721738
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,15 +11,16 @@ permissions:
 jobs:
   build-and-compare-v172:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Install pinned Solana Verify CLI 0.5.2
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.local/bin"
           base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
-          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
-          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
           test "$(sha256sum /tmp/solana-verify.sha256 | awk '{print $1}')" = "e72ee837ee95c845d59065fcdb9896ea459347ef88e6d73f8f1e082ca6ce235b"
           test "$(awk '{print $1}' /tmp/solana-verify.sha256)" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
           test "$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
@@ -28,60 +28,151 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Checkout exact Saber v1.7.2 source
+        shell: bash
         run: |
+          set -euo pipefail
           git clone https://github.com/saber-hq/stable-swap.git saber-source
           git -C saber-source checkout --detach v1.7.2
           test "$(git -C saber-source describe --tags --exact-match)" = "v1.7.2"
           grep -F 'anchor_version = "0.22.0"' saber-source/Anchor.toml
           grep -F 'solana_version = "1.8.14"' saber-source/Anchor.toml
+          git -C saber-source rev-parse HEAD | tee saber-source-commit.txt
 
-      - name: Install Nix and build using the historical upstream release command
-        uses: cachix/install-nix-action@v22
-
-      - name: Build Saber v1.7.2
-        working-directory: saber-source
+      - name: Download and pin official Solana 1.8.14 archive
+        shell: bash
         run: |
           set -euo pipefail
-          nix shell .#ci --command anchor --version
-          build_ok=false
-          for attempt in 1 2 3; do
-            echo "Verifiable build attempt ${attempt}/3"
-            if nix shell .#ci --command anchor build --verifiable --program-name stable_swap 2>&1 | tee /tmp/saber-v172-build.log; then
-              build_ok=true
-              break
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Build attempt failed; retrying after transient network errors."
-              sleep 15
-            fi
-          done
-          test "$build_ok" = true
-          grep -F 'Using solana version: 1.8.14' /tmp/saber-v172-build.log
-          mapfile -t binaries < <(find target -type f -name stable_swap.so -not -path '*/.anchor/*' | sort -u)
-          test "${#binaries[@]}" -eq 1
-          solana-verify get-executable-hash "${binaries[0]}" | tee ../v172-built-hash.txt
-          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so -o /tmp/stable_swap-v1.7.2-release.so
-          solana-verify get-executable-hash /tmp/stable_swap-v1.7.2-release.so | tee ../v172-release-hash.txt
-          solana-verify get-program-hash -u https://api.mainnet-beta.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../v172-mainnet-hash.txt
-          built="$(grep -Eo '[a-f0-9]{64}' ../v172-built-hash.txt | tail -n 1)"
-          release="$(grep -Eo '[a-f0-9]{64}' ../v172-release-hash.txt | tail -n 1)"
-          mainnet="$(grep -Eo '[a-f0-9]{64}' ../v172-mainnet-hash.txt | tail -n 1)"
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            -o solana-release.tar.bz2
+          echo "edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355  solana-release.tar.bz2" | sha256sum -c -
+          test "$(wc -c < solana-release.tar.bz2)" -eq 277903704
+          echo "solana_archive_sha256=edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355" | tee solana-archive-evidence.txt
+
+      - name: Build preloaded historical Anchor builder image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > Dockerfile <<'DOCKERFILE'
+          FROM projectserum/build@sha256:4d1a34040df16afbb34c621cc42263d6e225c47406e4a565763adbcae9f1b5f5
+          COPY solana-release.tar.bz2 /tmp/solana-release.tar.bz2
+          RUN mkdir -p /root/.local/share/solana/install/releases/1.8.14 \
+              && tar -xjf /tmp/solana-release.tar.bz2 -C /tmp \
+              && mv /tmp/solana-release /root/.local/share/solana/install/releases/1.8.14/solana-release \
+              && ln -sfn /root/.local/share/solana/install/releases/1.8.14/solana-release /root/.local/share/solana/install/active_release \
+              && rm -f /tmp/solana-release.tar.bz2
+          ENV PATH="/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          DOCKERFILE
+          docker build --pull=false -t saber-anchor022-solana1814-preloaded .
+          docker image inspect saber-anchor022-solana1814-preloaded \
+            --format 'derived_image_id={{.Id}} base_layers={{json .RootFS.Layers}}' | tee derived-image.txt
+          docker run --rm --entrypoint /bin/bash saber-anchor022-solana1814-preloaded -c '
+            set -euo pipefail
+            solana --version | tee /tmp/solana-version.txt
+            grep -F "solana-cli 1.8.14 (src:9c01d90c;" /tmp/solana-version.txt
+            cargo-build-bpf --help >/dev/null
+            test -d /root/.local/share/solana/install/active_release/bin/sdk/bpf
+            test -f /root/.local/share/solana/install/active_release/bin/sdk/bpf/env.sh
+            echo preloaded_toolchain_check=PASS
+          ' | tee preloaded-toolchain-check.txt
+
+      - name: Install Nix and build pinned Anchor 0.22.0 CLI
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/anchor-only
+          cp saber-source/flake.lock /tmp/anchor-only/flake.lock
+          cat > /tmp/anchor-only/flake.nix <<'EOF'
           {
-            echo "v1.7.2 rebuilt hash: $built"
-            echo "v1.7.2 published release hash: $release"
-            echo "Mainnet deployed hash: $mainnet"
+            description = "Pinned Anchor 0.22.0 CLI for Saber v1.7.2";
+            inputs = {
+              nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+              saber-overlay.url = "github:saber-hq/saber-overlay";
+              flake-utils.url = "github:numtide/flake-utils";
+            };
+            outputs = { self, saber-overlay, ... }: {
+              packages.x86_64-linux.default =
+                saber-overlay.packages.x86_64-linux.anchor-0_22_0;
+            };
+          }
+          EOF
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command bash -lc '
+            set -euo pipefail
+            anchor --version | tee /tmp/anchor-version.txt
+            grep -F "anchor-cli 0.22.0" /tmp/anchor-version.txt
+          '
+
+      - name: Build Saber v1.7.2 with preloaded Solana 1.8.14
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="saber-anchor022-solana1814-preloaded"
+          ORIGINAL_CONFIG="$(mktemp)"
+          cp Anchor.toml "$ORIGINAL_CONFIG"
+          restore_config() {
+            cp "$ORIGINAL_CONFIG" Anchor.toml
+            rm -f "$ORIGINAL_CONFIG"
+          }
+          trap restore_config EXIT
+
+          # Suppress only Anchor 0.22.0's legacy Solana installer selector in this disposable checkout.
+          grep -q '^solana_version[[:space:]]*=' "$ORIGINAL_CONFIG"
+          sed '/^solana_version[[:space:]]*=/d' "$ORIGINAL_CONFIG" > Anchor.toml
+          ! grep -q '^solana_version[[:space:]]*=' Anchor.toml
+          grep -F 'anchor_version = "0.22.0"' Anchor.toml
+
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
+            anchor build --verifiable --program-name stable_swap --docker-image "$IMAGE" \
+            2>&1 | tee ../saber-v172-build.log
+
+          test -s target/verifiable/stable_swap.so
+          sha256sum target/verifiable/stable_swap.so | tee ../v172-built-file-sha256.txt
+          solana-verify get-executable-hash target/verifiable/stable_swap.so | tee ../v172-built-hash.txt
+
+      - name: Compare rebuilt binary, published release, and deployed Mainnet program
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 2 --retry-delay 2 --silent --show-error \
+            https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so \
+            -o /tmp/stable_swap-v1.7.2-release.so
+          sha256sum /tmp/stable_swap-v1.7.2-release.so | tee v172-release-file-sha256.txt
+          solana-verify get-executable-hash /tmp/stable_swap-v1.7.2-release.so | tee v172-release-hash.txt
+          solana-verify get-program-hash -u https://api.mainnet-beta.solana.com \
+            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee v172-mainnet-hash.txt
+
+          built="$(grep -Eo '[a-f0-9]{64}' v172-built-hash.txt | tail -n 1)"
+          release="$(grep -Eo '[a-f0-9]{64}' v172-release-hash.txt | tail -n 1)"
+          mainnet="$(grep -Eo '[a-f0-9]{64}' v172-mainnet-hash.txt | tail -n 1)"
+          {
+            echo "v1.7.2 rebuilt executable hash: $built"
+            echo "v1.7.2 published release executable hash: $release"
+            echo "Mainnet deployed executable hash: $mainnet"
             echo "rebuilt_matches_release=$([ "$built" = "$release" ] && echo true || echo false)"
             echo "release_matches_mainnet=$([ "$release" = "$mainnet" ] && echo true || echo false)"
-          } | tee ../v172-comparison.txt
-          cat ../v172-comparison.txt >> "$GITHUB_STEP_SUMMARY"
+            echo "rebuilt_matches_mainnet=$([ "$built" = "$mainnet" ] && echo true || echo false)"
+          } | tee v172-comparison.txt
+          cat v172-comparison.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload v1.7.2 forensic hashes
+      - name: Upload v1.7.2 forensic build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: saber-v1.7.2-forensic-hashes
+          name: saber-v1.7.2-forensic-build-evidence
           path: |
+            saber-source-commit.txt
+            solana-archive-evidence.txt
+            derived-image.txt
+            preloaded-toolchain-check.txt
+            /tmp/anchor-version.txt
+            saber-v172-build.log
+            v172-built-file-sha256.txt
             v172-built-hash.txt
+            v172-release-file-sha256.txt
             v172-release-hash.txt
             v172-mainnet-hash.txt
             v172-comparison.txt
