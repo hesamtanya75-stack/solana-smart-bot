@@ -121,6 +121,59 @@ jobs:
                   result.append(ix.get("programId") or (key_values[idx] if idx is not None and idx < len(key_values) else None))
               return result
 
+          def goki_outer_accounts(tx):
+              message = tx["transaction"]["message"]
+              keys = message.get("accountKeys", [])
+              key_values = [k.get("pubkey") if isinstance(k,dict) else k for k in keys]
+              result = []
+              for ix in message.get("instructions", []):
+                  idx = ix.get("programIdIndex")
+                  pid = ix.get("programId") or (key_values[idx] if idx is not None and idx < len(key_values) else None)
+                  if pid == GOKI_PROGRAM:
+                      result.extend(key_values[i] for i in ix.get("accounts",[]) if i < len(key_values))
+              return list(dict.fromkeys(result))
+
+          def decode_goki_transaction(pubkey):
+              value = account(pubkey)
+              if not value or value["owner"] != GOKI_PROGRAM:
+                  return None
+              raw = base64.b64decode(value["data"][0])
+              expected = hashlib.sha256(b"account:Transaction").digest()[:8]
+              if raw[:8] != expected:
+                  return None
+              try:
+                  off = 8
+                  smart_wallet = b58encode(raw[off:off+32]); off += 32
+                  index = int.from_bytes(raw[off:off+8],"little"); off += 8
+                  bump = raw[off]; off += 1
+                  proposer = b58encode(raw[off:off+32]); off += 32
+                  ix_program = b58encode(raw[off:off+32]); off += 32
+                  key_count = int.from_bytes(raw[off:off+4],"little"); off += 4
+                  ix_keys = []
+                  for _ in range(key_count):
+                      ix_keys.append({"pubkey":b58encode(raw[off:off+32]),"is_signer":bool(raw[off+32]),"is_writable":bool(raw[off+33])})
+                      off += 34
+                  data_len = int.from_bytes(raw[off:off+4],"little"); off += 4
+                  ix_data = raw[off:off+data_len]; off += data_len
+                  signer_count = int.from_bytes(raw[off:off+4],"little"); off += 4
+                  approvals = [bool(x) for x in raw[off:off+signer_count]]; off += signer_count
+                  owner_set_seqno = int.from_bytes(raw[off:off+4],"little"); off += 4
+                  eta = int.from_bytes(raw[off:off+8],"little",signed=True); off += 8
+                  executor = b58encode(raw[off:off+32]); off += 32
+                  executed_at = int.from_bytes(raw[off:off+8],"little",signed=True); off += 8
+                  loader_disc = int.from_bytes(ix_data[:4],"little") if len(ix_data)>=4 and ix_program==LOADER else None
+                  return {"transaction_account":pubkey,"smart_wallet":smart_wallet,"index":index,"bump":bump,"proposer":proposer,"instruction_program_id":ix_program,"instruction_accounts":ix_keys,"instruction_data_length":data_len,"loader_instruction_discriminator":loader_disc,"approval_vector":approvals,"approval_count":sum(approvals),"approval_slots":signer_count,"owner_set_seqno":owner_set_seqno,"eta_unix":eta,"executor":executor,"executed_at_unix":executed_at,"decoded_bytes":off,"account_data_length":len(raw)}
+              except Exception as exc:
+                  return {"transaction_account":pubkey,"decode_error":str(exc),"account_data_length":len(raw)}
+
+          def find_goki_transactions(tx):
+              found = []
+              for pubkey in goki_outer_accounts(tx):
+                  decoded = decode_goki_transaction(pubkey)
+                  if decoded:
+                      found.append(decoded)
+              return found
+
           tx = rpc("getTransaction", [EXPECTED_SIGNATURE, {
               "encoding":"json", "commitment":"finalized", "maxSupportedTransactionVersion":0
           }])
@@ -177,6 +230,8 @@ jobs:
                                   for i in range((candidate["transaction"]["message"].get("header") or {}).get("numRequiredSignatures",0))
                               ],
                               "outer_instruction_program_ids":outer_programs(candidate),
+                              "goki_outer_instruction_accounts":goki_outer_accounts(candidate),
+                              "goki_transaction_state":find_goki_transactions(candidate),
                               "meta_err":(candidate.get("meta") or {}).get("err")
                           })
 
@@ -203,7 +258,9 @@ jobs:
                   "upgrade_instruction":target_upgrade[0],
                   "upgrade_authority_account_at_upgrade":upgrade_authority_at_time,
                   "upgrade_authority_account_is_top_level_signer":upgrade_authority_at_time in signers if upgrade_authority_at_time else False,
-                  "outer_instruction_program_ids":outer_programs(tx)
+                  "outer_instruction_program_ids":outer_programs(tx),
+                  "goki_outer_instruction_accounts":goki_outer_accounts(tx),
+                  "goki_transaction_state":find_goki_transactions(tx)
               },
               "program_account":{
                   "owner":prog["owner"],"executable":prog["executable"],
