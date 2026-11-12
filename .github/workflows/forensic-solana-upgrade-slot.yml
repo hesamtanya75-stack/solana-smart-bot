@@ -68,7 +68,7 @@ jobs:
           fi
 
           jq '{
-            slot: .result.parentSlot + 1,
+            slot: (.result.parentSlot + 1),
             blockhash: .result.blockhash,
             upgrade_candidates: [
               .result.transactions[]? as $tx
