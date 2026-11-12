@@ -43,8 +43,20 @@ jobs:
         run: |
           set -euo pipefail
           nix shell .#ci --command anchor --version
-          nix shell .#ci --command anchor build --verifiable --program-name stable_swap 2>&1 | tee /tmp/saber-v172-build.log
-          grep -F 'solana-cli 1.8.14' /tmp/saber-v172-build.log
+          build_ok=false
+          for attempt in 1 2 3; do
+            echo "Verifiable build attempt ${attempt}/3"
+            if nix shell .#ci --command anchor build --verifiable --program-name stable_swap 2>&1 | tee /tmp/saber-v172-build.log; then
+              build_ok=true
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Build attempt failed; retrying after transient network errors."
+              sleep 15
+            fi
+          done
+          test "$build_ok" = true
+          grep -F 'Using solana version: 1.8.14' /tmp/saber-v172-build.log
           mapfile -t binaries < <(find target -type f -name stable_swap.so -not -path '*/.anchor/*' | sort -u)
           test "${#binaries[@]}" -eq 1
           solana-verify get-executable-hash "${binaries[0]}" | tee ../v172-built-hash.txt
