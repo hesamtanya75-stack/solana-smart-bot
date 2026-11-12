@@ -396,6 +396,76 @@ jobs:
               raise SystemExit("One or more forensic consistency checks failed; see report.")
           PY
 
+      - name: Trace all historical Goki wallet transactions and owner-set changes
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet solders
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          from solders.pubkey import Pubkey
+
+          URL = os.environ["SOLANA_ARCHIVE_RPC_URL"]
+          WALLET = "BkkBFsRm6VCbZyBG82yuHBnyjJwUJHv1nTJ3GiY44Tkr"
+          GOKI = "GokivDYuQXPZCWRkwMhdH2h91KpDQXBEmpgBgs55bnpH"
+          def rpc(method, params):
+              body=json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req=urllib.request.Request(URL,data=body,headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req,timeout=60) as r: out=json.load(r)
+              if out.get("error"): raise RuntimeError(method+": "+json.dumps(out["error"]))
+              return out.get("result")
+          def b58(raw):
+              alphabet="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+              zeros=len(raw)-len(raw.lstrip(bytes([0]))); n=int.from_bytes(raw,"big"); s=""
+              while n: n,rem=divmod(n,58); s=alphabet[rem]+s
+              return "1"*zeros+s
+          def take(raw, off, n):
+              if off+n>len(raw): raise ValueError("truncated Borsh data")
+              return raw[off:off+n],off+n
+          def u32(raw,off):
+              b,off=take(raw,off,4); return int.from_bytes(b,"little"),off
+          wallet=rpc("getAccountInfo",[WALLET,{"encoding":"base64","commitment":"finalized"}])["value"]
+          if not wallet: raise SystemExit("Goki SmartWallet account unavailable")
+          wr=base64.b64decode(wallet["data"][0])
+          if wr[:8]!=hashlib.sha256(b"account:SmartWallet").digest()[:8]: raise SystemExit("SmartWallet discriminator mismatch")
+          seq=int.from_bytes(wr[65:69],"little"); count=int.from_bytes(wr[69:77],"little")
+          owner_count=int.from_bytes(wr[77:81],"little")
+          current=[b58(wr[81+32*i:113+32*i]) for i in range(owner_count)]
+          pid=Pubkey.from_string(GOKI); wallet_pk=Pubkey.from_string(WALLET)
+          owner_disc=hashlib.sha256(b"global:set_owners").digest()[:8]
+          changes=[]; scanned=0; missing=[]
+          for idx in range(count):
+              addr,_=Pubkey.find_program_address([b"GokiTransaction",bytes(wallet_pk),idx.to_bytes(8,"little")],pid)
+              ai=rpc("getAccountInfo",[str(addr),{"encoding":"base64","commitment":"finalized"}])["value"]
+              if not ai:
+                  missing.append(idx); continue
+              if ai["owner"]!=GOKI: continue
+              raw=base64.b64decode(ai["data"][0]); scanned+=1
+              if raw[:8]!=hashlib.sha256(b"account:Transaction").digest()[:8]: continue
+              off=8+32+8+1+32
+              n,off=u32(raw,off)
+              for ixn in range(n):
+                  prog,off=take(raw,off,32); nk,off=u32(raw,off)
+                  off += nk*34
+                  dl,off=u32(raw,off); data,off=take(raw,off,dl)
+                  if prog==bytes(pid) and data[:8]==owner_disc:
+                      c,pos=u32(data,8)
+                      if c>100: raise ValueError("implausible set_owners vector")
+                      owners=[b58(data[pos+32*i:pos+32*(i+1)]) for i in range(c)]
+                      changes.append({"transaction_index":idx,"transaction_account":str(addr),"owner_set_seqno_before":int.from_bytes(raw[off:off+4],"little") if False else None,"new_owner_count":c,"new_owners":owners,"instruction_data_length":dl})
+          report={"wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,"num_transactions":count,"transaction_accounts_scanned":scanned,"missing_transaction_indices":missing,"set_owners_transactions":changes,"scope":"read-only finalized Mainnet RPC; no transactions submitted"}
+          with open("goki-owner-history.json","w") as f: json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload Goki owner-history audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: goki-owner-history-audit
+          path: goki-owner-history.json
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload sanitized read-only audit
         uses: actions/upload-artifact@v4
         with:
