@@ -1,0 +1,145 @@
+name: Forensic Governance treasury and mint authority verification (read-only)
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-governance-treasury.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-governance-treasury:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read finalized Mainnet accounts and derive SPL Governance native treasury PDA
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet solders==0.21.0
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          from solders.pubkey import Pubkey
+
+          URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not URL.startswith("https://") or "/v2/" not in URL:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+
+          GOVERNANCE_PROGRAM = "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
+          REALM = "5Nn7GMBt1YrPWuzZ7nwY8kBsLkaUhCunnQM9nYaD1MZm"
+          TREASURY = "EVmbDJCTGeExFGUKxmZwrfnzw4zpf7SPhPgfiLDJkUEV"
+          MINT = "2ZQpGLCUBs4uL1MC1CTU7QhyCGs7TL6jUXN72pb13giq"
+          DESTINATION = "Aj568fNWtseS9K57fHFG7D97rH8KwGYTAHGEQsokCJou"
+          EXPECTED_MINT_OWNER = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  result = json.load(response)
+              if result.get("error"):
+                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
+              return result.get("result")
+
+          def read_account(address):
+              result = rpc("getAccountInfo", [address, {"encoding":"base64","commitment":"finalized"}])
+              value = (result or {}).get("value")
+              if value is None:
+                  return None
+              raw = base64.b64decode(value["data"][0])
+              return {
+                  "address": address,
+                  "owner": value["owner"],
+                  "lamports": value["lamports"],
+                  "executable": value["executable"],
+                  "space": value["space"],
+                  "data_length": len(raw),
+                  "data_sha256": hashlib.sha256(raw).hexdigest(),
+                  "raw": raw
+              }
+
+          realm = read_account(REALM)
+          treasury = read_account(TREASURY)
+          mint = read_account(MINT)
+          destination = read_account(DESTINATION)
+          if not all((realm, treasury, mint, destination)):
+              raise SystemExit("One or more target accounts are absent at finalized commitment.")
+
+          program = Pubkey.from_string(GOVERNANCE_PROGRAM)
+          realm_key = Pubkey.from_string(REALM)
+          derived, bump = Pubkey.find_program_address([b"native-treasury", bytes(realm_key)], program)
+          derived_text = str(derived)
+
+          mint_raw = mint["raw"]
+          mint_authority = None
+          freeze_authority = None
+          mint_supply = None
+          mint_decimals = None
+          mint_initialized = None
+          if len(mint_raw) >= 82:
+              mint_authority_option = int.from_bytes(mint_raw[0:4], "little")
+              mint_authority = str(Pubkey.from_bytes(mint_raw[4:36])) if mint_authority_option == 1 else None
+              mint_supply = int.from_bytes(mint_raw[36:44], "little")
+              mint_decimals = mint_raw[44]
+              mint_initialized = bool(mint_raw[45])
+              freeze_option = int.from_bytes(mint_raw[46:50], "little")
+              freeze_authority = str(Pubkey.from_bytes(mint_raw[50:82])) if freeze_option == 1 else None
+
+          destination_raw = destination["raw"]
+          destination_mint = str(Pubkey.from_bytes(destination_raw[0:32])) if len(destination_raw) >= 165 else None
+          destination_owner = str(Pubkey.from_bytes(destination_raw[32:64])) if len(destination_raw) >= 165 else None
+          destination_amount = int.from_bytes(destination_raw[64:72], "little") if len(destination_raw) >= 165 else None
+
+          report = {
+              "scope": "read-only finalized Solana Mainnet RPC; no transactions submitted",
+              "program_id": GOVERNANCE_PROGRAM,
+              "realm": {k:v for k,v in realm.items() if k != "raw"},
+              "realm_owned_by_spl_governance": realm["owner"] == GOVERNANCE_PROGRAM,
+              "derived_native_treasury": derived_text,
+              "native_treasury_bump": bump,
+              "derived_treasury_matches_current_upgrade_authority": derived_text == TREASURY,
+              "treasury_account": {k:v for k,v in treasury.items() if k != "raw"},
+              "treasury_account_owner_is_system_program": treasury["owner"] == "11111111111111111111111111111111",
+              "treasury_data_length_is_zero": treasury["data_length"] == 0,
+              "mint_account": {k:v for k,v in mint.items() if k != "raw"},
+              "mint_owned_by_legacy_spl_token_program": mint["owner"] == EXPECTED_MINT_OWNER,
+              "mint_fields": {
+                  "mint_authority": mint_authority,
+                  "mint_authority_matches_treasury": mint_authority == TREASURY,
+                  "supply_base_units": mint_supply,
+                  "decimals": mint_decimals,
+                  "initialized": mint_initialized,
+                  "freeze_authority": freeze_authority
+              },
+              "destination_token_account": {k:v for k,v in destination.items() if k != "raw"},
+              "destination_fields": {
+                  "mint": destination_mint,
+                  "owner": destination_owner,
+                  "amount_base_units": destination_amount,
+                  "mint_matches_target_mint": destination_mint == MINT
+              },
+              "realm_raw_data_base64": base64.b64encode(realm["raw"]).decode(),
+              "verification": {
+                  "realm_program_owner_check": realm["owner"] == GOVERNANCE_PROGRAM,
+                  "native_treasury_pda_check": derived_text == TREASURY,
+                  "mint_authority_check": mint_authority == TREASURY,
+                  "destination_mint_check": destination_mint == MINT
+              }
+          }
+          with open("governance-treasury-verification.json", "w") as f:
+              json.dump(report, f, indent=2)
+          print(json.dumps({k:v for k,v in report.items() if k != "realm_raw_data_base64"}, indent=2))
+          PY
+      - name: Upload read-only account verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-treasury-verification
+          path: governance-treasury-verification.json
+          if-no-files-found: warn
+          retention-days: 7
