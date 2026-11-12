@@ -11,6 +11,7 @@ const DEFAULT_STATE = {
   lastScanReport: [],
   updatedAt: null
 };
+const DEVNET_RPC = "https://api.devnet.solana.com";
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
   "https://api.mainnet-beta.solana.com",
@@ -20,6 +21,20 @@ const RPCS = [
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
+
+
+async function devnetRpc(method, params = []) {
+  const response = await fetch(DEVNET_RPC, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(7000)
+  });
+  if (!response.ok) throw new Error("Devnet RPC HTTP " + response.status);
+  const payload = await response.json();
+  if (payload.error) throw new Error(payload.error.message || "Devnet RPC error");
+  return payload.result;
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -505,11 +520,38 @@ async function readProfile(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/devnet-status" && request.method === "GET") {
+      try {
+        const [health, epoch] = await Promise.all([
+          devnetRpc("getHealth"),
+          devnetRpc("getEpochInfo", [{ commitment: "confirmed" }])
+        ]);
+        return json({
+          ok: health === "ok",
+          cluster: "devnet",
+          endpoint: "api.devnet.solana.com",
+          health,
+          epoch: epoch?.epoch ?? null,
+          slot: epoch?.absoluteSlot ?? null,
+          readOnly: true,
+          transactionsEnabled: false
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          cluster: "devnet",
+          endpoint: "api.devnet.solana.com",
+          readOnly: true,
+          transactionsEnabled: false,
+          error: String(error?.message || error)
+        }, 503);
+      }
+    }
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "devnet-safety-prep-1" });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build: "devnet-safety-prep-1", frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
@@ -717,13 +759,13 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
-          "X-Solana-Smart-Bot-Build": "59ef112"
+          "X-Solana-Smart-Bot-Build": "devnet-safety-prep-1"
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", "devnet-safety-prep-1");
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
