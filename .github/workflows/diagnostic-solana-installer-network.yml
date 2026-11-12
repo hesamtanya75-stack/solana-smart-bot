@@ -1,0 +1,84 @@
+name: Solana 1.8.14 installer network diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/installer-network-check
+
+permissions:
+  contents: read
+
+jobs:
+  compare-host-and-docker-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Test DNS and TLS from GitHub runner host
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "=== HOST: DNS ==="
+            date -u
+            getent hosts release.solana.com
+            echo "host_dns_exit=$?"
+            echo
+            echo "=== HOST: HTTPS installer ==="
+            curl -v --connect-timeout 15 --max-time 40 \
+              https://release.solana.com/v1.8.14/install \
+              -o /tmp/solana-installer-host.sh
+            rc=$?
+            echo "host_curl_exit=$rc"
+            if [ "$rc" -eq 0 ]; then
+              wc -c /tmp/solana-installer-host.sh
+              sha256sum /tmp/solana-installer-host.sh
+              head -n 3 /tmp/solana-installer-host.sh
+            fi
+          } 2>&1 | tee host-network.txt
+
+      - name: Pull and identify the historical Anchor build image
+        shell: bash
+        run: |
+          set -e
+          docker pull projectserum/build:v0.22.0
+          docker image inspect projectserum/build:v0.22.0 \
+            --format 'image_id={{.Id}} repo_digests={{json .RepoDigests}}' \
+            | tee docker-image.txt
+
+      - name: Test DNS and TLS from inside the historical Docker image
+        shell: bash
+        run: |
+          set +e
+          docker run --rm --entrypoint /bin/bash projectserum/build:v0.22.0 -lc '
+            set +e
+            echo "=== DOCKER: DNS ==="
+            date -u
+            getent hosts release.solana.com
+            echo "docker_dns_exit=$?"
+            echo
+            echo "=== DOCKER: HTTPS installer ==="
+            curl -v --connect-timeout 15 --max-time 40 \
+              https://release.solana.com/v1.8.14/install \
+              -o /tmp/solana-installer-docker.sh
+            rc=$?
+            echo "docker_curl_exit=$rc"
+            if [ "$rc" -eq 0 ]; then
+              wc -c /tmp/solana-installer-docker.sh
+              sha256sum /tmp/solana-installer-docker.sh
+              head -n 3 /tmp/solana-installer-docker.sh
+            fi
+            exit 0
+          ' 2>&1 | tee docker-network.txt
+          echo "docker_run_exit=${PIPESTATUS[0]}" | tee -a docker-network.txt
+
+      - name: Upload diagnostic-only network report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solana-1.8.14-installer-network-diagnostic
+          path: |
+            host-network.txt
+            docker-image.txt
+            docker-network.txt
+          if-no-files-found: warn
+          retention-days: 7
