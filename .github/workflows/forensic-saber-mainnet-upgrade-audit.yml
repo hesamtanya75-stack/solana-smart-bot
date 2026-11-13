@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, datetime, hashlib, json, os, urllib.request
+          import base64, datetime, hashlib, json, os, time, urllib.error, urllib.request
 
           URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
           if not URL.startswith("https://") or "/v2/" not in URL:
@@ -40,12 +40,26 @@ jobs:
 
           def rpc(method, params):
               body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
-              req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
-              with urllib.request.urlopen(req, timeout=60) as response:
-                  result = json.load(response)
-              if result.get("error"):
-                  raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
-              return result.get("result")
+              for attempt in range(7):
+                  req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as response:
+                          result = json.load(response)
+                      if result.get("error"):
+                          error = result["error"]
+                          code = error.get("code") if isinstance(error, dict) else None
+                          if code in (-32005, 429) and attempt < 6:
+                              time.sleep(min(2 ** attempt, 30))
+                              continue
+                          raise RuntimeError(method + " RPC error: " + json.dumps(error))
+                      return result.get("result")
+                  except urllib.error.HTTPError as exc:
+                      if exc.code not in (429, 500, 502, 503, 504) or attempt == 6:
+                          raise
+                      retry_after = exc.headers.get("Retry-After")
+                      delay = float(retry_after) if retry_after else min(2 ** attempt, 30)
+                      time.sleep(max(1, min(delay, 60)))
+              raise RuntimeError(method + " RPC retry budget exhausted")
 
           def signatures_since(pubkey, min_slot):
               # getSignaturesForAddress is newest-first. Page backwards until
@@ -472,7 +486,7 @@ jobs:
           set -euo pipefail
           python3 -m pip install --quiet pyelftools
           python3 - <<'PY'
-          import base64, hashlib, json, os, urllib.request
+          import base64, hashlib, json, os, time, urllib.error, urllib.request
           URL=os.environ["SOLANA_ARCHIVE_RPC_URL"]
           PROGRAM_DATA="54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
           EXPECTED_LENGTH=217192
@@ -580,10 +594,23 @@ jobs:
           GOKI="GokivDYuQXPZCWRkwMhdH2h91KpDQXBEmpgBgs55bnpH"
           def rpc(method,params):
               body=json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
-              req=urllib.request.Request(URL,data=body,headers={"Content-Type":"application/json"})
-              with urllib.request.urlopen(req,timeout=60) as r: out=json.load(r)
-              if out.get("error"): raise RuntimeError(method+": "+json.dumps(out["error"]))
-              return out.get("result")
+              for attempt in range(7):
+                  req=urllib.request.Request(URL,data=body,headers={"Content-Type":"application/json"})
+                  try:
+                      with urllib.request.urlopen(req,timeout=60) as r: out=json.load(r)
+                      if out.get("error"):
+                          error=out["error"]
+                          code=error.get("code") if isinstance(error,dict) else None
+                          if code in (-32005,429) and attempt<6:
+                              time.sleep(min(2**attempt,30)); continue
+                          raise RuntimeError(method+": "+json.dumps(error))
+                      return out.get("result")
+                  except urllib.error.HTTPError as exc:
+                      if exc.code not in (429,500,502,503,504) or attempt==6: raise
+                      retry_after=exc.headers.get("Retry-After")
+                      delay=float(retry_after) if retry_after else min(2**attempt,30)
+                      time.sleep(max(1,min(delay,60)))
+              raise RuntimeError(method+" RPC retry budget exhausted")
           def b58(raw):
               alphabet="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
               zeros=len(raw)-len(raw.lstrip(bytes([0]))); n=int.from_bytes(raw,"big"); s=""
