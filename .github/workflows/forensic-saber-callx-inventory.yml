@@ -1,0 +1,144 @@
+name: Forensic Saber CALLX static inventory
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-saber-callx-inventory.yml
+
+permissions:
+  contents: read
+
+jobs:
+  callx-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch finalized Mainnet executable and official v1.7.2 release
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyelftools
+          python3 - <<'PY'
+          import base64, hashlib, json, os, urllib.request
+          from elftools.elf.elffile import ELFFile
+          import io
+
+          url = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not url.startswith("https://") or "/v2/" not in url:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+          program_data = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          body = json.dumps({"jsonrpc":"2.0","id":1,"method":"getAccountInfo",
+                             "params":[program_data,{"encoding":"base64","commitment":"finalized"}]}).encode()
+          req = urllib.request.Request(url, data=body, headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req, timeout=60) as response:
+              result = json.load(response)
+          value = (result.get("result") or {}).get("value")
+          if not value:
+              raise SystemExit("ProgramData account unavailable.")
+          raw = base64.b64decode(value["data"][0])
+          if int.from_bytes(raw[:4], "little") != 3:
+              raise SystemExit("Unexpected ProgramData loader state.")
+          mainnet = raw[45:][:217192]
+          if len(mainnet) != 217192:
+              raise SystemExit("Unexpected Mainnet executable prefix length.")
+          release_url = "https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so"
+          req = urllib.request.Request(release_url, headers={"User-Agent":"read-only-forensic-audit"})
+          with urllib.request.urlopen(req, timeout=60) as response:
+              release = response.read()
+          if len(release) != len(mainnet):
+              raise SystemExit("Mainnet/release length mismatch.")
+          open("mainnet-active-prefix.bin","wb").write(mainnet)
+          open("official-v172.so","wb").write(release)
+          print(json.dumps({
+              "mainnet_length":len(mainnet),
+              "release_length":len(release),
+              "mainnet_sha256":hashlib.sha256(mainnet).hexdigest(),
+              "release_sha256":hashlib.sha256(release).hexdigest(),
+              "scope":"read-only finalized Mainnet executable prefix and published v1.7.2 asset"
+          },indent=2))
+          PY
+
+      - name: Inventory CALLX sites and compare instruction windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, io, json
+          from elftools.elf.elffile import ELFFile
+
+          def get_text(path):
+              with open(path,"rb") as f:
+                  elf=ELFFile(f)
+                  section=elf.get_section_by_name(".text")
+                  if section is None:
+                      raise SystemExit(path+": .text section missing")
+                  return section.data(), int(section["sh_addr"])
+
+          main, main_addr=get_text("mainnet-active-prefix.bin")
+          rel, rel_addr=get_text("official-v172.so")
+          if main_addr != rel_addr or len(main) != len(rel):
+              raise SystemExit("The .text sections have different addresses or sizes.")
+
+          # SBPF/eBPF JMP|CALL|X opcode. This is an inventory, not a full
+          # instruction decoder or proof of dynamic callee equivalence.
+          opcode=0x8d
+          sites=[i for i in range(0,len(main),8) if main[i] == opcode]
+          rel_sites=[i for i in range(0,len(rel),8) if rel[i] == opcode]
+          if sites != rel_sites:
+              raise SystemExit("CALLX byte-offset inventories differ.")
+          if len(sites) != 61:
+              raise SystemExit("Expected 61 CALLX sites; observed "+str(len(sites)))
+
+          rows=[]
+          for off in sites:
+              lo=max(0,off-64)
+              hi=min(len(main),off+8)
+              a=main[lo:hi]
+              b=rel[lo:hi]
+              rows.append({
+                  "text_offset":off,
+                  "virtual_address":hex(main_addr+off),
+                  "window_start":lo,
+                  "window_length":len(a),
+                  "window_exact_match":a==b,
+                  "mainnet_window_sha256":hashlib.sha256(a).hexdigest(),
+                  "release_window_sha256":hashlib.sha256(b).hexdigest(),
+                  "callx_instruction_mainnet":main[off:off+8].hex(),
+                  "callx_instruction_release":rel[off:off+8].hex()
+              })
+          if not all(x["window_exact_match"] for x in rows):
+              raise SystemExit("At least one CALLX context window differs.")
+
+          report={
+              "scope":"Static CALLX opcode inventory and byte-window comparison only",
+              "mainnet_text_address":hex(main_addr),
+              "release_text_address":hex(rel_addr),
+              "callx_opcode":"0x8d (JMP|CALL|X)",
+              "mainnet_callx_count":len(sites),
+              "release_callx_count":len(rel_sites),
+              "callx_offsets_identical":sites==rel_sites,
+              "all_64_byte_preceding_plus_instruction_windows_identical":all(x["window_exact_match"] for x in rows),
+              "sites":rows,
+              "limitations":[
+                  "This workflow does not perform complete SBPF control-flow or interprocedural data-flow analysis.",
+                  "It does not resolve stack- or memory-derived dynamic CALLX callees.",
+                  "Matching instruction windows do not prove complete behavioral equivalence."
+              ]
+          }
+          with open("saber-callx-static-inventory.json","w") as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps({k:v for k,v in report.items() if k!="sites"},indent=2))
+          PY
+
+      - name: Upload CALLX static inventory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-callx-static-inventory
+          path: saber-callx-static-inventory.json
+          if-no-files-found: warn
+          retention-days: 7
