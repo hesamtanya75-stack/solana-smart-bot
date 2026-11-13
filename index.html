@@ -544,6 +544,7 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
  <div class="profile-dialog">
   <div class="detail-head"><span>👤 پرۆفایل و پاراستنی هەژمار</span><button class="detail-close" id="profileClose" type="button">داخستن ✕</button></div>
   <p class="profile-note">ئەم بەشە تەنها بۆ خاوەنی هەژمارە. زانیارییەکان بە شێوەی پارێزراو لە سێرڤەر پاشەکەوت دەکرێن.</p>
+  <p class="profile-status" id="profileMessage" role="status" aria-live="polite"></p>
   <label class="profile-field">📧 Gmail / ئیمەیڵ<input id="profileEmail" type="email" maxlength="254" autocomplete="email" placeholder="name@gmail.com"></label>
   <label class="profile-field">📱 ژمارەی مۆبایل (بە کۆدی وڵات)<input id="profilePhone" type="tel" maxlength="20" autocomplete="tel" placeholder="+9647xxxxxxxxx"></label>
   <button class="profile-action" id="saveProfile" type="button">💾 پاشەکەوتکردنی زانیارییەکان</button>
@@ -617,7 +618,7 @@ html[data-design-theme] body{font-family:var(--design-font,system-ui,sans-serif)
    <div class="design-actions"><button id="saveDesign" type="button">💾 پاشەکەوت</button><button id="resetDesign" type="button">↩ گەڕاندنەوەی بنەڕەت</button></div><button id="openVisualEditor" type="button" style="width:100%;min-height:42px;margin-top:8px;border:1px solid #60a5fa;border-radius:9px;background:linear-gradient(135deg,#1d4ed8,#4338ca);color:white;font:inherit;font-size:12px;font-weight:800">🖌️ وەرگێڕی دیزاین — گواستنەوە و گەورە/بچووککردن</button>
    <p class="profile-note" id="designMessage" aria-live="polite"></p>
   </section>
-  <p class="profile-status" id="profileMessage" aria-live="polite"></p>
+  
  </div>
 </div>
 <div class="toast" id="toast"></div>
