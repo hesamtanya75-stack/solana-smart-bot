@@ -1202,7 +1202,12 @@ export default {
           const email = String(profile.email || "").trim().toLowerCase();
           if (!email) return json({ error: "سەرەتا Gmail لە پرۆفایل پاشەکەوت بکە" }, 400);
           if (profile.emailVerified) return json({ error: "Gmail پێشتر پشتڕاست کراوەتەوە" }, 409);
-          if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return json({ error: "خزمەتگوزاری ئیمەیڵ ئامادە نییە؛ RESEND_API_KEY و RESEND_FROM_EMAIL لە Cloudflare زیاد بکە" }, 503);
+          const hasResendApiKey = typeof env.RESEND_API_KEY === "string" && env.RESEND_API_KEY.trim().length > 0;
+          const hasResendFromEmail = typeof env.RESEND_FROM_EMAIL === "string" && env.RESEND_FROM_EMAIL.trim().length > 0;
+          if (!hasResendApiKey || !hasResendFromEmail) {
+            console.error("Resend environment binding missing", { hasResendApiKey, hasResendFromEmail });
+            return json({ error: "خزمەتگوزاری ئیمەیڵ لە Worker ـی چالاکدا ئامادە نییە؛ ڕێکخستنی RESEND لە Production بپشکنە" }, 503);
+          }
           const rateKey = "verify_rate:email:" + sessionId;
           if (await env.BOT_STATE.get(rateKey)) return json({ error: "تکایە پێش ناردنی کۆدی نوێ ٦٠ چرکە چاوەڕێ بکە" }, 429);
           const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
