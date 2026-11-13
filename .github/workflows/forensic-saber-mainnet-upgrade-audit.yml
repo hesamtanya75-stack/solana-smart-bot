@@ -419,7 +419,8 @@ jobs:
               },
               "buffer_account_exists_now":buf is not None,
               "authority_account_ownership_and_recent_activity":authority_accounts,
-              "authority_account_last_10_signatures_context_only":authority_change_signatures,\n              "programdata_signature_history_scan":programdata_history_scan,
+              "authority_account_last_10_signatures_context_only":authority_change_signatures,
+              "programdata_signature_history_scan":programdata_history_scan,
               "later_loader_upgrade_or_authority_change_after_deployment_from_paginated_programdata_history":later_loader_changes
           }
           with open("saber-mainnet-upgrade-audit.json","w") as f:
@@ -431,6 +432,7 @@ jobs:
               program_data_from_program == PROGRAM_DATA,
               hashlib.sha256(active_prefix).hexdigest() == EXPECTED_BUFFER_FULL_SHA256,
               hashlib.sha256(active_trimmed).hexdigest() == EXPECTED_MAINNET_HASH,
+              programdata_history_scan["complete_through_stop_slot"],
               not [x for x in later_loader_changes if x["discriminator"] == 3]
           ]
           if not all(checks):
@@ -538,36 +540,3 @@ jobs:
           retention-days: 7
 
       - name: Trace Goki owner-set transactions, approvals, and execution signatures
-        env:
-          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet solders
-          python3 - <<'PY'
-          import base64, hashlib, json, os, urllib.request
-          from solders.pubkey import Pubkey
-
-          URL=os.environ["SOLANA_ARCHIVE_RPC_URL"]
-          WALLET="BkkBFsRm6VCbZyBG82yuHBnyjJwUJHv1nTJ3GiY44Tkr"
-          GOKI="GokivDYuQXPZCWRkwMhdH2h91KpDQXBEmpgBgs55bnpH"
-          def rpc(method,params):
-              body=json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
-              req=urllib.request.Request(URL,data=body,headers={"Content-Type":"application/json"})
-              with urllib.request.urlopen(req,timeout=60) as r: out=json.load(r)
-              if out.get("error"): raise RuntimeError(method+": "+json.dumps(out["error"]))
-              return out.get("result")
-          def b58(raw):
-              alphabet="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-              zeros=len(raw)-len(raw.lstrip(bytes([0]))); n=int.from_bytes(raw,"big"); s=""
-              while n: n,rem=divmod(n,58); s=alphabet[rem]+s
-              return "1"*zeros+s
-          def take(raw,off,n):
-              if off+n>len(raw): raise ValueError("truncated Borsh data")
-              return raw[off:off+n],off+n
-          def u32(raw,off):
-              b,off=take(raw,off,4); return int.from_bytes(b,"little"),off
-          def i64(raw,off):
-              b,off=take(raw,off,8); return int.from_bytes(b,"little",signed=True),off
-          def decode_tx(pubkey,raw):
-              if raw[:8]!=hashlib.sha256(b"account:Transaction").digest()[:8]:
-                  raise ValueError("Transaction discriminator mismatch")
