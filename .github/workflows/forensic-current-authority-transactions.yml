@@ -203,6 +203,26 @@ jobs:
                   })
               time.sleep(0.15)
 
+          programdata_signatures = rpc("getSignaturesForAddress", [PROGRAM_DATA, {"limit":1000,"commitment":"finalized"}]) or []
+          programdata_history = []
+          for item in programdata_signatures:
+              try:
+                  tx_report = inspect_transaction(item["signature"])
+                  if tx_report.get("retrieved") and any(
+                      ix.get("program_id") == LOADER and ix.get("loader_instruction_discriminator") in (3,4,7)
+                      for ix in tx_report.get("loader_instructions", [])
+                  ):
+                      programdata_history.append(tx_report)
+              except Exception as exc:
+                  programdata_history.append({
+                      "signature":item.get("signature"),
+                      "slot_from_signature_list":item.get("slot"),
+                      "block_time_from_signature_list":item.get("blockTime"),
+                      "retrieved":False,
+                      "retrieval_error":str(exc)
+                  })
+              time.sleep(0.15)
+
           summary = {
               "scope":"read-only finalized Solana Mainnet RPC; no transactions submitted",
               "program":PROGRAM,
@@ -218,7 +238,9 @@ jobs:
                   "successful":sum(1 for x in reports if x.get("finalized_success") is True),
                   "failed":sum(1 for x in reports if x.get("finalized_success") is False)
               },
-              "transactions":reports
+              "transactions":reports,
+              "programdata_history_signature_count":len(programdata_signatures),
+              "programdata_loader_history":programdata_history
           }
           with open("current-authority-last-ten-transactions.json","w") as f:
               json.dump(summary,f,indent=2)
@@ -229,6 +251,16 @@ jobs:
               "transactions_retrieved":summary["transactions_retrieved"],
               "transactions_unavailable_or_failed":summary["transactions_unavailable_or_failed"],
               "classification_counts":summary["classification_counts"],
+              "programdata_history_signature_count":len(programdata_signatures),
+              "programdata_loader_history":[{
+                  "signature":x.get("signature"),
+                  "slot":x.get("slot"),
+                  "block_time_utc":x.get("block_time_utc"),
+                  "retrieved":x.get("retrieved"),
+                  "meta_err":x.get("meta_err"),
+                  "signers":x.get("top_level_signers"),
+                  "loader_instructions":x.get("loader_instructions")
+              } for x in programdata_history],
               "transactions":[{
                   "signature":x.get("signature"),
                   "slot":x.get("slot",x.get("slot_from_signature_list")),
