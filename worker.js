@@ -1,3 +1,175 @@
+import { DurableObject } from "cloudflare:workers";
+
+export class BotCoordinator extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+  }
+  async fetch(request) {
+    if (request.method !== "POST") return Response.json({ ok: false, error: "Method not allowed" }, { status: 405 });
+    let body;
+    try { body = await request.json(); } catch { return Response.json({ ok: false, error: "Invalid request" }, { status: 400 }); }
+    try {
+      const result = await this.ctx.storage.transaction(async txn => {
+        const now = Date.now();
+        if (body.op === "login-attempt") {
+          const ip = String(body.ip || "unknown").slice(0, 64);
+          const key = "login:" + ip;
+          const record = await txn.get(key);
+          if (record?.lockedUntil > now) return { ok: true, allowed: false, locked: true };
+          if (body.success === true) {
+            await txn.delete(key);
+            return { ok: true, allowed: true, locked: false };
+          }
+          const windowActive = Number(record?.windowUntil || 0) > now;
+          const count = windowActive ? Number(record.count || 0) : 0;
+          const next = count + 1;
+          const windowUntil = next >= 5
+            ? now + 900000
+            : (windowActive ? record.windowUntil : now + 900000);
+          const lockedUntil = next >= 5 ? windowUntil : 0;
+          await txn.put(key, { count: next, windowUntil, lockedUntil });
+          return { ok: true, allowed: true, locked: false, attempts: next };
+        }
+        if (body.op === "mfa-create") {
+          const id = String(body.challengeId || "");
+          if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, status: 400, error: "Invalid challenge" };
+          await txn.put("mfa:" + id, { createdAt: now, attempts: 0, consumed: false });
+          return { ok: true };
+        }
+        if (body.op === "mfa-attempt") {
+          const id = String(body.challengeId || "");
+          const key = "mfa:" + id;
+          const challenge = await txn.get(key);
+          if (!challenge || challenge.consumed || now - Number(challenge.createdAt || 0) > 300000) {
+            await txn.delete(key);
+            return { ok: true, allowed: false, expired: true };
+          }
+          if (Number(challenge.attempts || 0) >= 5) {
+            await txn.delete(key);
+            return { ok: true, allowed: false, locked: true };
+          }
+          const ip = String(body.ip || "unknown").slice(0, 64);
+          const ipKey = "totp:" + ip;
+          const ipRecord = await txn.get(ipKey);
+          if (ipRecord?.lockedUntil > now) return { ok: true, allowed: false, locked: true };
+          const ipWindowActive = Number(ipRecord?.windowUntil || 0) > now;
+          const ipCount = ipWindowActive ? Number(ipRecord.count || 0) : 0;
+          const nextIpCount = ipCount + 1;
+          const ipWindowUntil = nextIpCount >= 5
+            ? now + 900000
+            : (ipWindowActive ? ipRecord.windowUntil : now + 900000);
+          await txn.put(ipKey, {
+            count: nextIpCount,
+            windowUntil: ipWindowUntil,
+            lockedUntil: nextIpCount >= 5 ? ipWindowUntil : 0
+          });
+          challenge.attempts = Number(challenge.attempts || 0) + 1;
+          await txn.put(key, challenge);
+          return { ok: true, allowed: true, attempts: challenge.attempts, ipAttempts: nextIpCount };
+        }
+        if (body.op === "totp-consume") {
+          const counter = Number(body.counter);
+          if (!Number.isSafeInteger(counter) || counter < 0) {
+            return { ok: true, consumed: false, invalid: true };
+          }
+          const lastCounter = await txn.get("totp:last-counter");
+          if (Number.isSafeInteger(lastCounter) && counter <= lastCounter) {
+            return { ok: true, consumed: false, replayed: true };
+          }
+          await txn.put("totp:last-counter", counter);
+          return { ok: true, consumed: true };
+        }
+        if (body.op === "mfa-consume") {
+          const id = String(body.challengeId || "");
+          const key = "mfa:" + id;
+          const challenge = await txn.get(key);
+          if (!challenge || challenge.consumed || now - Number(challenge.createdAt || 0) > 300000) {
+            await txn.delete(key);
+            return { ok: true, consumed: false };
+          }
+          await txn.delete(key);
+          return { ok: true, consumed: true };
+        }
+        if (body.op === "backup-consume") {
+          const hash = String(body.hash || "");
+          if (!/^[a-f0-9]{64}$/i.test(hash)) return { ok: true, consumed: false };
+          const key = "backup-used:" + hash;
+          if (await txn.get(key)) return { ok: true, consumed: false };
+          await txn.put(key, { consumedAt: now });
+          return { ok: true, consumed: true };
+        }
+        if (body.op === "state-read") {
+          return { ok: true, state: (await txn.get("bot_state")) || null };
+        }
+        if (body.op === "state-save") {
+          const current = await txn.get("bot_state");
+          const actualVersion = current?.updatedAt ?? null;
+          if (actualVersion !== (body.expectedUpdatedAt ?? null)) {
+            return { ok: false, status: 409, error: "State changed during processing; stale write rejected" };
+          }
+          await txn.put("bot_state", body.state);
+          return { ok: true, state: body.state };
+        }
+        if (body.op === "state-patch") {
+          const current = (await txn.get("bot_state")) || {};
+          if (Object.prototype.hasOwnProperty.call(body, "expectedUpdatedAt")) {
+            const actualVersion = current.updatedAt ?? null;
+            if (actualVersion !== (body.expectedUpdatedAt ?? null)) {
+              return { ok: false, status: 409, error: "State changed since the browser last synced; refresh before saving" };
+            }
+          }
+          const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
+          const next = cleanState({ ...current, ...patch });
+          if (patch.lastScanReport == null) next.lastScanReport = current.lastScanReport || [];
+          next.updatedAt = new Date(now).toISOString() + ":" + crypto.randomUUID();
+          await txn.put("bot_state", next);
+          return { ok: true, state: next };
+        }
+        return { ok: false, status: 400, error: "Unknown operation" };
+      });
+      if (["login-attempt", "mfa-create", "mfa-attempt"].includes(body.op) &&
+          typeof this.ctx.storage.setAlarm === "function") {
+        const due = Date.now() + (body.op === "login-attempt" ? 900000 : 300000);
+        const existing = await this.ctx.storage.getAlarm();
+        if (!existing || due < existing) await this.ctx.storage.setAlarm(due);
+      }
+      return Response.json(result, { status: result.status || (result.ok ? 200 : 400) });
+    } catch {
+      return Response.json({ ok: false, error: "Atomic coordinator storage failure" }, { status: 503 });
+    }
+  }
+  async alarm() {
+    const now = Date.now();
+    const [loginEntries, totpEntries, mfaEntries] = await Promise.all([
+      this.ctx.storage.list({ prefix: "login:" }),
+      this.ctx.storage.list({ prefix: "totp:" }),
+      this.ctx.storage.list({ prefix: "mfa:" })
+    ]);
+    let nextAlarm = Infinity;
+    for (const [key] of [...loginEntries, ...totpEntries]) {
+      // The replay-protection counter is a scalar with no expiry; only per-IP
+      // TOTP rate-limit records use the totp: prefix and may be garbage-collected.
+      if (key === "totp:last-counter") continue;
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get(key);
+        const expiresAt = Number(current?.windowUntil || 0);
+        if (current && expiresAt <= now) await txn.delete(key);
+        else if (expiresAt > now) nextAlarm = Math.min(nextAlarm, expiresAt);
+      });
+    }
+    for (const [key] of mfaEntries) {
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get(key);
+        const expiresAt = Number(current?.createdAt || 0) + 300000;
+        if (current && expiresAt <= now) await txn.delete(key);
+        else if (current && expiresAt > now) nextAlarm = Math.min(nextAlarm, expiresAt);
+      });
+    }
+    if (Number.isFinite(nextAlarm)) await this.ctx.storage.setAlarm(nextAlarm);
+    else await this.ctx.storage.deleteAlarm();
+  }
+}
+
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -44,12 +216,63 @@ function cleanState(value) {
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
+async function coordinatorRequest(env, payload) {
+  if (!env.BOT_COORDINATOR) throw new Error("Atomic coordinator binding unavailable");
+  const id = env.BOT_COORDINATOR.idFromName("solana-smart-bot-global");
+  const response = await env.BOT_COORDINATOR.get(id).fetch("https://coordinator.internal/operation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json();
+  if (!response.ok || result?.ok !== true) {
+    const error = new Error(result?.error || "Atomic coordinator operation failed");
+    error.status = Number.isInteger(result?.status) ? result.status : response.status;
+    throw error;
+  }
+  return result;
+}
 async function readState(env) {
-  return cleanState(await env.BOT_STATE.get("bot_state", "json"));
+  const result = await coordinatorRequest(env, { op: "state-read" });
+  if (result.state) return cleanState(result.state);
+
+  // One-time, race-safe migration preserves existing paper balances and trades
+  // from KV when the Durable Object coordinator is first introduced.
+  const legacy = await env.BOT_STATE.get("bot_state", "json");
+  if (legacy && typeof legacy === "object") {
+    try {
+      const migratedState = cleanState(legacy);
+      if (!migratedState.updatedAt) {
+        migratedState.updatedAt = new Date().toISOString() + ":" + crypto.randomUUID();
+      }
+      await coordinatorRequest(env, {
+        op: "state-save",
+        expectedUpdatedAt: null,
+        state: migratedState
+      });
+    } catch {
+      // Another request may have won the one-time migration race. Re-read the
+      // authoritative Durable Object state; never overwrite it with stale KV.
+    }
+    const migrated = await coordinatorRequest(env, { op: "state-read" });
+    if (migrated.state) return cleanState(migrated.state);
+    throw new Error("Legacy paper state migration could not be confirmed");
+  }
+  return cleanState(null);
 }
 async function saveState(env, state) {
-  state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  const expectedUpdatedAt = state.updatedAt ?? null;
+  state.updatedAt = new Date().toISOString() + ":" + crypto.randomUUID();
+  await coordinatorRequest(env, { op: "state-save", expectedUpdatedAt, state });
+}
+async function patchState(env, patch, expectedUpdatedAt) {
+  // Ensure legacy KV state is migrated before any API mutation can create a
+  // new Durable Object record and accidentally shadow existing demo trades.
+  await readState(env);
+  const payload = { op: "state-patch", patch };
+  if (expectedUpdatedAt !== undefined) payload.expectedUpdatedAt = expectedUpdatedAt;
+  const result = await coordinatorRequest(env, payload);
+  return cleanState(result.state);
 }
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -270,37 +493,66 @@ async function getDexJson(url, env, ttlSeconds = 30) {
 
 function mintDetails(account) {
   const value = account?.value;
-  if (!value) throw new Error("Mint account unavailable");
-  let mintAuthority = null, freezeAuthority = null, extensions = [];
-  const parsed = value.data?.parsed?.info;
-  if (parsed) {
-    mintAuthority = !!parsed.mintAuthority;
-    freezeAuthority = !!parsed.freezeAuthority;
+  const tokenProgramIds = new Set([
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  ]);
+  if (!value || !tokenProgramIds.has(value.owner)) {
+    throw new Error("Mint account is not owned by the canonical SPL Token or Token-2022 program");
   }
   const raw = value.data;
-  if (Array.isArray(raw) && typeof raw[0] === "string") {
-    const bytes = Uint8Array.from(atob(raw[0]), c => c.charCodeAt(0));
-    if (bytes.length >= 82) {
-      const u32 = i => (bytes[i] | (bytes[i+1] << 8) | (bytes[i+2] << 16) | (bytes[i+3] << 24)) >>> 0;
-      const ma = u32(0), fa = u32(46);
-      if (ma <= 1 && fa <= 1) {
-        mintAuthority = ma === 1;
-        freezeAuthority = fa === 1;
-      }
+  if (!Array.isArray(raw) || raw.length !== 2 || raw[1] !== "base64" ||
+      typeof raw[0] !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw[0])) {
+    throw new Error("Mint account data is not canonical base64");
+  }
+  const binary = atob(raw[0]);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  if (bytes.length < 82 || bytes.length > 10240 ||
+      (value.owner === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" && bytes.length !== 82)) {
+    throw new Error("Mint account data length does not match its token program");
+  }
+  const readU32 = i =>
+    (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24)) >>> 0;
+  const mintOption = readU32(0);
+  const freezeOption = readU32(46);
+  if ((mintOption !== 0 && mintOption !== 1) ||
+      (freezeOption !== 0 && freezeOption !== 1) ||
+      bytes[45] !== 1) {
+    throw new Error("Mint authority options or initialized flag are invalid");
+  }
+  const extensions = [];
+  if (bytes.length > 82) {
+    if (value.owner !== "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" ||
+        bytes.length < 166 || bytes[165] !== 1) {
+      throw new Error("Token-2022 mint extension header is invalid");
     }
-    if (bytes.length >= 166) {
-      let offset = 166;
-      while (offset + 4 <= bytes.length) {
-        const type = bytes[offset] | (bytes[offset+1] << 8);
-        const length = bytes[offset+2] | (bytes[offset+3] << 8);
-        if (type === 0 && length === 0) break;
-        if (offset + 4 + length > bytes.length) break;
-        extensions.push(type);
-        offset += 4 + length;
+    let offset = 166;
+    while (offset < bytes.length) {
+      if (offset + 4 > bytes.length) {
+        throw new Error("Token-2022 mint extension header is truncated");
       }
+      const type = bytes[offset] | (bytes[offset + 1] << 8);
+      const length = bytes[offset + 2] | (bytes[offset + 3] << 8);
+      if (type === 0 && length === 0) {
+        if (bytes.subarray(offset).some(byte => byte !== 0)) {
+          throw new Error("Token-2022 mint extension padding is malformed");
+        }
+        break;
+      }
+      if (type === 0 || offset + 4 + length > bytes.length) {
+        throw new Error("Token-2022 mint extension length or type is invalid");
+      }
+      extensions.push(type);
+      offset += 4 + length;
     }
   }
-  return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
+  return {
+    mintAuthority: mintOption === 1,
+    freezeAuthority: freezeOption === 1,
+    extensions,
+    owner: value.owner
+  };
 }
 async function inspectMint(mint, env) {
   // Check for a real Solana market first. New-token profile entries can exist
@@ -322,31 +574,89 @@ async function inspectMint(mint, env) {
   ]);
   const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
-  const supplyAmount = Number(supply?.value?.amount || 0);
-  const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
+  const supplyRaw = supply?.value?.amount;
+  const supplyAmount = typeof supplyRaw === "string" && /^(0|[1-9][0-9]*)$/.test(supplyRaw)
+    ? BigInt(supplyRaw)
+    : 0n;
+  const largestAccounts = Array.isArray(largest?.value) ? largest.value.slice(0, 20) : [];
+  if (supplyAmount <= 0n || largestAccounts.length === 0 ||
+      !Number.isSafeInteger(largest?.context?.slot) ||
+      !Number.isSafeInteger(supply?.context?.slot)) {
+    throw new Error("Holder supply or largest-account data is unavailable or malformed");
+  }
+  if (largestAccounts.some(account =>
+    !account || typeof account.address !== "string" ||
+    !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(account.address) ||
+    typeof account.amount !== "string" || !/^(0|[1-9][0-9]*)$/.test(account.amount)
+  )) {
+    throw new Error("Largest-holder account list contains incomplete or malformed entries");
+  }
   // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
+  // Resolve every returned account and fail closed rather than silently
+  // calculating concentration from a partial subset.
+  const holderMinContextSlot = Math.max(largest.context.slot, supply.context.slot);
   const accountDetails = await rpc(
     "getMultipleAccounts",
-    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
+    [largestAccounts.map(account => account.address), {
+      encoding: "jsonParsed",
+      commitment: "confirmed",
+      minContextSlot: holderMinContextSlot
+    }],
     env
   );
+  if (!Array.isArray(accountDetails?.value) ||
+      accountDetails.value.length !== largestAccounts.length ||
+      !Number.isSafeInteger(accountDetails?.context?.slot) ||
+      accountDetails.context.slot < holderMinContextSlot ||
+      accountDetails.context.slot - Math.min(largest.context.slot, supply.context.slot) > 32) {
+    throw new Error("Holder account details are incomplete or from inconsistent RPC contexts");
+  }
+  const tokenProgramIds = new Set([
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  ]);
   const ownerBalances = new Map();
+  let verifiedTopAccountsAmount = 0n;
   for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
+    const account = accountDetails.value[i];
     const info = account?.data?.parsed?.info;
     const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+    const amountRaw = info?.tokenAmount?.amount;
+    const expectedProgramName = account?.owner === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ? "spl-token"
+      : account?.owner === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        ? "spl-token-2022"
+        : null;
+    if (!account || !expectedProgramName ||
+        account.data?.program !== expectedProgramName ||
+        account.data?.parsed?.type !== "account" ||
+        info?.mint !== mint ||
+        typeof owner !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(owner) ||
+        typeof amountRaw !== "string" || !/^(0|[1-9][0-9]*)$/.test(amountRaw)) {
+      throw new Error("A largest-holder token account could not be verified completely");
+    }
+    const amount = BigInt(amountRaw);
+    // Cross-check the parsed account snapshot against the exact largest-account
+    // amount returned by the same RPC cycle; never aggregate conflicting views.
+    if (amount !== BigInt(largestAccounts[i].amount)) {
+      throw new Error("Largest-holder amount differs from its parsed token-account snapshot");
+    }
+    verifiedTopAccountsAmount += amount;
+    ownerBalances.set(owner, (ownerBalances.get(owner) || 0n) + amount);
+  }
+  if (verifiedTopAccountsAmount > supplyAmount) {
+    throw new Error("Verified largest token-account balances exceed the mint supply");
   }
   if (!ownerBalances.size) throw new Error("Token account owners unavailable");
-  const ownerPercentages = [...ownerBalances.values()]
-    .map(amount => amount / supplyAmount * 100)
-    .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
+  // These are wallet-owner aggregates across the top 20 largest token
+  // accounts, not a complete scan of every token account on the network.
+  const sortedOwnerAmounts = [...ownerBalances.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+  const largestOwnerAmount = sortedOwnerAmounts[0] || 0n;
+  const topTenOwnerAmount = sortedOwnerAmounts.slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
+  const largestPct = Number(largestOwnerAmount * 10000n / supplyAmount) / 100;
+  const topTenPct = Number(topTenOwnerAmount * 10000n / supplyAmount) / 100;
+  const largestOverLimit = largestOwnerAmount * 100n > supplyAmount * 30n;
+  const topTenOverLimit = topTenOwnerAmount * 100n > supplyAmount * 50n;
   const liquidity = Number(market.liquidity?.usd || 0);
   const volume = Number(market.volume?.h24 || 0);
   const sells = Number(market.txns?.h24?.sells || 0);
@@ -355,8 +665,8 @@ async function inspectMint(mint, env) {
   if (volume < 1000) reasons.push("24h volume below $1,000");
   if (sells <= 0) reasons.push("No 24h sells");
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
+  if (largestOverLimit) reasons.push("Largest holder above 30%");
+  if (topTenOverLimit) reasons.push("Top 10 holders above 50%");
   if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
@@ -484,12 +794,19 @@ async function totpCode(secret, time = Date.now()) {
   const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
   return String(binary % 1000000).padStart(6, "0");
 }
-async function verifyTotp(secret, code) {
-  if (!/^\d{6}$/.test(String(code || ""))) return false;
-  for (const drift of [-30000, 0, 30000]) {
-    if (await totpCode(secret, Date.now() + drift) === String(code)) return true;
+async function matchingTotpCounter(secret, code, time = Date.now()) {
+  if (!/^\d{6}$/.test(String(code || ""))) return null;
+  const currentCounter = Math.floor(time / 30000);
+  let matchedCounter = null;
+  for (const drift of [-1, 0, 1]) {
+    const counter = currentCounter + drift;
+    if (counter < 0) continue;
+    if (await totpCode(secret, counter * 30000) === String(code) &&
+        (matchedCounter === null || counter > matchedCounter)) {
+      matchedCounter = counter;
+    }
   }
-  return false;
+  return matchedCounter;
 }
 async function hashText(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -542,22 +859,17 @@ export default {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginKey = "login_fail:" + ip;
-        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
-        if (Number(failures.count || 0) >= 5) {
-          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
         if (!expected || typeof password !== "string" || password !== expected) {
-          await env.BOT_STATE.put(loginKey, JSON.stringify({
-            count: Number(failures.count || 0) + 1
-          }), { expirationTtl: 900 });
+          const attempt = await coordinatorRequest(env, { op: "login-attempt", ip, success: false });
+          if (attempt.locked) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(loginKey);
+        const loginAllowed = await coordinatorRequest(env, { op: "login-attempt", ip, success: true });
+        if (!loginAllowed.allowed) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         const profile = await readProfile(env);
         if (profile.totpEnabled && profile.totpSecret) {
           const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          await coordinatorRequest(env, { op: "mfa-create", challengeId });
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
@@ -570,26 +882,39 @@ export default {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
-        const key = "mfa_challenge:" + challengeId;
-        const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
-        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const attempt = await coordinatorRequest(env, { op: "mfa-attempt", challengeId, ip });
+        if (attempt.expired) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (attempt.locked) return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
         const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        const matchedTotpCounter = profile.totpEnabled && profile.totpSecret
+          ? await matchingTotpCounter(profile.totpSecret, code)
+          : null;
+        let valid = matchedTotpCounter !== null;
+        let backupCodeHash = null;
         if (!valid && profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
           if (submittedHash === profile.backupHash) {
             valid = true;
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+            backupCodeHash = submittedHash;
           }
         }
-        if (!valid) {
-          challenge.attempts = Number(challenge.attempts || 0) + 1;
-          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
-          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        if (!valid) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        const consumed = await coordinatorRequest(env, { op: "mfa-consume", challengeId });
+        if (!consumed.consumed) return json({ error: "ئەم هەوڵە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە" }, 401);
+        if (matchedTotpCounter !== null) {
+          const totpUse = await coordinatorRequest(env, {
+            op: "totp-consume",
+            counter: matchedTotpCounter
+          });
+          if (!totpUse.consumed) return json({ error: "ئەم کۆدی Authenticator پێشتر بەکارهاتووە؛ کۆدی نوێ بەکاربهێنە" }, 401);
         }
-        await env.BOT_STATE.delete(key);
+        if (backupCodeHash) {
+          const backupUse = await coordinatorRequest(env, { op: "backup-consume", hash: backupCodeHash });
+          if (!backupUse.consumed) return json({ error: "کۆدی گەڕاندنەوە پێشتر بەکارهاتووە" }, 401);
+          profile.backupHash = null;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+        }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
@@ -598,6 +923,11 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/logout" && request.method === "POST") {
+        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        if (token) await env.BOT_STATE.delete("session:" + token);
+        return json({ ok: true, message: "Session revoked" });
+      }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
         return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
@@ -640,7 +970,13 @@ export default {
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const matchedCounter = await matchingTotpCounter(p.pendingTotpSecret, code);
+          if (matchedCounter === null) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const counterUse = await coordinatorRequest(env, {
+            op: "totp-consume",
+            counter: matchedCounter
+          });
+          if (!counterUse.consumed) return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدی نوێ بەکاربهێنە" }, 401);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
@@ -682,19 +1018,51 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
-          const current = await readState(env);
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          await saveState(env, state);
+          if (!Object.prototype.hasOwnProperty.call(body, "expectedUpdatedAt") ||
+              (body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string")) {
+            return json({ error: "State version is required; sync before saving" }, 428);
+          }
+          const { expectedUpdatedAt } = body;
+          const patch = {};
+          if (Object.prototype.hasOwnProperty.call(body, "balance")) {
+            if (!Number.isFinite(body.balance) || body.balance < 0) return json({ error: "Invalid paper balance" }, 400);
+            patch.balance = body.balance;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "trades")) {
+            if (!Array.isArray(body.trades) || body.trades.length > 500 ||
+                body.trades.some(trade => !trade || typeof trade !== "object" || Array.isArray(trade))) {
+              return json({ error: "Invalid paper trades" }, 400);
+            }
+            patch.trades = body.trades;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "autoEnabled")) {
+            if (typeof body.autoEnabled !== "boolean") return json({ error: "Invalid automation setting" }, 400);
+            patch.autoEnabled = body.autoEnabled;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "paused")) {
+            if (typeof body.paused !== "boolean") return json({ error: "Invalid automation setting" }, 400);
+            patch.paused = body.paused;
+          }
+          if (Object.prototype.hasOwnProperty.call(body, "scannedMints")) {
+            if (!Array.isArray(body.scannedMints) || body.scannedMints.length > 1000 ||
+                body.scannedMints.some(mint => typeof mint !== "string")) {
+              return json({ error: "Invalid scan history" }, 400);
+            }
+            patch.scannedMints = body.scannedMints;
+          }
+          const state = await patchState(env, patch, expectedUpdatedAt);
           return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+        } catch (error) {
+          return json({ error: error?.message || "Invalid state" }, error?.status || 400);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
+          const patch = {};
+          if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
+          if (typeof body.paused === "boolean") patch.paused = body.paused;
+          const state = await patchState(env, patch);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid settings" }, 400); }
       }
@@ -777,7 +1145,12 @@ export default {
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
         : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
+      try {
+        await saveState(env, state);
+      } catch (error) {
+        console.error("Server cycle state write rejected; newer state was preserved", String(error?.message || error));
+        return;
+      }
 
       // Safe operational log: never include secrets, wallet data, or API keys.
       console.info("Server cycle finished", {

@@ -1,19 +1,68 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readLivePolicy, getJupiterOrder, executeLiveOrder, SOL_MINT, EXPECTED_BOT_WALLET } from "../live-trading.mjs";
+import { PublicKey, Keypair, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import {
+  readLivePolicy, evaluateLiveTradeEligibility, getJupiterOrder,
+  executeLiveOrder, SOL_MINT, EXPECTED_BOT_WALLET
+} from "../live-trading.mjs";
 
 const goodEnv = {
-  LIVE_TRADING_ENABLED: "true",
-  LIVE_TRADING_KILL_SWITCH: "false",
+  LIVE_TRADING_ENABLED: "true", LIVE_TRADING_KILL_SWITCH: "false",
   BOT_WALLET_PUBLIC_KEY: EXPECTED_BOT_WALLET,
-  LIVE_MAX_TRADE_LAMPORTS: "10000000",
-  LIVE_MAX_DAILY_LAMPORTS: "50000000",
-  LIVE_MAX_SLIPPAGE_BPS: "50",
-  LIVE_MIN_LIQUIDITY_USD: "10000",
-  LIVE_MIN_VOLUME_24H_USD: "1000",
-  LIVE_MAX_OPEN_POSITIONS: "3",
+  LIVE_MAX_TRADE_LAMPORTS: "10000000", LIVE_MAX_DAILY_LAMPORTS: "50000000",
+  LIVE_MAX_SLIPPAGE_BPS: "50", LIVE_MIN_LIQUIDITY_USD: "10000",
+  LIVE_MIN_VOLUME_24H_USD: "1000", LIVE_MAX_OPEN_POSITIONS: "10",
   JUPITER_API_KEY: "test-only"
 };
+const goodEligibility = {
+  dailySpentLamports: 1000000, openPositions: 1,
+  liquidityUsd: 25000, volume24hUsd: 5000,
+  riskDataFetchedAtMs: Date.now(), marketDataFetchedAtMs: Date.now(),
+  riskChecks: {
+    mintAuthoritySafe: true, freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true, holderConcentrationSafe: true,
+    sellRouteAvailable: true
+  }
+};
+
+function validOrder(overrides = {}) {
+  return {
+    requestId: "req-test", transaction: "dGVzdA==", router: "metis",
+    mode: "manual", swapMode: "ExactIn", transactionVersion: 0,
+    gasless: false, signatureFeePayer: EXPECTED_BOT_WALLET,
+    feeBps: 0, feeMint: SOL_MINT, otherAmountThreshold: "12000",
+    slippageBps: 50, lastValidBlockHeight: "999999999",
+    inputMint: SOL_MINT,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000", outAmount: "12345",
+    routePlan: [{
+      swapInfo: {
+        ammKey: "11111111111111111111111111111111",
+        label: "Test DEX", inputMint: SOL_MINT,
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount: "12345"
+      },
+      percent: 100, bps: 10000
+    }],
+    ...overrides
+  };
+}
+
+async function assertOrderRejected(overrides, pattern, currentBlockHeight = 999999900) {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    transactionAllowList: { allowedRouters: ["metis"] },
+    ...(currentBlockHeight === null ? {} : {
+      trustedRpc: { getBlockHeight: async () => currentBlockHeight }
+    }),
+    fetchImpl: async () => new Response(JSON.stringify(validOrder(overrides)), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    })
+  }), pattern);
+}
 
 test("live trading fails closed unless both feature flag and kill switch are explicitly set", () => {
   assert.equal(readLivePolicy({ LIVE_TRADING_ENABLED: "TRUE" }).enabled, false);
@@ -28,68 +77,214 @@ test("enabled policy requires pinned wallet and explicit bounded risk configurat
   assert.throws(() => readLivePolicy({ ...goodEnv, BOT_WALLET_PUBLIC_KEY: "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9" }), /does not match/);
 });
 
+test("eligibility gate enforces daily spend, open positions, liquidity, volume and token safety", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.deepEqual(evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility
+  }), { allowed: true });
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, dailySpentLamports: 49500000
+  }), /daily spend limit/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, openPositions: 10
+  }), /Maximum open positions/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, liquidityUsd: 9999
+  }), /liquidity/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, volume24hUsd: 999
+  }), /24-hour volume/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility,
+    riskChecks: { ...goodEligibility.riskChecks, freezeAuthoritySafe: false }
+  }), /Token safety checks/);
+});
+
+test("eligibility gate rejects stale or future-dated market and risk data", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility,
+    riskDataFetchedAtMs: Date.now() - 31000
+  }), /price or risk data is missing, stale, or future-dated/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility,
+    marketDataFetchedAtMs: Date.now() + 6000
+  }), /price or risk data is missing, stale, or future-dated/);
+});
+
+test("eligibility gate rejects missing or invalid server-side state", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.throws(() => evaluateLiveTradeEligibility({ policy, amountLamports: 1000000 }), /daily spend limit/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, dailySpentLamports: -1
+  }), /daily spend limit/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000, ...goodEligibility, liquidityUsd: Number.NaN
+  }), /liquidity/);
+});
+
 test("order request is blocked while live trading is disabled", async () => {
   await assert.rejects(() => getJupiterOrder({
     env: { ...goodEnv, LIVE_TRADING_ENABLED: "false" },
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: 1000000,
+    amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => { throw new Error("fetch must not run"); }
   }), /not explicitly enabled/);
 });
 
-test("order request enforces the per-trade cap before network access", async () => {
+test("order request enforces eligibility before network access", async () => {
+  let called = false;
   await assert.rejects(() => getJupiterOrder({
-    env: goodEnv,
-    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: 10000001,
-    fetchImpl: async () => { throw new Error("fetch must not run"); }
-  }), /per-trade limit/);
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: { ...goodEligibility, dailySpentLamports: 49500000 },
+    fetchImpl: async () => { called = true; throw new Error("fetch must not run"); }
+  }), /daily spend limit/);
+  assert.equal(called, false);
 });
 
-test("valid Jupiter order is parsed but never executed", async () => {
+test("Jupiter order requires an explicit trusted transaction allow-list", async () => {
   let request;
-  const result = await getJupiterOrder({
-    env: goodEnv,
-    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: 1000000,
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url, options) => {
       request = { url, options };
-      return new Response(JSON.stringify({
-        requestId: "req-test",
-        transaction: "dGVzdA==",
-        outAmount: "12345",
-        routePlan: [{ swapInfo: { label: "test" } }],
-        router: "metis",
-        transactionVersion: 0,
-        feeBps: 0
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(validOrder()), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-  });
-  assert.equal(result.requestId, "req-test");
-  assert.equal(result.inputMint, SOL_MINT);
+  }), error => error.message.includes("Trusted transaction program/account allow-list"));
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   assert.equal(request.options.headers["x-api-key"], "test-only");
+  const query = new URL(request.url).searchParams;
+  assert.equal(query.get("excludeRouters"), "jupiterz,dflow,okx");
+  assert.equal(query.get("swapMode"), "ExactIn");
+  assert.equal(query.get("maxSupportedTransactionVersion"), "0");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
-
 test("malformed Jupiter order fails closed", async () => {
   await assert.rejects(() => getJupiterOrder({
-    env: goodEnv,
-    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: 1000000,
-    fetchImpl: async () => new Response(JSON.stringify({ requestId: "x", transaction: "", outAmount: "0", routePlan: [] }), { status: 200 })
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "x", transaction: "bad*base64", outAmount: "0", routePlan: []
+    }), { status: 200 })
   }), /incomplete or non-executable/);
 });
 
 test("Jupiter cannot silently change the requested input amount or mint", async () => {
   await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-test", transaction: "dGVzdA==", outAmount: "12345",
+      inAmount: "999", inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      routePlan: [{ swapInfo: { label: "test" } }]
+    }), { status: 200 })
+  }), /incomplete or non-executable/);
+});
+
+test("empty or malformed unsigned transaction is rejected", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-test", transaction: "", inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }]
+    }), { status: 200 })
+  }), /incomplete or non-executable/);
+});
+
+
+test("Jupiter order rejects non-Jupiter transactions even when generic policy allows them", async () => {
+  const wallet = new PublicKey(EXPECTED_BOT_WALLET);
+  const recipient = Keypair.generate().publicKey;
+  const message = new TransactionMessage({
+    payerKey: wallet,
+    recentBlockhash: Keypair.generate().publicKey.toBase58(),
+    instructions: [SystemProgram.transfer({
+      fromPubkey: wallet, toPubkey: recipient, lamports: 1
+    })]
+  }).compileToLegacyMessage();
+  const encoded = Buffer.from(new VersionedTransaction(message).serialize()).toString("base64");
+  const allowedAccountKeys = [
+    wallet.toBase58(), recipient.toBase58(), SystemProgram.programId.toBase58()
+  ];
+  await assert.rejects(() => getJupiterOrder({
     env: goodEnv,
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000,
-    fetchImpl: async () => new Response(JSON.stringify({
-      requestId: "req-test", transaction: "dGVzdA==", outAmount: "12345",
-      inAmount: "999", inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      routePlan: [{ swapInfo: { label: "test" } }]
-    }), { status: 200 })
-  }), /input amount mismatch/);
+    eligibility: goodEligibility,
+    transactionAllowList: {
+      allowedRouters: ["metis"],
+      requiredAccounts: [wallet.toBase58(), recipient.toBase58()],
+      allowedProgramIds: [SystemProgram.programId.toBase58()],
+      allowedAccountKeys,
+      allowedWritableAccountKeys: [wallet.toBase58(), recipient.toBase58()],
+      instructionValidators: {
+        [SystemProgram.programId.toBase58()]: () => ({ allowed: true })
+      }
+    },
+    trustedRpc: { getBlockHeight: async () => 999999900 },
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({
+      requestId: "req-non-metis", transaction: encoded
+    })), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /Trusted Metis semantic policy and CPI allow-lists are required/);
+});
+
+test("Jupiter order rejects a router outside the explicit single-router policy", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    transactionAllowList: { allowedRouters: ["metis"] },
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-unapproved-router", router: "jupiterz" })), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /Only the explicitly reviewed Metis router is permitted/);
+});
+
+
+test("Jupiter order rejects gasless orders and unexpected fee payers", async () => {
+  await assertOrderRejected({ gasless: true }, /mode, version, or fee payer/);
+  await assertOrderRejected({
+    signatureFeePayer: "11111111111111111111111111111111"
+  }, /mode, version, or fee payer/);
+});
+
+test("Jupiter order requires a fresh trusted RPC block height", async () => {
+  await assertOrderRejected({}, /Pinned trusted Solana RPC client is required/, null);
+  await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999999);
+  await assertOrderRejected({}, /expired or its block-height window is not fresh/, 999999800);
+});
+
+test("Jupiter order rejects inconsistent fees, expiry, minimum output, and route steps", async () => {
+  await assertOrderRejected({
+    feeMint: "11111111111111111111111111111111"
+  }, /fee metadata is missing or inconsistent/);
+  await assertOrderRejected({ lastValidBlockHeight: "0" }, /block-height expiry/);
+  await assertOrderRejected({
+    otherAmountThreshold: "12346"
+  }, /minimum output or slippage metadata/);
+  await assertOrderRejected({
+    routePlan: [{ swapInfo: { label: "missing route identity" } }]
+  }, /route plan contains incomplete or invalid swap steps/);
+});
+
+test("Jupiter order rejects invalid serialized transactions even with an allow-list", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000,
+    eligibility: goodEligibility,
+    trustedRpc: { getBlockHeight: async () => 999999900 },
+    transactionAllowList: {
+      allowedRouters: ["metis"],
+      requiredAccounts: [EXPECTED_BOT_WALLET],
+      allowedProgramIds: ["11111111111111111111111111111111"],
+      allowedAccountKeys: [EXPECTED_BOT_WALLET, "11111111111111111111111111111111"]
+    },
+    fetchImpl: async () => new Response(JSON.stringify(validOrder({ requestId: "req-invalid" })), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /valid Solana transaction/);
 });

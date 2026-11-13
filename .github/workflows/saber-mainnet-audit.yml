@@ -1,0 +1,38 @@
+name: Saber Mainnet binary metadata audit
+
+on:
+  push:
+    branches:
+      - live-trading-policy-enforcement
+  workflow_dispatch:
+    inputs:
+      mainnet_rpc_url:
+        description: Optional trusted HTTPS Solana Mainnet RPC endpoint
+        required: false
+        type: string
+        default: https://api.mainnet-beta.solana.com
+
+concurrency:
+  group: saber-mainnet-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-mainnet-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Read Saber Program and ProgramData (read-only)
+        env:
+          SOLANA_MAINNET_RPC_URL: ${{ inputs.mainnet_rpc_url || 'https://api.mainnet-beta.solana.com' }}
+        run: node scripts/audit-saber-mainnet.mjs

@@ -1,0 +1,9 @@
+diff --git a/cli/src/lib.rs b/cli/src/lib.rs
+--- a/cli/src/lib.rs
++++ b/cli/src/lib.rs
+@@ -1055 +1055 @@
+-                &format!("https://release.solana.com/v{0}/install", solana_version,),
++                &format!("https://raw.githubusercontent.com/solana-labs/solana/v1.18.20/install/solana-install-init.sh"),
+@@ -1062 +1062 @@
+-        docker_exec(container_name, &["sh", "solana_installer.sh"])?;
++        docker_exec(container_name, &["env", "SOLANA_RELEASE=v1.18.20", &format!("SOLANA_INSTALL_INIT_ARGS=v{0}", solana_version), "sh", "solana_installer.sh"])?;

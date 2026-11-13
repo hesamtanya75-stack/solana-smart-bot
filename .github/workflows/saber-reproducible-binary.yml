@@ -1,0 +1,190 @@
+name: Saber release reproducibility and historical Mainnet fingerprint
+
+on:
+  push:
+    branches:
+      - live-trading-policy-enforcement
+  pull_request:
+    branches:
+      - mainnet-live-trading-prep
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Give each commit its own queue so an older long-running build cannot block the corrected build.
+  group: saber-reproducible-binary-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  reproduce-release-and-check-mainnet-fingerprint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out this repository for the pinned Anchor patch
+        uses: actions/checkout@v4
+
+      - name: Install pinned Solana Verify CLI release and verify checksum
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --silent --show-error "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          checksum_file_sha256="e72ee837ee95c845d59065fcdb9896ea459347ef88e6d73f8f1e082ca6ce235b"
+          expected_binary_sha256="b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          actual_checksum_file_sha256="$(sha256sum /tmp/solana-verify.sha256 | awk '{print $1}')"
+          expected_from_file="$(awk '{print $1}' /tmp/solana-verify.sha256)"
+          actual_binary_sha256="$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')"
+          test "$actual_checksum_file_sha256" = "$checksum_file_sha256"
+          test "$expected_from_file" = "$expected_binary_sha256"
+          test "$actual_binary_sha256" = "$expected_binary_sha256"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          solana-verify --version
+
+      - name: Check out pinned Saber source
+        env:
+          # Build the exact source revision tagged v1.8.1; v1.8.1 is the release associated with the recorded on-chain deployment.
+          # a later, diverged commit and therefore could not reproduce that release.
+          SABER_SOURCE_COMMIT: 6c0384cbaf305500678ed14e6426244145619249
+        run: |
+          git clone https://github.com/saber-hq/stable-swap.git saber-source
+          git -C saber-source checkout --detach "$SABER_SOURCE_COMMIT"
+          test "$(git -C saber-source rev-parse HEAD)" = "$SABER_SOURCE_COMMIT"
+
+      - name: Pin the exact upstream Anchor 0.24.2 build image
+        run: |
+          set -euo pipefail
+          # This is the immutable linux/amd64 digest published for
+          # projectserum/build:v0.24.2 (not the v0.26.0 digest).
+          image="projectserum/build@sha256:33b9c57d3cb5cafcb9349e5be034c2b1e36451b2e44531968b011c1bfc1a9cab"
+          docker pull "$image"
+          docker tag "$image" projectserum/build:v0.24.2
+          docker image inspect projectserum/build:v0.24.2 >/dev/null
+          docker run --rm projectserum/build:v0.24.2 bash -lc '
+            set -euo pipefail
+            solana --version
+            solana --version | grep -q "^solana-cli 1\\.9\\.13 "
+            command -v cargo-build-bpf
+            cargo-build-bpf --help >/dev/null
+            rustup toolchain list
+          '
+
+      - name: Install the exact Saber Anchor release toolchain
+        uses: cachix/install-nix-action@v22
+
+      - name: Patch only Anchor 0.24.2 installer transport, preserving Solana 1.9.12
+        working-directory: saber-source
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/.github/patches/anchor-0.24.2-solana-installer.patch" .
+          # Nix git flakes omit untracked files; stage this ephemeral patch so it enters the flake source.
+          git add -f anchor-0.24.2-solana-installer.patch
+          python3 "$GITHUB_WORKSPACE/.github/scripts/patch-saber-anchor.py"
+          grep -Fq 'anchor-0.24.2-solana-installer.patch' flake.nix
+          grep -Fq 'SOLANA_RELEASE=v' anchor-0.24.2-solana-installer.patch
+
+      - name: Reproducible build using Saber upstream release command
+        working-directory: saber-source
+        run: |
+          set -euo pipefail
+          # Saber v0.24.2's own release workflow uses:
+          # nix shell .#ci --command anchor build --verifiable --program-name stable_swap
+          # The exact upstream v0.24.2 image was pulled by immutable digest
+          # and tagged with the name Anchor 0.24.2 expects.
+          nix shell .#ci --command anchor --version | grep -q "anchor-cli 0.24.2"
+          # Anchor 0.24.2 now fetches its official v1.9.12 install-init script
+          # from the matching Solana GitHub release and pins SOLANA_RELEASE.
+          # Keep retries limited to transport failures; never retry a compiler,
+          # source, or verification failure.
+          build_succeeded=false
+          for attempt in 1 2 3; do
+            build_log="/tmp/saber-anchor-build-${attempt}.log"
+            if nix shell .#ci --command anchor build --verifiable --program-name stable_swap 2>&1 | tee "$build_log"; then
+              build_succeeded=true
+              break
+            fi
+            if ! grep -Eq 'curl: \(35\)|SSL_ERROR_SYSCALL' "$build_log"; then
+              echo "::error::Saber build failed for a reason other than the known transient Solana installer TLS error"
+              exit 1
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Transient Solana installer TLS failure (attempt $attempt/3); retrying after a short delay"
+              sleep "$((attempt * 20))"
+            fi
+          done
+          test "$build_succeeded" = true
+          # Prove which SDK actually compiled the ELF inside Anchor's build container.
+          # The pinned base image starts at 1.9.13, but Anchor's patched installer
+          # must switch the active BPF SDK to the required 1.9.12 before compilation.
+          grep -Fq '/releases/1.9.12/solana-release/bin/sdk/bpf/' "$build_log"
+          if grep -Fq '/releases/1.9.13/solana-release/bin/sdk/bpf/' "$build_log"; then
+            echo "::error::Build log shows Solana BPF SDK 1.9.13; expected 1.9.12"
+            exit 1
+          fi
+          echo "Verified actual compiler path: Solana BPF SDK 1.9.12"
+          mapfile -t built_binaries < <(find target -type f -name stable_swap.so -print)
+          printf "Found %s stable_swap.so build artifact(s):\\n" "${#built_binaries[@]}"
+          printf "%s\\n" "${built_binaries[@]}"
+          test "${#built_binaries[@]}" -eq 1
+          test -s "${built_binaries[0]}"
+          solana-verify get-executable-hash "${built_binaries[0]}" | tee ../executable-hash.txt
+
+      - name: Hash the published upstream v1.8.1 release binary
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.1.so
+          solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.1.so | tee upstream-executable-hash.txt
+
+      - name: Compare release build and confirm historical Mainnet fingerprint
+        id: compare
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable_hash="$(grep -Eo '[a-f0-9]{64}' ../executable-hash.txt | tail -n 1)"
+          upstream_hash="$(grep -Eo '[a-f0-9]{64}' ../upstream-executable-hash.txt | tail -n 1)"
+          test -n "$executable_hash"
+          test -n "$upstream_hash"
+          echo "Rebuilt Saber v1.8.1 hash: $executable_hash"
+          echo "Published Saber v1.8.1 hash: $upstream_hash"
+          if [ "$executable_hash" != "$upstream_hash" ]; then
+            echo "::error::Rebuilt Saber binary does not match the published v1.8.1 artifact"
+            exit 1
+          fi
+
+          # This is a historical Saber deployment, not the user's bot program.
+          # Keep the independently established Mainnet fingerprint as a separate
+          # integrity check; do not incorrectly require the later v1.8.1 release
+          # artifact to equal the older on-chain executable.
+          expected_mainnet_hash="c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38"
+          solana-verify get-program-hash -u https://api.mainnet-beta.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../mainnet-hash.txt
+          mainnet_hash="$(grep -Eo '[a-f0-9]{64}' ../mainnet-hash.txt | tail -n 1)"
+          test -n "$mainnet_hash"
+          if [ "$mainnet_hash" != "$expected_mainnet_hash" ]; then
+            echo "::error::Saber Mainnet fingerprint differs from the recorded historical baseline"
+            exit 1
+          fi
+
+          {
+            echo "## Saber binary verification (read-only)"
+            echo "- Source commit: v1.8.1 tag (6c0384cbaf305500678ed14e6426244145619249)"
+            echo "- Rebuilt v1.8.1 executable hash: $executable_hash"
+            echo "- Published v1.8.1 executable hash: $upstream_hash (exact reproducible match: true)"
+            echo "- Current Mainnet executable hash: $mainnet_hash (matches recorded historical fingerprint: true)"
+            echo "- Source-to-Mainnet equivalence: NOT ESTABLISHED; the historical Mainnet binary is not the v1.8.1 release artifact."
+            echo "- No Devnet comparison is performed against this historical Saber program ID."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce reproducibility and Mainnet fingerprint checks
+        if: always()
+        env:
+          RELEASE_MATCH: ${{ steps.compare.outcome }}
+        run: |
+          test "$RELEASE_MATCH" = success

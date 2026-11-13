@@ -1517,6 +1517,7 @@ setInterval(() => {
 let serverModeReady = false;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
+let serverStateVersion = null;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
 serverLogin.innerHTML = `
@@ -1546,6 +1547,9 @@ function renderServerControls(state) {
 }
 function applyServerState(state) {
   if (!state || !Array.isArray(state.trades)) return;
+  if (Object.prototype.hasOwnProperty.call(state, "updatedAt")) {
+    serverStateVersion = state.updatedAt ?? null;
+  }
   demoBalance = Number(state.balance);
   demoTrades = state.trades;
   if (Array.isArray(state.scannedMints)) {
@@ -1610,9 +1614,10 @@ async function refreshServerPrices() {
 }
 async function saveServerState() {
   if (!serverModeReady) return;
-  await serverRequest("/api/state", {
+  const result = await serverRequest("/api/state", {
     method: "PUT",
     body: JSON.stringify({
+      expectedUpdatedAt: serverStateVersion,
       balance: demoBalance,
       trades: demoTrades,
       autoEnabled: autoDemoBuyEnabled,
@@ -1620,6 +1625,10 @@ async function saveServerState() {
       scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
     })
   });
+  if (!result?.state || typeof result.state.updatedAt !== "string") {
+    throw new Error("Server did not confirm the saved state version");
+  }
+  serverStateVersion = result.state.updatedAt;
 }
 const localSaveDemoState = saveDemoState;
 saveDemoState = function() {
@@ -1638,6 +1647,7 @@ async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
+  serverStateVersion = remote.updatedAt ?? null;
   // Enable server persistence before migrating the browser's existing paper-trading
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
@@ -1801,6 +1811,7 @@ if (serverToken) {
         <div class="profile-secret" id="totpBackupCode"></div>
       </div>
       <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <button id="sessionLogout" style="background:#7f1d1d;border-color:#991b1b">چوونەدەرەوە و هەڵوەشاندنەوەی Session</button>
       <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
     </div>`;
   document.body.appendChild(modal);
@@ -1819,6 +1830,26 @@ if (serverToken) {
   }
   button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
   document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  document.getElementById("sessionLogout").onclick=async()=>{
+    const logoutButton=document.getElementById("sessionLogout");
+    logoutButton.disabled=true;
+    status().textContent="چوونەدەرەوە...";
+    try{
+      await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      localStorage.removeItem("solanaBotSession");
+      serverToken="";
+      serverModeReady=false;
+      serverStateVersion=null;
+      modal.style.display="none";
+      serverLogin.style.display="flex";
+      document.getElementById("serverPassword").value="";
+      document.getElementById("serverLoginError").textContent="بە سەرکەوتوویی چوویتە دەرەوە؛ Session ـەکەش هەڵوەشێندرایەوە.";
+    }catch(e){
+      status().textContent="نەتوانرا Session هەڵبوەشێندرێتەوە: "+e.message;
+    }finally{
+      logoutButton.disabled=false;
+    }
+  };
   modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
   document.getElementById("profileSave").onclick=async()=>{
     status().textContent="پاشەکەوت دەکرێت...";

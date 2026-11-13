@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "solana-smart-bot",
+"name": "solana-smart-bot",
   "main": "worker.js",
   "compatibility_date": "2026-11-06",
   "assets": {
@@ -18,6 +18,20 @@
     {
       "binding": "BOT_STATE",
       "id": "2e205fdb0eff44f78786e7500ae401a1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BOT_COORDINATOR",
+        "class_name": "BotCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BotCoordinator"]
     }
   ],
   "previews": {

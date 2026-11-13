@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - mainnet-live-trading-prep
+      - live-trading-policy-enforcement
 
 jobs:
   test:
@@ -17,5 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install dependencies
+        run: npm install
       - name: Run safety tests
         run: npm test
