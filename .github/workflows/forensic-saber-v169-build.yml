@@ -1,0 +1,123 @@
+name: Forensic Saber v1.6.9 build at Mainnet upgrade
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-compare-v169:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Install pinned Solana Verify CLI 0.5.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          test "$(awk '{print $1}' /tmp/solana-verify.sha256)" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          test "$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Checkout exact Saber v1.6.9 upgrade-era source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/saber-hq/stable-swap.git saber-source
+          git -C saber-source checkout --detach 0386247a4b83bda3f0580f24b3bbdea988c15694
+          test "$(git -C saber-source rev-parse HEAD)" = "0386247a4b83bda3f0580f24b3bbdea988c15694"
+          grep -F 'anchor_version = "0.20.1"' saber-source/Anchor.toml
+          grep -F 'solana_version = "1.8.14"' saber-source/Anchor.toml
+          git -C saber-source show -s --format=fuller HEAD | tee saber-source-commit.txt
+          sha256sum saber-source/flake.lock | tee saber-flake-lock-sha256.txt
+
+      - name: Install Nix for the exact historical flake
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Saber v1.6.9 with its pinned historical toolchain
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix shell .#ci --command anchor --version | tee ../v169-anchor-version.txt
+          grep -F "anchor-cli 0.20.1" ../v169-anchor-version.txt
+          echo "build_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee ../v169-build.log
+          set -o pipefail
+          timeout --foreground --signal=TERM --kill-after=2m 60m \
+            nix shell .#ci --command anchor build --verifiable --program-name stable_swap \
+            2>&1 | tee -a ../v169-build.log
+          echo "build_finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a ../v169-build.log
+          test -s target/verifiable/stable_swap.so
+          sha256sum target/verifiable/stable_swap.so | tee ../v169-built-file-sha256.txt
+          solana-verify get-executable-hash target/verifiable/stable_swap.so | tee ../v169-built-hash.txt
+
+      - name: Download and pin Solana CLI 1.8.14 for read-only Mainnet dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana-release.tar.bz2
+          echo "edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355  solana-release.tar.bz2" | sha256sum -c -
+          mkdir -p /tmp/solana-v1814
+          tar -xjf solana-release.tar.bz2 -C /tmp/solana-v1814
+          echo "/tmp/solana-v1814/solana-release/bin" >> "$GITHUB_PATH"
+          echo "solana_archive_sha256=edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355" | tee solana-archive-evidence.txt
+
+      - name: Compare v1.6.9 rebuild with deployed Mainnet executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          solana --version | tee solana-cli-version.txt
+          solana program dump -u https://api.mainnet-beta.solana.com \
+            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ saber-v169-mainnet-dump.so
+          cp saber-source/target/verifiable/stable_swap.so saber-v169-rebuilt.so
+          sha256sum saber-v169-rebuilt.so saber-v169-mainnet-dump.so | tee v169-raw-file-sha256.txt
+          solana-verify get-executable-hash saber-v169-rebuilt.so | tee v169-built-hash.txt
+          solana-verify get-executable-hash saber-v169-mainnet-dump.so | tee v169-mainnet-hash.txt
+          built="$(tail -n 1 v169-built-hash.txt | tr -d '\r')"
+          mainnet="$(tail -n 1 v169-mainnet-hash.txt | tr -d '\r')"
+          if [ "$built" = "$mainnet" ]; then
+            status="V169_REBUILD_MATCHES_MAINNET"
+            headline="PASS: the v1.6.9 upgrade-era source rebuild matches the deployed Mainnet executable hash."
+          else
+            status="V169_REBUILD_DIFFERS_FROM_MAINNET"
+            headline="WARNING: the v1.6.9 upgrade-era source rebuild does not match the deployed Mainnet executable hash."
+          fi
+          {
+            echo "comparison_status=$status"
+            echo "rebuilt_hash=$built"
+            echo "mainnet_hash=$mainnet"
+            echo "interpretation=$headline"
+          } | tee v169-comparison-status.txt
+          echo "$headline" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload v1.6.9 forensic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-v1.6.9-upgrade-era-forensic-evidence
+          path: |
+            saber-source-commit.txt
+            saber-flake-lock-sha256.txt
+            v169-anchor-version.txt
+            v169-build.log
+            v169-built-file-sha256.txt
+            v169-built-hash.txt
+            solana-archive-evidence.txt
+            solana-cli-version.txt
+            v169-raw-file-sha256.txt
+            v169-mainnet-hash.txt
+            v169-comparison-status.txt
+            saber-v169-rebuilt.so
+            saber-v169-mainnet-dump.so
+          if-no-files-found: error
+          retention-days: 7
