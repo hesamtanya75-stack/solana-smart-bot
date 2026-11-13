@@ -179,7 +179,7 @@ jobs:
               sdk=/root/.local/share/solana/install/releases/1.8.14/solana-release/bin/sdk/bpf
               test -d "$sdk"
               echo "bpf_sdk_path=$sdk" | tee v172-disassembly-status.txt
-              find /root/.local/share/solana/install -type f \\( -name "llvm-objdump*" -o -name "llvm-readelf*" \\) -perm -u+x -print | sort | tee v172-llvm-tools.txt
+              find /root/.local/share/solana/install -type f -name "llvm-objdump*" -perm -u+x -print | sort | tee v172-llvm-tools.txt
               objdump="$(find /root/.local/share/solana/install -type f -name "llvm-objdump*" -perm -u+x -print -quit)"
               if [ -z "$objdump" ]; then
                 echo "historical_bpf_llvm_objdump=NOT_FOUND" | tee -a v172-disassembly-status.txt
