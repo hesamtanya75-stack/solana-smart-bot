@@ -303,5 +303,9 @@ jobs:
             v172-llvm-objdump-version.txt
             saber-v172-release-disassembly.txt
             saber-v172-mainnet-disassembly.txt
+            v172-rbpf-disassembly-status.txt
+            v172-rbpf-disassembly-sha256.txt
+            saber-v172-release-rbpf-disassembly.txt
+            saber-v172-mainnet-rbpf-disassembly.txt
           if-no-files-found: warn
           retention-days: 7
