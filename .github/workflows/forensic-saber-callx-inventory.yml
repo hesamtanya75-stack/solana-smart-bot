@@ -21,7 +21,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyelftools
+          printf '%s\n' 'pyelftools==0.33 --hash=sha256:f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036' > /tmp/forensic-requirements.txt
+          python3 -m pip install --quiet --no-deps --require-hashes -r /tmp/forensic-requirements.txt
           python3 - <<'PY'
           import base64, hashlib, json, os, urllib.request
           from urllib.parse import urlsplit
