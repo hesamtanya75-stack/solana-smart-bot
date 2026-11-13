@@ -312,6 +312,30 @@ html[lang="ckb"] .wrap .warn span{text-align:right}
 .profile-status{font-size:12px;line-height:1.7;color:#a5f3fc;white-space:pre-wrap;margin-top:8px}
 @media(max-width:520px){.profile-dialog{padding:12px}.profile-button{font-size:10px;padding:6px 8px}}
 
+/* iPhone/Safari: keep the full profile form reachable on short viewports. */
+@media(max-width:520px){
+ .profile-modal{
+  align-items:flex-start;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-top:max(12px,env(safe-area-inset-top,0px));
+  padding-bottom:max(24px,env(safe-area-inset-bottom,0px));
+  -webkit-overflow-scrolling:touch;
+ }
+ .profile-dialog{
+  flex:0 0 auto;
+  min-height:0;
+  max-height:calc(100vh - 36px);
+  max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 36px);
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  margin-block:auto;
+  scroll-padding-block:12px;
+ }
+}
+
 
 /* User-controlled profile design settings */
 html{--design-radius:14px;--design-gap:6px;--design-pad:8px}
