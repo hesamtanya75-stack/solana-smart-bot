@@ -1,0 +1,203 @@
+name: Forensic Saber v1.6.9 source with Anchor 0.22 control build
+
+on:
+  push:
+    branches:
+      - forensics/saber-v169-anchor022-control
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  control-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Download existing immutable Mainnet and RBPF evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/mainnet evidence/disassembly
+          curl --fail --location --retry 2 --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hesamtanya75-stack/solana-smart-bot/actions/artifacts/14043926285/zip \
+            -o /tmp/v169-build-evidence.zip
+          curl --fail --location --retry 2 --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hesamtanya75-stack/solana-smart-bot/actions/artifacts/14043932883/zip \
+            -o /tmp/v169-rbpf-evidence.zip
+          unzip -q /tmp/v169-build-evidence.zip -d evidence/mainnet
+          unzip -q /tmp/v169-rbpf-evidence.zip -d evidence/disassembly
+          test -s evidence/mainnet/saber-v169-mainnet-dump.so
+          test -s evidence/disassembly/saber-v169-mainnet-rbpf-disassembly.txt
+          sha256sum /tmp/v169-build-evidence.zip /tmp/v169-rbpf-evidence.zip | tee evidence-archives-sha256.txt
+
+      - name: Install pinned Solana Verify CLI 0.5.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          test "$(awk '{print $1}' /tmp/solana-verify.sha256)" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          test "$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')" = "b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Checkout exact v1.6.9 source without modifying upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/saber-hq/stable-swap.git saber-source
+          git -C saber-source checkout --detach 0386247a4b83bda3f0580f24b3bbdea988c15694
+          test "$(git -C saber-source rev-parse HEAD)" = "0386247a4b83bda3f0580f24b3bbdea988c15694"
+          grep -F 'anchor_version = "0.20.1"' saber-source/Anchor.toml
+          grep -F 'solana_version = "1.8.14"' saber-source/Anchor.toml
+          git -C saber-source show -s --format=fuller HEAD | tee saber-source-commit.txt
+          git -C saber-source show 51c0fab2d684fb3de2bff775bf4e26af1a235541:flake.lock > /tmp/v170-flake.lock
+          sha256sum saber-source/flake.lock /tmp/v170-flake.lock | tee flake-lock-control-sha256.txt
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download and pin Solana 1.8.14 builder archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana-release.tar.bz2
+          echo "edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355  solana-release.tar.bz2" | sha256sum -c -
+          test "$(wc -c < solana-release.tar.bz2)" -eq 277903704
+          cat > Dockerfile.control <<'DOCKERFILE'
+          FROM projectserum/build@sha256:4d1a34040df16afbb34c621cc42263d6e225c47406e4a565763adbcae9f1b5f5
+          COPY solana-release.tar.bz2 /tmp/solana-release.tar.bz2
+          RUN mkdir -p /root/.local/share/solana/install/releases/1.8.14 \
+              && tar -xjf /tmp/solana-release.tar.bz2 -C /tmp \
+              && mv /tmp/solana-release /root/.local/share/solana/install/releases/1.8.14/solana-release \
+              && ln -sfn /root/.local/share/solana/install/releases/1.8.14/solana-release /root/.local/share/solana/install/active_release \
+              && rm -f /tmp/solana-release.tar.bz2
+          ENV PATH="/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          DOCKERFILE
+          docker build --pull=false -f Dockerfile.control -t saber-anchor022-solana1814-control .
+          docker run --rm --entrypoint solana saber-anchor022-solana1814-control --version | tee solana-builder-cli-version.txt
+          grep -F "solana-cli 1.8.14" solana-builder-cli-version.txt
+
+      - name: Build pinned Anchor 0.22.0 CLI from the v1.7.0 lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/anchor-only
+          cp /tmp/v170-flake.lock /tmp/anchor-only/flake.lock
+          cat > /tmp/anchor-only/flake.nix <<'EOF'
+          {
+            description = "Pinned Anchor 0.22.0 CLI control build";
+            inputs = {
+              nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+              saber-overlay.url = "github:saber-hq/saber-overlay";
+              flake-utils.url = "github:numtide/flake-utils";
+            };
+            outputs = { self, saber-overlay, ... }: {
+              packages.x86_64-linux.default =
+                saber-overlay.packages.x86_64-linux.anchor-0_22_0;
+            };
+          }
+          EOF
+          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command anchor --version | tee anchor-version.txt
+          grep -F "anchor-cli 0.22.0" anchor-version.txt
+
+      - name: Build unchanged v1.6.9 source using Anchor 0.22.0
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="saber-anchor022-solana1814-control"
+          cp Anchor.toml /tmp/Anchor.toml.v169.original
+          sed -e 's/^anchor_version = "0.20.1"$/anchor_version = "0.22.0"/' \
+              -e '/^solana_version[[:space:]]*=/d' \
+              /tmp/Anchor.toml.v169.original > Anchor.toml
+          grep -F 'anchor_version = "0.22.0"' Anchor.toml
+          ! grep -q '^solana_version[[:space:]]*=' Anchor.toml
+          echo "build_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee ../control-build.log
+          set -o pipefail
+          timeout --foreground --signal=TERM --kill-after=2m 60m \
+            nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
+              anchor build --verifiable --program-name stable_swap --docker-image "$IMAGE" \
+            2>&1 | tee -a ../control-build.log
+          echo "build_finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a ../control-build.log
+          test -s target/verifiable/stable_swap.so
+          cp target/verifiable/stable_swap.so ../saber-v169-anchor022-control.so
+          sha256sum ../saber-v169-anchor022-control.so | tee ../control-file-sha256.txt
+          solana-verify get-executable-hash ../saber-v169-anchor022-control.so | tee ../control-executable-hash.txt
+
+      - name: Compare control build with historical Mainnet executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp evidence/mainnet/saber-v169-mainnet-dump.so saber-v169-mainnet-dump.so
+          sha256sum saber-v169-anchor022-control.so saber-v169-mainnet-dump.so | tee control-vs-mainnet-file-sha256.txt
+          solana-verify get-executable-hash saber-v169-mainnet-dump.so | tee mainnet-executable-hash.txt
+          built="$(grep -Eo '[a-f0-9]{64}' control-executable-hash.txt | tail -n 1)"
+          mainnet="$(grep -Eo '[a-f0-9]{64}' mainnet-executable-hash.txt | tail -n 1)"
+          if [ "$built" = "$mainnet" ]; then
+            status="V169_SOURCE_ANCHOR022_MATCHES_MAINNET"
+            headline="PASS: unchanged v1.6.9 source built with Anchor 0.22.0 matches the historical Mainnet executable."
+          else
+            status="V169_SOURCE_ANCHOR022_DIFFERS_FROM_MAINNET"
+            headline="WARNING: unchanged v1.6.9 source built with Anchor 0.22.0 still differs from historical Mainnet."
+          fi
+          {
+            echo "comparison_status=$status"
+            echo "control_executable_hash=$built"
+            echo "mainnet_executable_hash=$mainnet"
+            echo "interpretation=$headline"
+          } | tee control-comparison-status.txt
+          echo "$headline" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Disassemble control build with historical Solana RBPF 0.2.21
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.2.21 https://github.com/solana-labs/rbpf.git rbpf-source
+          grep -F 'version = "0.2.21"' rbpf-source/cli/Cargo.toml
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf saber-v169-anchor022-control.so --use disassembler \
+            > saber-v169-anchor022-control-rbpf-disassembly.txt
+          test -s saber-v169-anchor022-control-rbpf-disassembly.txt
+          diff -u evidence/disassembly/saber-v169-mainnet-rbpf-disassembly.txt \
+            saber-v169-anchor022-control-rbpf-disassembly.txt > control-vs-mainnet-disassembly.diff || true
+          sha256sum saber-v169-anchor022-control-rbpf-disassembly.txt \
+            evidence/disassembly/saber-v169-mainnet-rbpf-disassembly.txt | tee control-rbpf-sha256.txt
+
+      - name: Upload Anchor 0.22.0 control-build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-v169-anchor022-control-build
+          path: |
+            evidence-archives-sha256.txt
+            saber-source-commit.txt
+            flake-lock-control-sha256.txt
+            solana-builder-cli-version.txt
+            anchor-version.txt
+            control-build.log
+            control-file-sha256.txt
+            control-executable-hash.txt
+            control-vs-mainnet-file-sha256.txt
+            mainnet-executable-hash.txt
+            control-comparison-status.txt
+            saber-v169-anchor022-control.so
+            saber-v169-mainnet-dump.so
+            saber-v169-anchor022-control-rbpf-disassembly.txt
+            control-vs-mainnet-disassembly.diff
+            control-rbpf-sha256.txt
+          if-no-files-found: warn
+          retention-days: 7
