@@ -78,7 +78,7 @@ jobs:
               raise SystemExit("Unexpected active ProgramData payload length")
           if hashlib.sha256(mainnet).hexdigest() != EXPECTED_PREFIX_SHA256:
               raise SystemExit("Mainnet active prefix hash changed; stop and review")
-          if hashlib.sha256(mainnet.rstrip(b"\\0")).hexdigest() != EXPECTED_TRIMMED_SHA256:
+          if hashlib.sha256(mainnet.rstrip(b"\0")).hexdigest() != EXPECTED_TRIMMED_SHA256:
               raise SystemExit("Mainnet trimmed executable hash changed; stop and review")
 
           release_url = "https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so"
@@ -101,7 +101,7 @@ jobs:
               if address not in (0x341b8,0x341d8):
                   raise ValueError("Unexpected pointer-table address " + hex(address))
               pointer = data[address+24:address+32]
-              if len(pointer) != 8 or pointer[:4] != b"\\0\\0\\0\\0":
+              if len(pointer) != 8 or pointer[:4] != b"\0\0\0\0":
                   raise ValueError("Unexpected function-pointer encoding at " + hex(address))
               target = int.from_bytes(pointer[4:8], "little")
               return address, target
@@ -184,7 +184,7 @@ jobs:
               "scope":"read-only finalized Mainnet RPC and official Saber v1.7.2 release asset",
               "program_data":PROGRAM_DATA,
               "mainnet_active_prefix_sha256":hashlib.sha256(mainnet).hexdigest(),
-              "mainnet_trimmed_executable_sha256":hashlib.sha256(mainnet.rstrip(b"\\0")).hexdigest(),
+              "mainnet_trimmed_executable_sha256":hashlib.sha256(mainnet.rstrip(b"\0")).hexdigest(),
               "official_release_raw_sha256":hashlib.sha256(release).hexdigest(),
               "length_each":len(mainnet),
               "different_byte_count":len(differences),
