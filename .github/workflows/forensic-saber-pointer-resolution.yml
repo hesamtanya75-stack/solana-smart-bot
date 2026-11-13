@@ -1,0 +1,220 @@
+name: Forensic Saber Mainnet pointer-resolution equivalence
+
+on:
+  push:
+    branches:
+      - forensics/upgrade-slot-119721738
+    paths:
+      - .github/workflows/forensic-saber-pointer-resolution.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pointer-resolution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Compare Mainnet and official v1.7.2 pointer resolution (read-only)
+        env:
+          SOLANA_ARCHIVE_RPC_URL: ${{ secrets.SOLANA_ARCHIVE_RPC_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyelftools
+          python3 - <<'PY'
+          import base64, hashlib, json, os, time, urllib.error, urllib.request
+          from elftools.elf.elffile import ELFFile
+
+          URL = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
+          if not URL.startswith("https://") or "/v2/" not in URL:
+              raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
+
+          PROGRAM_DATA = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
+          EXPECTED_PREFIX_SHA256 = "eeacf0770556dabc19c0c5e11e3f3d743367e200781bdc3d9d1c5b49c2ca6992"
+          EXPECTED_TRIMMED_SHA256 = "c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38"
+          EXPECTED_LENGTH = 217192
+          TEXT_IMMEDIATE_FILE_OFFSETS = [
+              5444,5660,5876,8108,8636,9148,18780,19020,19548,25332,27756,28284,
+              28860,32468,34180,34820,35468,37908,39292,39820,40460,41140,
+              45308,46180,46668,63084,67668,69204
+          ]
+          DATA_POINTER_DIFF_OFFSETS = [213460,213492]
+          ALLOWED_DIFFS = set(TEXT_IMMEDIATE_FILE_OFFSETS + DATA_POINTER_DIFF_OFFSETS)
+
+          def rpc(method, params):
+              body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
+              for attempt in range(10):
+                  req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as response:
+                          out = json.load(response)
+                      if out.get("error"):
+                          err = out["error"]
+                          code = err.get("code") if isinstance(err, dict) else None
+                          if code in (-32005,429) and attempt < 9:
+                              time.sleep(min(2 ** attempt, 60))
+                              continue
+                          raise RuntimeError(method + " RPC error: " + json.dumps(err))
+                      return out.get("result")
+                  except urllib.error.HTTPError as exc:
+                      if exc.code not in (429,500,502,503,504) or attempt == 9:
+                          raise
+                      retry_after = exc.headers.get("Retry-After")
+                      delay = float(retry_after) if retry_after else min(2 ** attempt, 60)
+                      time.sleep(max(1, min(delay, 120)))
+              raise RuntimeError(method + " retry budget exhausted")
+
+          info = rpc("getAccountInfo", [PROGRAM_DATA, {"encoding":"base64","commitment":"finalized"}])
+          value = info.get("value") if info else None
+          if not value:
+              raise SystemExit("ProgramData account unavailable")
+          raw = base64.b64decode(value["data"][0])
+          if int.from_bytes(raw[:4], "little") != 3:
+              raise SystemExit("Unexpected ProgramData loader state")
+          payload = raw[45:]
+          mainnet = payload[:EXPECTED_LENGTH]
+          if len(mainnet) != EXPECTED_LENGTH:
+              raise SystemExit("Unexpected active ProgramData payload length")
+          if hashlib.sha256(mainnet).hexdigest() != EXPECTED_PREFIX_SHA256:
+              raise SystemExit("Mainnet active prefix hash changed; stop and review")
+          if hashlib.sha256(mainnet.rstrip(b"\\0")).hexdigest() != EXPECTED_TRIMMED_SHA256:
+              raise SystemExit("Mainnet trimmed executable hash changed; stop and review")
+
+          release_url = "https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so"
+          req = urllib.request.Request(release_url, headers={"User-Agent":"read-only-forensic-audit"})
+          with urllib.request.urlopen(req, timeout=60) as response:
+              release = response.read()
+          if len(release) != EXPECTED_LENGTH:
+              raise SystemExit("Official v1.7.2 release length changed; stop and review")
+
+          differences = [i for i,(a,b) in enumerate(zip(mainnet,release)) if a != b]
+          if differences != sorted(ALLOWED_DIFFS):
+              raise SystemExit("Unexpected byte-difference set; see no partial equivalence claim")
+
+          def resolve_target(data, immediate_file_offset):
+              start = immediate_file_offset - 4
+              insn = data[start:start+16]
+              if len(insn) != 16 or insn[0] != 0x18 or insn[8] != 0:
+                  raise ValueError("Expected SBPF LDDW instruction at file offset " + str(start))
+              address = int.from_bytes(insn[4:8] + insn[12:16], "little")
+              if address not in (0x341b8,0x341d8):
+                  raise ValueError("Unexpected pointer-table address " + hex(address))
+              pointer = data[address+24:address+32]
+              if len(pointer) != 8 or pointer[:4] != b"\\0\\0\\0\\0":
+                  raise ValueError("Unexpected function-pointer encoding at " + hex(address))
+              target = int.from_bytes(pointer[4:8], "little")
+              return address, target
+
+          resolved = []
+          for offset in TEXT_IMMEDIATE_FILE_OFFSETS:
+              mainnet_slot, mainnet_target = resolve_target(mainnet, offset)
+              release_slot, release_target = resolve_target(release, offset)
+              resolved.append({
+                  "file_offset":offset,
+                  "mainnet_pointer_slot":hex(mainnet_slot),
+                  "release_pointer_slot":hex(release_slot),
+                  "mainnet_effective_target":hex(mainnet_target),
+                  "release_effective_target":hex(release_target),
+                  "effective_target_matches":mainnet_target == release_target
+              })
+          if not all(item["effective_target_matches"] for item in resolved):
+              raise SystemExit("One or more LDDW sites resolve to different function targets")
+
+          def table_target(data, address):
+              ptr = data[address+24:address+32]
+              return int.from_bytes(ptr[4:8], "little")
+          pointer_table = {
+              hex(address): {
+                  "mainnet_target":hex(table_target(mainnet,address)),
+                  "release_target":hex(table_target(release,address))
+              }
+              for address in (0x341b8,0x341d8)
+          }
+          expected_table = {
+              "0x341b8":{"mainnet_target":"0x28948","release_target":"0x28908"},
+              "0x341d8":{"mainnet_target":"0x28908","release_target":"0x28948"}
+          }
+          if pointer_table != expected_table:
+              raise SystemExit("Function-pointer records are not the expected pairwise swap")
+
+          def inspect_elf(data):
+              import io
+              elf = ELFFile(io.BytesIO(data))
+              header = {
+                  "class":elf.elfclass,
+                  "little_endian":elf.little_endian,
+                  "machine":elf.header["e_machine"],
+                  "type":elf.header["e_type"],
+                  "entry":int(elf.header["e_entry"]),
+                  "flags":int(elf.header["e_flags"])
+              }
+              sections = {}
+              dyn_symbols = []
+              for section in elf.iter_sections():
+                  sections[section.name] = {
+                      "size":int(section["sh_size"]),
+                      "sha256":hashlib.sha256(section.data()).hexdigest(),
+                      "bytes":section.data()
+                  }
+                  if section.name == ".dynsym":
+                      dyn_symbols = sorted(sym.name for sym in section.iter_symbols() if sym.name)
+              return header, sections, dyn_symbols
+
+          main_header, main_sections, main_symbols = inspect_elf(mainnet)
+          rel_header, rel_sections, rel_symbols = inspect_elf(release)
+          if main_header != rel_header:
+              raise SystemExit("ELF headers differ")
+          if set(main_sections) != set(rel_sections):
+              raise SystemExit("ELF section-name sets differ")
+          section_report = []
+          for name in sorted(main_sections):
+              a, b = main_sections[name], rel_sections[name]
+              same = a["size"] == b["size"] and a["sha256"] == b["sha256"]
+              section_report.append({"name":name,"size":a["size"],"exact_match":same})
+          changed_sections = [x["name"] for x in section_report if not x["exact_match"]]
+          if changed_sections != [".data.rel.ro", ".text"]:
+              raise SystemExit("Unexpected changed ELF sections: " + repr(changed_sections))
+          if main_sections[".rel.dyn"]["bytes"] != rel_sections[".rel.dyn"]["bytes"]:
+              raise SystemExit(".rel.dyn relocation records differ")
+          if main_symbols != rel_symbols:
+              raise SystemExit("Dynamic symbol names differ")
+
+          report = {
+              "scope":"read-only finalized Mainnet RPC and official Saber v1.7.2 release asset",
+              "program_data":PROGRAM_DATA,
+              "mainnet_active_prefix_sha256":hashlib.sha256(mainnet).hexdigest(),
+              "mainnet_trimmed_executable_sha256":hashlib.sha256(mainnet.rstrip(b"\\0")).hexdigest(),
+              "official_release_raw_sha256":hashlib.sha256(release).hexdigest(),
+              "length_each":len(mainnet),
+              "different_byte_count":len(differences),
+              "different_byte_offsets":differences,
+              "changed_elf_sections":changed_sections,
+              "all_other_elf_sections_exact_match":True,
+              "elf_headers_exact_match":True,
+              "dynamic_symbol_names_exact_match":True,
+              "rel_dyn_exact_match":True,
+              "function_pointer_table":pointer_table,
+              "lddw_sites_checked":len(resolved),
+              "all_28_lddw_sites_resolve_to_same_effective_target":all(x["effective_target_matches"] for x in resolved),
+              "lddw_resolution_counts":{
+                  "release_0x341b8_to_mainnet_0x341d8_target_0x28908":sum(x["release_pointer_slot"]=="0x341b8" and x["mainnet_pointer_slot"]=="0x341d8" and x["mainnet_effective_target"]=="0x28908" for x in resolved),
+                  "release_0x341d8_to_mainnet_0x341b8_target_0x28948":sum(x["release_pointer_slot"]=="0x341d8" and x["mainnet_pointer_slot"]=="0x341b8" and x["mainnet_effective_target"]=="0x28948" for x in resolved)
+              },
+              "resolved_sites":resolved,
+              "section_comparison":[{"name":x["name"],"size":x["size"],"exact_match":x["exact_match"]} for x in section_report],
+              "interpretation":"All 30 raw byte differences are confined to 28 SBPF LDDW pointer-slot immediates and two swapped function-pointer values. Each of the 28 LDDW sites resolves to the same effective function target in Mainnet and the official release. This supports equivalence of these static references, but is not a proof of complete program behavioral equivalence."
+          }
+          with open("saber-pointer-resolution-equivalence.json","w") as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps({k:v for k,v in report.items() if k not in ("resolved_sites","section_comparison")},indent=2))
+          PY
+
+      - name: Upload pointer-resolution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-pointer-resolution-equivalence
+          path: saber-pointer-resolution-equivalence.json
+          if-no-files-found: warn
+          retention-days: 7
