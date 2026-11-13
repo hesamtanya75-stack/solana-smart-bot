@@ -2,7 +2,7 @@ name: Validate frontend
 
 on:
   push:
-    branches: [main, new-bot-design]
+    branches: [main, new-bot-design, fix/resend-runtime-env-check-new-bot-design]
     paths:
       - "index.html"
       - "worker.js"
