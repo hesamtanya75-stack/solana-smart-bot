@@ -53,8 +53,9 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 - The `.data.rel.ro` section differs at two pointer fields, which swap references to `0x28908` and `0x28948`.
 - The 28 changed `lddw` operands are exactly the references to the two adjacent 32-byte records at `0x1000341b8` and `0x1000341d8`: 24 references in `function_542` and 4 in `function_7784`; Mainnet reverses which record each group references.
 - The `.data.rel.ro` records are otherwise identical, with only the two 32-bit pointer values at file offsets `0x341d4` and `0x341f4` swapped (`0x28908` / `0x28948`).
-- After normalizing those two static pointer addresses, the complete 25,558-line RBPF disassemblies are identical.
-- This is strong evidence that the executable instruction logic matches the v1.7.2 release after accounting for static pointer/relocation layout. It is not proof that the deployed binary is the exact v1.7.2 artifact or exact source commit.
+- The 64-byte target blocks at `0x28908` and `0x28948` each have identical bytes in the release and Mainnet binaries at the same address, but the two blocks are not identical to each other. The pointer swap therefore changes which record refers to which block; its semantic impact must not be assumed harmless.
+- After normalizing the two pointer operands, the complete 25,558-line RBPF disassemblies are identical. This establishes instruction-stream identity modulo those pointer operands, not full behavioral equivalence.
+- This is strong evidence of a very close v1.7.2 relationship, but not proof that the deployed binary is the exact v1.7.2 artifact, exact source commit, or behaviorally identical in every case.
 
 ### Saber v1.6.9
 
@@ -74,7 +75,7 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 1. The historical Upgrade transaction is identified and succeeded.
 2. The complete buffer payload was reconstructed without gaps; its trimmed SHA-256 exactly matches the deployed Mainnet executable.
 3. The upgrade was invoked through Goki OwnerInvokeInstructionV2 with the Goki wallet as the loader authority.
-4. The closest tested public source/release match is v1.7.2 at the instruction-disassembly level, after normalizing static pointer references. Exact release-binary identity is not established.
+4. The closest tested public source/release match is v1.7.2 at the instruction-disassembly level, after normalizing two swapped static pointer references. Because the two referenced 64-byte blocks differ from each other, semantic equivalence is not established. Exact release-binary identity is not established.
 5. v1.6.9 and the tested later release binaries are not exact Mainnet hash matches.
 6. The precise source commit/fork that produced the deployed binary remains unproven. The remaining source-attribution task is to investigate the two static pointer-table layout differences and any unpublished build/source variation; do not label the source as verified until that is resolved.
 
