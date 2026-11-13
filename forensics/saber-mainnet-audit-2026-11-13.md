@@ -78,8 +78,24 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 3. The upgrade was invoked through Goki OwnerInvokeInstructionV2 with the Goki wallet as the loader authority.
 4. The closest tested public source/release match is v1.7.2 at the instruction-disassembly level. The two swapped static pointers have now been traced to `BorrowError` / `BorrowMutError` debug formatters: Mainnet reverses the type label in 28 exceptional `RefCell` borrow-panic diagnostics (24 `already mutably borrowed` paths and 4 `already borrowed` paths). No normal swap/accounting logic difference was found in the normalized instruction stream. Exact release-binary identity is not established.
 5. v1.6.9 and the tested later release binaries are not exact Mainnet hash matches.
-6. The precise source commit/fork and historical build recipe that produced the deployed binary remain unproven. The pointer-table difference is now explained at the binary-behavior level; it does not identify an unpublished source fork or prove exact source identity.
+6. The precise source commit/fork and historical build recipe that produced the deployed binary remain unproven. A follow-up binary/source chronology check below finds that Mainnet's instruction stream is extremely close to v1.7.2, including a swap-rounding change publicly merged after the Mainnet deployment date. This creates a source-history chronology conflict that cannot currently be resolved from public Git history.
 
 ## Safety boundary
 
 All work recorded here is read-only Mainnet inspection and forensic-branch evidence. No Mainnet transaction, SOL transfer, production deployment, merge, or Saber source modification was made.
+
+
+## Addendum: public-source chronology and executable text cross-check
+
+This follow-up compares the actual ELF `.text` sections in the retained forensic artifacts and checks the public source history for the swap-rounding change.
+
+- Mainnet `.text`: 190,664 bytes; SHA-256 `6b841dc63b3e446d57ec0cba631ad74eca58fb847af88f4461ca066cb175fac3`.
+- v1.7.2 release `.text`: 190,664 bytes; SHA-256 `e70583fc7bed284f1e2056300ecc92cc1be0a2e7e1d69b4a0e5464e078b3061f`. Only 28 byte values differ from Mainnet, corresponding to the previously documented 28 `lddw` pointer operands.
+- v1.6.9 rebuilt `.text`: 190,608 bytes; SHA-256 `48448b111e6b35e64b1995ab8337fa05752e947aabdc87f6d3902cbd09878bbb`. Across the shared 190,608-byte prefix, 37,467 byte positions differ from v1.7.2.
+- Public v1.6.9 release commit `0386247a4b83bda3f0580f24b3bbdea988c15694` is dated 2022-02-07 01:15 UTC. The Mainnet Upgrade transaction's blockTime is 2022-02-07 06:45:49 UTC.
+- The public PR [#132, “Patch rounding issue”](https://github.com/saber-hq/stable-swap/pull/132) merged at 2022-02-26 07:06:18 UTC (merge commit `05650f989c6f03b67fcb496a24269cfd3ed08ccd`). It changes the on-chain math in `stable-swap-math/src/curve.rs` from `swap_destination_amount.checked_sub(y)?` to `swap_destination_amount.checked_sub(y)?.checked_sub(1)?`. The public v1.6.9 source has the former expression; v1.7.2 has the latter.
+- The Mainnet `.text` section matches the v1.7.2 release's instruction stream except for the 28 previously identified pointer-operand bytes. Therefore, the Mainnet executable is much closer to the later public v1.7.2 machine code than to the tested v1.6.9 rebuild, and its instruction stream includes the rounding behavior present in the post-deployment public PR.
+- This is a chronology conflict: the public PR introducing that source change merged 19 days after the Upgrade transaction's blockTime. Plausible explanations include that the same change existed in an unpublished/private source revision before the public PR, that the deployed program came from another source fork/revision, or that an input to the historical source/build attribution is incomplete. The current evidence does not distinguish these explanations and does not identify the exact deployed source commit.
+- This does not, by itself, establish misconduct or a security vulnerability. It establishes that the public v1.6.9 source is not a satisfactory source-provenance explanation for the deployed instruction stream, while the later public v1.7.2 build is a very close machine-code match but postdates deployment.
+
+The earlier statement that no normal swap/accounting instruction-path difference was found is specifically relative to v1.7.2: Mainnet and v1.7.2 have identical normalized instruction streams. It must not be read as a claim that Mainnet matches v1.6.9's swap-rounding behavior.
