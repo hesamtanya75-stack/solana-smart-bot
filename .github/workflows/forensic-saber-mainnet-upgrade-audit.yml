@@ -70,6 +70,7 @@ jobs:
               page_size = 1000
               max_pages = 1000
               reached_boundary = False
+              history_exhausted = False
               while pages < max_pages:
                   config = {"limit":page_size,"commitment":"finalized"}
                   if before:
@@ -77,11 +78,11 @@ jobs:
                   batch = rpc("getSignaturesForAddress", [pubkey, config]) or []
                   pages += 1
                   if not batch:
-                      reached_boundary = True
+                      history_exhausted = True
                       break
                   collected.extend(item for item in batch if item.get("slot", 0) >= min_slot)
                   oldest = batch[-1]
-                  if oldest.get("slot", 0) < min_slot:
+                  if oldest.get("slot", 0) <= min_slot:
                       reached_boundary = True
                       break
                   next_before = oldest.get("signature")
@@ -94,7 +95,8 @@ jobs:
                   "signatures_scanned":len(collected),
                   "oldest_scanned_slot":min((x.get("slot", 0) for x in collected), default=None),
                   "boundary_reached":reached_boundary,
-                  "page_limit_reached":pages >= max_pages and not reached_boundary
+                  "history_exhausted_without_boundary":history_exhausted and not reached_boundary,
+                  "page_limit_reached":pages >= max_pages and not reached_boundary and not history_exhausted
               }
 
           def account(pubkey):
@@ -447,6 +449,7 @@ jobs:
                       "signatures_scanned":value["signatures_scanned"],
                       "oldest_scanned_slot":value["oldest_scanned_slot"],
                       "deployment_slot_boundary_reached":value["boundary_reached"],
+                      "history_exhausted_without_reaching_deployment_slot":value["history_exhausted_without_boundary"],
                       "page_limit_reached":value["page_limit_reached"]
                   } if value else None)
                   for key, value in authority_signature_history.items()
@@ -471,7 +474,7 @@ jobs:
               hashlib.sha256(active_trimmed).hexdigest() == EXPECTED_MAINNET_HASH,
               programdata_history["boundary_reached"],
               not programdata_history["page_limit_reached"],
-              all(value is None or value["boundary_reached"] for value in authority_signature_history.values()),
+              authority_signature_history["former_authority"] is not None and authority_signature_history["former_authority"]["boundary_reached"],
               all(value is None or not value["page_limit_reached"] for value in authority_signature_history.values()),
               not [x for x in later_loader_changes if x["discriminator"] == 3]
           ]
