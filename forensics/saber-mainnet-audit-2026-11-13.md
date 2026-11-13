@@ -53,8 +53,9 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 - The `.data.rel.ro` section differs at two pointer fields, which swap references to `0x28908` and `0x28948`.
 - The 28 changed `lddw` operands are exactly the references to the two adjacent 32-byte records at `0x1000341b8` and `0x1000341d8`: 24 references in `function_542` and 4 in `function_7784`; Mainnet reverses which record each group references.
 - The `.data.rel.ro` records are otherwise identical, with only the two 32-bit pointer values at file offsets `0x341d4` and `0x341f4` swapped (`0x28908` / `0x28948`).
-- The 64-byte target blocks at `0x28908` and `0x28948` each have identical bytes in the release and Mainnet binaries at the same address, but the two blocks are not identical to each other. The pointer swap therefore changes which record refers to which block; its semantic impact must not be assumed harmless.
-- After normalizing the two pointer operands, the complete 25,558-line RBPF disassemblies are identical. This establishes instruction-stream identity modulo those pointer operands, not full behavioral equivalence.
+- The 64-byte target blocks at `0x28908` and `0x28948` are identical between release and Mainnet at the same address, but differ from each other. Disassembly identifies the first block as the formatter that emits `BorrowError` (11 bytes) and the second as the formatter that emits `BorrowMutError` (14 bytes).
+- All 24 call sites that format the panic prefix `already mutably borrowed` pass record `0x1000341b8`; all 4 call sites that format `already borrowed` pass record `0x1000341d8`. In the v1.7.2 release, those records point respectively to the `BorrowError` and `BorrowMutError` formatters. In Mainnet, the two formatter pointers are swapped. Thus, on these exceptional `RefCell` borrow-panic paths, Mainnet's debug type suffix is reversed: the `already mutably borrowed` path formats `BorrowMutError`, and the `already borrowed` path formats `BorrowError`. The panic still occurs; the identified difference is the diagnostic type label, not the normal swap/accounting instruction path. This interpretation is grounded in the actual string literals, function bodies, and all 28 call sites.
+- After normalizing the two pointer operands, the complete 25,558-line RBPF disassemblies are identical. This establishes instruction-stream identity modulo those pointer operands. The observed behavioral difference is confined to the debug label in these panic diagnostics; it does not establish exact source provenance or prove behavior in every untested execution path.
 - This is strong evidence of a very close v1.7.2 relationship, but not proof that the deployed binary is the exact v1.7.2 artifact, exact source commit, or behaviorally identical in every case.
 
 ### Saber v1.6.9
@@ -75,9 +76,9 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 1. The historical Upgrade transaction is identified and succeeded.
 2. The complete buffer payload was reconstructed without gaps; its trimmed SHA-256 exactly matches the deployed Mainnet executable.
 3. The upgrade was invoked through Goki OwnerInvokeInstructionV2 with the Goki wallet as the loader authority.
-4. The closest tested public source/release match is v1.7.2 at the instruction-disassembly level, after normalizing two swapped static pointer references. Because the two referenced 64-byte blocks differ from each other, semantic equivalence is not established. Exact release-binary identity is not established.
+4. The closest tested public source/release match is v1.7.2 at the instruction-disassembly level. The two swapped static pointers have now been traced to `BorrowError` / `BorrowMutError` debug formatters: Mainnet reverses the type label in 28 exceptional `RefCell` borrow-panic diagnostics (24 `already mutably borrowed` paths and 4 `already borrowed` paths). No normal swap/accounting logic difference was found in the normalized instruction stream. Exact release-binary identity is not established.
 5. v1.6.9 and the tested later release binaries are not exact Mainnet hash matches.
-6. The precise source commit/fork that produced the deployed binary remains unproven. The remaining source-attribution task is to investigate the two static pointer-table layout differences and any unpublished build/source variation; do not label the source as verified until that is resolved.
+6. The precise source commit/fork and historical build recipe that produced the deployed binary remain unproven. The pointer-table difference is now explained at the binary-behavior level; it does not identify an unpublished source fork or prove exact source identity.
 
 ## Safety boundary
 
