@@ -267,5 +267,9 @@ jobs:
             saber-v172-release-data-rel-ro.txt
             saber-v172-mainnet-data-rel-ro.txt
             v172-data-rel-ro-diff.txt
+            v172-disassembly-status.txt
+            v172-llvm-objdump-version.txt
+            saber-v172-release-disassembly.txt
+            saber-v172-mainnet-disassembly.txt
           if-no-files-found: warn
           retention-days: 7
