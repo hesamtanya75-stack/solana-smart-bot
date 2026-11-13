@@ -148,10 +148,24 @@ jobs:
           curl --fail --location --retry 2 --retry-delay 2 --silent --show-error \
             https://github.com/saber-hq/stable-swap/releases/download/v1.7.2/stable_swap.so \
             -o /tmp/stable_swap-v1.7.2-release.so
-          sha256sum /tmp/stable_swap-v1.7.2-release.so | tee v172-release-file-sha256.txt
-          solana-verify get-executable-hash /tmp/stable_swap-v1.7.2-release.so | tee v172-release-hash.txt
-          solana-verify get-program-hash -u https://api.mainnet-beta.solana.com \
-            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee v172-mainnet-hash.txt
+          # Preserve all three exact ELF files so the 30-byte mismatch can be reproduced.
+          cp saber-source/target/verifiable/stable_swap.so saber-v172-rebuilt.so
+          cp /tmp/stable_swap-v1.7.2-release.so saber-v172-release.so
+          solana program dump -u https://api.mainnet-beta.solana.com \
+            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ saber-mainnet-deployed.so
+          cp saber-mainnet-deployed.so saber-v172-mainnet.so
+
+          sha256sum saber-v172-rebuilt.so saber-v172-release.so saber-v172-mainnet.so | tee v172-elf-file-sha256.txt
+          solana-verify get-executable-hash saber-v172-rebuilt.so | tee v172-built-hash.txt
+          solana-verify get-executable-hash saber-v172-release.so | tee v172-release-hash.txt
+          solana-verify get-executable-hash saber-v172-mainnet.so | tee v172-mainnet-hash.txt
+
+          # Capture ELF section metadata and the exact read-only data bytes for pointer-table analysis.
+          for f in saber-v172-rebuilt.so saber-v172-release.so saber-v172-mainnet.so; do
+            readelf -SW "$f" > "${f%.so}-sections.txt"
+            readelf -x .data.rel.ro "$f" > "${f%.so}-data-rel-ro.txt"
+          done
+          diff -u saber-v172-release-data-rel-ro.txt saber-v172-mainnet-data-rel-ro.txt > v172-data-rel-ro-diff.txt || true
 
           built="$(grep -Eo '[a-f0-9]{64}' v172-built-hash.txt | tail -n 1)"
           release="$(grep -Eo '[a-f0-9]{64}' v172-release-hash.txt | tail -n 1)"
@@ -220,5 +234,16 @@ jobs:
             v172-release-hash.txt
             v172-mainnet-hash.txt
             v172-comparison-status.txt
+            saber-v172-rebuilt.so
+            saber-v172-release.so
+            saber-v172-mainnet.so
+            v172-elf-file-sha256.txt
+            saber-v172-rebuilt-sections.txt
+            saber-v172-release-sections.txt
+            saber-v172-mainnet-sections.txt
+            saber-v172-rebuilt-data-rel-ro.txt
+            saber-v172-release-data-rel-ro.txt
+            saber-v172-mainnet-data-rel-ro.txt
+            v172-data-rel-ro-diff.txt
           if-no-files-found: warn
           retention-days: 7
