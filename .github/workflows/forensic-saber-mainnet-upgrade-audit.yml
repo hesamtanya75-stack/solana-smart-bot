@@ -40,7 +40,7 @@ jobs:
 
           def rpc(method, params):
               body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
-              for attempt in range(7):
+              for attempt in range(12):
                   req = urllib.request.Request(URL, data=body, headers={"Content-Type":"application/json"})
                   try:
                       with urllib.request.urlopen(req, timeout=60) as response:
@@ -48,17 +48,17 @@ jobs:
                       if result.get("error"):
                           error = result["error"]
                           code = error.get("code") if isinstance(error, dict) else None
-                          if code in (-32005, 429) and attempt < 6:
-                              time.sleep(min(2 ** attempt, 30))
+                          if code in (-32005, 429) and attempt < 11:
+                              time.sleep(min(2 ** attempt, 120))
                               continue
                           raise RuntimeError(method + " RPC error: " + json.dumps(error))
                       return result.get("result")
                   except urllib.error.HTTPError as exc:
-                      if exc.code not in (429, 500, 502, 503, 504) or attempt == 6:
+                      if exc.code not in (429, 500, 502, 503, 504) or attempt == 11:
                           raise
                       retry_after = exc.headers.get("Retry-After")
                       delay = float(retry_after) if retry_after else min(2 ** attempt, 30)
-                      time.sleep(max(1, min(delay, 60)))
+                      time.sleep(max(1, min(delay, 180)))
               raise RuntimeError(method + " RPC retry budget exhausted")
 
           def signatures_since(pubkey, min_slot):
