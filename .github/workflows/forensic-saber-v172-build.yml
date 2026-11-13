@@ -151,8 +151,11 @@ jobs:
           # Preserve all three exact ELF files so the 30-byte mismatch can be reproduced.
           cp saber-source/target/verifiable/stable_swap.so saber-v172-rebuilt.so
           cp /tmp/stable_swap-v1.7.2-release.so saber-v172-release.so
-          solana program dump -u https://api.mainnet-beta.solana.com \
-            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ saber-mainnet-deployed.so
+          docker run --rm --entrypoint solana \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            saber-anchor022-solana1814-preloaded \
+            program dump -u https://api.mainnet-beta.solana.com \
+            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ /workspace/saber-mainnet-deployed.so
           cp saber-mainnet-deployed.so saber-v172-mainnet.so
 
           sha256sum saber-v172-rebuilt.so saber-v172-release.so saber-v172-mainnet.so | tee v172-elf-file-sha256.txt
