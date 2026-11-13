@@ -376,9 +376,13 @@ jobs:
               "2022_upgrade_transaction_fee_payer":account_summary(signers[0] if signers else ""),
               "goki_smart_wallet_program":account_summary(GOKI_PROGRAM)
           }
+          authority_signature_history = {
+              "former_authority":signatures_since(upgrade_authority_at_time, deployment_slot) if upgrade_authority_at_time else None,
+              "current_authority":signatures_since(current_authority, deployment_slot) if current_authority else None
+          }
           authority_change_signatures = {
-              "former_authority":rpc("getSignaturesForAddress",[upgrade_authority_at_time,{"limit":10,"commitment":"finalized"}]) if upgrade_authority_at_time else [],
-              "current_authority":rpc("getSignaturesForAddress",[current_authority,{"limit":10,"commitment":"finalized"}]) if current_authority else []
+              key: (value["signatures"] if value else [])
+              for key, value in authority_signature_history.items()
           }
           report = {
               "scope":"read-only finalized Solana Mainnet audit; no transactions submitted",
@@ -422,7 +426,17 @@ jobs:
               },
               "buffer_account_exists_now":buf is not None,
               "authority_account_ownership_and_recent_activity":authority_accounts,
-              "authority_account_recent_signatures_sample_limit_10":authority_change_signatures,
+              "authority_account_signatures_since_deployment":authority_change_signatures,
+              "authority_signature_history_scan":{
+                  key: ({
+                      "pages_scanned":value["pages_scanned"],
+                      "signatures_scanned":value["signatures_scanned"],
+                      "oldest_scanned_slot":value["oldest_scanned_slot"],
+                      "deployment_slot_boundary_reached":value["boundary_reached"],
+                      "page_limit_reached":value["page_limit_reached"]
+                  } if value else None)
+                  for key, value in authority_signature_history.items()
+              },
               "programdata_signature_history_scan":{
                   "pages_scanned":programdata_history["pages_scanned"],
                   "signatures_scanned":programdata_history["signatures_scanned"],
@@ -443,6 +457,8 @@ jobs:
               hashlib.sha256(active_trimmed).hexdigest() == EXPECTED_MAINNET_HASH,
               programdata_history["boundary_reached"],
               not programdata_history["page_limit_reached"],
+              all(value is None or value["boundary_reached"] for value in authority_signature_history.values()),
+              all(value is None or not value["page_limit_reached"] for value in authority_signature_history.values()),
               not [x for x in later_loader_changes if x["discriminator"] == 3]
           ]
           if not all(checks):
