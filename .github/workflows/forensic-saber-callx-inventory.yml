@@ -24,9 +24,11 @@ jobs:
           python3 -m pip install --quiet pyelftools
           python3 - <<'PY'
           import base64, hashlib, json, os, urllib.request
+          from urllib.parse import urlsplit
 
           url = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
-          if not url.startswith("https://"):
+          parsed = urlsplit(url)
+          if not url or url != url.strip() or any(ch.isspace() for ch in url) or parsed.scheme != "https" or not parsed.hostname or not parsed.path.startswith("/v2/"):
               raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
           program_data = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
           body = json.dumps({"jsonrpc":"2.0","id":1,"method":"getAccountInfo",
