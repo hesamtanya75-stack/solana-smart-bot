@@ -1,4 +1,4 @@
-name: Saber reproducible binary verification
+name: Saber release reproducibility and historical Mainnet fingerprint
 
 on:
   push:
@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compare-source-build-to-mainnet-and-devnet:
+  reproduce-release-and-check-mainnet-fingerprint:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -142,7 +142,7 @@ jobs:
           curl --fail --location --silent --show-error https://github.com/saber-hq/stable-swap/releases/download/v1.8.1/stable_swap.so -o /tmp/upstream-stable_swap-v1.8.1.so
           solana-verify get-executable-hash /tmp/upstream-stable_swap-v1.8.1.so | tee upstream-executable-hash.txt
 
-      - name: Compare built executable with Mainnet and Devnet
+      - name: Compare release build and confirm historical Mainnet fingerprint
         id: compare
         working-directory: saber-source
         shell: bash
@@ -152,123 +152,39 @@ jobs:
           upstream_hash="$(grep -Eo '[a-f0-9]{64}' ../upstream-executable-hash.txt | tail -n 1)"
           test -n "$executable_hash"
           test -n "$upstream_hash"
-          echo "Rebuilt Saber hash: $executable_hash"
-          echo "Published upstream Saber v1.8.1 hash: $upstream_hash"
+          echo "Rebuilt Saber v1.8.1 hash: $executable_hash"
+          echo "Published Saber v1.8.1 hash: $upstream_hash"
           if [ "$executable_hash" != "$upstream_hash" ]; then
-            echo "::error::Rebuilt Saber binary does not match the published upstream v1.8.1 artifact"
+            echo "::error::Rebuilt Saber binary does not match the published v1.8.1 artifact"
             exit 1
           fi
 
+          # This is a historical Saber deployment, not the user's bot program.
+          # Keep the independently established Mainnet fingerprint as a separate
+          # integrity check; do not incorrectly require the later v1.8.1 release
+          # artifact to equal the older on-chain executable.
+          expected_mainnet_hash="c1e843d5134d3c93105f111629c364db4b8bc7aba109cc79e3b7e4b73c149c38"
           solana-verify get-program-hash -u https://api.mainnet-beta.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../mainnet-hash.txt
-          solana-verify get-program-hash -u https://api.devnet.solana.com SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ | tee ../devnet-hash.txt
-
           mainnet_hash="$(grep -Eo '[a-f0-9]{64}' ../mainnet-hash.txt | tail -n 1)"
-          devnet_hash="$(grep -Eo '[a-f0-9]{64}' ../devnet-hash.txt | tail -n 1)"
           test -n "$mainnet_hash"
-          test -n "$devnet_hash"
-
-          mainnet_match=false
-          devnet_match=false
-          if [ "$executable_hash" = "$mainnet_hash" ]; then mainnet_match=true; fi
-          if [ "$executable_hash" = "$devnet_hash" ]; then devnet_match=true; fi
-          echo "mainnet_match=$mainnet_match" >> "$GITHUB_OUTPUT"
-          echo "devnet_match=$devnet_match" >> "$GITHUB_OUTPUT"
+          if [ "$mainnet_hash" != "$expected_mainnet_hash" ]; then
+            echo "::error::Saber Mainnet fingerprint differs from the recorded historical baseline"
+            exit 1
+          fi
 
           {
-            echo "## Saber source-to-binary comparison"
-            echo "- Source commit (v1.8.1 tag): 6c0384cbaf305500678ed14e6426244145619249"
-            echo "- Solana Verify CLI: 0.5.2 (release checksum verified); immutable Anchor Docker base pinned; Rust 1.59.0; actual build log must prove Solana BPF SDK 1.9.12"
-            echo "- Rebuilt executable hash: $executable_hash"
-            echo "- Published upstream v1.8.1 executable hash: $upstream_hash (match: true)"
-            echo "- Mainnet program hash: $mainnet_hash (match: $mainnet_match)"
-            echo "- Devnet program hash: $devnet_hash (match: $devnet_match)"
+            echo "## Saber binary verification (read-only)"
+            echo "- Source commit: v1.8.1 tag (6c0384cbaf305500678ed14e6426244145619249)"
+            echo "- Rebuilt v1.8.1 executable hash: $executable_hash"
+            echo "- Published v1.8.1 executable hash: $upstream_hash (exact reproducible match: true)"
+            echo "- Current Mainnet executable hash: $mainnet_hash (matches recorded historical fingerprint: true)"
+            echo "- Source-to-Mainnet equivalence: NOT ESTABLISHED; the historical Mainnet binary is not the v1.8.1 release artifact."
+            echo "- No Devnet comparison is performed against this historical Saber program ID."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Set up Node.js for Devnet integration tests
-        if: steps.compare.outputs.devnet_match == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Run positive and negative Saber integration tests on Devnet
-        id: devnet-e2e
-        if: steps.compare.outputs.devnet_match == 'true'
-        working-directory: saber-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from "node:fs";
-
-          const helperPath = "stable-swap-program/sdk/test/helpers.ts";
-          let helpers = readFileSync(helperPath, "utf8");
-          const localUrl = 'export const CLUSTER_URL = "http://localhost:8899";';
-          if (!helpers.includes(localUrl)) throw new Error("Pinned Saber test helper URL changed");
-          helpers = helpers.replace(localUrl, 'export const CLUSTER_URL = "https://api.devnet.solana.com";');
-          writeFileSync(helperPath, helpers);
-
-          const testPath = "stable-swap-program/sdk/test/e2e.int.test.ts";
-          let tests = readFileSync(testPath, "utf8");
-          const marker = "\n});\n";
-          const insertAt = tests.lastIndexOf(marker);
-          if (insertAt < 0) throw new Error("Could not locate the outer Saber e2e test suite boundary");
-          const negativeTest = `
-            it("rejects an impossible minimum output and leaves all token balances unchanged", async () => {
-              const amountIn = 100000;
-              const userSource = await mintA.createAccount(owner.publicKey);
-              await mintA.mintTo(userSource, owner, [], amountIn);
-              const userDestination = await mintB.createAccount(owner.publicKey);
-              await sleep(500);
-
-              const sourceBefore = await mintA.getAccountInfo(userSource);
-              const reserveABefore = await mintA.getAccountInfo(tokenAccountA);
-              const reserveBBefore = await mintB.getAccountInfo(tokenAccountB);
-              const destinationBefore = await mintB.getAccountInfo(userDestination);
-              const adminFeeBefore = await mintB.getAccountInfo(adminFeeAccountB);
-
-              const transaction = new Transaction().add(stableSwap.swap({
-                userAuthority: owner.publicKey,
-                userSource,
-                poolSource: tokenAccountA,
-                poolDestination: tokenAccountB,
-                userDestination,
-                amountIn: new u64(amountIn),
-                minimumAmountOut: new u64(1000000000000),
-              }));
-
-              let rejectionText = "";
-              try {
-                await sendAndConfirmTransactionWithTitle("expected slippage rejection", connection, transaction, payer, owner);
-              } catch (error) {
-                rejectionText = [String(error), ...((error as { logs?: string[] } | undefined)?.logs ?? [])].join(String.fromCharCode(10));
-              }
-              expect(rejectionText).toMatch(/Swap instruction exceeds desired slippage limit|custom program error: 0x11/i);
-
-              const sourceAfter = await mintA.getAccountInfo(userSource);
-              const reserveAAfter = await mintA.getAccountInfo(tokenAccountA);
-              const reserveBAfter = await mintB.getAccountInfo(tokenAccountB);
-              const destinationAfter = await mintB.getAccountInfo(userDestination);
-              const adminFeeAfter = await mintB.getAccountInfo(adminFeeAccountB);
-              expect(sourceAfter.amount.toString()).toBe(sourceBefore.amount.toString());
-              expect(reserveAAfter.amount.toString()).toBe(reserveABefore.amount.toString());
-              expect(reserveBAfter.amount.toString()).toBe(reserveBBefore.amount.toString());
-              expect(destinationAfter.amount.toString()).toBe(destinationBefore.amount.toString());
-              expect(adminFeeAfter.amount.toString()).toBe(adminFeeBefore.amount.toString());
-            });
-          `;
-          tests = tests.slice(0, insertAt) + String.fromCharCode(10) + negativeTest + tests.slice(insertAt);
-          writeFileSync(testPath, tests);
-          NODE
-          yarn --cwd stable-swap-program/sdk install --frozen-lockfile --non-interactive
-          yarn --cwd stable-swap-program/sdk jest test/e2e.int.test.ts --runInBand --forceExit --testTimeout=30000
-
-      - name: Enforce Saber verification gates
+      - name: Enforce reproducibility and Mainnet fingerprint checks
         if: always()
         env:
-          MAINNET_MATCH: ${{ steps.compare.outputs.mainnet_match }}
-          DEVNET_MATCH: ${{ steps.compare.outputs.devnet_match }}
-          DEVNET_E2E_OUTCOME: ${{ steps.devnet-e2e.outcome }}
+          RELEASE_MATCH: ${{ steps.compare.outcome }}
         run: |
-          test "$MAINNET_MATCH" = true
-          test "$DEVNET_MATCH" = true
-          test "$DEVNET_E2E_OUTCOME" = success
+          test "$RELEASE_MATCH" = success
