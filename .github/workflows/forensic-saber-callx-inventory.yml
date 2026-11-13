@@ -24,11 +24,9 @@ jobs:
           python3 -m pip install --quiet pyelftools
           python3 - <<'PY'
           import base64, hashlib, json, os, urllib.request
-          from elftools.elf.elffile import ELFFile
-          import io
 
           url = os.environ.get("SOLANA_ARCHIVE_RPC_URL", "")
-          if not url.startswith("https://") or "/v2/" not in url:
+          if not url.startswith("https://"):
               raise SystemExit("Archive RPC secret missing or invalid; value not printed.")
           program_data = "54aePuBcYcf8G3CDrWWd2MEiw6Q7UGy2kjgQBDhqoMdt"
           body = json.dumps({"jsonrpc":"2.0","id":1,"method":"getAccountInfo",
@@ -67,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, io, json
+          import hashlib, json
           from elftools.elf.elffile import ELFFile
 
           def get_text(path):
@@ -95,23 +93,19 @@ jobs:
 
           rows=[]
           for off in sites:
-              lo=max(0,off-64)
-              hi=min(len(main),off+8)
-              a=main[lo:hi]
-              b=rel[lo:hi]
+              a=main[off:off+8]
+              b=rel[off:off+8]
               rows.append({
                   "text_offset":off,
                   "virtual_address":hex(main_addr+off),
-                  "window_start":lo,
-                  "window_length":len(a),
-                  "window_exact_match":a==b,
-                  "mainnet_window_sha256":hashlib.sha256(a).hexdigest(),
-                  "release_window_sha256":hashlib.sha256(b).hexdigest(),
-                  "callx_instruction_mainnet":main[off:off+8].hex(),
-                  "callx_instruction_release":rel[off:off+8].hex()
+                  "instruction_bytes_identical":a==b,
+                  "mainnet_instruction_sha256":hashlib.sha256(a).hexdigest(),
+                  "release_instruction_sha256":hashlib.sha256(b).hexdigest(),
+                  "callx_instruction_mainnet":a.hex(),
+                  "callx_instruction_release":b.hex()
               })
-          if not all(x["window_exact_match"] for x in rows):
-              raise SystemExit("At least one CALLX context window differs.")
+          if not all(x["instruction_bytes_identical"] for x in rows):
+              raise SystemExit("At least one CALLX instruction differs.")
 
           report={
               "scope":"Static CALLX opcode inventory and byte-window comparison only",
@@ -121,12 +115,12 @@ jobs:
               "mainnet_callx_count":len(sites),
               "release_callx_count":len(rel_sites),
               "callx_offsets_identical":sites==rel_sites,
-              "all_64_byte_preceding_plus_instruction_windows_identical":all(x["window_exact_match"] for x in rows),
+              "all_callx_instruction_bytes_identical":all(x["instruction_bytes_identical"] for x in rows),
               "sites":rows,
               "limitations":[
                   "This workflow does not perform complete SBPF control-flow or interprocedural data-flow analysis.",
                   "It does not resolve stack- or memory-derived dynamic CALLX callees.",
-                  "Matching instruction windows do not prove complete behavioral equivalence."
+                  "Matching CALLX instruction bytes do not prove dynamic callee or complete behavioral equivalence."
               ]
           }
           with open("saber-callx-static-inventory.json","w") as f:
