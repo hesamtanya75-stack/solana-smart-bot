@@ -32,6 +32,10 @@ jobs:
         run: |
           set -euo pipefail
           git clone https://github.com/saber-hq/stable-swap.git saber-source
+          # The PR's commits were squashed on merge and are not reachable from the default branch.
+          # Fetch the retained PR head ref so the exact historical commit and its parent are available.
+          git -C saber-source fetch --no-tags origin refs/pull/132/head:refs/remotes/origin/pr-132
+          git -C saber-source cat-file -e '2bfcd89146b163e8f9898899ccbcfc645ed9cd82^{tree}'
           git -C saber-source checkout --detach 2bfcd89146b163e8f9898899ccbcfc645ed9cd82
           test "$(git -C saber-source rev-parse HEAD)" = "2bfcd89146b163e8f9898899ccbcfc645ed9cd82"
           grep -F 'anchor_version = "0.20.1"' saber-source/Anchor.toml
