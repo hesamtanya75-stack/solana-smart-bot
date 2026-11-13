@@ -79,9 +79,9 @@ jobs:
                   if not batch:
                       reached_boundary = True
                       break
-                  collected.extend(item for item in batch if item.get("slot", 0) > min_slot)
+                  collected.extend(item for item in batch if item.get("slot", 0) >= min_slot)
                   oldest = batch[-1]
-                  if oldest.get("slot", 0) <= min_slot:
+                  if oldest.get("slot", 0) < min_slot:
                       reached_boundary = True
                       break
                   next_before = oldest.get("signature")
@@ -366,7 +366,7 @@ jobs:
                   continue
               for ix in loader_ixs(candidate):
                   if ix["accounts"] and ix["accounts"][0] == PROGRAM_DATA and ix["discriminator"] in (3,4,7):
-                      if candidate.get("slot",0) > deployment_slot:
+                      if candidate.get("slot",0) >= deployment_slot and item["signature"] != EXPECTED_SIGNATURE:
                           later_loader_changes.append({
                               "signature":item["signature"],"slot":candidate.get("slot"),
                               "block_time_unix":candidate.get("blockTime"),
