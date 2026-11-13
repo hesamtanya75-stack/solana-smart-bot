@@ -141,6 +141,7 @@ jobs:
           solana-verify get-executable-hash target/verifiable/stable_swap.so | tee ../v172-built-hash.txt
 
       - name: Compare rebuilt binary, published release, and deployed Mainnet program
+        id: compare
         shell: bash
         run: |
           set -euo pipefail
@@ -155,15 +156,51 @@ jobs:
           built="$(grep -Eo '[a-f0-9]{64}' v172-built-hash.txt | tail -n 1)"
           release="$(grep -Eo '[a-f0-9]{64}' v172-release-hash.txt | tail -n 1)"
           mainnet="$(grep -Eo '[a-f0-9]{64}' v172-mainnet-hash.txt | tail -n 1)"
+          built_release=false
+          release_mainnet=false
+          built_mainnet=false
+          [ "$built" = "$release" ] && built_release=true
+          [ "$release" = "$mainnet" ] && release_mainnet=true
+          [ "$built" = "$mainnet" ] && built_mainnet=true
+
+          if [ "$built_release" = true ] && [ "$release_mainnet" = true ]; then
+            status="ALL_THREE_HASHES_MATCH"
+            headline="PASS: rebuilt v1.7.2, published release, and Mainnet hashes all match."
+            echo "::notice title=Forensic comparison::$headline"
+          elif [ "$built_release" = true ] && [ "$release_mainnet" = false ]; then
+            status="BUILD_MATCHES_RELEASE_MAINNET_DIFFERS"
+            headline="WARNING: rebuilt v1.7.2 matches the published release, but Mainnet differs. This is not a Mainnet identity match."
+            echo "::warning title=Mainnet hash differs::$headline"
+          else
+            status="REBUILT_BINARY_DIFFERS"
+            headline="WARNING: rebuilt v1.7.2 differs from at least one comparison target. Investigate before drawing conclusions."
+            echo "::warning title=Forensic hash mismatch::$headline"
+          fi
+
           {
-            echo "v1.7.2 rebuilt executable hash: $built"
-            echo "v1.7.2 published release executable hash: $release"
-            echo "Mainnet deployed executable hash: $mainnet"
-            echo "rebuilt_matches_release=$([ "$built" = "$release" ] && echo true || echo false)"
-            echo "release_matches_mainnet=$([ "$release" = "$mainnet" ] && echo true || echo false)"
-            echo "rebuilt_matches_mainnet=$([ "$built" = "$mainnet" ] && echo true || echo false)"
-          } | tee v172-comparison.txt
-          cat v172-comparison.txt >> "$GITHUB_STEP_SUMMARY"
+            echo "comparison_status=$status"
+            echo "rebuilt_matches_release=$built_release"
+            echo "release_matches_mainnet=$release_mainnet"
+            echo "rebuilt_matches_mainnet=$built_mainnet"
+            echo "rebuilt_hash=$built"
+            echo "release_hash=$release"
+            echo "mainnet_hash=$mainnet"
+            echo "interpretation=$headline"
+          } | tee v172-comparison-status.txt
+
+          {
+            echo "## Saber v1.7.2 forensic comparison"
+            echo ""
+            echo "**$headline**"
+            echo ""
+            echo "- Status: `$status`"
+            echo "- Rebuilt matches release: `$built_release`"
+            echo "- Release matches Mainnet: `$release_mainnet`"
+            echo "- Rebuilt matches Mainnet: `$built_mainnet`"
+            echo ""
+            echo "A successful workflow run means the forensic steps completed; it does not by itself mean the Mainnet binary matches the release."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: Upload v1.7.2 forensic build evidence
         if: always()
@@ -183,5 +220,6 @@ jobs:
             v172-release-hash.txt
             v172-mainnet-hash.txt
             v172-comparison.txt
+            v172-comparison-status.txt
           if-no-files-found: warn
           retention-days: 7
