@@ -102,6 +102,7 @@ jobs:
                                   })
               reports.append({
                   "slot": slot,
+                  "block_time": block.get("blockTime"),
                   "blockhash": block.get("blockhash"),
                   "transaction_count": len(block.get("transactions", [])),
                   "loader_instruction_count": loader_count,
@@ -244,5 +245,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: solana-upgrade-slot-119721738
-          path: upgrade-candidates.json
+          path: |
+            upgrade-candidates.json
+            buffer-history-report.json
+            reconstructed-buffer.bin
           retention-days: 2
