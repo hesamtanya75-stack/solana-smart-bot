@@ -1,0 +1,121 @@
+name: Forensic Saber v1.6.9 RBPF disassembly
+
+on:
+  push:
+    branches:
+      - forensics/saber-v169-rbpf
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  disassemble-historical-v169:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download completed v1.6.9 and v1.7.2 evidence artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/v169 evidence/v172
+          curl --fail --location --retry 2 --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hesamtanya75-stack/solana-smart-bot/actions/artifacts/14043926285/zip \
+            -o /tmp/v169-evidence.zip
+          curl --fail --location --retry 2 --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/hesamtanya75-stack/solana-smart-bot/actions/artifacts/14043970482/zip \
+            -o /tmp/v172-evidence.zip
+          unzip -q /tmp/v169-evidence.zip -d evidence/v169
+          unzip -q /tmp/v172-evidence.zip -d evidence/v172
+          test -s evidence/v169/saber-v169-rebuilt.so
+          test -s evidence/v169/saber-v169-mainnet-dump.so
+          test -s evidence/v172/saber-v172-mainnet-rbpf-disassembly.txt
+          test -s evidence/v172/saber-v172-release-rbpf-disassembly.txt
+          sha256sum /tmp/v169-evidence.zip /tmp/v172-evidence.zip | tee evidence-archives-sha256.txt
+
+      - name: Install pinned Rust for historical RBPF disassembler
+        uses: dtolnay/rust-toolchain@1.59.0
+
+      - name: Disassemble v1.6.9 rebuild and Mainnet with Solana RBPF 0.2.21
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.2.21 https://github.com/solana-labs/rbpf.git rbpf-source
+          grep -F 'version = "0.2.21"' rbpf-source/cli/Cargo.toml
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf evidence/v169/saber-v169-rebuilt.so --use disassembler \
+            > saber-v169-rebuilt-rbpf-disassembly.txt
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf evidence/v169/saber-v169-mainnet-dump.so --use disassembler \
+            > saber-v169-mainnet-rbpf-disassembly.txt
+          test -s saber-v169-rebuilt-rbpf-disassembly.txt
+          test -s saber-v169-mainnet-rbpf-disassembly.txt
+          sha256sum saber-v169-rebuilt-rbpf-disassembly.txt saber-v169-mainnet-rbpf-disassembly.txt \
+            evidence/v172/saber-v172-release-rbpf-disassembly.txt \
+            evidence/v172/saber-v172-mainnet-rbpf-disassembly.txt | tee rbpf-disassembly-sha256.txt
+          diff -u saber-v169-mainnet-rbpf-disassembly.txt \
+            evidence/v172/saber-v172-mainnet-rbpf-disassembly.txt > v169-mainnet-v172-mainnet-disassembly.diff || true
+          diff -u saber-v169-rebuilt-rbpf-disassembly.txt \
+            evidence/v172/saber-v172-release-rbpf-disassembly.txt > v169-rebuild-v172-release-disassembly.diff || true
+          python - <<'PY'
+          from pathlib import Path
+          import difflib, hashlib
+          pairs = [
+              ("v169_rebuilt_vs_mainnet", Path("saber-v169-rebuilt-rbpf-disassembly.txt"), Path("saber-v169-mainnet-rbpf-disassembly.txt")),
+              ("v169_mainnet_vs_v172_mainnet", Path("saber-v169-mainnet-rbpf-disassembly.txt"), Path("evidence/v172/saber-v172-mainnet-rbpf-disassembly.txt")),
+              ("v169_rebuilt_vs_v172_release", Path("saber-v169-rebuilt-rbpf-disassembly.txt"), Path("evidence/v172/saber-v172-release-rbpf-disassembly.txt")),
+          ]
+          out = []
+          for label, pa, pb in pairs:
+              a, b = pa.read_text().splitlines(), pb.read_text().splitlines()
+              sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+              changed_a = changed_b = changed_pairs = 0
+              for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                  if tag != "equal":
+                      changed_a += i2 - i1
+                      changed_b += j2 - j1
+                      if tag == "replace":
+                          changed_pairs += min(i2 - i1, j2 - j1)
+              out.extend([
+                  f"[{label}]",
+                  f"left_lines={len(a)}",
+                  f"right_lines={len(b)}",
+                  f"identical={a == b}",
+                  f"changed_left_lines={changed_a}",
+                  f"changed_right_lines={changed_b}",
+                  f"paired_replacements_lower_bound={changed_pairs}",
+                  ""
+              ])
+          Path("rbpf-disassembly-comparison.txt").write_text("\\n".join(out))
+          print(Path("rbpf-disassembly-comparison.txt").read_text())
+          PY
+          {
+            echo "## Saber v1.6.9 historical RBPF disassembly"
+            echo ""
+            echo "- Inputs are the already completed v1.6.9 and v1.7.2 forensic artifacts."
+            echo "- Disassembler: Solana RBPF v0.2.21."
+            echo "- No Saber source, deployed program, or Mainnet state was modified."
+            echo "- Disassembly differences are static evidence, not a proof of runtime behavior."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload v1.6.9 RBPF disassembly evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-v1.6.9-rbpf-disassembly-evidence
+          path: |
+            evidence-archives-sha256.txt
+            rbpf-disassembly-sha256.txt
+            rbpf-disassembly-comparison.txt
+            v169-mainnet-v172-mainnet-disassembly.diff
+            v169-rebuild-v172-release-disassembly.diff
+            saber-v169-rebuilt-rbpf-disassembly.txt
+            saber-v169-mainnet-rbpf-disassembly.txt
+          if-no-files-found: warn
+          retention-days: 7
