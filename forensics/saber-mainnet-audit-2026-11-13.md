@@ -51,6 +51,8 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 - Both differ from deployed Mainnet SHA-256 `c1e843...`; therefore this is not an exact binary identity match.
 - Historical RBPF disassembly contains 28 one-byte `lddw` pointer-operand differences. The release references `0x1000341b8` 24 times and `0x1000341d8` 4 times; Mainnet uses the reverse counts.
 - The `.data.rel.ro` section differs at two pointer fields, which swap references to `0x28908` and `0x28948`.
+- The 28 changed `lddw` operands are exactly the references to the two adjacent 32-byte records at `0x1000341b8` and `0x1000341d8`: 24 references in `function_542` and 4 in `function_7784`; Mainnet reverses which record each group references.
+- The `.data.rel.ro` records are otherwise identical, with only the two 32-bit pointer values at file offsets `0x341d4` and `0x341f4` swapped (`0x28908` / `0x28948`).
 - After normalizing those two static pointer addresses, the complete 25,558-line RBPF disassemblies are identical.
 - This is strong evidence that the executable instruction logic matches the v1.7.2 release after accounting for static pointer/relocation layout. It is not proof that the deployed binary is the exact v1.7.2 artifact or exact source commit.
 
@@ -58,7 +60,9 @@ Scope: read-only Solana Mainnet forensic analysis. No Mainnet transaction, deplo
 
 - Rebuilt upgrade-era v1.6.9 source with Anchor 0.22.0 SHA-256: `5dfdbd04e39bf2d1291596c1abbd856c2f21ad1c3371b6075a15f89842102824`.
 - This differs from Mainnet SHA-256 `c1e843...`.
+- An independent control build of the unchanged v1.6.9 source with Anchor 0.22.0 reproduced the same executable hash as the historical Anchor 0.20.1 build (`5dfdbd04...`). This rules out the tested Anchor 0.20.1 vs 0.22.0 CLI choice as the cause of the mismatch.
 - Earlier disassembly comparison found 3,584 line-level differences. v1.6.9 is not a confirmed Mainnet match.
+- The original workflow temporarily removes `solana_version` from `Anchor.toml` only for the Anchor build command and restores the file via a shell trap; the pinned Solana 1.8.14 SDK/toolchain is used. The source commit and `flake.lock` hash are recorded in the evidence artifact.
 
 ### Other published releases
 
