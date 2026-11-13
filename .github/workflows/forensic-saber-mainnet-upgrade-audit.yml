@@ -430,7 +430,7 @@ jobs:
                   "deployment_slot_boundary_reached":programdata_history["boundary_reached"],
                   "page_limit_reached":programdata_history["page_limit_reached"]
               },
-              "later_loader_upgrade_or_authority_change_in_recent_40_programdata_signatures":later_loader_changes
+              "later_loader_upgrade_or_authority_change_after_deployment_in_scanned_programdata_history":later_loader_changes
           }
           with open("saber-mainnet-upgrade-audit.json","w") as f:
               json.dump(report,f,indent=2)
