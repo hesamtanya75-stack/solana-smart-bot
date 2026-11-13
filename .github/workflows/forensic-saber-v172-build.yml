@@ -241,6 +241,35 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
+      - name: Install pinned Rust for historical RBPF disassembler
+        uses: dtolnay/rust-toolchain@1.59.0
+
+      - name: Disassemble release and Mainnet ELF with Solana RBPF 0.2.21
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.2.21 https://github.com/solana-labs/rbpf.git rbpf-source
+          grep -F 'version = "0.2.21"' rbpf-source/cli/Cargo.toml
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf saber-v172-release.so --use disassembler \
+            > saber-v172-release-rbpf-disassembly.txt
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf saber-v172-mainnet.so --use disassembler \
+            > saber-v172-mainnet-rbpf-disassembly.txt
+          test -s saber-v172-release-rbpf-disassembly.txt
+          test -s saber-v172-mainnet-rbpf-disassembly.txt
+          sha256sum saber-v172-release-rbpf-disassembly.txt saber-v172-mainnet-rbpf-disassembly.txt \
+            | tee v172-rbpf-disassembly-sha256.txt
+          echo "historical_rbpf_disassembly=PASS" | tee v172-rbpf-disassembly-status.txt
+          {
+            echo "## Historical Solana RBPF disassembly"
+            echo ""
+            echo "- Disassembler: Solana RBPF v0.2.21 (the version pinned by Solana 1.8.14)"
+            echo "- Release disassembly: generated"
+            echo "- Mainnet disassembly: generated"
+            echo "- Full semantic equivalence is not inferred from disassembly alone."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload v1.7.2 forensic build evidence
         if: always()
         uses: actions/upload-artifact@v4
