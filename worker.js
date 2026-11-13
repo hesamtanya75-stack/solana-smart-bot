@@ -55,7 +55,7 @@ async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  return !!session && session.emailVerified === true && session.expiresAt > Date.now();
 }
 async function rpc(method, params, env) {
   const errors = [];
@@ -629,12 +629,12 @@ export default {
         const profile = await readProfile(env);
         if (profile.totpEnabled && profile.totpSecret) {
           const nextChallengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + nextChallengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          await env.BOT_STATE.put("mfa_challenge:" + nextChallengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0, emailVerified: true }), { expirationTtl: 300 });
           return json({ ok: true, totpRequired: true, challengeId: nextChallengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch {
         return json({ error: "نەتوانرا کۆدی Gmail بپشکنرێت." }, 400);
@@ -646,7 +646,7 @@ export default {
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (!challenge || challenge.emailVerified !== true || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
@@ -666,7 +666,7 @@ export default {
         await env.BOT_STATE.delete(key);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
     }
