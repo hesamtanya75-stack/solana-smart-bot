@@ -170,6 +170,25 @@ jobs:
           done
           diff -u saber-v172-release-data-rel-ro.txt saber-v172-mainnet-data-rel-ro.txt > v172-data-rel-ro-diff.txt || true
 
+          # Use the LLVM disassembler shipped with the exact Solana 1.8.14 BPF SDK.
+          # Host llvm-objdump may not understand Solana's historical BPF ELF target.
+          docker run --rm --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            saber-anchor022-solana1814-preloaded -c '
+              set -euo pipefail
+              sdk=/root/.local/share/solana/install/active_release/bin/sdk/bpf
+              objdump="$(find "$sdk/dependencies" -type f -name llvm-objdump -perm -u+x -print -quit)"
+              if [ -z "$objdump" ]; then
+                echo "historical_bpf_llvm_objdump=NOT_FOUND" | tee v172-disassembly-status.txt
+                exit 0
+              fi
+              "$objdump" --version | tee v172-llvm-objdump-version.txt
+              for f in saber-v172-release.so saber-v172-mainnet.so; do
+                "$objdump" --disassemble --print-imm-hex "$f" > "${f%.so}-disassembly.txt"
+              done
+              echo "historical_bpf_llvm_objdump=PASS" | tee v172-disassembly-status.txt
+            '
+
           built="$(grep -Eo '[a-f0-9]{64}' v172-built-hash.txt | tail -n 1)"
           release="$(grep -Eo '[a-f0-9]{64}' v172-release-hash.txt | tail -n 1)"
           mainnet="$(grep -Eo '[a-f0-9]{64}' v172-mainnet-hash.txt | tail -n 1)"
