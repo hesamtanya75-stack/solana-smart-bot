@@ -308,9 +308,42 @@ jobs:
           program_data_from_program = b58encode(prog_raw[4:36]) if len(prog_raw)>=36 else None
           tx_slot = tx.get("slot")
 
-          recent = rpc("getSignaturesForAddress",[PROGRAM_DATA,{"limit":40,"commitment":"finalized"}]) or []
+          def signatures_through_slot(pubkey, stop_slot):
+              # Page backward through finalized history until a page reaches the
+              # deployment slot. Fail closed if pagination cannot be completed.
+              collected = []
+              before = None
+              pages = 0
+              complete = False
+              oldest_slot = None
+              while pages < 10000:
+                  config = {"limit":1000,"commitment":"finalized"}
+                  if before:
+                      config["before"] = before
+                  page = rpc("getSignaturesForAddress", [pubkey, config]) or []
+                  pages += 1
+                  if not page:
+                      complete = True
+                      break
+                  collected.extend(page)
+                  oldest_slot = page[-1].get("slot")
+                  if oldest_slot is not None and oldest_slot <= stop_slot:
+                      complete = True
+                      break
+                  if len(page) < 1000:
+                      complete = True
+                      break
+                  before = page[-1]["signature"]
+              return collected, {"pages":pages,"entries":len(collected),
+                                 "oldest_slot_seen":oldest_slot,
+                                 "complete_through_stop_slot":complete,
+                                 "stop_slot":stop_slot}
+
+          programdata_history, programdata_history_scan = signatures_through_slot(PROGRAM_DATA, deployment_slot)
+          if not programdata_history_scan["complete_through_stop_slot"]:
+              raise SystemExit("ProgramData signature pagination did not reach the deployment slot; refusing an incomplete audit.")
           later_loader_changes = []
-          for item in recent:
+          for item in programdata_history:
               candidate = rpc("getTransaction",[item["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
               if not candidate:
                   continue
@@ -386,8 +419,8 @@ jobs:
               },
               "buffer_account_exists_now":buf is not None,
               "authority_account_ownership_and_recent_activity":authority_accounts,
-              "authority_account_recent_signatures":authority_change_signatures,
-              "later_loader_upgrade_or_authority_change_in_recent_40_programdata_signatures":later_loader_changes
+              "authority_account_last_10_signatures_context_only":authority_change_signatures,\n              "programdata_signature_history_scan":programdata_history_scan,
+              "later_loader_upgrade_or_authority_change_after_deployment_from_paginated_programdata_history":later_loader_changes
           }
           with open("saber-mainnet-upgrade-audit.json","w") as f:
               json.dump(report,f,indent=2)
@@ -538,139 +571,3 @@ jobs:
           def decode_tx(pubkey,raw):
               if raw[:8]!=hashlib.sha256(b"account:Transaction").digest()[:8]:
                   raise ValueError("Transaction discriminator mismatch")
-              off=8
-              wallet_bytes,off=take(raw,off,32)
-              index_bytes,off=take(raw,off,8)
-              bump,off=take(raw,off,1)
-              proposer,off=take(raw,off,32)
-              n,off=u32(raw,off)
-              instructions=[]
-              for ixn in range(n):
-                  prog,off=take(raw,off,32); nk,off=u32(raw,off)
-                  keys=[]
-                  for _ in range(nk):
-                      key,off=take(raw,off,32); flags,off=take(raw,off,2)
-                      keys.append({"pubkey":b58(key),"is_signer":bool(flags[0]),"is_writable":bool(flags[1])})
-                  dl,off=u32(raw,off); data,off=take(raw,off,dl)
-                  item={"program_id":b58(prog),"accounts":keys,"data_length":dl,"data_hex":data.hex()}
-                  if prog==bytes(Pubkey.from_string(GOKI)) and data[:8]==hashlib.sha256(b"global:set_owners").digest()[:8]:
-                      c,pos=u32(data,8)
-                      item["set_owners"]=[b58(data[pos+32*i:pos+32*(i+1)]) for i in range(c)]
-                  instructions.append(item)
-              ns,off=u32(raw,off)
-              signer_bytes,off=take(raw,off,ns)
-              approvals=[bool(x) for x in signer_bytes]
-              owner_seq,off=u32(raw,off)
-              eta,off=i64(raw,off)
-              executor,off=take(raw,off,32)
-              executed_at,off=i64(raw,off)
-              return {
-                  "transaction_account":pubkey,"index":int.from_bytes(index_bytes,"little"),
-                  "smart_wallet":b58(wallet_bytes),"proposer":b58(proposer),
-                  "instructions":instructions,"approval_vector":approvals,
-                  "owner_set_seqno":owner_seq,"eta_unix":eta,
-                  "executor":b58(executor),"executed_at_unix":executed_at,
-                  "is_executed":executed_at!=-1,"trailing_bytes":len(raw)-off,
-                  "trailing_bytes_are_zero":not any(raw[off:])
-              }
-          pid=Pubkey.from_string(GOKI); wallet_pk=Pubkey.from_string(WALLET)
-          wallet_info=rpc("getAccountInfo",[WALLET,{"encoding":"base64","commitment":"finalized"}])["value"]
-          if not wallet_info: raise SystemExit("SmartWallet unavailable")
-          wr=base64.b64decode(wallet_info["data"][0])
-          if wr[:8]!=hashlib.sha256(b"account:SmartWallet").digest()[:8]: raise SystemExit("SmartWallet discriminator mismatch")
-          seq=int.from_bytes(wr[65:69],"little")
-          count=int.from_bytes(wr[69:77],"little")
-          owner_count=int.from_bytes(wr[77:81],"little")
-          current=[b58(wr[81+32*i:113+32*i]) for i in range(owner_count)]
-          sigs=rpc("getSignaturesForAddress",[WALLET,{"limit":1000,"commitment":"finalized"}]) or []
-          tx_accounts=[]; missing=[]
-          for idx in range(count):
-              addr,_=Pubkey.find_program_address([b"GokiTransaction",bytes(wallet_pk),idx.to_bytes(8,"little")],pid)
-              address=str(addr)
-              ai=rpc("getAccountInfo",[address,{"encoding":"base64","commitment":"finalized"}])["value"]
-              if not ai: missing.append(idx); continue
-              if ai["owner"]!=GOKI: continue
-              state=decode_tx(address,base64.b64decode(ai["data"][0]))
-              if any("set_owners" in x for x in state["instructions"]):
-                  state["wallet_transaction_index"]=idx
-                  tx_accounts.append(state)
-          creation_sig=None
-          if sigs:
-              oldest=sigs[-1]
-              tr=rpc("getTransaction",[oldest["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
-              if tr:
-                  msg=tr["transaction"]["message"]
-                  keys=[k.get("pubkey") if isinstance(k,dict) else k for k in msg.get("accountKeys",[])]
-                  alphabet="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-                  def b58dec(s):
-                      v=0
-                      for ch in s: v=v*58+alphabet.index(ch)
-                      b=v.to_bytes((v.bit_length()+7)//8,"big") if v else b""
-                      return bytes([0])*(len(s)-len(s.lstrip("1")))+b
-                  create_disc=hashlib.sha256(b"global:create_smart_wallet").digest()[:8]
-                  for ix in msg.get("instructions",[]):
-                      pi=ix.get("programId") or (keys[ix["programIdIndex"]] if "programIdIndex" in ix else None)
-                      if pi==GOKI:
-                          raw=b58dec(ix.get("data",""))
-                          if raw[:8]==create_disc:
-                              pos=10; n,pos=u32(raw,pos)
-                              initial=[b58(raw[pos+32*i:pos+32*(i+1)]) for i in range(n)]
-                              pos+=32*n
-                              threshold=int.from_bytes(raw[pos:pos+8],"little")
-                              creation_sig={"signature":oldest["signature"],"slot":tr.get("slot"),"block_time_unix":tr.get("blockTime"),"initial_owners":initial,"threshold":threshold}
-          owner_sets={"0":creation_sig["initial_owners"] if creation_sig else None}
-          for state in sorted(tx_accounts,key=lambda x:x["wallet_transaction_index"]):
-              for ix in state["instructions"]:
-                  if "set_owners" in ix:
-                      owner_sets[str(state["owner_set_seqno"]+1)]=ix["set_owners"]
-          for state in tx_accounts:
-              prior=owner_sets.get(str(state["owner_set_seqno"]))
-              state["approval_owner_mapping"]=[
-                  {"owner_index":i,"owner":prior[i] if prior and i<len(prior) else None,"approved":v}
-                  for i,v in enumerate(state["approval_vector"])
-              ]
-              state["approval_count"]=sum(state["approval_vector"])
-              state["approval_mapping_is_complete"]=bool(prior) and len(prior)==len(state["approval_vector"])
-              related=rpc("getSignaturesForAddress",[state["transaction_account"],{"limit":100,"commitment":"finalized"}]) or []
-              events=[]
-              for sig in related:
-                  detail=rpc("getTransaction",[sig["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
-                  if not detail: continue
-                  msg=detail["transaction"]["message"]
-                  keys=[k.get("pubkey") if isinstance(k,dict) else k for k in msg.get("accountKeys",[])]
-                  required=(msg.get("header") or {}).get("numRequiredSignatures",0)
-                  events.append({
-                      "signature":sig["signature"],"slot":detail.get("slot"),
-                      "block_time_unix":detail.get("blockTime"),
-                      "meta_err":(detail.get("meta") or {}).get("err"),
-                      "top_level_signers":keys[:required],
-                      "program_ids":[ix.get("programId") for ix in msg.get("instructions",[])],
-                      "log_tail":((detail.get("meta") or {}).get("logMessages") or [])[-8:]
-                  })
-              state["related_signatures_and_events"]=events
-          report={
-              "wallet":WALLET,"current_owner_set_seqno":seq,"current_owners":current,
-              "num_transactions":count,"wallet_signatures_scanned":len(sigs),
-              "missing_transaction_indices":missing,"wallet_creation":creation_sig,
-              "owner_sets_reconstructed_by_seqno":owner_sets,
-              "set_owners_transaction_states":tx_accounts,
-              "scope":"read-only finalized Mainnet RPC; no transactions submitted"
-          }
-          with open("goki-owner-history.json","w") as f: json.dump(report,f,indent=2)
-          print(json.dumps(report,indent=2))
-          PY
-      - name: Upload Goki owner-history audit
-        uses: actions/upload-artifact@v4
-        with:
-          name: goki-owner-history-audit
-          path: goki-owner-history.json
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Upload sanitized read-only audit
-        uses: actions/upload-artifact@v4
-        with:
-          name: saber-mainnet-upgrade-audit
-          path: saber-mainnet-upgrade-audit.json
-          retention-days: 7
-          if-no-files-found: error
