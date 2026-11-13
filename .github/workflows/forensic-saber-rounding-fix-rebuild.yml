@@ -1,0 +1,176 @@
+name: Forensic Saber rounding-fix source rebuild
+
+on:
+  push:
+    branches:
+      - forensics/saber-rounding-fix-rebuild
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild-rounding-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Install pinned Solana Verify CLI 0.5.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          base="https://github.com/solana-foundation/solana-verifiable-build/releases/download/v0.5.2"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux" -o "$HOME/.local/bin/solana-verify"
+          curl --fail --location --retry 2 --retry-delay 2 "$base/solana-verify-0.5.2-linux.sha256" -o /tmp/solana-verify.sha256
+          expected="b9d5ccce9634dc14269cab3e7a58649bc141b3306e7735a94478c936341f211f"
+          test "$(awk '{print $1}' /tmp/solana-verify.sha256)" = "$expected"
+          test "$(sha256sum "$HOME/.local/bin/solana-verify" | awk '{print $1}')" = "$expected"
+          chmod 0755 "$HOME/.local/bin/solana-verify"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Checkout exact public rounding-fix commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/saber-hq/stable-swap.git saber-source
+          git -C saber-source checkout --detach 2bfcd89146b163e8f9898899ccbcfc645ed9cd82
+          test "$(git -C saber-source rev-parse HEAD)" = "2bfcd89146b163e8f9898899ccbcfc645ed9cd82"
+          grep -F 'anchor_version = "0.20.1"' saber-source/Anchor.toml
+          grep -F 'solana_version = "1.8.14"' saber-source/Anchor.toml
+          git -C saber-source show -s --format=fuller HEAD | tee saber-source-commit.txt
+          git -C saber-source show -s --format='parent=%P' HEAD | tee saber-source-parent.txt
+          git -C saber-source show HEAD:stable-swap-math/src/curve.rs | grep -F 'swap_destination_amount.checked_sub(y)?.checked_sub(1)?'
+          sha256sum saber-source/flake.lock | tee saber-flake-lock-sha256.txt
+
+      - name: Install Nix for exact historical flake
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pin Solana 1.8.14 in historical build image
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana-release.tar.bz2
+          echo "edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355  solana-release.tar.bz2" | sha256sum -c -
+          test "$(wc -c < solana-release.tar.bz2)" -eq 277903704
+          cat > Dockerfile.historical <<'DOCKERFILE'
+          FROM projectserum/build@sha256:4d1a34040df16afbb34c621cc42263d6e225c47406e4a565763adbcae9f1b5f5
+          COPY solana-release.tar.bz2 /tmp/solana-release.tar.bz2
+          RUN mkdir -p /root/.local/share/solana/install/releases/1.8.14 \
+              && tar -xjf /tmp/solana-release.tar.bz2 -C /tmp \
+              && mv /tmp/solana-release /root/.local/share/solana/install/releases/1.8.14/solana-release \
+              && ln -sfn /root/.local/share/solana/install/releases/1.8.14/solana-release /root/.local/share/solana/install/active_release \
+              && rm -f /tmp/solana-release.tar.bz2
+          ENV PATH="/root/.local/share/solana/install/active_release/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          DOCKERFILE
+          docker build --pull=false -f Dockerfile.historical -t saber-anchor0201-solana1814-preloaded .
+          docker run --rm --entrypoint solana saber-anchor0201-solana1814-preloaded --version | tee solana-builder-cli-version.txt
+          grep -F "solana-cli 1.8.14" solana-builder-cli-version.txt
+
+      - name: Rebuild Saber from rounding-fix commit
+        working-directory: saber-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix shell .#ci --command anchor --version | tee ../anchor-version.txt
+          grep -F "anchor-cli 0.20.1" ../anchor-version.txt
+          original="$(mktemp)"
+          cp Anchor.toml "$original"
+          restore_config() { cp "$original" Anchor.toml; rm -f "$original"; }
+          trap restore_config EXIT
+          sed '/^solana_version[[:space:]]*=/d' "$original" > Anchor.toml
+          echo "build_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee ../build.log
+          set -o pipefail
+          timeout --foreground --signal=TERM --kill-after=2m 60m \
+            nix shell .#ci --command anchor build --verifiable --program-name stable_swap \
+              --docker-image saber-anchor0201-solana1814-preloaded \
+            2>&1 | tee -a ../build.log
+          echo "build_finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a ../build.log
+          test -s target/verifiable/stable_swap.so
+          cp target/verifiable/stable_swap.so ../saber-rounding-fix-rebuilt.so
+          sha256sum ../saber-rounding-fix-rebuilt.so | tee ../rebuilt-file-sha256.txt
+          solana-verify get-executable-hash ../saber-rounding-fix-rebuilt.so | tee ../rebuilt-executable-hash.txt
+
+      - name: Dump current Mainnet executable read-only and compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/solana-labs/solana/releases/download/v1.8.14"
+          curl --fail --location --retry 2 --retry-delay 2 --max-time 600 \
+            "$base/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana-release.tar.bz2
+          echo "edac5d7120b2a011f82d549d2bd3ca1dbff7917ba8d0ed8b93b707bd96f80355  solana-release.tar.bz2" | sha256sum -c -
+          mkdir -p /tmp/solana-v1814
+          tar -xjf solana-release.tar.bz2 -C /tmp/solana-v1814
+          export PATH="/tmp/solana-v1814/solana-release/bin:$HOME/.local/bin:$PATH"
+          solana --version | tee solana-cli-version.txt
+          solana program dump -u https://api.mainnet-beta.solana.com \
+            SSwpkEEcbUqx4vtoEByFjSkhKdCT862DNVb52nZg1UZ saber-mainnet-dump.so
+          sha256sum saber-mainnet-dump.so | tee mainnet-file-sha256.txt
+          solana-verify get-executable-hash saber-mainnet-dump.so | tee mainnet-executable-hash.txt
+          built="$(tail -n 1 rebuilt-executable-hash.txt | tr -d '\r')"
+          mainnet="$(tail -n 1 mainnet-executable-hash.txt | tr -d '\r')"
+          if [ "$built" = "$mainnet" ]; then
+            status="ROUNDING_FIX_REBUILD_MATCHES_MAINNET"
+            headline="PASS: this exact public rounding-fix commit rebuild matches the Mainnet executable hash."
+          else
+            status="ROUNDING_FIX_REBUILD_DIFFERS_FROM_MAINNET"
+            headline="WARNING: this exact public rounding-fix commit rebuild does not match the Mainnet executable hash."
+          fi
+          {
+            echo "comparison_status=$status"
+            echo "source_commit=2bfcd89146b163e8f9898899ccbcfc645ed9cd82"
+            echo "source_parent=318df813da1f58d8bd39b1d7a7c10a9852572cf3"
+            echo "rebuilt_hash=$built"
+            echo "mainnet_hash=$mainnet"
+            echo "interpretation=$headline"
+          } | tee comparison-status.txt
+          echo "$headline" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned Rust and historical RBPF disassembler
+        uses: dtolnay/rust-toolchain@1.59.0
+
+      - name: Disassemble rebuilt and Mainnet executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.2.21 https://github.com/solana-labs/rbpf.git rbpf-source
+          grep -F 'version = "0.2.21"' rbpf-source/cli/Cargo.toml
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf saber-rounding-fix-rebuilt.so --use disassembler \
+            > rounding-fix-rebuilt-rbpf-disassembly.txt
+          cargo run --manifest-path rbpf-source/cli/Cargo.toml --release -- \
+            --elf saber-mainnet-dump.so --use disassembler \
+            > mainnet-rbpf-disassembly.txt
+          sha256sum rounding-fix-rebuilt-rbpf-disassembly.txt mainnet-rbpf-disassembly.txt | tee rbpf-disassembly-sha256.txt
+          diff -u rounding-fix-rebuilt-rbpf-disassembly.txt mainnet-rbpf-disassembly.txt > rebuilt-mainnet-rbpf.diff || true
+          test -s rounding-fix-rebuilt-rbpf-disassembly.txt
+          test -s mainnet-rbpf-disassembly.txt
+
+      - name: Upload rounding-fix rebuild evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saber-rounding-fix-rebuild-evidence
+          path: |
+            saber-source-commit.txt
+            saber-source-parent.txt
+            saber-flake-lock-sha256.txt
+            anchor-version.txt
+            solana-builder-cli-version.txt
+            solana-cli-version.txt
+            build.log
+            rebuilt-file-sha256.txt
+            rebuilt-executable-hash.txt
+            mainnet-file-sha256.txt
+            mainnet-executable-hash.txt
+            comparison-status.txt
+            rounding-fix-rebuilt-rbpf-disassembly.txt
+            mainnet-rbpf-disassembly.txt
+            rbpf-disassembly-sha256.txt
+            rebuilt-mainnet-rbpf.diff
+            saber-rounding-fix-rebuilt.so
+            saber-mainnet-dump.so
+          if-no-files-found: warn
+          retention-days: 7
