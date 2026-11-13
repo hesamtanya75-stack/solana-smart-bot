@@ -131,7 +131,7 @@ jobs:
           echo "build_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee ../saber-v172-build.log
           set -o pipefail
           timeout --foreground --signal=TERM --kill-after=2m 45m \
-            stdbuf -oL -eL nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
+            nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
               anchor build --verifiable --program-name stable_swap --docker-image "$IMAGE" \
             2>&1 | tee -a ../saber-v172-build.log
           echo "build_finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a ../saber-v172-build.log
