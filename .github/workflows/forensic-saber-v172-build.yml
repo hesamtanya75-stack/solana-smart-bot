@@ -128,9 +128,13 @@ jobs:
           ! grep -q '^solana_version[[:space:]]*=' Anchor.toml
           grep -F 'anchor_version = "0.22.0"' Anchor.toml
 
-          nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
-            anchor build --verifiable --program-name stable_swap --docker-image "$IMAGE" \
-            2>&1 | tee ../saber-v172-build.log
+          echo "build_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee ../saber-v172-build.log
+          set -o pipefail
+          timeout --foreground --signal=TERM --kill-after=2m 45m \
+            stdbuf -oL -eL nix shell /tmp/anchor-only#packages.x86_64-linux.default --command \
+              anchor build --verifiable --program-name stable_swap --docker-image "$IMAGE" \
+            2>&1 | tee -a ../saber-v172-build.log
+          echo "build_finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a ../saber-v172-build.log
 
           test -s target/verifiable/stable_swap.so
           sha256sum target/verifiable/stable_swap.so | tee ../v172-built-file-sha256.txt
