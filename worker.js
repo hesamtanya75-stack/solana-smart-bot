@@ -559,7 +559,7 @@ export default {
         const adminEmail = String(env.ADMIN_EMAIL || "").trim();
         const resendKey = String(env.RESEND_API_KEY || "").trim();
         const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
-        if (!adminEmail || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(adminEmail)) {
+        if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
           return json({ error: "ADMIN_EMAIL لە Cloudflare Worker زیاد نەکراوە یان دروست نییە." }, 503);
         }
         if (!resendKey) return json({ error: "RESEND_API_KEY لە Cloudflare Worker نییە." }, 503);
@@ -608,7 +608,7 @@ export default {
     if (url.pathname === "/api/login/email" && request.method === "POST") {
       try {
         const { challengeId, code } = await request.json();
-        if (typeof challengeId !== "string" || !/^\\d{6}$/.test(String(code || ""))) {
+        if (typeof challengeId !== "string" || !/^\d{6}$/.test(String(code || ""))) {
           return json({ error: "کۆدی ٦ ژمارەیی دروست بنووسە." }, 400);
         }
         const key = "email_login_challenge:" + challengeId;
