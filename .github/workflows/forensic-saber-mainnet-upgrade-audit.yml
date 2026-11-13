@@ -47,6 +47,42 @@ jobs:
                   raise RuntimeError(method + " RPC error: " + json.dumps(result["error"]))
               return result.get("result")
 
+          def signatures_since(pubkey, min_slot):
+              # getSignaturesForAddress is newest-first. Page backwards until
+              # the oldest returned signature reaches the deployment slot.
+              before = None
+              collected = []
+              pages = 0
+              page_size = 1000
+              max_pages = 1000
+              reached_boundary = False
+              while pages < max_pages:
+                  config = {"limit":page_size,"commitment":"finalized"}
+                  if before:
+                      config["before"] = before
+                  batch = rpc("getSignaturesForAddress", [pubkey, config]) or []
+                  pages += 1
+                  if not batch:
+                      reached_boundary = True
+                      break
+                  collected.extend(item for item in batch if item.get("slot", 0) > min_slot)
+                  oldest = batch[-1]
+                  if oldest.get("slot", 0) <= min_slot:
+                      reached_boundary = True
+                      break
+                  next_before = oldest.get("signature")
+                  if not next_before or next_before == before:
+                      raise RuntimeError("Signature pagination made no progress for " + pubkey)
+                  before = next_before
+              return {
+                  "signatures":collected,
+                  "pages_scanned":pages,
+                  "signatures_scanned":len(collected),
+                  "oldest_scanned_slot":min((x.get("slot", 0) for x in collected), default=None),
+                  "boundary_reached":reached_boundary,
+                  "page_limit_reached":pages >= max_pages and not reached_boundary
+              }
+
           def account(pubkey):
               return rpc("getAccountInfo", [pubkey, {"encoding":"base64","commitment":"finalized"}]).get("value")
 
@@ -308,9 +344,9 @@ jobs:
           program_data_from_program = b58encode(prog_raw[4:36]) if len(prog_raw)>=36 else None
           tx_slot = tx.get("slot")
 
-          recent = rpc("getSignaturesForAddress",[PROGRAM_DATA,{"limit":40,"commitment":"finalized"}]) or []
+          programdata_history = signatures_since(PROGRAM_DATA, deployment_slot)
           later_loader_changes = []
-          for item in recent:
+          for item in programdata_history["signatures"]:
               candidate = rpc("getTransaction",[item["signature"],{"encoding":"json","commitment":"finalized","maxSupportedTransactionVersion":0}])
               if not candidate:
                   continue
@@ -386,7 +422,14 @@ jobs:
               },
               "buffer_account_exists_now":buf is not None,
               "authority_account_ownership_and_recent_activity":authority_accounts,
-              "authority_account_recent_signatures":authority_change_signatures,
+              "authority_account_recent_signatures_sample_limit_10":authority_change_signatures,
+              "programdata_signature_history_scan":{
+                  "pages_scanned":programdata_history["pages_scanned"],
+                  "signatures_scanned":programdata_history["signatures_scanned"],
+                  "oldest_scanned_slot":programdata_history["oldest_scanned_slot"],
+                  "deployment_slot_boundary_reached":programdata_history["boundary_reached"],
+                  "page_limit_reached":programdata_history["page_limit_reached"]
+              },
               "later_loader_upgrade_or_authority_change_in_recent_40_programdata_signatures":later_loader_changes
           }
           with open("saber-mainnet-upgrade-audit.json","w") as f:
@@ -398,6 +441,8 @@ jobs:
               program_data_from_program == PROGRAM_DATA,
               hashlib.sha256(active_prefix).hexdigest() == EXPECTED_BUFFER_FULL_SHA256,
               hashlib.sha256(active_trimmed).hexdigest() == EXPECTED_MAINNET_HASH,
+              programdata_history["boundary_reached"],
+              not programdata_history["page_limit_reached"],
               not [x for x in later_loader_changes if x["discriminator"] == 3]
           ]
           if not all(checks):
