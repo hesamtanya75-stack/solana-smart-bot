@@ -219,7 +219,6 @@ jobs:
             v172-release-file-sha256.txt
             v172-release-hash.txt
             v172-mainnet-hash.txt
-            v172-comparison.txt
             v172-comparison-status.txt
           if-no-files-found: warn
           retention-days: 7
