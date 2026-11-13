@@ -55,7 +55,7 @@ async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  return !!session && session.emailVerified === true && session.expiresAt > Date.now();
 }
 async function rpc(method, params, env) {
   const errors = [];
@@ -554,17 +554,91 @@ export default {
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
         await env.BOT_STATE.delete(loginKey);
+
+        // A fixed ADMIN_EMAIL keeps this as a private, single-admin login flow.
+        const adminEmail = String(env.ADMIN_EMAIL || "").trim();
+        const resendKey = String(env.RESEND_API_KEY || "").trim();
+        const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
+        if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+          return json({ error: "ADMIN_EMAIL لە Cloudflare Worker زیاد نەکراوە یان دروست نییە." }, 503);
+        }
+        if (!resendKey) return json({ error: "RESEND_API_KEY لە Cloudflare Worker نییە." }, 503);
+
+        const sendKey = "email_otp_send:" + ip;
+        const sendLimit = await env.BOT_STATE.get(sendKey, "json") || { count: 0 };
+        if (Number(sendLimit.count || 0) >= 3) {
+          return json({ error: "زۆر کۆدی ئیمەیڵ داواکرا؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
+        const random = crypto.getRandomValues(new Uint32Array(1))[0];
+        const code = String(random % 1000000).padStart(6, "0");
+        const challengeId = crypto.randomUUID();
+        const mailResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + resendKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [adminEmail],
+            subject: "Your Solana Smart Bot sign-in code",
+            text: "Your sign-in code is " + code + ". It expires in 10 minutes. If you did not request this, ignore this email.",
+            html: "<div style='font-family:Arial,sans-serif;padding:24px'><h2>Solana Smart Bot</h2><p>Your sign-in verification code is:</p><div style='font-size:32px;font-weight:700;letter-spacing:8px'>" + code + "</div><p>This code expires in 10 minutes. If you did not request it, ignore this email.</p></div>"
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!mailResponse.ok) {
+          const detail = await mailResponse.text().catch(() => "");
+          console.error("Resend email delivery failed", mailResponse.status, detail.slice(0, 300));
+          return json({ error: "ناردنی کۆدی Gmail سەرکەوتوو نەبوو؛ ڕێکخستنی Resend بپشکنە." }, 503);
+        }
+        await env.BOT_STATE.put(sendKey, JSON.stringify({
+          count: Number(sendLimit.count || 0) + 1
+        }), { expirationTtl: 900 });
+        await env.BOT_STATE.put("email_login_challenge:" + challengeId, JSON.stringify({
+          codeHash: await hashText(code),
+          createdAt: Date.now(),
+          attempts: 0
+        }), { expirationTtl: 600 });
+        const at = adminEmail.indexOf("@");
+        const masked = adminEmail.slice(0, Math.min(2, at)) + "***" + adminEmail.slice(at);
+        return json({ ok: true, emailOtpRequired: true, challengeId, email: masked });
+      } catch (error) {
+        console.error("Email login challenge failed", String(error?.message || error));
+        return json({ error: "نەتوانرا کۆدی چوونەژوورەوە بنێردرێت؛ دووبارە هەوڵ بدە." }, 503);
+      }
+    }
+    if (url.pathname === "/api/login/email" && request.method === "POST") {
+      try {
+        const { challengeId, code } = await request.json();
+        if (typeof challengeId !== "string" || !/^\d{6}$/.test(String(code || ""))) {
+          return json({ error: "کۆدی ٦ ژمارەیی دروست بنووسە." }, 400);
+        }
+        const key = "email_login_challenge:" + challengeId;
+        const challenge = await env.BOT_STATE.get(key, "json");
+        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 600000) {
+          return json({ error: "کاتی کۆدی ئیمەیڵ تەواو بوو؛ دووبارە بچۆ ژوورەوە." }, 401);
+        }
+        if (Number(challenge.attempts || 0) >= 5) {
+          await env.BOT_STATE.delete(key);
+          return json({ error: "هەوڵەکانی کۆد تەواو بوون؛ دووبارە بچۆ ژوورەوە." }, 429);
+        }
+        if (await hashText(code) !== challenge.codeHash) {
+          challenge.attempts = Number(challenge.attempts || 0) + 1;
+          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 600 });
+          return json({ error: "کۆدی Gmail هەڵەیە." }, 401);
+        }
+        await env.BOT_STATE.delete(key);
         const profile = await readProfile(env);
         if (profile.totpEnabled && profile.totpSecret) {
-          const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
-          return json({ ok: true, mfaRequired: true, challengeId });
+          const nextChallengeId = crypto.randomUUID();
+          await env.BOT_STATE.put("mfa_challenge:" + nextChallengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0, emailVerified: true }), { expirationTtl: 300 });
+          return json({ ok: true, totpRequired: true, challengeId: nextChallengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch {
+        return json({ error: "نەتوانرا کۆدی Gmail بپشکنرێت." }, 400);
+      }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
@@ -572,7 +646,7 @@ export default {
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (!challenge || challenge.emailVerified !== true || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
@@ -592,7 +666,7 @@ export default {
         await env.BOT_STATE.delete(key);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
     }
