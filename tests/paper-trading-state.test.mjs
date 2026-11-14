@@ -68,6 +68,39 @@ test("interrupted initializing marker safely resumes the one-time KV import", as
   assert.equal(await kv.get("paper_state_do_migration_v1"), "complete");
 });
 
+test("committed DO state completes a failed KV marker write before any recovery", async () => {
+  const kv = new MemoryKV({ balance: 38, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
+  const originalPut = kv.put.bind(kv);
+  let failCompletionOnce = true;
+  kv.put = async (key, value) => {
+    if (key === "paper_state_do_migration_v1" && value === "complete" && failCompletionOnce) {
+      failCompletionOnce = false;
+      throw new Error("simulated KV write failure");
+    }
+    return originalPut(key, value);
+  };
+  const storage = new MemoryStorage();
+  const instance = new PaperTradingState({ storage }, { BOT_STATE: kv });
+
+  const interrupted = await call(instance, { operation: "get" });
+  assert.equal(interrupted.status, 503);
+  assert.equal(await kv.get("paper_state_do_migration_v1"), "initializing");
+  assert.equal((await storage.get("paper_state_v1")).migrationMarkerPending, true);
+
+  const recovered = await call(instance, { operation: "get" });
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.body.state.balance, 38);
+  assert.equal(await kv.get("paper_state_do_migration_v1"), "complete");
+  assert.equal((await storage.get("paper_state_v1")).migrationMarkerPending, false);
+
+  // If DO storage is subsequently lost, the completed marker must prevent
+  // the stale legacy KV snapshot from being imported again.
+  storage.values.delete("paper_state_v1");
+  const refused = await call(instance, { operation: "get" });
+  assert.equal(refused.status, 503);
+  assert.equal(refused.body.error, "Paper trading state operation failed");
+});
+
 test("missing Durable Object storage never resurrects the stale KV snapshot", async () => {
   const kv = new MemoryKV({ balance: 44, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
   await kv.put("paper_state_do_migration_v1", "complete");
