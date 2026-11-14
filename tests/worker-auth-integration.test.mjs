@@ -91,7 +91,7 @@ function makeEnvironment(profile = null) {
 async function post(path, body, env, headers = {}) {
   return worker.fetch(new Request("https://bot.example" + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", Origin: "https://bot.example", "Sec-Fetch-Site": "same-origin", ...headers },
     body: JSON.stringify(body)
   }), env);
 }
@@ -106,7 +106,7 @@ async function get(path, env, token) {
 async function put(path, body, env, token) {
   return worker.fetch(new Request("https://bot.example" + path, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, Origin: "https://bot.example", "Sec-Fetch-Site": "same-origin" },
     body: JSON.stringify(body)
   }), env);
 }
