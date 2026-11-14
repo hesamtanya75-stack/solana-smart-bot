@@ -780,10 +780,9 @@ export default {
             failureScope
           });
           if (!result.ok) {
-            await recordAuthFailure(env, failureScope);
-            return json({ error: "کۆدی Authenticator هەڵەیە یان پێشتر بەکارهاتووە" }, 401);
+            const status = result.reason === "rate-limited" ? 429 : 401;
+            return json({ error: status === 429 ? "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ دواتر هەوڵ بدە." : "کۆدی Authenticator هەڵەیە یان پێشتر بەکارهاتووە" }, status);
           }
-          await clearAuthFailures(env, failureScope);
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
       }
