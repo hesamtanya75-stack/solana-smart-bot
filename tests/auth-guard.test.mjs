@@ -309,3 +309,13 @@ test("TOTP enrollment failure counter is enforced within one transaction", async
   assert.equal(attempts.filter(result => result.reason === "invalid").length, 4);
   assert.equal(attempts.filter(result => result.reason === "rate-limited").length, 4);
 });
+
+
+test("legacy rate-limit counters migrate once without overwriting active guard state", async () => {
+  const { guard } = makeGuard();
+  assert.equal(await guard.importLegacyFailure("login:legacy-ip", 4, 1000), true);
+  assert.equal(await guard.importLegacyFailure("login:legacy-ip", 1, 1001), false);
+  assert.equal(await guard.recordFailure("login:legacy-ip", 1002).then(result => result.count), 5);
+  assert.equal(await guard.isRateLimited("login:legacy-ip", 1003), true);
+  assert.equal(await guard.importLegacyFailure("login:other-ip", 0, 1000).catch(() => false), false);
+});
