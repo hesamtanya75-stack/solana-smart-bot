@@ -228,6 +228,30 @@ test("Worker migrates an active legacy password rate limit before checking login
 });
 
 
+test("Worker preserves legacy MFA data when initialized AuthGuard state does not match it", async () => {
+  const legacySecret = "JBSWY3DPEHPK3PXP";
+  const { env, guard } = makeEnvironment({
+    totpEnabled: true,
+    totpSecret: legacySecret,
+    backupHash: await sha256("ABCD1234EFGH5678"),
+    lastTotpCounter: 123
+  });
+  await guard.initializeFromLegacy({
+    totpEnabled: true,
+    totpSecret: "KRUGS4ZANFZSAYJA",
+    backupHash: await sha256("DIFFERENT-BACKUP-CODE"),
+    lastTotpCounter: 122
+  });
+
+  const response = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(response.status, 503);
+  assert.equal(await env.BOT_STATE.get("auth_guard_migration_v1"), null);
+  const legacyProfile = await env.BOT_STATE.get("admin_profile", "json");
+  assert.equal(legacyProfile.totpSecret, legacySecret);
+  assert.equal(legacyProfile.lastTotpCounter, 123);
+  assert.equal(legacyProfile.backupHash, await sha256("ABCD1234EFGH5678"));
+});
+
 test("Worker refuses to re-import stale KV MFA secrets if migrated Durable Object state is missing", async () => {
   const { env } = makeEnvironment({
     totpEnabled: true,
