@@ -84,6 +84,38 @@ test("compare-and-set rejects stale snapshots without overwriting current state"
   assert.equal(current.body.revision, 1);
 });
 
+test("idle cron snapshots do not close the one-time browser migration window", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const initial = await call(instance, { operation: "get" });
+  const idleCycle = await call(instance, {
+    operation: "compare-and-set",
+    expectedRevision: initial.body.revision,
+    state: { ...initial.body.state, lastRunAt: "2026-11-14T20:00:00.000Z", lastMessage: "idle cycle" }
+  });
+  assert.equal(idleCycle.status, 200);
+  const migrated = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: idleCycle.body.revision,
+    state: { balance: 75, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(migrated.status, 200);
+  assert.equal(migrated.body.state.balance, 75);
+});
+
+test("changing automation closes the one-time browser migration window", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const enabled = await call(instance, { operation: "automation", settings: { enabled: true } });
+  const migration = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: enabled.body.revision,
+    state: { balance: 70, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(migration.status, 409);
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.body.state.autoEnabled, true);
+  assert.equal(current.body.state.balance, 100);
+});
+
 test("simultaneous paper buys cannot overspend or duplicate an open mint", async () => {
   const { instance } = makeDO({ balance: 10, trades: [], updatedAt: null });
   const results = await Promise.all([
