@@ -1,0 +1,205 @@
+const DEFAULT_STATE = {
+  balance: 100,
+  trades: [],
+  autoEnabled: false,
+  paused: false,
+  scannedMints: [],
+  deferredMints: [],
+  lastRunAt: null,
+  lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
+  lastScanReport: [],
+  updatedAt: null
+};
+
+function cleanState(value) {
+  const s = value && typeof value === "object" ? value : {};
+  const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const trades = Array.isArray(s.trades) ? s.trades.slice(-500).flatMap(trade => {
+    if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
+        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return [];
+    const amount = finite(trade.amount), buyPrice = finite(trade.buyPrice), tokens = finite(trade.tokens);
+    if (amount <= 0 || buyPrice <= 0 || tokens <= 0) return [];
+    return [{
+      mint: trade.mint.trim(), amount, buyPrice,
+      currentPrice: finite(trade.currentPrice) || buyPrice, tokens,
+      sold: trade.sold === true, sellPrice: finite(trade.sellPrice),
+      saleValue: finite(trade.saleValue),
+      boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
+      soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
+    }];
+  }) : [];
+  return {
+    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
+    trades,
+    autoEnabled: s.autoEnabled === true,
+    paused: s.paused === true,
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.filter(x => typeof x === "string" && x.length <= 64).slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).flatMap(x =>
+      x && typeof x === "object" && !Array.isArray(x) && typeof x.mint === "string" &&
+      x.mint.length <= 64 && Number.isFinite(Number(x.retryAt))
+        ? [{ mint: x.mint, retryAt: Number(x.retryAt) }] : []) : [],
+    lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt.slice(0, 64) : null,
+    lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).flatMap(x =>
+      x && typeof x === "object" && !Array.isArray(x) ? [{
+        mint: typeof x.mint === "string" ? x.mint.slice(0, 64) : "",
+        status: typeof x.status === "string" ? x.status.slice(0, 40) : "",
+        reasons: Array.isArray(x.reasons) ? x.reasons.filter(v => typeof v === "string").slice(0, 10).map(v => v.slice(0, 300)) : []
+      }] : []) : [],
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
+  };
+}
+
+function response(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
+  });
+}
+
+export class PaperTradingState {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+  }
+
+  async ensureRecord() {
+    let record = await this.ctx.storage.get("paper_state_v1");
+    if (record) return record;
+    // Read the legacy KV snapshot before entering the SQLite transaction. The
+    // transaction then guarantees that only one concurrent initializer wins.
+    const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+    const candidate = { state: cleanState(legacy || DEFAULT_STATE), revision: 0, recentOperations: [] };
+    return this.ctx.storage.transaction(async txn => {
+      const existing = await txn.get("paper_state_v1");
+      if (existing) return existing;
+      await txn.put("paper_state_v1", candidate);
+      return candidate;
+    });
+  }
+
+  async transact(mutator) {
+    await this.ensureRecord();
+    return this.ctx.storage.transaction(async txn => {
+      const record = await txn.get("paper_state_v1");
+      const result = await mutator(record);
+      if (result?.write) await txn.put("paper_state_v1", result.record);
+      return result?.value;
+    });
+  }
+
+  async fetch(request) {
+    if (request.method !== "POST") return response({ error: "Method not allowed" }, 405);
+    let body;
+    try { body = await request.json(); }
+    catch { return response({ error: "Invalid JSON" }, 400); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return response({ error: "JSON object required" }, 400);
+
+    try {
+      if (body.operation === "get") {
+        const record = await this.ensureRecord();
+        return response({ state: record.state, revision: record.revision });
+      }
+
+      if (body.operation === "compare-and-set") {
+        if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0 ||
+            !body.state || typeof body.state !== "object" || Array.isArray(body.state)) {
+          return response({ error: "Invalid state update" }, 400);
+        }
+        const result = await this.transact(record => {
+          if (record.revision !== body.expectedRevision) {
+            return { value: { conflict: true, revision: record.revision, state: record.state } };
+          }
+          const next = {
+            ...record,
+            state: cleanState(body.state),
+            revision: record.revision + 1
+          };
+          next.state.updatedAt = new Date().toISOString();
+          return { write: true, record: next, value: { ok: true, state: next.state, revision: next.revision } };
+        });
+        return response(result, result.conflict ? 409 : 200);
+      }
+
+      if (body.operation === "migrate-legacy") {
+        if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0 ||
+            !body.state || typeof body.state !== "object" || Array.isArray(body.state)) {
+          return response({ error: "Invalid migration" }, 400);
+        }
+        const result = await this.transact(record => {
+          if (record.revision !== body.expectedRevision) {
+            return { value: { conflict: true, revision: record.revision, state: record.state } };
+          }
+          if (record.revision !== 0 || record.state.updatedAt !== null || record.state.trades.length) {
+            return { value: { conflict: true, revision: record.revision, state: record.state } };
+          }
+          const next = { ...record, state: cleanState(body.state), revision: record.revision + 1 };
+          next.state.updatedAt = new Date().toISOString();
+          return { write: true, record: next, value: { ok: true, state: next.state, revision: next.revision } };
+        });
+        return response(result, result.conflict ? 409 : 200);
+      }
+
+      if (body.operation === "automation") {
+        if (!body.settings || typeof body.settings !== "object" || Array.isArray(body.settings) ||
+            !Object.keys(body.settings).length ||
+            Object.keys(body.settings).some(key => !["enabled", "paused"].includes(key)) ||
+            (body.settings.enabled !== undefined && typeof body.settings.enabled !== "boolean") ||
+            (body.settings.paused !== undefined && typeof body.settings.paused !== "boolean")) {
+          return response({ error: "Invalid automation settings" }, 400);
+        }
+        const result = await this.transact(record => {
+          const state = { ...record.state };
+          if (typeof body.settings.enabled === "boolean") state.autoEnabled = body.settings.enabled;
+          if (typeof body.settings.paused === "boolean") state.paused = body.settings.paused;
+          state.updatedAt = new Date().toISOString();
+          const next = { ...record, state, revision: record.revision + 1 };
+          return { write: true, record: next, value: { ok: true, state, revision: next.revision } };
+        });
+        return response(result);
+      }
+
+      if (body.operation === "clear-history" || body.operation === "paper-buy") {
+        const requestId = String(body.requestId || "");
+        if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) return response({ error: "Invalid request id" }, 400);
+        const result = await this.transact(record => {
+          const previous = record.recentOperations.find(item => item.id === requestId);
+          if (previous) return { value: previous.result };
+          const state = { ...record.state, trades: [...record.state.trades] };
+          if (body.operation === "clear-history") {
+            state.trades = [];
+          } else {
+            const mint = String(body.mint || "");
+            const price = Number(body.price);
+            if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || !(price > 0) || !Number.isFinite(price)) {
+              return { value: { error: "Invalid paper-trade details" } };
+            }
+            if (state.balance < 5) return { value: { error: "Insufficient paper balance" } };
+            if (state.trades.filter(trade => !trade.sold).length >= 10) return { value: { error: "Open paper-trade limit reached" } };
+            if (state.trades.some(trade => trade.mint.toLowerCase() === mint.toLowerCase() && !trade.sold)) {
+              return { value: { error: "An open paper trade already exists for this mint" } };
+            }
+            state.balance = Number((state.balance - 5).toFixed(2));
+            state.trades.push({
+              mint, amount: 5, buyPrice: price, currentPrice: price,
+              tokens: 5 / price, sold: false, boughtAt: new Date().toISOString(),
+              mode: "paper", riskChecks: "server-verified"
+            });
+          }
+          state.updatedAt = new Date().toISOString();
+          const next = { ...record, state, revision: record.revision + 1 };
+          const value = { ok: true, state, revision: next.revision };
+          next.recentOperations = [...record.recentOperations, { id: requestId, result: value }].slice(-500);
+          return { write: true, record: next, value };
+        });
+        if (result?.error) return response(result, 409);
+        return response(result);
+      }
+
+      return response({ error: "Unknown operation" }, 400);
+    } catch (error) {
+      console.error("PaperTradingState error", String(error?.message || error));
+      return response({ error: "Paper trading state operation failed" }, 503);
+    }
+  }
+}
