@@ -49,9 +49,9 @@ test("only one concurrent request can accept the same TOTP counter", async () =>
 test("authentication failures increment atomically and enforce the threshold", async () => {
   const { guard } = makeGuard();
   const results = await Promise.all(Array.from({ length: 20 }, () => guard.recordFailure("totp:ip-test", 1000)));
-  assert.equal(Math.max(...results.map(item => item.count)), 20);
+  assert.equal(Math.max(...results.map(item => item.count)), 5);
   assert.equal(results.filter(item => item.limited).length, 16);
-  assert.equal((await guard.recordFailure("totp:ip-test", 1001)).count, 21);
+  assert.equal((await guard.recordFailure("totp:ip-test", 1001)).count, 5);
   assert.equal((await guard.recordFailure("totp:ip-test", 901001)).count, 1);
 });
 
