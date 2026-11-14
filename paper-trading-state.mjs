@@ -114,7 +114,7 @@ export class PaperTradingState {
     try {
       if (body.operation === "get") {
         const record = await this.ensureRecord();
-        return response({ state: record.state, revision: record.revision });
+        return response({ state: record.state, revision: record.revision, migrationOpen: record.migrationOpen === true });
       }
 
       if (body.operation === "compare-and-set") {
