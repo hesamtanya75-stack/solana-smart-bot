@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
+import { PaperTradingState } from "../paper-trading-state.mjs";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const executableWorkerSource = workerSource
@@ -36,6 +37,7 @@ class TransactionalStorage {
     this.values = new Map();
     this.tail = Promise.resolve();
   }
+  async get(key) { return structuredClone(this.values.get(key)); }
   async transaction(callback) {
     let release;
     const previous = this.tail;
@@ -66,17 +68,24 @@ class MemoryKV {
 function makeEnvironment(profile = null) {
   const initial = profile ? { admin_profile: profile } : {};
   const storage = new TransactionalStorage();
+  const kv = new MemoryKV(initial);
   const guard = new AuthGuard({ storage }, { AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN });
+  const paperStorage = new TransactionalStorage();
+  const paperState = new PaperTradingState({ storage: paperStorage }, { BOT_STATE: kv });
   const env = {
     BOT_LOGIN_PASSWORD: LOGIN_PASSWORD,
-    BOT_STATE: new MemoryKV(initial),
+    BOT_STATE: kv,
     AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN,
     AUTH_GUARD: {
       idFromName: name => name,
       get: () => ({ fetch: (input, init) => guard.fetch(new Request(input, init)) })
+    },
+    PAPER_TRADING_STATE: {
+      idFromName: name => name,
+      get: () => ({ fetch: (input, init) => paperState.fetch(new Request(input, init)) })
     }
   };
-  return { env, guard };
+  return { env, guard, paperState };
 }
 
 async function post(path, body, env, headers = {}) {
