@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "worker.js"
+      - "auth-guard.mjs"
+      - "paper-trading-state.mjs"
       - "trusted-live-evidence.mjs"
       - "live-trade-coordinator.mjs"
       - "wrangler.jsonc"
@@ -42,12 +44,29 @@ jobs:
           if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) {
             throw new Error("BOT_STATE KV binding is missing");
           }
-          if (!config.durable_objects?.bindings?.some(binding =>
-            binding.name === "LIVE_TRADE_COORDINATOR" &&
-            binding.class_name === "LiveTradeCoordinator")) {
-            throw new Error("LIVE_TRADE_COORDINATOR binding is missing");
+          const requiredBindings = [
+            ["LIVE_TRADE_COORDINATOR", "LiveTradeCoordinator"],
+            ["AUTH_GUARD", "AuthGuard"],
+            ["PAPER_TRADING_STATE", "PaperTradingState"]
+          ];
+          for (const [name, className] of requiredBindings) {
+            if (!config.durable_objects?.bindings?.some(binding =>
+              binding.name === name && binding.class_name === className)) {
+              throw new Error(`${name} Durable Object binding is missing`);
+            }
           }
-          console.log("Validated active Worker name, entry point, KV, and Durable Object bindings.");
+          const migrations = config.migrations || [];
+          for (const [tag, className] of [
+            ["v1-live-trade-coordinator", "LiveTradeCoordinator"],
+            ["v2-auth-guard", "AuthGuard"],
+            ["v3-paper-trading-state", "PaperTradingState"]
+          ]) {
+            if (!migrations.some(migration =>
+              migration.tag === tag && migration.new_sqlite_classes?.includes(className))) {
+              throw new Error(`${tag} migration is missing or incomplete`);
+            }
+          }
+          console.log("Validated Worker target, entry point, KV, Durable Object bindings, and migrations.");
           NODE
 
       - name: Build Worker without deploying
