@@ -50,3 +50,12 @@ test("origin protection runs before login and private API route handling", () =>
   assert.ok(privateApiRouter > originGuard);
   assert.ok(workerSource.includes('["POST", "PUT", "PATCH", "DELETE"]'));
 });
+
+test("authentication JSON bodies are size-bounded and must be JSON objects", () => {
+  assert.ok(workerSource.includes("async function readBoundedJson(request, maxBytes = 8192)"));
+  assert.ok(workerSource.includes('new TextEncoder().encode(raw).byteLength > maxBytes'));
+  assert.ok(workerSource.includes('if (!value || typeof value !== "object" || Array.isArray(value))'));
+  assert.ok(workerSource.includes("readBoundedJson(request, 4096)"));
+  assert.equal(workerSource.includes("const { password } = await request.json();"), false);
+  assert.equal(workerSource.includes("const { challengeId, code } = await request.json();"), false);
+});
