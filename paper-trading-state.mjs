@@ -64,9 +64,24 @@ export class PaperTradingState {
   }
 
   async ensureRecord() {
-    let record = await this.ctx.storage.get("paper_state_v1");
-    if (record) return record;
     const migrationKey = "paper_state_do_migration_v1";
+    let record = await this.ctx.storage.get("paper_state_v1");
+    if (record) {
+      // If the DO record committed but the KV completion marker write failed,
+      // finish that marker before ever allowing recovery from the legacy snapshot.
+      if (record.migrationMarkerPending !== false) {
+        const marker = await this.env.BOT_STATE.get(migrationKey);
+        if (marker !== "complete") await this.env.BOT_STATE.put(migrationKey, "complete");
+        record = await this.ctx.storage.transaction(async txn => {
+          const current = await txn.get("paper_state_v1");
+          if (!current || current.migrationMarkerPending === false) return current;
+          const completed = { ...current, migrationMarkerPending: false };
+          await txn.put("paper_state_v1", completed);
+          return completed;
+        });
+      }
+      return record;
+    }
     const marker = await this.env.BOT_STATE.get(migrationKey);
     if (marker === "complete") {
       // Never re-import an old KV snapshot if the Durable Object's own storage
@@ -84,7 +99,7 @@ export class PaperTradingState {
     const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
       initialState.autoEnabled === false && initialState.paused === false &&
       initialState.scannedMints.length === 0;
-    const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen };
+    const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
       if (existing) return existing;
@@ -92,6 +107,13 @@ export class PaperTradingState {
       return candidate;
     });
     await this.env.BOT_STATE.put(migrationKey, "complete");
+    record = await this.ctx.storage.transaction(async txn => {
+      const current = await txn.get("paper_state_v1");
+      if (!current || current.migrationMarkerPending === false) return current;
+      const completed = { ...current, migrationMarkerPending: false };
+      await txn.put("paper_state_v1", completed);
+      return completed;
+    });
     return record;
   }
 
