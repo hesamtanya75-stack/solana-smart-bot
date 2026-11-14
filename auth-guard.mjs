@@ -201,6 +201,30 @@ export class AuthGuard {
     }));
   }
 
+  async verifyLegacyProfile({
+    backupHash = null,
+    lastTotpCounter = -1,
+    totpEnabled = false,
+    totpSecret = null,
+    pendingTotpSecret = null,
+    pendingTotpAt = null
+  } = {}) {
+    if ((backupHash !== null && (typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash))) ||
+        !Number.isSafeInteger(lastTotpCounter) || lastTotpCounter < -1 ||
+        typeof totpEnabled !== "boolean" || !validTotpSecret(totpSecret) || !validTotpSecret(pendingTotpSecret) ||
+        (pendingTotpAt !== null && (!Number.isSafeInteger(pendingTotpAt) || pendingTotpAt < 0))) {
+      throw new Error("Invalid legacy verification profile");
+    }
+    return this.withState(state => state.initialized === true &&
+      (state.backupHash || null) === (backupHash ? backupHash.toLowerCase() : null) &&
+      Number(state.lastTotpCounter ?? -1) === lastTotpCounter &&
+      (state.totpEnabled === true) === totpEnabled &&
+      (state.totpSecret || null) === totpSecret &&
+      (state.pendingTotpSecret || null) === pendingTotpSecret &&
+      (state.pendingTotpAt ?? null) === pendingTotpAt
+    );
+  }
+
   async beginTotpSetup(secret, now = Date.now()) {
     if (!validTotpSecret(secret) || !secret || !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid TOTP setup");
     return this.withState(state => {
@@ -391,6 +415,14 @@ export class AuthGuard {
           pendingTotpAt: body.pendingTotpAt ?? null
         }) });
       }
+      if (body.operation === "verify-legacy") return json({ verified: await this.verifyLegacyProfile({
+        backupHash: body.backupHash ?? null,
+        lastTotpCounter: body.lastTotpCounter ?? -1,
+        totpEnabled: body.totpEnabled ?? false,
+        totpSecret: body.totpSecret ?? null,
+        pendingTotpSecret: body.pendingTotpSecret ?? null,
+        pendingTotpAt: body.pendingTotpAt ?? null
+      }) });
       if (body.operation === "get-profile") return json(await this.getProfile());
       if (body.operation === "begin-totp-setup") return json({ ok: await this.beginTotpSetup(body.secret) });
       if (body.operation === "confirm-totp-setup") return json(await this.confirmTotpSetup({
