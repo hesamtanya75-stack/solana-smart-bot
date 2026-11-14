@@ -140,10 +140,15 @@ export class AuthGuard {
       throw new Error("Invalid authentication failure scope");
     }
     return this.withState(state => {
+      state.failures ||= {};
       const key = "scope:" + scope;
       const current = state.failures[key];
       const active = current && Number(current.resetAt) > now ? current : { count: 0, resetAt: now + 900000 };
-      active.count = Math.min(1000000, Number(active.count || 0) + 1);
+      if (Number(active.count || 0) >= 5) {
+        state.failures[key] = active;
+        return { count: 5, limited: true, resetAt: active.resetAt };
+      }
+      active.count = Math.min(5, Number(active.count || 0) + 1);
       state.failures[key] = active;
       return { count: active.count, limited: active.count >= 5, resetAt: active.resetAt };
     });
