@@ -263,7 +263,7 @@ test("TOTP enrollment secret is stored and confirmed atomically in AuthGuard", a
   const result = await guard.confirmTotpSetup({ code, backupHash, failureScope: "totp:test", now });
   assert.deepEqual(result, { ok: true, counter });
   assert.deepEqual(await guard.getProfile(), {
-    initialized: false,
+    initialized: true,
     totpEnabled: true,
     totpSecret: secret,
     pendingTotpSecret: null,
