@@ -1661,7 +1661,7 @@ async function finishServerLogin(token) {
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
   serverModeReady = true;
-  if (!remote.updatedAt) {
+  if (remote.canMigrateLegacy === true) {
     let old = null;
     try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
     if (old && Array.isArray(old.trades)) {
