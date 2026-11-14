@@ -73,7 +73,7 @@ function makeEnvironment(profile = null) {
     AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN,
     AUTH_GUARD: {
       idFromName: name => name,
-      get: () => ({ fetch: request => guard.fetch(request) })
+      get: () => ({ fetch: (input, init) => guard.fetch(new Request(input, init)) })
     }
   };
   return { env, guard };
