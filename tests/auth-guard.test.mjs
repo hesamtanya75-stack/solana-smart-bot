@@ -209,3 +209,74 @@ test("MFA challenge creation is bounded and validates challenge identifiers", as
   }
   assert.equal(await guard.createMfaChallenge("223e4567-e89b-12d3-a456-426614174000", 1000), false);
 });
+
+
+async function testTotpCode(secret, counter) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0;
+  const bytes = [];
+  for (const char of secret) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(bytes), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const msg = new Uint8Array(8);
+  let n = counter;
+  for (let i = 7; i >= 0; i--) { msg[i] = n & 255; n = Math.floor(n / 256); }
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, msg));
+  const offset = mac[mac.length - 1] & 15;
+  const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
+  return String(binary % 1000000).padStart(6, "0");
+}
+
+test("legacy TOTP profile and pending enrollment state migrate exactly once", async () => {
+  const { guard } = makeGuard();
+  const legacy = {
+    totpEnabled: true,
+    totpSecret: "JBSWY3DPEHPK3PXP",
+    pendingTotpSecret: null,
+    pendingTotpAt: null,
+    backupHash: "e".repeat(64),
+    lastTotpCounter: 123
+  };
+  assert.equal(await guard.initializeFromLegacy(legacy), true);
+  assert.deepEqual(await guard.getProfile(), {
+    initialized: true,
+    totpEnabled: true,
+    totpSecret: legacy.totpSecret,
+    pendingTotpSecret: null,
+    pendingTotpAt: null
+  });
+  assert.equal(await guard.initializeFromLegacy({ ...legacy, totpSecret: "A".repeat(16) }), false);
+});
+
+test("TOTP enrollment secret is stored and confirmed atomically in AuthGuard", async () => {
+  const { guard } = makeGuard();
+  const secret = "JBSWY3DPEHPK3PXP";
+  const now = 1800000000000;
+  assert.equal(await guard.beginTotpSetup(secret, now), true);
+  const counter = Math.floor(now / 30000);
+  const code = await testTotpCode(secret, counter);
+  const backupHash = "f".repeat(64);
+  const result = await guard.confirmTotpSetup({ code, backupHash, now });
+  assert.deepEqual(result, { ok: true, counter });
+  assert.deepEqual(await guard.getProfile(), {
+    initialized: false,
+    totpEnabled: true,
+    totpSecret: secret,
+    pendingTotpSecret: null,
+    pendingTotpAt: null
+  });
+  assert.equal((await guard.confirmTotpSetup({ code, backupHash, now })).ok, false);
+});
+
+test("TOTP setup rejects expired secrets and invalid legacy secret formats", async () => {
+  const { guard } = makeGuard();
+  await assert.rejects(() => guard.beginTotpSetup("not-base32", 1000));
+  await assert.rejects(() => guard.initializeFromLegacy({
+    totpEnabled: true,
+    totpSecret: null,
+    lastTotpCounter: -1
+  }));
+});
