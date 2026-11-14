@@ -19,7 +19,6 @@ const RPCS = [
 ];
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
-let rpcDiagnostics = { successes: [], errors: [] };
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -173,7 +172,7 @@ function sameOriginApiRequest(request, url) {
   }
   return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
-async function rpc(method, params, env) {
+async function rpc(method, params, env, diagnostics = null) {
   const errors = [];
   // Try the existing Alchemy key first, then fall back to a public Solana RPC.
   // Never expose the API key in logs or error messages.
@@ -217,7 +216,7 @@ async function rpc(method, params, env) {
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       if (data.error) throw new Error(data.error.message || "RPC error");
-      rpcDiagnostics.successes.push(endpoint.label);
+      if (diagnostics) diagnostics.successes.push(endpoint.label);
       return data.result;
     } catch (error) {
       const message = String(error?.message || error);
@@ -225,13 +224,13 @@ async function rpc(method, params, env) {
         alchemyUnauthorized = true;
       }
       errors.push(endpoint.label + ": " + message);
-      rpcDiagnostics.errors.push(endpoint.label + ": " + message);
+      if (diagnostics) diagnostics.errors.push(endpoint.label + ": " + message);
     }
   }
   throw new Error("Solana RPC providers failed — " + errors.join(" | "));
 }
 
-async function rpcBatch(calls, env) {
+async function rpcBatch(calls, env, diagnostics = null) {
   const errors = [];
   const endpoints = [];
   const config = String(env?.ALCHEMY_API_KEY || "").trim();
@@ -271,13 +270,13 @@ async function rpcBatch(calls, env) {
         if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
         return item.result;
       });
-      rpcDiagnostics.successes.push(endpoint.label);
+      if (diagnostics) diagnostics.successes.push(endpoint.label);
       return results;
     } catch (error) {
       const message = String(error?.message || error);
       if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") alchemyUnauthorized = true;
       errors.push(endpoint.label + ": " + message);
-      rpcDiagnostics.errors.push(endpoint.label + ": " + message);
+      if (diagnostics) diagnostics.errors.push(endpoint.label + ": " + message);
     }
   }
   throw new Error("Solana RPC batch providers failed — " + errors.join(" | "));
@@ -418,7 +417,7 @@ function mintDetails(account) {
   }
   return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
 }
-async function inspectMint(mint, env) {
+async function inspectMint(mint, env, diagnostics = null) {
   // Check for a real Solana market first. New-token profile entries can exist
   // before DexScreener has indexed a tradable pair; avoid spending RPC calls then.
   const dex = await getDexJson(
@@ -434,7 +433,7 @@ async function inspectMint(mint, env) {
       { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
       { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
       { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
-    ], env)
+    ], env, diagnostics)
   ]);
   const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
@@ -446,7 +445,8 @@ async function inspectMint(mint, env) {
   const accountDetails = await rpc(
     "getMultipleAccounts",
     [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
-    env
+    env,
+    diagnostics
   );
   const ownerBalances = new Map();
   for (let i = 0; i < largestAccounts.length; i++) {
@@ -504,7 +504,7 @@ async function refreshTrades(state, env) {
   }
   return sold;
 }
-async function autoBuy(state, env) {
+async function autoBuy(state, env, diagnostics = null) {
   if (!state.autoEnabled || state.paused || state.balance < 5 || state.trades.filter(t => !t.sold).length >= 10) return "Auto-buy inactive, paused, or limit reached.";
   const profiles = await getDexJson("https://api.dexscreener.com/token-profiles/latest/v1", env, 15);
   const seen = new Set();
@@ -527,7 +527,7 @@ async function autoBuy(state, env) {
     state.deferredMints = state.deferredMints.filter(item => item.mint !== mint);
     checked++;
     try {
-      const result = await inspectMint(mint, env);
+      const result = await inspectMint(mint, env, diagnostics);
       // Only mark a mint as scanned after a complete inspection.
       // Temporary RPC/API failures remain eligible for a later retry.
       state.scannedMints.push(mint);
@@ -1015,7 +1015,7 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
-      rpcDiagnostics = { successes: [], errors: [] };
+      const rpcDiagnostics = { successes: [], errors: [] };
       const state = await readState(env);
       let sold = 0;
       let refreshWarning = "";
@@ -1035,7 +1035,7 @@ export default {
 
       // Run discovery independently so one subsystem cannot silently block the other.
       try {
-        buyMessage = await autoBuy(state, env);
+        buyMessage = await autoBuy(state, env, rpcDiagnostics);
       } catch (error) {
         buyWarning = String(error?.message || error);
         console.error("Auto-buy warning", {
