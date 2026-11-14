@@ -775,6 +775,7 @@ export default {
         try {
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           const failureScope = await authFailureScope("totp", ip);
+          await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
           if (await isAuthRateLimited(env, failureScope)) {
             return json({ error: "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           }
