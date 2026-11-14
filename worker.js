@@ -152,6 +152,10 @@ function sameOriginApiRequest(request, url) {
     } catch {
       return false;
     }
+  } else if (request.headers.get("Sec-Fetch-Site") !== "same-origin") {
+    // Mutating browser requests must provide at least one same-origin signal.
+    // Reject requests where both Origin and Fetch Metadata are absent.
+    return false;
   }
   return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
