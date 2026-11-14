@@ -26,6 +26,14 @@ jobs:
         env:
           DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
         run: node scripts/devnet-preflight.mjs
+      - name: Require a dedicated Devnet RPC for the funded lifecycle test
+        env:
+          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+        run: |
+          if [ -z "$DEVNET_RPC_URL" ]; then
+            echo "::error::Configure the DEVNET_RPC_URL Actions secret with a dedicated Devnet RPC that supports airdrops; the shared public RPC faucet is closed."
+            exit 2
+          fi
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
         env:
           DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
