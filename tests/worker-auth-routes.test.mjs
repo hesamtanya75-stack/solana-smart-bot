@@ -31,3 +31,10 @@ test("TOTP codes cannot be reused in an already accepted time step", () => {
   assert.ok(workerSource.includes("profile.lastTotpCounter = matchedCounter"));
   assert.ok(workerSource.includes("p.lastTotpCounter = matchedCounter"));
 });
+
+test("state-changing API requests reject cross-origin browser requests", () => {
+  assert.ok(workerSource.includes("function sameOriginApiRequest(request, url)"));
+  assert.ok(workerSource.includes('new URL(origin).origin !== url.origin'));
+  assert.ok(workerSource.includes('request.headers.get("Sec-Fetch-Site") !== "cross-site"'));
+  assert.ok(workerSource.includes('if (!sameOriginApiRequest(request, url))'));
+});
