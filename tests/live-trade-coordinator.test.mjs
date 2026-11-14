@@ -23,7 +23,7 @@ function trustedEvidence(overrides = {}) {
         mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
         holderConcentrationSafe: true, sellRouteAvailable: true, marketLiquiditySafe: true,
         marketVolumeSafe: true, rugCheckSafe: true
-      }, passed: true },
+      }, sellRoute: { semanticInstructionVerification: true, routeVerification: "semantically-verified" }, passed: true },
     passed: true,
     ...overrides
   };
@@ -185,6 +185,19 @@ test("coordinator blocks reservation when Jupiter instruction semantics are unve
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
   assert.match(result.body.error, /risk checks/);
+});
+
+test("coordinator rejects a positive sell-route flag without semantic instruction verification", async () => {
+  const evidence = trustedEvidence();
+  evidence.risk.sellRoute = {
+    semanticInstructionVerification: false,
+    routeVerification: "unsigned-transaction-structure-only"
+  };
+  const { coordinator } = makeCoordinator(async () => evidence);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /instruction semantics and lookup tables are not verified/);
 });
 
 test("ten open reservations block an eleventh", async () => {
