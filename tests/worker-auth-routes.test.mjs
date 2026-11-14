@@ -99,3 +99,10 @@ test("AuthGuard calls fail closed when the dedicated binding or secret is absent
   assert.ok(workerSource.includes('if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured")'));
   assert.ok(workerSource.includes('"AUTH_GUARD_INTERNAL_TOKEN"') || workerSource.includes("env.AUTH_GUARD_INTERNAL_TOKEN"));
 });
+
+
+test("temporary public diagnostic routes are not exposed by the Worker", () => {
+  for (const route of ["/asset-check", "/dashboard-test", "/screen-test"]) {
+    assert.equal(workerSource.includes('url.pathname === "' + route + '"'), false, route + " must not be public");
+  }
+});
