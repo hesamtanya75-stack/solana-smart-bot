@@ -68,6 +68,13 @@ test("AuthGuard runs on the Miniflare Durable Objects runtime with transactional
 
     const limited = await call({ operation: "is-rate-limited", scope: "totp:runtime" });
     assert.deepEqual(limited.body, { limited: true });
+
+    // A retried legacy import must merge upward, never discard a stronger
+    // legacy lockout when a weaker bucket already exists in AuthGuard.
+    await call({ operation: "import-legacy-failure", scope: "login:migration", count: 2 });
+    await call({ operation: "import-legacy-failure", scope: "login:migration", count: 5 });
+    const migratedLimit = await call({ operation: "is-rate-limited", scope: "login:migration" });
+    assert.deepEqual(migratedLimit.body, { limited: true });
   } finally {
     await mf.dispose();
   }
