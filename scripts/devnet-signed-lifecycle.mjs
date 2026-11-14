@@ -71,9 +71,9 @@ async function main() {
   } catch (error) {
     const message = String(error?.message || error);
     if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
-      console.log("::warning::Devnet RPC faucet is closed; offline signature verified but no on-chain transaction was submitted.");
+      console.log("::error::Devnet RPC faucet is closed; offline signature verification is NOT an on-chain lifecycle pass.");
       console.log(JSON.stringify({
-        ok: true,
+        ok: false,
         status: "blocked",
         cluster: "devnet",
         genesisHash: genesis,
@@ -83,6 +83,9 @@ async function main() {
         mainnetTouched: false,
         swapExecuted: false
       }, null, 2));
+      // Fail the required CI step so a faucet outage cannot be mistaken for
+      // a successful signed, submitted, finalized, and independently verified transaction.
+      process.exitCode = 2;
       return;
     }
     throw error;
