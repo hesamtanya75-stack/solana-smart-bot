@@ -607,35 +607,39 @@ async function clearLegacyMfaProfile(env) {
 async function ensureAuthGuard(env) {
   const current = await authGuardCall(env, { operation: "get-profile" });
   const migrationMarker = await env.BOT_STATE.get("auth_guard_migration_v1");
-  if (current.initialized) {
-    await clearLegacyMfaProfile(env);
-    if (migrationMarker !== "complete") {
-      await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
-    }
-    return current;
-  }
-  if (migrationMarker === "complete") {
+  if (migrationMarker === "complete" && !current.initialized) {
     throw new Error("AuthGuard state is missing after migration; refusing to re-import stale MFA data");
   }
+  if (current.initialized && migrationMarker === "complete") {
+    await clearLegacyMfaProfile(env);
+    return current;
+  }
+
   const legacy = await readProfile(env);
   const legacyCounter = legacy.lastTotpCounter == null ? -1 : legacy.lastTotpCounter;
   if (!Number.isSafeInteger(legacyCounter) || legacyCounter < -1) {
     throw new Error("Legacy TOTP counter is invalid; refusing unsafe migration");
   }
-  await authGuardCall(env, {
-    operation: "initialize-legacy",
+  const legacyProfile = {
     backupHash: legacy.backupHash || null,
     lastTotpCounter: legacyCounter,
     totpEnabled: legacy.totpEnabled === true,
     totpSecret: legacy.totpSecret || null,
     pendingTotpSecret: legacy.pendingTotpSecret || null,
     pendingTotpAt: Number.isSafeInteger(legacy.pendingTotpAt) ? legacy.pendingTotpAt : null
-  });
-  const migrated = await authGuardCall(env, { operation: "get-profile" });
-  if (!migrated.initialized) throw new Error("AuthGuard legacy migration did not complete");
-  await clearLegacyMfaProfile(env);
+  };
+  if (!current.initialized) {
+    await authGuardCall(env, { operation: "initialize-legacy", ...legacyProfile });
+  }
+  const verification = await authGuardCall(env, { operation: "verify-legacy", ...legacyProfile });
+  if (verification.verified !== true) {
+    throw new Error("AuthGuard legacy migration verification failed; preserving legacy MFA data");
+  }
+  // Persist the completion marker before deleting the legacy copy. If cleanup
+  // fails, the next request can safely retry cleanup without re-importing data.
   await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
-  return migrated;
+  await clearLegacyMfaProfile(env);
+  return await authGuardCall(env, { operation: "get-profile" });
 }
 async function migrateLegacyFailure(env, scope, legacyKey) {
   const legacy = await env.BOT_STATE.get(legacyKey, "json");
