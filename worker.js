@@ -594,6 +594,8 @@ async function authGuardCall(env, body) {
   return result;
 }
 async function ensureAuthGuard(env) {
+  const current = await authGuardCall(env, { operation: "get-profile" });
+  if (current.initialized) return current;
   const legacy = await readProfile(env);
   await authGuardCall(env, {
     operation: "initialize-legacy",
