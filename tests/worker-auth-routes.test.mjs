@@ -1,10 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { test } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
-const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerSource).toString("base64");
-const { default: worker } = await import(workerModuleUrl);
+const tempDir = await mkdtemp(join(tmpdir(), "worker-auth-routes-"));
+const workerPath = join(tempDir, "worker.mjs");
+await writeFile(workerPath, workerSource, "utf8");
+const { default: worker } = await import(pathToFileURL(workerPath).href);
+after(async () => rm(tempDir, { recursive: true, force: true }));
 
 function createEnv() {
   const values = new Map();
