@@ -905,6 +905,9 @@ export default {
             if (current.__migrationOpen !== true) {
               return json({ error: "Legacy paper-state migration is no longer available" }, 409);
             }
+            if (body.expectedRevision !== current.__revision) {
+              return json({ error: "State revision changed; refresh before migrating" }, 409);
+            }
             const state = cleanState({ ...current, ...body });
             try {
               return json(await paperStateCall(env, {
