@@ -593,10 +593,22 @@ async function authGuardCall(env, body) {
   if (!response.ok) throw new Error("Authentication guard request failed");
   return result;
 }
+async function clearLegacyMfaProfile(env) {
+  const legacy = await readProfile(env);
+  let changed = false;
+  for (const field of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) {
+    if (Object.prototype.hasOwnProperty.call(legacy, field)) {
+      delete legacy[field];
+      changed = true;
+    }
+  }
+  if (changed) await env.BOT_STATE.put("admin_profile", JSON.stringify(legacy));
+}
 async function ensureAuthGuard(env) {
   const current = await authGuardCall(env, { operation: "get-profile" });
   const migrationMarker = await env.BOT_STATE.get("auth_guard_migration_v1");
   if (current.initialized) {
+    await clearLegacyMfaProfile(env);
     if (migrationMarker !== "complete") {
       await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
     }
@@ -621,6 +633,7 @@ async function ensureAuthGuard(env) {
   });
   const migrated = await authGuardCall(env, { operation: "get-profile" });
   if (!migrated.initialized) throw new Error("AuthGuard legacy migration did not complete");
+  await clearLegacyMfaProfile(env);
   await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
   return migrated;
 }
