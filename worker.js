@@ -135,6 +135,15 @@ async function saveState(env, state) {
   state.updatedAt = result.state.updatedAt;
   state.__revision = result.revision;
 }
+function constantTimeTextEqual(left, right) {
+  const a = new TextEncoder().encode(String(left));
+  const b = new TextEncoder().encode(String(right));
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i++) difference |= (a[i] || 0) ^ (b[i] || 0);
+  return difference === 0;
+}
+
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
@@ -826,6 +835,14 @@ export default {
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
+        let reauth;
+        try { reauth = await readBoundedJson(request, 4096); }
+        catch { return json({ error: "پشتڕاستکردنەوەی وشەی نهێنی پێویستە" }, 400); }
+        const expectedPassword = env.BOT_LOGIN_PASSWORD;
+        if (typeof reauth.password !== "string" || typeof expectedPassword !== "string" ||
+            !constantTimeTextEqual(reauth.password, expectedPassword)) {
+          return json({ error: "وشەی نهێنی نادروستە؛ چالاککردنی Authenticator ڕەتکرایەوە" }, 401);
+        }
         const auth = await ensureAuthGuard(env);
         if (auth.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
