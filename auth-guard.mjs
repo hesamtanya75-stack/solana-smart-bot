@@ -67,7 +67,8 @@ export class AuthGuard {
         initialized: false,
         backupHash: null,
         lastTotpCounter: -1,
-        failures: {}
+        failures: {},
+        challenges: {}
       };
       result = await operation(state);
       await txn.put("auth_guard_state", state);
@@ -131,6 +132,89 @@ export class AuthGuard {
     });
   }
 
+  async createMfaChallenge(challengeId, now = Date.now()) {
+    if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) ||
+        !Number.isSafeInteger(now) || now < 0) {
+      throw new Error("Invalid MFA challenge");
+    }
+    return this.withState(state => {
+      state.challenges ||= {};
+      for (const [id, challenge] of Object.entries(state.challenges)) {
+        if (!Number.isSafeInteger(challenge?.createdAt) ||
+            now - challenge.createdAt > 300000 || now < challenge.createdAt) {
+          delete state.challenges[id];
+        }
+      }
+      if (state.challenges[challengeId]) return false;
+      if (Object.keys(state.challenges).length >= 100) return false;
+      state.challenges[challengeId] = { createdAt: now, attempts: 0 };
+      return true;
+    });
+  }
+
+  async completeMfaChallenge({
+    challengeId,
+    now = Date.now(),
+    totpCounter = null,
+    backupHash = null,
+    failureScope = null
+  } = {}) {
+    if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) ||
+        !Number.isSafeInteger(now) || now < 0 ||
+        (totpCounter !== null && !validCounter(totpCounter)) ||
+        (backupHash !== null && (typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash))) ||
+        (failureScope !== null && !validScope(failureScope))) {
+      throw new Error("Invalid MFA challenge completion");
+    }
+    return this.withState(state => {
+      state.challenges ||= {};
+      const challenge = state.challenges[challengeId];
+      if (!challenge) return { ok: false, reason: "missing" };
+      if (!Number.isSafeInteger(challenge.createdAt) ||
+          now < challenge.createdAt || now - challenge.createdAt > 300000) {
+        delete state.challenges[challengeId];
+        return { ok: false, reason: "expired" };
+      }
+      if (Number(challenge.attempts || 0) >= 5) {
+        delete state.challenges[challengeId];
+        return { ok: false, reason: "attempts-exhausted" };
+      }
+      state.failures ||= {};
+      const failureKey = failureScope === null ? null : "scope:" + failureScope;
+      const failures = failureKey ? state.failures[failureKey] : null;
+      if (failures && Number(failures.resetAt) > now && Number(failures.count || 0) >= 5) {
+        return { ok: false, reason: "rate-limited", resetAt: failures.resetAt };
+      }
+
+      if (totpCounter !== null && totpCounter > Number(state.lastTotpCounter ?? -1)) {
+        state.lastTotpCounter = totpCounter;
+        delete state.challenges[challengeId];
+        if (failureKey) delete state.failures[failureKey];
+        return { ok: true, method: "totp" };
+      }
+      if (backupHash !== null && state.backupHash &&
+          constantTimeEqual(state.backupHash, backupHash)) {
+        state.backupHash = null;
+        delete state.challenges[challengeId];
+        if (failureKey) delete state.failures[failureKey];
+        return { ok: true, method: "backup" };
+      }
+
+      challenge.attempts = Math.min(5, Number(challenge.attempts || 0) + 1);
+      if (failureKey) {
+        const active = failures && Number(failures.resetAt) > now
+          ? failures
+          : { count: 0, resetAt: now + 900000 };
+        active.count = Math.min(1000000, Number(active.count || 0) + 1);
+        state.failures[failureKey] = active;
+      }
+      const limited = challenge.attempts >= 5 ||
+        (failureKey && Number(state.failures[failureKey]?.count || 0) >= 5);
+      if (challenge.attempts >= 5) delete state.challenges[challengeId];
+      return { ok: false, reason: limited ? "rate-limited" : "invalid" };
+    });
+  }
+
   async provisionBackupHash(hash) {
     if (typeof hash !== "string" || !/^[a-f0-9]{64}$/i.test(hash)) {
       throw new Error("Invalid backup-code hash");
@@ -169,6 +253,17 @@ export class AuthGuard {
             lastTotpCounter: body.lastTotpCounter ?? -1
           })
         });
+      }
+      if (body.operation === "create-challenge") {
+        return json({ created: await this.createMfaChallenge(body.challengeId) });
+      }
+      if (body.operation === "complete-challenge") {
+        return json(await this.completeMfaChallenge({
+          challengeId: body.challengeId,
+          totpCounter: body.totpCounter ?? null,
+          backupHash: body.backupHash ?? null,
+          failureScope: body.failureScope ?? null
+        }));
       }
       if (body.operation === "consume-backup") {
         return json({ ok: await this.consumeBackupCode(body.hash) });
