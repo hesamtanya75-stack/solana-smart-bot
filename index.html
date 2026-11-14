@@ -1656,6 +1656,7 @@ async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
+  serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
   // Enable server persistence before migrating the browser's existing paper-trading
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
