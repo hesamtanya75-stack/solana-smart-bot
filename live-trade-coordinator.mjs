@@ -120,7 +120,7 @@ export class LiveTradeCoordinator {
       return json({ error: "Not found" }, 404);
     } catch (error) {
       const message = String(error?.message || error);
-      const status = /limit|disabled|stale|risk|already|state|idempotency|quote|switch|position|submission|proof/i.test(message) ? 409 : 400;
+      const status = /limit|disabled|stale|risk|already|state|idempotency|quote|switch|position|submission|proof|semantic|lookup/i.test(message) ? 409 : 400;
       return json({ error: message }, status);
     }
   }
