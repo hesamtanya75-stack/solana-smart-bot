@@ -62,3 +62,23 @@ test("authentication JSON bodies are size-bounded and must be JSON objects", () 
   assert.equal(workerSource.includes("const { password } = await request.json();"), false);
   assert.equal(workerSource.includes("const { challengeId, code } = await request.json();"), false);
 });
+
+
+test("login and TOTP routes delegate MFA state and rate limits to AuthGuard", () => {
+  assert.ok(workerSource.includes("async function authGuardCall(env, body)"));
+  assert.ok(workerSource.includes('namespace.idFromName("admin")'));
+  assert.ok(workerSource.includes('operation: "initialize-legacy"'));
+  assert.ok(workerSource.includes('operation: "get-profile"'));
+  assert.ok(workerSource.includes('operation: "create-challenge"'));
+  assert.ok(workerSource.includes('operation: "complete-challenge"'));
+  assert.ok(workerSource.includes('operation: "begin-totp-setup"'));
+  assert.ok(workerSource.includes('operation: "confirm-totp-setup"'));
+  assert.equal(workerSource.includes('"mfa_challenge:"'), false);
+  assert.equal(workerSource.includes('"totp_fail:"'), false);
+  assert.equal(workerSource.includes('"login_fail:"'), false);
+});
+
+test("AuthGuard calls fail closed when the dedicated binding or secret is absent", () => {
+  assert.ok(workerSource.includes('if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured")'));
+  assert.ok(workerSource.includes('"AUTH_GUARD_INTERNAL_TOKEN"') || workerSource.includes("env.AUTH_GUARD_INTERNAL_TOKEN"));
+});
