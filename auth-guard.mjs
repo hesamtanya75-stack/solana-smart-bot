@@ -308,7 +308,7 @@ export class AuthGuard {
         if (failureKey) delete state.failures[failureKey];
         return { ok: true, method: "totp" };
       }
-      if (backupHash !== null && state.backupHash &&
+      if (backupHash !== null && state.totpEnabled && state.backupHash &&
           constantTimeEqual(state.backupHash, backupHash)) {
         state.backupHash = null;
         delete state.challenges[challengeId];
