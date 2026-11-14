@@ -33,15 +33,16 @@ function json(data, status = 200) {
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   return {
-    ...DEFAULT_STATE,
-    ...s,
-    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : 100,
+    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
     trades: Array.isArray(s.trades) ? s.trades.slice(-500) : [],
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
     scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
     deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
+    lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt : null,
+    lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : [],
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : null
   };
 }
 async function readState(env) {
@@ -713,8 +714,13 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
+          const writableFields = new Set(["balance", "trades", "autoEnabled", "paused", "scannedMints"]);
+          if (!body || typeof body !== "object" || Array.isArray(body) ||
+              Object.keys(body).some(key => !writableFields.has(key))) {
+            return json({ error: "Unsupported state fields" }, 400);
+          }
           const current = await readState(env);
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
+          const state = cleanState({ ...current, ...body });
           await saveState(env, state);
           return json({ ok: true, state });
         } catch { return json({ error: "Invalid state" }, 400); }
