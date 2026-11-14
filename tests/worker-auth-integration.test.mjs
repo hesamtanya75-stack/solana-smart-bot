@@ -252,13 +252,26 @@ test("Worker logout revokes the bearer session immediately", async () => {
 
 test("Worker rejects expired bearer sessions", async () => {
   const { env } = makeEnvironment();
-  const token = "expired-integration-session";
+  const token = "123e4567-e89b-42d3-a456-426614174000";
   await env.BOT_STATE.put("session:" + token, JSON.stringify({
     expiresAt: Date.now() - 1
   }));
 
   const response = await get("/api/profile", env, token);
   assert.equal(response.status, 401);
+});
+
+test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
+  const { env } = makeEnvironment();
+  for (const token of [
+    "expired-session",
+    "a".repeat(1024),
+    "123e4567-e89b-12d3-a456-426614174000",
+    "123e4567-e89b-42d3-c456-426614174000 extra"
+  ]) {
+    const response = await get("/api/profile", env, token);
+    assert.equal(response.status, 401);
+  }
 });
 
 test("concurrent bad password attempts are atomically throttled by AuthGuard", async () => {
