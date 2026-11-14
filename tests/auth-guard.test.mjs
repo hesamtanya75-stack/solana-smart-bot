@@ -85,3 +85,33 @@ test("internal endpoint rejects oversized request bodies", async () => {
   const response = await guard.fetch(request);
   assert.equal(response.status, 413);
 });
+
+
+test("legacy auth state initializes once and cannot overwrite newer counters", async () => {
+  const { guard } = makeGuard();
+  const legacyHash = "b".repeat(64);
+  assert.equal(await guard.initializeFromLegacy({
+    backupHash: legacyHash,
+    lastTotpCounter: 987654
+  }), true);
+  assert.equal(await guard.acceptTotpCounter(987654), false);
+  assert.equal(await guard.acceptTotpCounter(987655), true);
+  assert.equal(await guard.initializeFromLegacy({
+    backupHash: "c".repeat(64),
+    lastTotpCounter: 1
+  }), false);
+  assert.equal(await guard.consumeBackupCode(legacyHash), true);
+  assert.equal(await guard.consumeBackupCode("c".repeat(64)), false);
+});
+
+test("legacy auth state rejects malformed migration data", async () => {
+  const { guard } = makeGuard();
+  await assert.rejects(() => guard.initializeFromLegacy({
+    backupHash: "not-a-hash",
+    lastTotpCounter: 100
+  }));
+  await assert.rejects(() => guard.initializeFromLegacy({
+    backupHash: null,
+    lastTotpCounter: -2
+  }));
+});
