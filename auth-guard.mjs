@@ -54,6 +54,45 @@ async function readJsonBody(request) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+async function hashText(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function validTotpSecret(value) {
+  return value === null || (typeof value === "string" && /^[A-Z2-7]{16,64}$/.test(value));
+}
+
+async function totpCode(secret, counter) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0;
+  const bytes = [];
+  for (const char of secret) {
+    const digit = alphabet.indexOf(char);
+    if (digit < 0) throw new Error("Invalid authenticator secret");
+    value = (value << 5) | digit;
+    bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(bytes), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const msg = new Uint8Array(8);
+  let n = counter;
+  for (let i = 7; i >= 0; i--) { msg[i] = n & 255; n = Math.floor(n / 256); }
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, msg));
+  const offset = mac[mac.length - 1] & 15;
+  const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
+  return String(binary % 1000000).padStart(6, "0");
+}
+
+async function matchingTotpCounter(secret, code, now = Date.now()) {
+  if (!secret || !/^\\d{6}$/.test(String(code || ""))) return null;
+  for (const drift of [0, -30000, 30000]) {
+    const counter = Math.floor((now + drift) / 30000);
+    if (await totpCode(secret, counter) === String(code)) return counter;
+  }
+  return null;
+}
+
 export class AuthGuard {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -68,7 +107,11 @@ export class AuthGuard {
         backupHash: null,
         lastTotpCounter: -1,
         failures: {},
-        challenges: {}
+        challenges: {},
+        totpEnabled: false,
+        totpSecret: null,
+        pendingTotpSecret: null,
+        pendingTotpAt: null
       };
       result = await operation(state);
       await txn.put("auth_guard_state", state);
@@ -116,19 +159,79 @@ export class AuthGuard {
     });
   }
 
-  async initializeFromLegacy({ backupHash = null, lastTotpCounter = -1 } = {}) {
-    if (backupHash !== null && (typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash))) {
-      throw new Error("Invalid legacy backup-code hash");
-    }
-    if (!Number.isSafeInteger(lastTotpCounter) || lastTotpCounter < -1) {
-      throw new Error("Invalid legacy TOTP counter");
-    }
+  async initializeFromLegacy({
+    backupHash = null,
+    lastTotpCounter = -1,
+    totpEnabled = false,
+    totpSecret = null,
+    pendingTotpSecret = null,
+    pendingTotpAt = null
+  } = {}) {
+    if (backupHash !== null && (typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash))) throw new Error("Invalid legacy backup-code hash");
+    if (!Number.isSafeInteger(lastTotpCounter) || lastTotpCounter < -1) throw new Error("Invalid legacy TOTP counter");
+    if (typeof totpEnabled !== "boolean" || !validTotpSecret(totpSecret) || !validTotpSecret(pendingTotpSecret)) throw new Error("Invalid legacy TOTP profile");
+    if (pendingTotpAt !== null && (!Number.isSafeInteger(pendingTotpAt) || pendingTotpAt < 0)) throw new Error("Invalid pending TOTP timestamp");
+    if (totpEnabled && !totpSecret) throw new Error("Enabled TOTP profile is missing its secret");
     return this.withState(state => {
       if (state.initialized === true) return false;
       state.backupHash = backupHash ? backupHash.toLowerCase() : null;
       state.lastTotpCounter = lastTotpCounter;
+      state.totpEnabled = totpEnabled;
+      state.totpSecret = totpSecret;
+      state.pendingTotpSecret = pendingTotpSecret;
+      state.pendingTotpAt = pendingTotpAt;
       state.initialized = true;
       return true;
+    });
+  }
+
+  async getProfile() {
+    return this.withState(state => ({
+      initialized: state.initialized === true,
+      totpEnabled: state.totpEnabled === true,
+      totpSecret: state.totpSecret || null,
+      pendingTotpSecret: state.pendingTotpSecret || null,
+      pendingTotpAt: state.pendingTotpAt ?? null
+    }));
+  }
+
+  async beginTotpSetup(secret, now = Date.now()) {
+    if (!validTotpSecret(secret) || !secret || !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid TOTP setup");
+    return this.withState(state => {
+      if (state.totpEnabled) return false;
+      state.pendingTotpSecret = secret;
+      state.pendingTotpAt = now;
+      return true;
+    });
+  }
+
+  async confirmTotpSetup({ code, backupHash, now = Date.now() } = {}) {
+    if (typeof code !== "string" || !/^\\d{6}$/.test(code) ||
+        typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash) ||
+        !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid TOTP confirmation");
+    return this.withState(async state => {
+      if (state.totpEnabled || !state.pendingTotpSecret ||
+          !Number.isSafeInteger(state.pendingTotpAt) || now < state.pendingTotpAt ||
+          now - state.pendingTotpAt > 600000) return { ok: false, reason: "expired" };
+      const counter = await matchingTotpCounter(state.pendingTotpSecret, code, now);
+      if (counter === null || counter <= Number(state.lastTotpCounter ?? -1)) {
+        return { ok: false, reason: "invalid" };
+      }
+      state.totpSecret = state.pendingTotpSecret;
+      state.totpEnabled = true;
+      state.lastTotpCounter = counter;
+      state.backupHash = backupHash.toLowerCase();
+      state.pendingTotpSecret = null;
+      state.pendingTotpAt = null;
+      return { ok: true, counter };
+    });
+  }
+
+  async isRateLimited(scope, now = Date.now()) {
+    if (!validScope(scope) || !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid rate-limit scope");
+    return this.withState(state => {
+      const entry = state.failures["scope:" + scope];
+      return !!entry && Number(entry.resetAt) > now && Number(entry.count || 0) >= 5;
     });
   }
 
@@ -247,13 +350,21 @@ export class AuthGuard {
     }
     try {
       if (body.operation === "initialize-legacy") {
-        return json({
-          initialized: await this.initializeFromLegacy({
-            backupHash: body.backupHash ?? null,
-            lastTotpCounter: body.lastTotpCounter ?? -1
-          })
-        });
+        return json({ initialized: await this.initializeFromLegacy({
+          backupHash: body.backupHash ?? null,
+          lastTotpCounter: body.lastTotpCounter ?? -1,
+          totpEnabled: body.totpEnabled ?? false,
+          totpSecret: body.totpSecret ?? null,
+          pendingTotpSecret: body.pendingTotpSecret ?? null,
+          pendingTotpAt: body.pendingTotpAt ?? null
+        }) });
       }
+      if (body.operation === "get-profile") return json(await this.getProfile());
+      if (body.operation === "begin-totp-setup") return json({ ok: await this.beginTotpSetup(body.secret) });
+      if (body.operation === "confirm-totp-setup") return json(await this.confirmTotpSetup({
+        code: body.code, backupHash: body.backupHash
+      }));
+      if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
       if (body.operation === "create-challenge") {
         return json({ created: await this.createMfaChallenge(body.challengeId) });
       }
