@@ -103,6 +103,14 @@ async function get(path, env, token) {
   }), env);
 }
 
+async function put(path, body, env, token) {
+  return worker.fetch(new Request("https://bot.example" + path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(body)
+  }), env);
+}
+
 async function sha256(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
@@ -308,4 +316,46 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
   const state = await (await get("/api/state", env, token)).json();
   assert.equal(state.autoEnabled, true);
   assert.equal(state.balance, 100);
+});
+
+
+test("Worker exposes one-time paper-state migration and rejects stale repeat writes", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+
+  const initialResponse = await get("/api/state", env, token);
+  assert.equal(initialResponse.status, 200);
+  const initial = await initialResponse.json();
+  assert.equal(initial.canMigrateLegacy, true);
+  assert.equal(initial.revision, 0);
+
+  const migration = await put("/api/state", {
+    expectedRevision: initial.revision,
+    balance: 82.5,
+    trades: [],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(migration.status, 200);
+  const migrated = await migration.json();
+  assert.equal(migrated.state.balance, 82.5);
+  assert.equal(migrated.revision, 1);
+
+  const stale = await put("/api/state", {
+    expectedRevision: migrated.revision,
+    balance: 999,
+    trades: [],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(stale.status, 409);
+
+  const currentResponse = await get("/api/state", env, token);
+  const current = await currentResponse.json();
+  assert.equal(current.balance, 82.5);
+  assert.equal(current.canMigrateLegacy, false);
 });
