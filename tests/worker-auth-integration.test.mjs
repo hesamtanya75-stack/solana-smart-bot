@@ -199,7 +199,11 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const { token } = await login.json();
   const authHeader = { Authorization: "Bearer " + token };
 
-  const setup = await post("/api/totp/setup", {}, env, authHeader);
+  const setupWithoutPassword = await post("/api/totp/setup", {}, env, authHeader);
+  assert.equal(setupWithoutPassword.status, 400);
+  const setupWithWrongPassword = await post("/api/totp/setup", { password: "incorrect-password" }, env, authHeader);
+  assert.equal(setupWithWrongPassword.status, 401);
+  const setup = await post("/api/totp/setup", { password: LOGIN_PASSWORD }, env, authHeader);
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
   assert.equal(typeof setupBody.secret, "string");
