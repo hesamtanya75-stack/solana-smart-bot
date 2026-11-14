@@ -710,14 +710,17 @@ async function clearAuthFailures(env, scope) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Report the actual Cloudflare Worker version instead of a manually
+    // maintained commit marker that can silently become stale.
+    const build = env.CF_VERSION_METADATA?.tag || env.CF_VERSION_METADATA?.id || "unavailable";
     if (!sameOriginApiRequest(request, url)) {
       return json({ error: "Cross-origin API request rejected" }, 403);
     }
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV + Durable Objects", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV + Durable Objects", build });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
@@ -1022,13 +1025,13 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
-          "X-Solana-Smart-Bot-Build": "59ef112"
+          "X-Solana-Smart-Bot-Build": build
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", build);
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
