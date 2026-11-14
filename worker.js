@@ -514,12 +514,13 @@ async function totpCode(secret, time = Date.now()) {
   const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
   return String(binary % 1000000).padStart(6, "0");
 }
-async function verifyTotp(secret, code) {
-  if (!/^\d{6}$/.test(String(code || ""))) return false;
-  for (const drift of [-30000, 0, 30000]) {
-    if (await totpCode(secret, Date.now() + drift) === String(code)) return true;
+async function matchingTotpCounter(secret, code, time = Date.now()) {
+  if (!/^\d{6}$/.test(String(code || ""))) return null;
+  for (const drift of [0, -30000, 30000]) {
+    const counter = Math.floor((time + drift) / 30000);
+    if (await totpCode(secret, (counter * 30000) + 1) === String(code)) return counter;
   }
-  return false;
+  return null;
 }
 async function hashText(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -620,7 +621,11 @@ export default {
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        const matchedCounter = profile.totpEnabled && profile.totpSecret
+          ? await matchingTotpCounter(profile.totpSecret, code) : null;
+        const validTotp = matchedCounter !== null &&
+          matchedCounter > Number(profile.lastTotpCounter ?? -1);
+        let valid = validTotp;
         if (!valid && profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
           if (submittedHash === profile.backupHash) {
@@ -634,6 +639,10 @@ export default {
           challenge.attempts = Number(challenge.attempts || 0) + 1;
           await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        }
+        if (validTotp) {
+          profile.lastTotpCounter = matchedCounter;
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
         }
         await env.BOT_STATE.delete(key);
         await env.BOT_STATE.delete("totp_fail:" + ip);
@@ -697,10 +706,12 @@ export default {
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) {
+          const matchedCounter = await matchingTotpCounter(p.pendingTotpSecret, code);
+          if (matchedCounter === null || matchedCounter <= Number(p.lastTotpCounter ?? -1)) {
             await recordTotpIpFailure(env, ip);
-            return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+            return json({ error: "کۆدی Authenticator هەڵەیە یان پێشتر بەکارهاتووە" }, 401);
           }
+          p.lastTotpCounter = matchedCounter;
           await env.BOT_STATE.delete("totp_fail:" + ip);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
