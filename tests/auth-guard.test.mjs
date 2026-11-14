@@ -62,3 +62,25 @@ test("backup hashes and TOTP counters reject malformed values", async () => {
   assert.equal(await guard.acceptTotpCounter(1.5), false);
   await assert.rejects(() => guard.provisionBackupHash("bad"));
 });
+
+test("failure scopes reject invalid values without touching object keys", async () => {
+  const { guard } = makeGuard();
+  await assert.rejects(() => guard.clearFailures("__proto__"));
+  await assert.rejects(() => guard.recordFailure("bad.scope"));
+  const result = await guard.recordFailure("totp:valid-scope", 1000);
+  assert.equal(result.count, 1);
+});
+
+test("internal endpoint rejects oversized request bodies", async () => {
+  const token = "t".repeat(40);
+  const guard = new AuthGuard({ storage: new TransactionalStorage() }, {
+    AUTH_GUARD_INTERNAL_TOKEN: token
+  });
+  const request = new Request("https://internal.invalid/", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ operation: "record-failure", scope: "x", padding: "a".repeat(5000) })
+  });
+  const response = await guard.fetch(request);
+  assert.equal(response.status, 413);
+});
