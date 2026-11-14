@@ -134,6 +134,7 @@ test("Worker login migrates legacy MFA and enforces one-time TOTP and backup cod
 
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
+  assert.equal(await env.BOT_STATE.get("auth_guard_migration_v1"), "complete");
   const challenge = await login.json();
   assert.equal(challenge.mfaRequired, true);
 
@@ -220,4 +221,28 @@ test("Worker migrates an active legacy password rate limit before checking login
   assert.equal(response.status, 429);
   assert.equal(await env.BOT_STATE.get(legacyKey), null);
   assert.equal(await guard.isRateLimited("login:" + await sha256("203.0.113.90")), true);
+});
+
+
+test("Worker refuses to re-import stale KV MFA secrets if migrated Durable Object state is missing", async () => {
+  const { env } = makeEnvironment({
+    totpEnabled: true,
+    totpSecret: "JBSWY3DPEHPK3PXP",
+    backupHash: await sha256("ABCD1234EFGH5678"),
+    lastTotpCounter: 123
+  });
+  const first = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(first.status, 200);
+  assert.equal(await env.BOT_STATE.get("auth_guard_migration_v1"), "complete");
+
+  const replacementGuard = new AuthGuard({ storage: new TransactionalStorage() }, {
+    AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN
+  });
+  env.AUTH_GUARD = {
+    idFromName: name => name,
+    get: () => ({ fetch: (input, init) => replacementGuard.fetch(new Request(input, init)) })
+  };
+  const refused = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(refused.status, 503);
+  assert.equal((await replacementGuard.getProfile()).initialized, false);
 });
