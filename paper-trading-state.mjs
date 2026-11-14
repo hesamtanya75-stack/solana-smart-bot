@@ -163,8 +163,14 @@ export class PaperTradingState {
         const requestId = String(body.requestId || "");
         if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) return response({ error: "Invalid request id" }, 400);
         const result = await this.transact(record => {
+          const intent = body.operation === "paper-buy" ? String(body.mint || "") : "";
           const previous = record.recentOperations.find(item => item.id === requestId);
-          if (previous) return { value: previous.result };
+          if (previous) {
+            if (previous.operation !== body.operation || previous.intent !== intent) {
+              return { value: { error: "Idempotency key was reused for a different operation" } };
+            }
+            return { value: previous.result };
+          }
           const state = { ...record.state, trades: [...record.state.trades] };
           if (body.operation === "clear-history") {
             state.trades = [];
@@ -189,7 +195,7 @@ export class PaperTradingState {
           state.updatedAt = new Date().toISOString();
           const next = { ...record, state, revision: record.revision + 1 };
           const value = { ok: true, state, revision: next.revision };
-          next.recentOperations = [...record.recentOperations, { id: requestId, result: value }].slice(-500);
+          next.recentOperations = [...record.recentOperations, { id: requestId, operation: body.operation, intent, result: value }].slice(-500);
           return { write: true, record: next, value };
         });
         if (result?.error) return response(result, 409);
