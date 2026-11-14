@@ -138,3 +138,74 @@ test("internal endpoint requires one exact Bearer credential", async () => {
   assert.equal(acceptedBody.limited, false);
   assert.ok(acceptedBody.resetAt > Date.now());
 });
+
+
+test("an MFA challenge and its TOTP counter can only be completed once", async () => {
+  const { guard } = makeGuard();
+  const id = "123e4567-e89b-12d3-a456-426614174000";
+  assert.equal(await guard.createMfaChallenge(id, 1000), true);
+  const results = await Promise.all(Array.from({ length: 20 }, () =>
+    guard.completeMfaChallenge({
+      challengeId: id,
+      now: 1001,
+      totpCounter: 123456,
+      failureScope: "totp:ip-test"
+    })
+  ));
+  assert.equal(results.filter(result => result.ok).length, 1);
+  assert.equal(results.filter(result => result.reason === "missing").length, 19);
+});
+
+test("a backup code is consumed atomically when completing an MFA challenge", async () => {
+  const { guard } = makeGuard();
+  const hash = "d".repeat(64);
+  await guard.provisionBackupHash(hash);
+  const ids = Array.from({ length: 2 }, (_, i) =>
+    "123e4567-e89b-12d3-a456-42661417400" + i
+  );
+  for (const id of ids) assert.equal(await guard.createMfaChallenge(id, 2000), true);
+  const results = await Promise.all(ids.map(challengeId =>
+    guard.completeMfaChallenge({
+      challengeId,
+      now: 2001,
+      backupHash: hash,
+      failureScope: "totp:backup-test"
+    })
+  ));
+  assert.equal(results.filter(result => result.ok && result.method === "backup").length, 1);
+});
+
+test("MFA challenges expire and failed attempts are rate limited atomically", async () => {
+  const { guard } = makeGuard();
+  const expiredId = "123e4567-e89b-12d3-a456-426614174010";
+  assert.equal(await guard.createMfaChallenge(expiredId, 1000), true);
+  assert.deepEqual(await guard.completeMfaChallenge({
+    challengeId: expiredId,
+    now: 301001,
+    failureScope: "totp:expired"
+  }), { ok: false, reason: "expired" });
+
+  const id = "123e4567-e89b-12d3-a456-426614174011";
+  assert.equal(await guard.createMfaChallenge(id, 400000), true);
+  const results = await Promise.all(Array.from({ length: 8 }, () =>
+    guard.completeMfaChallenge({
+      challengeId: id,
+      now: 400001,
+      failureScope: "totp:attempt-test"
+    })
+  ));
+  assert.equal(results.filter(result => result.reason === "invalid").length, 4);
+  assert.equal(results.filter(result => result.reason === "rate-limited").length, 1);
+  assert.equal(results.filter(result => result.reason === "missing").length, 3);
+});
+
+test("MFA challenge creation is bounded and validates challenge identifiers", async () => {
+  const { guard } = makeGuard();
+  await assert.rejects(() => guard.createMfaChallenge("not-a-uuid", 1000));
+  for (let i = 0; i < 100; i++) {
+    const suffix = String(i).padStart(12, "0");
+    const id = "123e4567-e89b-12d3-a456-" + suffix;
+    assert.equal(await guard.createMfaChallenge(id, 1000), true);
+  }
+  assert.equal(await guard.createMfaChallenge("223e4567-e89b-12d3-a456-426614174000", 1000), false);
+});
