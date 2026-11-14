@@ -22,8 +22,22 @@ function validCounter(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+const MAX_FAILURE_BUCKETS = 1000;
+
 function validScope(scope) {
   return typeof scope === "string" && /^[a-zA-Z0-9:_-]{1,160}$/.test(scope);
+}
+
+function pruneExpiredFailures(state, now) {
+  state.failures ||= {};
+  for (const [key, entry] of Object.entries(state.failures)) {
+    if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) delete state.failures[key];
+  }
+}
+
+function failureCapacityReached(state, key) {
+  return !Object.prototype.hasOwnProperty.call(state.failures, key) &&
+    Object.keys(state.failures).length >= MAX_FAILURE_BUCKETS;
 }
 
 async function readJsonBody(request) {
@@ -140,11 +154,12 @@ export class AuthGuard {
       throw new Error("Invalid authentication failure scope");
     }
     return this.withState(state => {
-      state.failures ||= {};
-      for (const [failureKey, entry] of Object.entries(state.failures)) {
-        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) delete state.failures[failureKey];
-      }
+      pruneExpiredFailures(state, now);
       const key = "scope:" + scope;
+      if (failureCapacityReached(state, key)) {
+        const resetAt = Math.min(...Object.values(state.failures).map(entry => entry.resetAt));
+        return { count: 5, limited: true, resetAt };
+      }
       const current = state.failures[key];
       const active = current && Number(current.resetAt) > now ? current : { count: 0, resetAt: now + 900000 };
       if (Number(active.count || 0) >= 5) {
@@ -242,8 +257,9 @@ export class AuthGuard {
       throw new Error("Invalid TOTP confirmation");
     }
     return this.withState(async state => {
-      state.failures ||= {};
+      pruneExpiredFailures(state, now);
       const key = "scope:" + failureScope;
+      if (failureCapacityReached(state, key)) return { ok: false, reason: "rate-limited" };
       const current = state.failures[key];
       if (current && Number(current.resetAt) > now && Number(current.count || 0) >= 5) {
         return { ok: false, reason: "rate-limited" };
@@ -274,8 +290,9 @@ export class AuthGuard {
     if (!validScope(scope) || !Number.isSafeInteger(count) || count < 1 || count > 5 ||
         !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid legacy failure counter");
     return this.withState(state => {
-      state.failures ||= {};
+      pruneExpiredFailures(state, now);
       const key = "scope:" + scope;
+      if (failureCapacityReached(state, key)) throw new Error("Authentication failure bucket capacity reached");
       const current = state.failures[key];
       if (current && Number(current.resetAt) > now) {
         const nextCount = Math.max(0, Math.min(5, Number(current.count) || 0), count);
@@ -343,8 +360,11 @@ export class AuthGuard {
         delete state.challenges[challengeId];
         return { ok: false, reason: "attempts-exhausted" };
       }
-      state.failures ||= {};
+      pruneExpiredFailures(state, now);
       const failureKey = failureScope === null ? null : "scope:" + failureScope;
+      if (failureKey && failureCapacityReached(state, failureKey)) {
+        return { ok: false, reason: "rate-limited" };
+      }
       const failures = failureKey ? state.failures[failureKey] : null;
       if (failures && Number(failures.resetAt) > now && Number(failures.count || 0) >= 5) {
         return { ok: false, reason: "rate-limited", resetAt: failures.resetAt };
