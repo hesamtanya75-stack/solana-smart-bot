@@ -1,7 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import worker from "../worker.js";
+import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
+
+const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+const executableWorkerSource = workerSource
+  .replace(/^export default \\{/m, "const worker = {")
+  .replace(/^export \\{[^}]+\\} from ["'][^"']+["'];?\\s*$/gm, "");
+const workerContext = vm.createContext({
+  crypto: webcrypto,
+  Request,
+  Response,
+  URL,
+  TextEncoder,
+  TextDecoder,
+  AbortSignal,
+  fetch,
+  console,
+  setTimeout,
+  clearTimeout,
+  atob,
+  btoa,
+  structuredClone
+});
+vm.runInContext(executableWorkerSource + "\\nglobalThis.__worker = worker;", workerContext);
+const worker = workerContext.__worker;
 
 const INTERNAL_TOKEN = "integration-test-internal-token-0123456789";
 const LOGIN_PASSWORD = "integration-test-password";
