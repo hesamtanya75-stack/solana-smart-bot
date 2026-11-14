@@ -865,7 +865,13 @@ export default {
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 4096);
+          const keys = Object.keys(body);
+          if (!keys.length || keys.some(key => !["enabled", "paused"].includes(key)) ||
+              (body.enabled !== undefined && typeof body.enabled !== "boolean") ||
+              (body.paused !== undefined && typeof body.paused !== "boolean")) {
+            return json({ error: "Invalid automation settings" }, 400);
+          }
           const state = await readState(env);
           if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
           if (typeof body.paused === "boolean") state.paused = body.paused;
