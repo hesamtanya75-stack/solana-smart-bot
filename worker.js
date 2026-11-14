@@ -899,13 +899,15 @@ export default {
             return json({ error: "Unsupported state fields or revision" }, 400);
           }
           const current = await readState(env);
-          if (current.__revision !== body.expectedRevision || current.updatedAt !== null) {
-            return json({ error: "Legacy state migration is no longer available; refresh server state" }, 409);
+          if (current.__revision !== body.expectedRevision) {
+            return json({ error: "Server state changed; refresh before migration" }, 409);
           }
           const state = cleanState({ ...current, ...body });
-          Object.defineProperty(state, "__revision", { value: current.__revision, writable: true, configurable: true });
-          await saveState(env, state);
-          return json({ ok: true, state, revision: state.__revision });
+          return json(await paperStateCall(env, {
+            operation: "migrate-legacy",
+            expectedRevision: body.expectedRevision,
+            state
+          }));
         } catch (error) {
           return json({ error: error.status === 409 ? "State changed; refresh and retry" : "Invalid state" }, error.status || 400);
         }
