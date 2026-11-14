@@ -1,4 +1,4 @@
-const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
   trades: [],
@@ -30,32 +30,148 @@ function json(data, status = 200) {
     }
   });
 }
+
+async function readBoundedJson(request, maxBytes = 8192) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("Request body too large");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  return value;
+}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
+  const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const cleanTrades = Array.isArray(s.trades) ? s.trades.slice(-500).flatMap(trade => {
+    if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
+        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return [];
+    const amount = finite(trade.amount);
+    const buyPrice = finite(trade.buyPrice);
+    const tokens = finite(trade.tokens);
+    if (amount <= 0 || buyPrice <= 0 || tokens <= 0) return [];
+    return [{
+      mint: trade.mint.trim(),
+      amount,
+      buyPrice,
+      currentPrice: finite(trade.currentPrice) || buyPrice,
+      tokens,
+      sold: trade.sold === true,
+      sellPrice: finite(trade.sellPrice),
+      saleValue: finite(trade.saleValue),
+      boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
+      soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
+    }];
+  }) : [];
   return {
-    ...DEFAULT_STATE,
-    ...s,
-    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : 100,
-    trades: Array.isArray(s.trades) ? s.trades.slice(-500) : [],
+    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
+    trades: cleanTrades,
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
-    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
-    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.filter(mint => typeof mint === "string" && mint.length <= 64).slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).flatMap(item =>
+      item && typeof item === "object" && !Array.isArray(item) &&
+      typeof item.mint === "string" && item.mint.length <= 64 && Number.isFinite(Number(item.retryAt))
+        ? [{ mint: item.mint, retryAt: Number(item.retryAt) }] : []) : [],
+    lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt.slice(0, 64) : null,
+    lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).flatMap(item =>
+      item && typeof item === "object" && !Array.isArray(item)
+        ? [{ mint: typeof item.mint === "string" ? item.mint.slice(0, 64) : "",
+             status: typeof item.status === "string" ? item.status.slice(0, 40) : "",
+             reasons: Array.isArray(item.reasons) ? item.reasons.filter(reason => typeof reason === "string").slice(0, 10).map(reason => reason.slice(0, 300)) : [] }]
+        : []) : [],
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
 }
+async function paperStateCall(env, body) {
+  const namespace = env.PAPER_TRADING_STATE;
+  if (!namespace) throw new Error("PaperTradingState binding is not configured");
+  const stub = namespace.get(namespace.idFromName("paper-trading"));
+  const response = await stub.fetch("https://paper-trading.internal/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(result.error || "Paper trading state request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
 async function readState(env) {
-  return cleanState(await env.BOT_STATE.get("bot_state", "json"));
+  const result = await paperStateCall(env, { operation: "get" });
+  const state = cleanState(result.state);
+  Object.defineProperty(state, "__revision", { value: result.revision, writable: true, configurable: true });
+  Object.defineProperty(state, "__migrationOpen", { value: result.migrationOpen === true, configurable: true });
+  return state;
 }
 async function saveState(env, state) {
-  state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  const result = await paperStateCall(env, {
+    operation: "compare-and-set",
+    expectedRevision: state.__revision,
+    state
+  });
+  state.updatedAt = result.state.updatedAt;
+  state.__revision = result.revision;
 }
+function constantTimeTextEqual(left, right) {
+  const a = new TextEncoder().encode(String(left));
+  const b = new TextEncoder().encode(String(right));
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i++) difference |= (a[i] || 0) ^ (b[i] || 0);
+  return difference === 0;
+}
+
 async function authorized(request, env) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) return false;
+  const authorization = request.headers.get("Authorization") || "";
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  const token = match ? match[1] : "";
+  // Session identifiers are minted with crypto.randomUUID(); require the
+  // exact Bearer scheme and reject malformed or oversized values before KV.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+    return false;
+  }
   const session = await env.BOT_STATE.get("session:" + token, "json");
   return !!session && session.expiresAt > Date.now();
+}
+function sameOriginApiRequest(request, url) {
+  if (!url.pathname.startsWith("/api/") ||
+      !["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) return true;
+  const origin = request.headers.get("Origin");
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== url.origin) return false;
+    } catch {
+      return false;
+    }
+  } else if (request.headers.get("Sec-Fetch-Site") !== "same-origin") {
+    // Mutating browser requests must provide at least one same-origin signal.
+    // Reject requests where both Origin and Fetch Metadata are absent.
+    return false;
+  }
+  return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
 async function rpc(method, params, env) {
   const errors = [];
@@ -484,12 +600,13 @@ async function totpCode(secret, time = Date.now()) {
   const binary = ((mac[offset] & 127) << 24) | ((mac[offset + 1] & 255) << 16) | ((mac[offset + 2] & 255) << 8) | (mac[offset + 3] & 255);
   return String(binary % 1000000).padStart(6, "0");
 }
-async function verifyTotp(secret, code) {
-  if (!/^\d{6}$/.test(String(code || ""))) return false;
-  for (const drift of [-30000, 0, 30000]) {
-    if (await totpCode(secret, Date.now() + drift) === String(code)) return true;
+async function matchingTotpCounter(secret, code, time = Date.now()) {
+  if (!/^\d{6}$/.test(String(code || ""))) return null;
+  for (const drift of [0, -30000, 30000]) {
+    const counter = Math.floor((time + drift) / 30000);
+    if (await totpCode(secret, (counter * 30000) + 1) === String(code)) return counter;
   }
-  return false;
+  return null;
 }
 async function hashText(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -501,15 +618,109 @@ async function readProfile(env) {
     totpEnabled: false, totpSecret: null, backupHash: null
   };
 }
+async function authGuardCall(env, body) {
+  const namespace = env.AUTH_GUARD;
+  const token = String(env.AUTH_GUARD_INTERNAL_TOKEN || "");
+  if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured");
+  const id = namespace.idFromName("admin");
+  const stub = namespace.get(id);
+  const response = await stub.fetch("https://auth-guard.internal/", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  let result;
+  try { result = await response.json(); } catch { throw new Error("Authentication guard response invalid"); }
+  if (!response.ok) throw new Error("Authentication guard request failed");
+  return result;
+}
+async function clearLegacyMfaProfile(env) {
+  const legacy = await readProfile(env);
+  let changed = false;
+  for (const field of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) {
+    if (Object.prototype.hasOwnProperty.call(legacy, field)) {
+      delete legacy[field];
+      changed = true;
+    }
+  }
+  if (changed) await env.BOT_STATE.put("admin_profile", JSON.stringify(legacy));
+}
+async function ensureAuthGuard(env) {
+  const current = await authGuardCall(env, { operation: "get-profile" });
+  const migrationMarker = await env.BOT_STATE.get("auth_guard_migration_v1");
+  if (migrationMarker === "complete" && !current.initialized) {
+    throw new Error("AuthGuard state is missing after migration; refusing to re-import stale MFA data");
+  }
+  if (current.initialized && migrationMarker === "complete") {
+    await clearLegacyMfaProfile(env);
+    return current;
+  }
+
+  const legacy = await readProfile(env);
+  const legacyCounter = legacy.lastTotpCounter == null ? -1 : legacy.lastTotpCounter;
+  if (!Number.isSafeInteger(legacyCounter) || legacyCounter < -1) {
+    throw new Error("Legacy TOTP counter is invalid; refusing unsafe migration");
+  }
+  const legacyProfile = {
+    backupHash: legacy.backupHash || null,
+    lastTotpCounter: legacyCounter,
+    totpEnabled: legacy.totpEnabled === true,
+    totpSecret: legacy.totpSecret || null,
+    pendingTotpSecret: legacy.pendingTotpSecret || null,
+    pendingTotpAt: Number.isSafeInteger(legacy.pendingTotpAt) ? legacy.pendingTotpAt : null
+  };
+  if (!current.initialized) {
+    await authGuardCall(env, { operation: "initialize-legacy", ...legacyProfile });
+  }
+  const verification = await authGuardCall(env, { operation: "verify-legacy", ...legacyProfile });
+  if (verification.verified !== true) {
+    throw new Error("AuthGuard legacy migration verification failed; preserving legacy MFA data");
+  }
+  // Persist the completion marker before deleting the legacy copy. If cleanup
+  // fails, the next request can safely retry cleanup without re-importing data.
+  await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
+  await clearLegacyMfaProfile(env);
+  return await authGuardCall(env, { operation: "get-profile" });
+}
+async function migrateLegacyFailure(env, scope, legacyKey) {
+  const legacy = await env.BOT_STATE.get(legacyKey, "json");
+  const count = Math.min(5, Math.max(0, Math.floor(Number(legacy?.count || 0))));
+  if (count > 0) {
+    await authGuardCall(env, { operation: "import-legacy-failure", scope, count });
+    await env.BOT_STATE.delete(legacyKey);
+  }
+}
+async function isAuthRateLimited(env, scope) {
+  const result = await authGuardCall(env, { operation: "is-rate-limited", scope });
+  return result.limited === true;
+}
+async function recordAuthFailure(env, scope) {
+  return authGuardCall(env, { operation: "record-failure", scope });
+}
+async function authFailureScope(prefix, ip) {
+  return prefix + ":" + await hashText(ip);
+}
+async function clearAuthFailures(env, scope) {
+  return authGuardCall(env, { operation: "clear-failures", scope });
+}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // Report the actual Cloudflare Worker version instead of a manually
+    // maintained commit marker that can silently become stale.
+    const build = env.CF_VERSION_METADATA?.tag || env.CF_VERSION_METADATA?.id || "unavailable";
+    if (!sameOriginApiRequest(request, url)) {
+      return json({ error: "Cross-origin API request rejected" }, 403);
+    }
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV + Durable Objects", build });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
@@ -539,72 +750,80 @@ export default {
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const { password } = await request.json();
+        const { password } = await readBoundedJson(request, 4096);
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginKey = "login_fail:" + ip;
-        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
-        if (Number(failures.count || 0) >= 5) {
+        const loginScope = await authFailureScope("login", ip);
+        const profile = await ensureAuthGuard(env);
+        await migrateLegacyFailure(env, loginScope, "login_fail:" + ip);
+        if (await isAuthRateLimited(env, loginScope)) {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
-        if (!expected || typeof password !== "string" || password !== expected) {
-          await env.BOT_STATE.put(loginKey, JSON.stringify({
-            count: Number(failures.count || 0) + 1
-          }), { expirationTtl: 900 });
+        if (!expected || typeof password !== "string" || !constantTimeTextEqual(password, expected)) {
+          const failure = await recordAuthFailure(env, loginScope);
+          if (failure.limited) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(loginKey);
-        const profile = await readProfile(env);
+        await clearAuthFailures(env, loginScope);
         if (profile.totpEnabled && profile.totpSecret) {
           const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          const challenge = await authGuardCall(env, { operation: "create-challenge", challengeId });
+          if (!challenge.created) return json({ error: "نەتوانرا داواکاریی پشتڕاستکردنەوە دروست بکرێت" }, 503);
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
+        const { challengeId, code } = await readBoundedJson(request, 4096);
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
-        const key = "mfa_challenge:" + challengeId;
-        const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
-        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
-        const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
-        if (!valid && profile.backupHash) {
-          const submittedHash = await hashText(String(code).trim().toUpperCase());
-          if (submittedHash === profile.backupHash) {
-            valid = true;
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
-          }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const failureScope = await authFailureScope("totp", ip);
+        await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
+        if (await isAuthRateLimited(env, failureScope)) {
+          return json({ error: "زۆر هەوڵی کۆدی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
-        if (!valid) {
-          challenge.attempts = Number(challenge.attempts || 0) + 1;
-          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
-          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+        const profile = await ensureAuthGuard(env);
+        const matchedCounter = profile.totpEnabled && profile.totpSecret
+          ? await matchingTotpCounter(profile.totpSecret, code) : null;
+        const submittedHash = await hashText(String(code).trim().toUpperCase());
+        const result = await authGuardCall(env, {
+          operation: "complete-challenge",
+          challengeId,
+          totpCounter: matchedCounter,
+          backupHash: submittedHash,
+          failureScope
+        });
+        if (!result.ok) {
+          const status = result.reason === "rate-limited" || result.reason === "attempts-exhausted" ? 429 : 401;
+          return json({ error: status === 429 ? "هەوڵەکان سنووردار کراون؛ دواتر هەوڵ بدە." : "کۆدی Authenticator هەڵەیە یان کاتی داواکاری تەواو بوو." }, status);
         }
-        await env.BOT_STATE.delete(key);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
+      } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/logout" && request.method === "POST") {
+        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        if (!token) return json({ error: "Unauthorized" }, 401);
+        await env.BOT_STATE.delete("session:" + token);
+        return json({ ok: true, message: "Session revoked" });
+      }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
-        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
+        const auth = await ensureAuthGuard(env);
+        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!auth.totpEnabled });
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 4096);
           const p = await readProfile(env);
           if (typeof body.email === "string") {
             const email = body.email.trim().slice(0, 254);
@@ -619,17 +838,32 @@ export default {
             p.phone = phone;
           }
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-          return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
+          const auth = await ensureAuthGuard(env);
+          return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!auth.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
-        const p = await readProfile(env);
-        if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
-        const secretBytes = crypto.getRandomValues(new Uint8Array(20));
-        const secret = base32Encode(secretBytes);
-        p.pendingTotpSecret = secret;
-        p.pendingTotpAt = Date.now();
-        await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+        let reauth;
+        try { reauth = await readBoundedJson(request, 4096); }
+        catch { return json({ error: "پشتڕاستکردنەوەی وشەی نهێنی پێویستە" }, 400); }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const setupScope = await authFailureScope("totp-setup", ip);
+        if (await isAuthRateLimited(env, setupScope)) {
+          return json({ error: "زۆر هەوڵی پشتڕاستکردنەوەی وشەی نهێنی دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
+        const expectedPassword = env.BOT_LOGIN_PASSWORD;
+        if (typeof reauth.password !== "string" || typeof expectedPassword !== "string" ||
+            !constantTimeTextEqual(reauth.password, expectedPassword)) {
+          const failure = await recordAuthFailure(env, setupScope);
+          if (failure.limited) return json({ error: "زۆر هەوڵی پشتڕاستکردنەوەی وشەی نهێنی دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          return json({ error: "وشەی نهێنی نادروستە؛ چالاککردنی Authenticator ڕەتکرایەوە" }, 401);
+        }
+        await clearAuthFailures(env, setupScope);
+        const auth = await ensureAuthGuard(env);
+        if (auth.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
+        const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
+        const result = await authGuardCall(env, { operation: "begin-totp-setup", secret });
+        if (!result.ok) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
         const label = encodeURIComponent("Solana Smart Bot Admin");
         const issuer = encodeURIComponent("Solana Smart Bot");
         const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
@@ -637,19 +871,31 @@ export default {
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
         try {
-          const { code } = await request.json();
-          const p = await readProfile(env);
-          if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          const failureScope = await authFailureScope("totp", ip);
+          await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
+          if (await isAuthRateLimited(env, failureScope)) {
+            return json({ error: "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          }
+          const { code } = await readBoundedJson(request, 4096);
+          const auth = await ensureAuthGuard(env);
+          if (!auth.pendingTotpSecret || !Number.isSafeInteger(auth.pendingTotpAt) ||
+              Date.now() - auth.pendingTotpAt > 600000) {
+            return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          }
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
-          p.totpSecret = p.pendingTotpSecret;
-          p.totpEnabled = true;
-          p.backupHash = await hashText(backupCode);
-          delete p.pendingTotpSecret;
-          delete p.pendingTotpAt;
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          const result = await authGuardCall(env, {
+            operation: "confirm-totp-setup",
+            code,
+            backupHash: await hashText(backupCode),
+            failureScope
+          });
+          if (!result.ok) {
+            const status = result.reason === "rate-limited" ? 429 : 401;
+            return json({ error: status === 429 ? "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ دواتر هەوڵ بدە." : "کۆدی Authenticator هەڵەیە یان پێشتر بەکارهاتووە" }, status);
+          }
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
-        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
@@ -678,25 +924,87 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
-      if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
+      if (url.pathname === "/api/state" && request.method === "GET") {
+        const state = await readState(env);
+        return json({ ...state, revision: state.__revision, canMigrateLegacy: state.__migrationOpen });
+      }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
-          const body = await request.json();
-          const current = await readState(env);
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+          const body = await readBoundedJson(request, 262144);
+          const writableFields = new Set(["balance", "trades", "autoEnabled", "paused", "scannedMints", "expectedRevision"]);
+          if (Object.keys(body).some(key => !writableFields.has(key)) ||
+              !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0) {
+            return json({ error: "Unsupported state fields or revision" }, 400);
+          }
+          let migrationError = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const current = await readState(env);
+            if (current.__migrationOpen !== true) {
+              return json({ error: "Legacy paper-state migration is no longer available" }, 409);
+            }
+            if (body.expectedRevision !== current.__revision) {
+              return json({ error: "State revision changed; refresh before migrating" }, 409);
+            }
+            const state = cleanState({ ...current, ...body });
+            try {
+              return json(await paperStateCall(env, {
+                operation: "migrate-legacy",
+                expectedRevision: current.__revision,
+                state
+              }));
+            } catch (error) {
+              if (error.status !== 409 || attempt === 1) throw error;
+              migrationError = error;
+            }
+          }
+          return json({ error: "Server state changed during migration; retry once more" }, migrationError?.status || 409);
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State changed; refresh and retry" : "Invalid state" }, error.status || 400);
+        }
+      }
+      if (url.pathname === "/api/paper/buy" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          const mint = String(body.mint || "");
+          if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) ||
+              !/^[A-Za-z0-9_-]{16,100}$/.test(String(body.requestId || "")) ||
+              Object.keys(body).some(key => !["mint", "requestId"].includes(key))) {
+            return json({ error: "Invalid paper-buy request" }, 400);
+          }
+          const inspected = await inspectMint(mint, env);
+          if (!inspected.ok) return json({ error: "Server safety checks blocked this paper buy", reasons: inspected.reasons }, 409);
+          const result = await paperStateCall(env, {
+            operation: "paper-buy", mint, price: inspected.price, requestId: body.requestId
+          });
+          return json(result);
+        } catch (error) {
+          return json({ error: String(error?.message || "Paper buy failed") }, error.status || 503);
+        }
+      }
+      if (url.pathname === "/api/paper/clear-history" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).some(key => key !== "requestId") ||
+              !/^[A-Za-z0-9_-]{16,100}$/.test(String(body.requestId || ""))) {
+            return json({ error: "Invalid clear-history request" }, 400);
+          }
+          return json(await paperStateCall(env, { operation: "clear-history", requestId: body.requestId }));
+        } catch (error) {
+          return json({ error: "Could not clear paper-trading history" }, error.status || 503);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
-          const body = await request.json();
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid settings" }, 400); }
+          const body = await readBoundedJson(request, 4096);
+          const keys = Object.keys(body);
+          if (!keys.length || keys.some(key => !["enabled", "paused"].includes(key)) ||
+              (body.enabled !== undefined && typeof body.enabled !== "boolean") ||
+              (body.paused !== undefined && typeof body.paused !== "boolean")) {
+            return json({ error: "Invalid automation settings" }, 400);
+          }
+          const result = await paperStateCall(env, { operation: "automation", settings: body });
+          return json(result);
+        } catch (error) { return json({ error: "Invalid settings" }, error.status || 400); }
       }
       return json({ error: "Not found" }, 404);
     }
@@ -717,13 +1025,13 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
-          "X-Solana-Smart-Bot-Build": "59ef112"
+          "X-Solana-Smart-Bot-Build": build
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", build);
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
@@ -793,3 +1101,13 @@ export default {
     })());
   }
 };
+
+
+// Exported for the isolated Durable Object namespace; no live route invokes it yet.
+export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";
+
+// Exported for the dedicated transactional authentication Durable Object.
+export { AuthGuard } from "./auth-guard.mjs";
+
+// Exported for authoritative, transactional paper-trading state.
+export { PaperTradingState } from "./paper-trading-state.mjs";

@@ -1119,7 +1119,7 @@ const safeValue = Number.isFinite(value) ? value : 0;
   `;
 }
 
-renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
+renderDemoHistory();document.getElementById("demoBuy").onclick = async function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
 
@@ -1152,21 +1152,31 @@ if (duplicate) {
     return;
   }
 
-  const price = Number(window.lastTokenPrice || 0);
+  if (serverModeReady) {
+    const button = document.getElementById("demoBuy");
+    button.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/buy", {
+        method: "POST",
+        body: JSON.stringify({ mint, requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
+    } catch (error) {
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر ڕەتکرایەوە: " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
 
+  const price = Number(window.lastTokenPrice || 0);
   if (price <= 0) {
     status.innerText = "نرخی کۆین بەردەست نییە.";
     return;
   }
-
   demoBalance -= 5;
-  demoTrades.push({
-    mint,
-    amount: 5,
-    buyPrice: price,
-    tokens: 5 / price
-  });
-
+  demoTrades.push({ mint, amount: 5, buyPrice: price, tokens: 5 / price });
   saveDemoState();
 
   document.getElementById("demoBalance").innerText =
@@ -1281,18 +1291,29 @@ document.getElementById("demoBuy").insertAdjacentElement(
   clearTradesBtn
 );
 
-clearTradesBtn.onclick = function() {
-  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) {
+clearTradesBtn.onclick = async function() {
+  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) return;
+  if (serverModeReady) {
+    clearTradesBtn.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/clear-history", {
+        method: "POST",
+        body: JSON.stringify({ requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+    } catch (error) {
+      document.getElementById("demoStatus").innerText = "سڕینەوەی مێژوو سەرکەوتوو نەبوو: " + error.message;
+    } finally {
+      clearTradesBtn.disabled = false;
+    }
     return;
   }
-
   demoTrades = [];
   saveDemoState();
   renderDemoHistory();
   updateDemoProfit();
-
-  document.getElementById("demoStatus").innerText =
-    "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+  document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
 };
 
 const statsBox = document.createElement("div");
@@ -1515,6 +1536,7 @@ setInterval(() => {
 
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
+let serverStateRevision = null;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
@@ -1546,6 +1568,7 @@ function renderServerControls(state) {
 }
 function applyServerState(state) {
   if (!state || !Array.isArray(state.trades)) return;
+  if (Number.isSafeInteger(state.revision)) serverStateRevision = state.revision;
   demoBalance = Number(state.balance);
   demoTrades = state.trades;
   if (Array.isArray(state.scannedMints)) {
@@ -1610,9 +1633,10 @@ async function refreshServerPrices() {
 }
 async function saveServerState() {
   if (!serverModeReady) return;
-  await serverRequest("/api/state", {
+  const result = await serverRequest("/api/state", {
     method: "PUT",
     body: JSON.stringify({
+      expectedRevision: serverStateRevision,
       balance: demoBalance,
       trades: demoTrades,
       autoEnabled: autoDemoBuyEnabled,
@@ -1620,29 +1644,24 @@ async function saveServerState() {
       scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
     })
   });
+  if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
 }
 const localSaveDemoState = saveDemoState;
+// Server-mode trading writes are explicit, validated API operations. Local storage
+// remains a cache only and never overwrites the authoritative server snapshot.
 saveDemoState = function() {
   localSaveDemoState();
-  if (serverModeReady) {
-    clearTimeout(serverSaveTimer);
-    serverSaveTimer = setTimeout(() => {
-      saveServerState().catch(error => {
-        const status = document.getElementById("demoStatus");
-        if (status) status.textContent = "هەڵە لە پاشەکەوتکردنی سێرڤەر: " + error.message;
-      });
-    }, 500);
-  }
 };
 async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
+  serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
   // Enable server persistence before migrating the browser's existing paper-trading
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
   serverModeReady = true;
-  if (!remote.updatedAt) {
+  if (remote.canMigrateLegacy === true) {
     let old = null;
     try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
     if (old && Array.isArray(old.trades)) {
@@ -1717,7 +1736,7 @@ async function changeServerAutomation(enabled, paused) {
     method: "POST",
     body: JSON.stringify({ enabled, paused })
   });
-  applyServerState(result.state);
+  applyServerState({ ...result.state, revision: result.revision });
 }
 autoBuyBtn.onclick = async function() {
   if (!serverModeReady) {
@@ -1801,6 +1820,7 @@ if (serverToken) {
         <div class="profile-secret" id="totpBackupCode"></div>
       </div>
       <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <button id="profileLogout" style="background:#7f1d1d;border-color:#b91c1c">دەرچوون و هەڵوەشاندنەوەی چوونەژوورەوە</button>
       <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
     </div>`;
   document.body.appendChild(modal);
@@ -1819,6 +1839,24 @@ if (serverToken) {
   }
   button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
   document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  document.getElementById("profileLogout").onclick=async()=>{
+    const logoutButton=document.getElementById("profileLogout");
+    logoutButton.disabled=true;
+    status().textContent="هەڵوەشاندنەوەی Session...";
+    try{
+      await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      serverToken="";
+      serverModeReady=false;
+      localStorage.removeItem("solanaBotSession");
+      modal.style.display="none";
+      serverLogin.style.display="flex";
+      status().textContent="چوونەژوورەوە هەڵوەشێندرایەوە.";
+    }catch(e){
+      status().textContent="هەڵە لە دەرچوون: "+e.message;
+    }finally{
+      logoutButton.disabled=false;
+    }
+  };
   modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
   document.getElementById("profileSave").onclick=async()=>{
     status().textContent="پاشەکەوت دەکرێت...";
@@ -1833,7 +1871,10 @@ if (serverToken) {
   document.getElementById("totpStart").onclick=async()=>{
     status().textContent="کلیلی پاراستن دروست دەکرێت...";
     try{
-      const p=await serverRequest("/api/totp/setup",{method:"POST",body:"{}"});
+      const password=window.prompt("Authenticator چالاککردن: تکایە وشەی نهێنی ئێستا دووبارە بنووسە");
+      if(password===null){status().textContent="داواکاریی چالاککردن هەڵوەشایەوە.";return;}
+      if(!password){status().textContent="وشەی نهێنی پێویستە.";return;}
+      const p=await serverRequest("/api/totp/setup",{method:"POST",body:JSON.stringify({password})});
       document.getElementById("totpSecret").textContent=p.secret;
       document.getElementById("totpSetup").style.display="block";
       status().textContent=p.message;

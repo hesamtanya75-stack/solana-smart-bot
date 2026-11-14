@@ -1,0 +1,34 @@
+name: Devnet signed lifecycle validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  devnet-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install isolated test dependencies
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@3 @solana/web3.js@1.98.4
+      - name: Run unit and real Durable Objects runtime tests
+        run: npm test
+      - name: Verify Devnet cluster identity and read-only RPC methods
+        run: node scripts/devnet-preflight.mjs
+      - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
+        if: ${{ env.DEVNET_RPC_URL != '' }}
+        run: node scripts/devnet-signed-lifecycle.mjs
+      - name: Report funded Devnet lifecycle as skipped when no dedicated RPC is configured
+        if: ${{ env.DEVNET_RPC_URL == '' }}
+        run: echo "::notice::Funded Devnet lifecycle skipped; configure DEVNET_RPC_URL to enable this optional on-chain check. Read-only validation and unit tests still run."
