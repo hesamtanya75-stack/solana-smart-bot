@@ -293,8 +293,11 @@ test("TOTP enrollment failure counter is enforced within one transaction", async
   const { guard } = makeGuard();
   await guard.initializeFromLegacy();
   await guard.beginTotpSetup("JBSWY3DPEHPK3PXP", 1000);
-  const validCode = await testTotpCode("JBSWY3DPEHPK3PXP", 0);
-  const invalidCode = validCode === "000000" ? "000001" : "000000";
+  const validCodes = new Set(await Promise.all([-1, 0, 1].map(counter =>
+    testTotpCode("JBSWY3DPEHPK3PXP", counter)
+  )));
+  let invalidCode = "000000";
+  while (validCodes.has(invalidCode)) invalidCode = String(Number(invalidCode) + 1).padStart(6, "0");
   const attempts = await Promise.all(Array.from({ length: 8 }, () =>
     guard.confirmTotpSetup({
       code: invalidCode,
