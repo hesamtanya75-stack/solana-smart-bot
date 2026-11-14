@@ -277,7 +277,14 @@ export class AuthGuard {
       state.failures ||= {};
       const key = "scope:" + scope;
       const current = state.failures[key];
-      if (current && Number(current.resetAt) > now) return false;
+      if (current && Number(current.resetAt) > now) {
+        const nextCount = Math.max(0, Math.min(5, Number(current.count) || 0), count);
+        const nextResetAt = Math.max(Number(current.resetAt), now + 900000);
+        const changed = nextCount !== Number(current.count) || nextResetAt !== Number(current.resetAt);
+        current.count = nextCount;
+        current.resetAt = nextResetAt;
+        return changed;
+      }
       state.failures[key] = { count, resetAt: now + 900000 };
       return true;
     });
