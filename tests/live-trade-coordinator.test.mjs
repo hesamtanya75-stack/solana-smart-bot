@@ -82,7 +82,7 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   assert.equal(stale.status, 409);
 });
 
-test("daily spend cap is enforced atomically and confirmed/closed spend remains counted", async () => {
+test("daily spend cap is enforced atomically and pending reservations remain counted", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({
