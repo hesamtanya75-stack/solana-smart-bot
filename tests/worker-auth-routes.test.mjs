@@ -38,3 +38,15 @@ test("state-changing API requests reject cross-origin browser requests", () => {
   assert.ok(workerSource.includes('request.headers.get("Sec-Fetch-Site") !== "cross-site"'));
   assert.ok(workerSource.includes('if (!sameOriginApiRequest(request, url))'));
 });
+
+test("origin protection runs before login and private API route handling", () => {
+  const fetchHandler = workerSource.indexOf("async fetch(request, env)");
+  const originGuard = workerSource.indexOf("if (!sameOriginApiRequest(request, url))", fetchHandler);
+  const loginRoute = workerSource.indexOf('if (url.pathname === "/api/login"', fetchHandler);
+  const privateApiRouter = workerSource.indexOf('if (url.pathname.startsWith("/api/"))', fetchHandler);
+  assert.ok(fetchHandler >= 0);
+  assert.ok(originGuard > fetchHandler);
+  assert.ok(loginRoute > originGuard);
+  assert.ok(privateApiRouter > originGuard);
+  assert.ok(workerSource.includes('["POST", "PUT", "PATCH", "DELETE"]'));
+});
