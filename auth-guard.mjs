@@ -24,6 +24,36 @@ function validCounter(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function validScope(scope) {
+  return typeof scope === "string" && /^[a-zA-Z0-9:_-]{1,160}$/.test(scope);
+}
+
+async function readJsonBody(request) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Missing request body");
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > 4096) {
+      await reader.cancel();
+      const error = new Error("Request body too large");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
 export class AuthGuard {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -63,21 +93,23 @@ export class AuthGuard {
   }
 
   async recordFailure(scope, now = Date.now()) {
-    if (typeof scope !== "string" || !/^[a-zA-Z0-9:_-]{1,160}$/.test(scope)) {
+    if (!validScope(scope)) {
       throw new Error("Invalid authentication failure scope");
     }
     return this.withState(state => {
-      const current = state.failures[scope];
+      const key = "scope:" + scope;
+      const current = state.failures[key];
       const active = current && Number(current.resetAt) > now ? current : { count: 0, resetAt: now + 900000 };
       active.count = Math.min(1000000, Number(active.count || 0) + 1);
-      state.failures[scope] = active;
+      state.failures[key] = active;
       return { count: active.count, limited: active.count >= 5, resetAt: active.resetAt };
     });
   }
 
   async clearFailures(scope) {
+    if (!validScope(scope)) throw new Error("Invalid authentication failure scope");
     return this.withState(state => {
-      delete state.failures[scope];
+      delete state.failures["scope:" + scope];
       return true;
     });
   }
@@ -101,10 +133,13 @@ export class AuthGuard {
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     let body;
     try {
-      body = await request.json();
+      body = await readJsonBody(request);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid body");
-    } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+    } catch (error) {
+      return json(
+        { error: error.status === 413 ? "Request body too large" : "Invalid JSON body" },
+        error.status || 400
+      );
     }
     try {
       if (body.operation === "consume-backup") {
