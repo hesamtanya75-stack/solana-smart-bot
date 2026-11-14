@@ -126,7 +126,7 @@ export class AuthGuard {
 
   async fetch(request) {
     const expected = String(this.env?.AUTH_GUARD_INTERNAL_TOKEN || "");
-    const supplied = (request.headers.get("Authorization") || "").replace(/^Bearer\\s+/i, "");
+    const supplied = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (expected.length < 32 || !constantTimeEqual(supplied, expected)) {
       return json({ error: "Unauthorized" }, 401);
     }
