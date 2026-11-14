@@ -32,17 +32,46 @@ function json(data, status = 200) {
 }
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
+  const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const cleanTrades = Array.isArray(s.trades) ? s.trades.slice(-500).flatMap(trade => {
+    if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
+        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return [];
+    const amount = finite(trade.amount);
+    const buyPrice = finite(trade.buyPrice);
+    const tokens = finite(trade.tokens);
+    if (amount <= 0 || buyPrice <= 0 || tokens <= 0) return [];
+    return [{
+      mint: trade.mint.trim(),
+      amount,
+      buyPrice,
+      currentPrice: finite(trade.currentPrice) || buyPrice,
+      tokens,
+      sold: trade.sold === true,
+      sellPrice: finite(trade.sellPrice),
+      saleValue: finite(trade.saleValue),
+      boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
+      soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
+    }];
+  }) : [];
   return {
     balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
-    trades: Array.isArray(s.trades) ? s.trades.slice(-500) : [],
+    trades: cleanTrades,
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
-    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
-    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000) : [],
-    lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt : null,
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.filter(mint => typeof mint === "string" && mint.length <= 64).slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).flatMap(item =>
+      item && typeof item === "object" && !Array.isArray(item) &&
+      typeof item.mint === "string" && item.mint.length <= 64 && Number.isFinite(Number(item.retryAt))
+        ? [{ mint: item.mint, retryAt: Number(item.retryAt) }] : []) : [],
+    lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt.slice(0, 64) : null,
     lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : [],
-    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : null
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).flatMap(item =>
+      item && typeof item === "object" && !Array.isArray(item)
+        ? [{ mint: typeof item.mint === "string" ? item.mint.slice(0, 64) : "",
+             status: typeof item.status === "string" ? item.status.slice(0, 40) : "",
+             reasons: Array.isArray(item.reasons) ? item.reasons.filter(reason => typeof reason === "string").slice(0, 10).map(reason => reason.slice(0, 300)) : [] }]
+        : []) : [],
+    updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
 }
 async function readState(env) {
