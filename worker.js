@@ -713,7 +713,11 @@ export default {
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
-          const body = await request.json();
+          const rawBody = await request.text();
+          if (new TextEncoder().encode(rawBody).byteLength > 1_000_000) {
+            return json({ error: "State payload is too large" }, 413);
+          }
+          const body = JSON.parse(rawBody);
           const writableFields = new Set(["balance", "trades", "autoEnabled", "paused", "scannedMints"]);
           if (!body || typeof body !== "object" || Array.isArray(body) ||
               Object.keys(body).some(key => !writableFields.has(key))) {
