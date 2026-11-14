@@ -55,6 +55,18 @@ test("authentication failures increment atomically and enforce the threshold", a
   assert.equal((await guard.recordFailure("totp:ip-test", 901001)).count, 1);
 });
 
+test("authentication failure buckets are bounded and fail closed at capacity", async () => {
+  const { guard } = makeGuard();
+  for (let i = 0; i < 1000; i++) {
+    await guard.importLegacyFailure("login:bucket-" + i, 1, 1000);
+  }
+  const blocked = await guard.recordFailure("login:new-bucket", 1001);
+  assert.equal(blocked.limited, true);
+  assert.equal(blocked.count, 5);
+  await assert.rejects(() => guard.importLegacyFailure("login:overflow", 5, 1001));
+  assert.equal((await guard.recordFailure("login:bucket-0", 1001)).count, 2);
+});
+
 test("backup hashes and TOTP counters reject malformed values", async () => {
   const { guard } = makeGuard();
   assert.equal(await guard.consumeBackupCode("not-a-hash"), false);
