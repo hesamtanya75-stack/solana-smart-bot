@@ -205,17 +205,29 @@ export class AuthGuard {
     });
   }
 
-  async confirmTotpSetup({ code, backupHash, now = Date.now() } = {}) {
+  async confirmTotpSetup({ code, backupHash, failureScope, now = Date.now() } = {}) {
     if (typeof code !== "string" || !/^\\d{6}$/.test(code) ||
         typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash) ||
-        !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid TOTP confirmation");
+        !validScope(failureScope) || !Number.isSafeInteger(now) || now < 0) {
+      throw new Error("Invalid TOTP confirmation");
+    }
     return this.withState(async state => {
+      state.failures ||= {};
+      const key = "scope:" + failureScope;
+      const current = state.failures[key];
+      if (current && Number(current.resetAt) > now && Number(current.count || 0) >= 5) {
+        return { ok: false, reason: "rate-limited" };
+      }
       if (state.totpEnabled || !state.pendingTotpSecret ||
           !Number.isSafeInteger(state.pendingTotpAt) || now < state.pendingTotpAt ||
           now - state.pendingTotpAt > 600000) return { ok: false, reason: "expired" };
       const counter = await matchingTotpCounter(state.pendingTotpSecret, code, now);
       if (counter === null || counter <= Number(state.lastTotpCounter ?? -1)) {
-        return { ok: false, reason: "invalid" };
+        const active = current && Number(current.resetAt) > now
+          ? current : { count: 0, resetAt: now + 900000 };
+        active.count = Math.min(1000000, Number(active.count || 0) + 1);
+        state.failures[key] = active;
+        return { ok: false, reason: active.count >= 5 ? "rate-limited" : "invalid" };
       }
       state.totpSecret = state.pendingTotpSecret;
       state.totpEnabled = true;
@@ -223,6 +235,7 @@ export class AuthGuard {
       state.backupHash = backupHash.toLowerCase();
       state.pendingTotpSecret = null;
       state.pendingTotpAt = null;
+      delete state.failures[key];
       return { ok: true, counter };
     });
   }
@@ -362,7 +375,7 @@ export class AuthGuard {
       if (body.operation === "get-profile") return json(await this.getProfile());
       if (body.operation === "begin-totp-setup") return json({ ok: await this.beginTotpSetup(body.secret) });
       if (body.operation === "confirm-totp-setup") return json(await this.confirmTotpSetup({
-        code: body.code, backupHash: body.backupHash
+        code: body.code, backupHash: body.backupHash, failureScope: body.failureScope
       }));
       if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
       if (body.operation === "create-challenge") {
