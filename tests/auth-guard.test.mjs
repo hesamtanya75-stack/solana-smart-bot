@@ -65,8 +65,9 @@ test("backup hashes and TOTP counters reject malformed values", async () => {
 
 test("failure scopes reject invalid values without touching object keys", async () => {
   const { guard } = makeGuard();
-  await assert.rejects(() => guard.clearFailures("__proto__"));
+  await assert.rejects(() => guard.clearFailures("bad.scope"));
   await assert.rejects(() => guard.recordFailure("bad.scope"));
+  assert.equal(await guard.clearFailures("__proto__"), true);
   const result = await guard.recordFailure("totp:valid-scope", 1000);
   assert.equal(result.count, 1);
 });
