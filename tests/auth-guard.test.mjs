@@ -293,9 +293,11 @@ test("TOTP enrollment failure counter is enforced within one transaction", async
   const { guard } = makeGuard();
   await guard.initializeFromLegacy();
   await guard.beginTotpSetup("JBSWY3DPEHPK3PXP", 1000);
+  const validCode = await testTotpCode("JBSWY3DPEHPK3PXP", 0);
+  const invalidCode = validCode === "000000" ? "000001" : "000000";
   const attempts = await Promise.all(Array.from({ length: 8 }, () =>
     guard.confirmTotpSetup({
-      code: "000000",
+      code: invalidCode,
       backupHash: "a".repeat(64),
       failureScope: "totp:atomic-test",
       now: 1001
