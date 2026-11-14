@@ -219,6 +219,36 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await nextLogin.json()).mfaRequired, true);
 });
 
+test("Worker logout revokes the bearer session immediately", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+
+  const beforeLogout = await get("/api/profile", env, token);
+  assert.equal(beforeLogout.status, 200);
+
+  const logout = await post("/api/logout", {}, env, {
+    Authorization: "Bearer " + token
+  });
+  assert.equal(logout.status, 200);
+  assert.equal(await env.BOT_STATE.get("session:" + token, "json"), null);
+
+  const afterLogout = await get("/api/profile", env, token);
+  assert.equal(afterLogout.status, 401);
+});
+
+test("Worker rejects expired bearer sessions", async () => {
+  const { env } = makeEnvironment();
+  const token = "expired-integration-session";
+  await env.BOT_STATE.put("session:" + token, JSON.stringify({
+    expiresAt: Date.now() - 1
+  }));
+
+  const response = await get("/api/profile", env, token);
+  assert.equal(response.status, 401);
+});
+
 test("concurrent bad password attempts are atomically throttled by AuthGuard", async () => {
   const { env, guard } = makeEnvironment();
   const results = await Promise.all(Array.from({ length: 12 }, () =>
