@@ -923,3 +923,6 @@ export default {
 
 // Exported for the isolated Durable Object namespace; no live route invokes it yet.
 export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";
+
+// Exported for the isolated authentication Durable Object; no auth route is wired to it yet.
+export { AuthGuard } from "./auth-guard.mjs";
