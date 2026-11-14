@@ -73,9 +73,10 @@ test("login and TOTP routes delegate MFA state and rate limits to AuthGuard", ()
   assert.ok(workerSource.includes('operation: "complete-challenge"'));
   assert.ok(workerSource.includes('operation: "begin-totp-setup"'));
   assert.ok(workerSource.includes('operation: "confirm-totp-setup"'));
-  assert.equal(workerSource.includes('"mfa_challenge:"'), false);
-  assert.equal(workerSource.includes('"totp_fail:"'), false);
-  assert.equal(workerSource.includes('"login_fail:"'), false);
+  assert.ok(workerSource.includes("async function migrateLegacyFailure(env, scope, legacyKey)"));
+  assert.ok(workerSource.includes('"mfa_challenge:"') === false);
+  assert.ok(workerSource.includes('"totp_fail:"'));
+  assert.ok(workerSource.includes('"login_fail:"'));
 });
 
 test("AuthGuard calls fail closed when the dedicated binding or secret is absent", () => {
