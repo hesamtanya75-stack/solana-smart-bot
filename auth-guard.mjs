@@ -83,7 +83,7 @@ async function totpCode(secret, counter) {
 }
 
 async function matchingTotpCounter(secret, code, now = Date.now()) {
-  if (!secret || !/^\\d{6}$/.test(String(code || ""))) return null;
+  if (!secret || !/^\d{6}$/.test(String(code || ""))) return null;
   for (const drift of [0, -30000, 30000]) {
     const counter = Math.floor((now + drift) / 30000);
     if (await totpCode(secret, counter) === String(code)) return counter;
@@ -204,7 +204,7 @@ export class AuthGuard {
   }
 
   async confirmTotpSetup({ code, backupHash, failureScope, now = Date.now() } = {}) {
-    if (typeof code !== "string" || !/^\\d{6}$/.test(code) ||
+    if (typeof code !== "string" || !/^\d{6}$/.test(code) ||
         typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash) ||
         !validScope(failureScope) || !Number.isSafeInteger(now) || now < 0) {
       throw new Error("Invalid TOTP confirmation");
