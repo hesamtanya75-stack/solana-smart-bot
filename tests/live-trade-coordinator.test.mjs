@@ -272,6 +272,23 @@ test("coordinator rejects requests without the internal bearer credential", asyn
   assert.match((await response.json()).error, /Unauthorized/);
 });
 
+
+
+test("coordinator requires a well-formed Bearer authorization header", async () => {
+  const { coordinator } = makeCoordinator();
+  for (const authorization of [
+    "test-only-internal-token-32-characters",
+    "Bearer test-only-internal-token-32-characters extra",
+    "Basic test-only-internal-token-32-characters",
+    "Bearer"
+  ]) {
+    const response = await coordinator.fetch(new Request("https://coordinator/status", {
+      headers: { Authorization: authorization }
+    }));
+    assert.equal(response.status, 401, authorization);
+  }
+});
+
 test("idempotency binds mint, destination, slippage and quote identity", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
