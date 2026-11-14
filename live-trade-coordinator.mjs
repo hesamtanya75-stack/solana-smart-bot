@@ -238,6 +238,10 @@ export class LiveTradeCoordinator {
   }
 
   async transition(body, targetStatus) {
+    // Fail closed until settlement can independently verify the submitted
+    // transaction signature/status (or cryptographically prove non-submission).
+    // Caller-supplied booleans and reason strings are not settlement evidence.
+    throw new Error("Independent on-chain settlement proof is not implemented; state transitions are disabled");
     const key = validateIdempotencyKey(body?.idempotencyKey);
     return this.withState(state => {
       const reservation = state.reservations[key];
