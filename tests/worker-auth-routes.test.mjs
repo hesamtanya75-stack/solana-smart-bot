@@ -23,3 +23,11 @@ test("unknown private API paths cannot bypass the shared session guard", () => {
   assert.ok(authGuard > privateApiStart);
   assert.ok(workerSource.indexOf('return json({ error: "Not found" }, 404);', privateApiStart) > authGuard);
 });
+
+test("TOTP codes cannot be reused in an already accepted time step", () => {
+  assert.ok(workerSource.includes("async function matchingTotpCounter("));
+  assert.ok(workerSource.includes("matchedCounter > Number(profile.lastTotpCounter ?? -1)"));
+  assert.ok(workerSource.includes("matchedCounter <= Number(p.lastTotpCounter ?? -1)"));
+  assert.ok(workerSource.includes("profile.lastTotpCounter = matchedCounter"));
+  assert.ok(workerSource.includes("p.lastTotpCounter = matchedCounter"));
+});
