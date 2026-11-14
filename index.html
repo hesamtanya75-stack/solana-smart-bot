@@ -1152,21 +1152,31 @@ if (duplicate) {
     return;
   }
 
-  const price = Number(window.lastTokenPrice || 0);
+  if (serverModeReady) {
+    const button = document.getElementById("demoBuy");
+    button.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/buy", {
+        method: "POST",
+        body: JSON.stringify({ mint, requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
+    } catch (error) {
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر ڕەتکرایەوە: " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
 
+  const price = Number(window.lastTokenPrice || 0);
   if (price <= 0) {
     status.innerText = "نرخی کۆین بەردەست نییە.";
     return;
   }
-
   demoBalance -= 5;
-  demoTrades.push({
-    mint,
-    amount: 5,
-    buyPrice: price,
-    tokens: 5 / price
-  });
-
+  demoTrades.push({ mint, amount: 5, buyPrice: price, tokens: 5 / price });
   saveDemoState();
 
   document.getElementById("demoBalance").innerText =
@@ -1281,18 +1291,29 @@ document.getElementById("demoBuy").insertAdjacentElement(
   clearTradesBtn
 );
 
-clearTradesBtn.onclick = function() {
-  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) {
+clearTradesBtn.onclick = async function() {
+  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) return;
+  if (serverModeReady) {
+    clearTradesBtn.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/clear-history", {
+        method: "POST",
+        body: JSON.stringify({ requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+    } catch (error) {
+      document.getElementById("demoStatus").innerText = "سڕینەوەی مێژوو سەرکەوتوو نەبوو: " + error.message;
+    } finally {
+      clearTradesBtn.disabled = false;
+    }
     return;
   }
-
   demoTrades = [];
   saveDemoState();
   renderDemoHistory();
   updateDemoProfit();
-
-  document.getElementById("demoStatus").innerText =
-    "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+  document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
 };
 
 const statsBox = document.createElement("div");
@@ -1515,6 +1536,7 @@ setInterval(() => {
 
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
+let serverStateRevision = null;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
@@ -1546,6 +1568,7 @@ function renderServerControls(state) {
 }
 function applyServerState(state) {
   if (!state || !Array.isArray(state.trades)) return;
+  if (Number.isSafeInteger(state.revision)) serverStateRevision = state.revision;
   demoBalance = Number(state.balance);
   demoTrades = state.trades;
   if (Array.isArray(state.scannedMints)) {
@@ -1610,9 +1633,10 @@ async function refreshServerPrices() {
 }
 async function saveServerState() {
   if (!serverModeReady) return;
-  await serverRequest("/api/state", {
+  const result = await serverRequest("/api/state", {
     method: "PUT",
     body: JSON.stringify({
+      expectedRevision: serverStateRevision,
       balance: demoBalance,
       trades: demoTrades,
       autoEnabled: autoDemoBuyEnabled,
@@ -1620,19 +1644,13 @@ async function saveServerState() {
       scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
     })
   });
+  if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
 }
 const localSaveDemoState = saveDemoState;
+// Server-mode trading writes are explicit, validated API operations. Local storage
+// remains a cache only and never overwrites the authoritative server snapshot.
 saveDemoState = function() {
   localSaveDemoState();
-  if (serverModeReady) {
-    clearTimeout(serverSaveTimer);
-    serverSaveTimer = setTimeout(() => {
-      saveServerState().catch(error => {
-        const status = document.getElementById("demoStatus");
-        if (status) status.textContent = "هەڵە لە پاشەکەوتکردنی سێرڤەر: " + error.message;
-      });
-    }, 500);
-  }
 };
 async function finishServerLogin(token) {
   serverToken = token;
@@ -1717,7 +1735,7 @@ async function changeServerAutomation(enabled, paused) {
     method: "POST",
     body: JSON.stringify({ enabled, paused })
   });
-  applyServerState(result.state);
+  applyServerState({ ...result.state, revision: result.revision });
 }
 autoBuyBtn.onclick = async function() {
   if (!serverModeReady) {
