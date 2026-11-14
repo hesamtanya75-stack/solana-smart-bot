@@ -123,6 +123,7 @@ async function readState(env) {
   const result = await paperStateCall(env, { operation: "get" });
   const state = cleanState(result.state);
   Object.defineProperty(state, "__revision", { value: result.revision, writable: true, configurable: true });
+  Object.defineProperty(state, "__migrationOpen", { value: result.migrationOpen === true, configurable: true });
   return state;
 }
 async function saveState(env, state) {
@@ -888,7 +889,7 @@ export default {
       }
       if (url.pathname === "/api/state" && request.method === "GET") {
         const state = await readState(env);
-        return json({ ...state, revision: state.__revision });
+        return json({ ...state, revision: state.__revision, canMigrateLegacy: state.__migrationOpen });
       }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
