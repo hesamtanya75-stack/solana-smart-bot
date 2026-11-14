@@ -159,7 +159,11 @@ test("an MFA challenge and its TOTP counter can only be completed once", async (
 test("a backup code is consumed atomically when completing an MFA challenge", async () => {
   const { guard } = makeGuard();
   const hash = "d".repeat(64);
-  await guard.provisionBackupHash(hash);
+  await guard.initializeFromLegacy({
+    totpEnabled: true,
+    totpSecret: "JBSWY3DPEHPK3PXP",
+    backupHash: hash
+  });
   const ids = Array.from({ length: 2 }, (_, i) =>
     "123e4567-e89b-12d3-a456-42661417400" + i
   );
