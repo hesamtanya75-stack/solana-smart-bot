@@ -1,4 +1,4 @@
-const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
   trades: [],
