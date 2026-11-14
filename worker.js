@@ -597,10 +597,14 @@ async function ensureAuthGuard(env) {
   const current = await authGuardCall(env, { operation: "get-profile" });
   if (current.initialized) return current;
   const legacy = await readProfile(env);
+  const legacyCounter = legacy.lastTotpCounter == null ? -1 : legacy.lastTotpCounter;
+  if (!Number.isSafeInteger(legacyCounter) || legacyCounter < -1) {
+    throw new Error("Legacy TOTP counter is invalid; refusing unsafe migration");
+  }
   await authGuardCall(env, {
     operation: "initialize-legacy",
     backupHash: legacy.backupHash || null,
-    lastTotpCounter: Number.isSafeInteger(legacy.lastTotpCounter) ? legacy.lastTotpCounter : -1,
+    lastTotpCounter: legacyCounter,
     totpEnabled: legacy.totpEnabled === true,
     totpSecret: legacy.totpSecret || null,
     pendingTotpSecret: legacy.pendingTotpSecret || null,
