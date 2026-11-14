@@ -146,7 +146,7 @@ function constantTimeTextEqual(left, right) {
 
 async function authorized(request, env) {
   const authorization = request.headers.get("Authorization") || "";
-  const match = /^Bearer ([^\\s]+)$/i.exec(authorization);
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
   const token = match ? match[1] : "";
   // Session identifiers are minted with crypto.randomUUID(); require the
   // exact Bearer scheme and reject malformed or oversized values before KV.
