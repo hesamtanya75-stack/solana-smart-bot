@@ -7,8 +7,8 @@ import { AuthGuard } from "../auth-guard.mjs";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const executableWorkerSource = workerSource
-  .replace(/^export default \\{/m, "const worker = {")
-  .replace(/^export \\{[^}]+\\} from ["'][^"']+["'];?\\s*$/gm, "");
+  .replace(/^export default \{/m, "const worker = {")
+  .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "");
 const workerContext = vm.createContext({
   crypto: webcrypto,
   Request,
@@ -25,7 +25,7 @@ const workerContext = vm.createContext({
   btoa,
   structuredClone
 });
-vm.runInContext(executableWorkerSource + "\\nglobalThis.__worker = worker;", workerContext);
+vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
 const worker = workerContext.__worker;
 
 const INTERNAL_TOKEN = "integration-test-internal-token-0123456789";
