@@ -1,10 +1,8 @@
 /**
  * Isolated authentication guard Durable Object.
  *
- * This is a concurrency-safe primitive, not yet wired into Worker auth routes.
- * Do not bind or deploy it until the KV-to-DO profile migration and route
- * integration have been separately reviewed. The existing LIVE_TRADE_COORDINATOR
- * remains completely separate.
+ * Authentication state and MFA operations are serialized through Durable Object
+ * storage transactions. The existing LIVE_TRADE_COORDINATOR remains separate.
  */
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
