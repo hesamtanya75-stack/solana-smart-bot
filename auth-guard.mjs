@@ -64,6 +64,7 @@ export class AuthGuard {
     let result;
     await this.ctx.storage.transaction(async txn => {
       const state = (await txn.get("auth_guard_state")) || {
+        initialized: false,
         backupHash: null,
         lastTotpCounter: -1,
         failures: {}
@@ -114,12 +115,29 @@ export class AuthGuard {
     });
   }
 
+  async initializeFromLegacy({ backupHash = null, lastTotpCounter = -1 } = {}) {
+    if (backupHash !== null && (typeof backupHash !== "string" || !/^[a-f0-9]{64}$/i.test(backupHash))) {
+      throw new Error("Invalid legacy backup-code hash");
+    }
+    if (!Number.isSafeInteger(lastTotpCounter) || lastTotpCounter < -1) {
+      throw new Error("Invalid legacy TOTP counter");
+    }
+    return this.withState(state => {
+      if (state.initialized === true) return false;
+      state.backupHash = backupHash ? backupHash.toLowerCase() : null;
+      state.lastTotpCounter = lastTotpCounter;
+      state.initialized = true;
+      return true;
+    });
+  }
+
   async provisionBackupHash(hash) {
     if (typeof hash !== "string" || !/^[a-f0-9]{64}$/i.test(hash)) {
       throw new Error("Invalid backup-code hash");
     }
     return this.withState(state => {
       state.backupHash = hash.toLowerCase();
+      state.initialized = true;
       return true;
     });
   }
@@ -142,6 +160,14 @@ export class AuthGuard {
       );
     }
     try {
+      if (body.operation === "initialize-legacy") {
+        return json({
+          initialized: await this.initializeFromLegacy({
+            backupHash: body.backupHash ?? null,
+            lastTotpCounter: body.lastTotpCounter ?? -1
+          })
+        });
+      }
       if (body.operation === "consume-backup") {
         return json({ ok: await this.consumeBackupCode(body.hash) });
       }
