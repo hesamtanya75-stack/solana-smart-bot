@@ -24,12 +24,12 @@ test("unknown private API paths cannot bypass the shared session guard", () => {
   assert.ok(workerSource.indexOf('return json({ error: "Not found" }, 404);', privateApiStart) > authGuard);
 });
 
-test("TOTP codes cannot be reused in an already accepted time step", () => {
+test("TOTP replay protection is delegated to transactional AuthGuard state", () => {
   assert.ok(workerSource.includes("async function matchingTotpCounter("));
-  assert.ok(workerSource.includes("matchedCounter > Number(profile.lastTotpCounter ?? -1)"));
-  assert.ok(workerSource.includes("matchedCounter <= Number(p.lastTotpCounter ?? -1)"));
-  assert.ok(workerSource.includes("profile.lastTotpCounter = matchedCounter"));
-  assert.ok(workerSource.includes("p.lastTotpCounter = matchedCounter"));
+  assert.ok(workerSource.includes("totpCounter: matchedCounter"));
+  assert.ok(workerSource.includes('operation: "complete-challenge"'));
+  assert.equal(workerSource.includes("profile.lastTotpCounter = matchedCounter"), false);
+  assert.equal(workerSource.includes('await env.BOT_STATE.put("admin_profile", JSON.stringify(profile))'), false);
 });
 
 test("state-changing API requests reject cross-origin browser requests", () => {
