@@ -145,7 +145,7 @@ function constantTimeTextEqual(left, right) {
 }
 
 async function authorized(request, env) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\\s+/i, "");
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   // Session identifiers are minted with crypto.randomUUID(); reject malformed
   // or oversized values before constructing a KV key.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
