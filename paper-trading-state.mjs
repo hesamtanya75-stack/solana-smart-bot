@@ -50,6 +50,36 @@ function cleanState(value) {
   };
 }
 
+async function readBoundedJson(request, maxBytes = 262144) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      const error = new Error("Request body too large");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  return value;
+}
+
 function response(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -130,9 +160,10 @@ export class PaperTradingState {
   async fetch(request) {
     if (request.method !== "POST") return response({ error: "Method not allowed" }, 405);
     let body;
-    try { body = await request.json(); }
-    catch { return response({ error: "Invalid JSON" }, 400); }
-    if (!body || typeof body !== "object" || Array.isArray(body)) return response({ error: "JSON object required" }, 400);
+    try { body = await readBoundedJson(request); }
+    catch (error) {
+      return response({ error: error.status === 413 ? "Request body too large" : "Invalid JSON" }, error.status || 400);
+    }
 
     try {
       if (body.operation === "get") {
