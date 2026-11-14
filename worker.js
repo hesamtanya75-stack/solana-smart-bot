@@ -595,7 +595,16 @@ async function authGuardCall(env, body) {
 }
 async function ensureAuthGuard(env) {
   const current = await authGuardCall(env, { operation: "get-profile" });
-  if (current.initialized) return current;
+  const migrationMarker = await env.BOT_STATE.get("auth_guard_migration_v1");
+  if (current.initialized) {
+    if (migrationMarker !== "complete") {
+      await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
+    }
+    return current;
+  }
+  if (migrationMarker === "complete") {
+    throw new Error("AuthGuard state is missing after migration; refusing to re-import stale MFA data");
+  }
   const legacy = await readProfile(env);
   const legacyCounter = legacy.lastTotpCounter == null ? -1 : legacy.lastTotpCounter;
   if (!Number.isSafeInteger(legacyCounter) || legacyCounter < -1) {
@@ -610,7 +619,10 @@ async function ensureAuthGuard(env) {
     pendingTotpSecret: legacy.pendingTotpSecret || null,
     pendingTotpAt: Number.isSafeInteger(legacy.pendingTotpAt) ? legacy.pendingTotpAt : null
   });
-  return authGuardCall(env, { operation: "get-profile" });
+  const migrated = await authGuardCall(env, { operation: "get-profile" });
+  if (!migrated.initialized) throw new Error("AuthGuard legacy migration did not complete");
+  await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
+  return migrated;
 }
 async function migrateLegacyFailure(env, scope, legacyKey) {
   const legacy = await env.BOT_STATE.get(legacyKey, "json");
