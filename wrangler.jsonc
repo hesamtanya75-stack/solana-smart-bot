@@ -42,6 +42,10 @@
       {
         "name": "AUTH_GUARD",
         "class_name": "AuthGuard"
+      },
+      {
+        "name": "PAPER_TRADING_STATE",
+        "class_name": "PaperTradingState"
       }
     ]
   },
@@ -56,6 +60,12 @@
       "tag": "v2-auth-guard",
       "new_sqlite_classes": [
         "AuthGuard"
+      ]
+    },
+    {
+      "tag": "v3-paper-trading-state",
+      "new_sqlite_classes": [
+        "PaperTradingState"
       ]
     }
   ]
