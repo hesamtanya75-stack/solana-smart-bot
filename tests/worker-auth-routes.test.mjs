@@ -32,6 +32,15 @@ test("TOTP replay protection is delegated to transactional AuthGuard state", () 
   assert.equal(workerSource.includes('await env.BOT_STATE.put("admin_profile", JSON.stringify(profile))'), false);
 });
 
+test("legacy state migration rejects a stale client revision", () => {
+  const migrationRoute = workerSource.indexOf('if (url.pathname === "/api/state" && request.method === "PUT")');
+  const revisionCheck = workerSource.indexOf("body.expectedRevision !== current.__revision", migrationRoute);
+  const migrationCall = workerSource.indexOf('operation: "migrate-legacy"', migrationRoute);
+  assert.ok(migrationRoute >= 0);
+  assert.ok(revisionCheck > migrationRoute);
+  assert.ok(migrationCall > revisionCheck);
+});
+
 test("state-changing API requests reject cross-origin browser requests", () => {
   assert.ok(workerSource.includes("function sameOriginApiRequest(request, url)"));
   assert.ok(workerSource.includes('new URL(origin).origin !== url.origin'));
