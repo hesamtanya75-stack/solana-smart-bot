@@ -19,6 +19,36 @@ function json(data, status = 200) {
   });
 }
 
+async function readBoundedJson(request, maxBytes = 16384) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      const error = new Error("Request body too large");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  return value;
+}
+
 function emptyState() {
   return { killSwitch: true, reservations: {} };
 }
@@ -94,7 +124,8 @@ export class LiveTradeCoordinator {
   async fetch(request) {
     const expectedToken = String(this.env?.COORDINATOR_INTERNAL_TOKEN || "");
     const authorization = request.headers.get("Authorization") || "";
-    const suppliedToken = authorization.replace(/^Bearer\s+/i, "");
+    const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+    const suppliedToken = match ? match[1] : "";
     if (expectedToken.length < 32 || !constantTimeEqual(suppliedToken, expectedToken)) {
       return json({ error: "Unauthorized coordinator request" }, 401);
     }
@@ -106,9 +137,12 @@ export class LiveTradeCoordinator {
 
     let body;
     try {
-      body = await request.json();
-    } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      body = await readBoundedJson(request);
+    } catch (error) {
+      return json(
+        { error: error.status === 413 ? "Request body too large" : "Invalid JSON body" },
+        error.status || 400
+      );
     }
 
     try {
@@ -120,7 +154,7 @@ export class LiveTradeCoordinator {
       return json({ error: "Not found" }, 404);
     } catch (error) {
       const message = String(error?.message || error);
-      const status = /limit|disabled|stale|risk|already|state|idempotency|quote|switch|position|submission|proof/i.test(message) ? 409 : 400;
+      const status = /limit|disabled|stale|risk|already|state|idempotency|quote|switch|position|submission|proof|semantic|lookup/i.test(message) ? 409 : 400;
       return json({ error: message }, status);
     }
   }
@@ -165,6 +199,12 @@ export class LiveTradeCoordinator {
         EXPECTED_TOKEN_CHECKS.some(name => risk.checks[name] !== true) ||
         Object.values(risk.checks).some(value => value !== true)) {
       throw new Error("Trusted token risk checks are missing, mismatched, or failed; reservation blocked");
+    }
+    // A boolean risk flag alone is insufficient: require an explicit semantic
+    // verification attestation before any reservation can pass the coordinator.
+    if (risk.sellRoute?.semanticInstructionVerification !== true ||
+        risk.sellRoute?.routeVerification !== "semantically-verified") {
+      throw new Error("Jupiter instruction semantics and lookup tables are not verified; reservation blocked");
     }
     const riskTimestamp = risk.fetchedAt;
     if (!Number.isFinite(riskTimestamp) || riskTimestamp > Date.now() + 5000 ||
@@ -231,31 +271,11 @@ export class LiveTradeCoordinator {
     });
   }
 
-  async transition(body, targetStatus) {
-    const key = validateIdempotencyKey(body?.idempotencyKey);
-    return this.withState(state => {
-      const reservation = state.reservations[key];
-      if (!reservation) throw new Error("Reservation not found");
-      if (reservation.status === targetStatus) return { ok: true, duplicate: true, reservation };
-      if (targetStatus === "confirmed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be confirmed");
-      }
-      if (targetStatus === "failed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be failed");
-      }
-      if (targetStatus === "failed" &&
-          (body?.definitelyNotSubmitted !== true ||
-           typeof body?.resolutionReason !== "string" ||
-           body.resolutionReason.trim().length < 12)) {
-        throw new Error("Fail resolution requires explicit proof of non-submission and a reason of at least 12 characters");
-      }
-      if (targetStatus === "closed" && reservation.status !== "confirmed") {
-        throw new Error("Only confirmed positions can be closed");
-      }
-      reservation.status = targetStatus;
-      reservation.updatedAt = new Date().toISOString();
-      return { ok: true, duplicate: false, reservation };
-    });
+  async transition(_body, _targetStatus) {
+    // Fail closed until settlement can independently verify the submitted
+    // transaction signature/status (or cryptographically prove non-submission).
+    // Caller-supplied booleans and reason strings are not settlement evidence.
+    throw new Error("Independent on-chain settlement proof is not implemented; state transitions are disabled");
   }
 
   async setKillSwitch(body) {

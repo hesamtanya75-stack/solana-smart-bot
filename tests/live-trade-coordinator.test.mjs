@@ -23,7 +23,7 @@ function trustedEvidence(overrides = {}) {
         mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
         holderConcentrationSafe: true, sellRouteAvailable: true, marketLiquiditySafe: true,
         marketVolumeSafe: true, rugCheckSafe: true
-      }, passed: true },
+      }, sellRoute: { semanticInstructionVerification: true, routeVerification: "semantically-verified" }, passed: true },
     passed: true,
     ...overrides
   };
@@ -58,6 +58,20 @@ async function post(coordinator, path, body) {
   return { status: response.status, body: await response.json() };
 }
 
+test("coordinator rejects oversized authenticated request bodies before JSON parsing", async () => {
+  const { coordinator } = makeCoordinator();
+  const response = await coordinator.fetch(new Request("https://coordinator/kill-switch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-only-internal-token-32-characters"
+    },
+    body: JSON.stringify({ enabled: false, padding: "x".repeat(16385) })
+  }));
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Request body too large" });
+});
+
 test("kill switch starts active and blocks reservations", async () => {
   const { coordinator } = makeCoordinator();
   const result = await post(coordinator, "/reserve", validReservation());
@@ -82,7 +96,7 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   assert.equal(stale.status, 409);
 });
 
-test("daily spend cap is enforced atomically and confirmed/closed spend remains counted", async () => {
+test("daily spend cap is enforced atomically and pending reservations remain counted", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({
@@ -93,8 +107,6 @@ test("daily spend cap is enforced atomically and confirmed/closed spend remains 
   }));
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
-  await post(coordinator, "/confirm", { idempotencyKey: "order-key-0001" });
-  await post(coordinator, "/close", { idempotencyKey: "order-key-0001" });
   const third = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "order-key-0003", amountLamports: 1_000_000, solUsd: 200
   }));
@@ -141,19 +153,30 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
   assert.equal(status.dailySpendUsdCents, 200);
 });
 
-test("only explicitly confirmed non-submission can release a pending reservation", async () => {
+test("confirm, fail, and close transitions remain blocked without independent settlement proof", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
-  const failed = await post(coordinator, "/fail", {
-    idempotencyKey: "order-key-0001",
-    definitelyNotSubmitted: true,
-    resolutionReason: "RPC confirmed no transaction was submitted"
-  });
-  assert.equal(failed.status, 200);
+
+  for (const [path, extra] of [
+    ["/confirm", {}],
+    ["/fail", {
+      definitelyNotSubmitted: true,
+      resolutionReason: "RPC confirmed no transaction was submitted"
+    }],
+    ["/close", {}]
+  ]) {
+    const result = await post(coordinator, path, {
+      idempotencyKey: "order-key-0001",
+      ...extra
+    });
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /Independent on-chain settlement proof is not implemented/);
+  }
+
   const status = await coordinator.status();
-  assert.equal(status.openPositions, 0);
-  assert.equal(status.dailySpendUsdCents, 0);
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 200);
 });
 
 test("browser-supplied risk flag is ignored; server evidence controls approval", async () => {
@@ -185,6 +208,19 @@ test("coordinator blocks reservation when Jupiter instruction semantics are unve
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
   assert.match(result.body.error, /risk checks/);
+});
+
+test("coordinator rejects a positive sell-route flag without semantic instruction verification", async () => {
+  const evidence = trustedEvidence();
+  evidence.risk.sellRoute = {
+    semanticInstructionVerification: false,
+    routeVerification: "unsigned-transaction-structure-only"
+  };
+  const { coordinator } = makeCoordinator(async () => evidence);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /instruction semantics and lookup tables are not verified/);
 });
 
 test("ten open reservations block an eleventh", async () => {
@@ -234,6 +270,23 @@ test("coordinator rejects requests without the internal bearer credential", asyn
   const response = await coordinator.fetch(new Request("https://coordinator/status"));
   assert.equal(response.status, 401);
   assert.match((await response.json()).error, /Unauthorized/);
+});
+
+
+
+test("coordinator requires a well-formed Bearer authorization header", async () => {
+  const { coordinator } = makeCoordinator();
+  for (const authorization of [
+    "test-only-internal-token-32-characters",
+    "Bearer test-only-internal-token-32-characters extra",
+    "Basic test-only-internal-token-32-characters",
+    "Bearer"
+  ]) {
+    const response = await coordinator.fetch(new Request("https://coordinator/status", {
+      headers: { Authorization: authorization }
+    }));
+    assert.equal(response.status, 401, authorization);
+  }
 });
 
 test("idempotency binds mint, destination, slippage and quote identity", async () => {

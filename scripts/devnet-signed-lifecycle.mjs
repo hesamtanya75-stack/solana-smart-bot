@@ -6,7 +6,9 @@ import {
   Transaction
 } from "@solana/web3.js";
 
-const DEVNET_RPC = "https://api.devnet.solana.com";
+// A dedicated Devnet RPC may be supplied through GitHub Actions secrets.
+// The genesis-hash guard below still refuses to sign against any other cluster.
+const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
 const TRANSFER_LAMPORTS = 1_000_000; // 0.001 SOL; Devnet only
 const AIRDROP_LAMPORTS = LAMPORTS_PER_SOL / 2;
 
@@ -31,6 +33,12 @@ async function requestDevnetAirdrop(connection, publicKey) {
       return signature;
     } catch (error) {
       lastError = error;
+      const message = String(error?.message || error);
+      // HTTP 410 is a permanent faucet shutdown response, not a transient
+      // rate limit or network error; retrying cannot make this request succeed.
+      if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
+        throw new Error("Devnet RPC faucet is closed: " + message);
+      }
       if (attempt === 3) break;
       await wait(1500 * (attempt + 1));
     }
@@ -71,9 +79,9 @@ async function main() {
   } catch (error) {
     const message = String(error?.message || error);
     if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
-      console.log("::warning::Devnet RPC faucet is closed; offline signature verified but no on-chain transaction was submitted.");
+      console.log("::error::Devnet RPC faucet is closed; offline signature verification is NOT an on-chain lifecycle pass.");
       console.log(JSON.stringify({
-        ok: true,
+        ok: false,
         status: "blocked",
         cluster: "devnet",
         genesisHash: genesis,
@@ -83,6 +91,9 @@ async function main() {
         mainnetTouched: false,
         swapExecuted: false
       }, null, 2));
+      // Fail the required CI step so a faucet outage cannot be mistaken for
+      // a successful signed, submitted, finalized, and independently verified transaction.
+      process.exitCode = 2;
       return;
     }
     throw error;

@@ -17,5 +17,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run safety tests
+      - name: Install isolated Durable Objects test runtime
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@3
+      - name: Run safety and Durable Objects runtime tests
         run: npm test
