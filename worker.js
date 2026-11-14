@@ -102,12 +102,37 @@ function cleanState(value) {
     updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
 }
+async function paperStateCall(env, body) {
+  const namespace = env.PAPER_TRADING_STATE;
+  if (!namespace) throw new Error("PaperTradingState binding is not configured");
+  const stub = namespace.get(namespace.idFromName("paper-trading"));
+  const response = await stub.fetch("https://paper-trading.internal/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(result.error || "Paper trading state request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
 async function readState(env) {
-  return cleanState(await env.BOT_STATE.get("bot_state", "json"));
+  const result = await paperStateCall(env, { operation: "get" });
+  const state = cleanState(result.state);
+  Object.defineProperty(state, "__revision", { value: result.revision, writable: true, configurable: true });
+  return state;
 }
 async function saveState(env, state) {
-  state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  const result = await paperStateCall(env, {
+    operation: "compare-and-set",
+    expectedRevision: state.__revision,
+    state
+  });
+  state.updatedAt = result.state.updatedAt;
+  state.__revision = result.revision;
 }
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -861,24 +886,60 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
-      if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
+      if (url.pathname === "/api/state" && request.method === "GET") {
+        const state = await readState(env);
+        return json({ ...state, revision: state.__revision });
+      }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
-          const rawBody = await request.text();
-          if (new TextEncoder().encode(rawBody).byteLength > 1_000_000) {
-            return json({ error: "State payload is too large" }, 413);
-          }
-          const body = JSON.parse(rawBody);
-          const writableFields = new Set(["balance", "trades", "autoEnabled", "paused", "scannedMints"]);
-          if (!body || typeof body !== "object" || Array.isArray(body) ||
-              Object.keys(body).some(key => !writableFields.has(key))) {
-            return json({ error: "Unsupported state fields" }, 400);
+          const body = await readBoundedJson(request, 262144);
+          const writableFields = new Set(["balance", "trades", "autoEnabled", "paused", "scannedMints", "expectedRevision"]);
+          if (Object.keys(body).some(key => !writableFields.has(key)) ||
+              !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0) {
+            return json({ error: "Unsupported state fields or revision" }, 400);
           }
           const current = await readState(env);
+          if (current.__revision !== body.expectedRevision || current.updatedAt !== null) {
+            return json({ error: "Legacy state migration is no longer available; refresh server state" }, 409);
+          }
           const state = cleanState({ ...current, ...body });
+          Object.defineProperty(state, "__revision", { value: current.__revision, writable: true, configurable: true });
           await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+          return json({ ok: true, state, revision: state.__revision });
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State changed; refresh and retry" : "Invalid state" }, error.status || 400);
+        }
+      }
+      if (url.pathname === "/api/paper/buy" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          const mint = String(body.mint || "");
+          if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) ||
+              !/^[A-Za-z0-9_-]{16,100}$/.test(String(body.requestId || "")) ||
+              Object.keys(body).some(key => !["mint", "requestId"].includes(key))) {
+            return json({ error: "Invalid paper-buy request" }, 400);
+          }
+          const inspected = await inspectMint(mint, env);
+          if (!inspected.ok) return json({ error: "Server safety checks blocked this paper buy", reasons: inspected.reasons }, 409);
+          const result = await paperStateCall(env, {
+            operation: "paper-buy", mint, price: inspected.price, requestId: body.requestId
+          });
+          return json(result);
+        } catch (error) {
+          return json({ error: String(error?.message || "Paper buy failed") }, error.status || 503);
+        }
+      }
+      if (url.pathname === "/api/paper/clear-history" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).some(key => key !== "requestId") ||
+              !/^[A-Za-z0-9_-]{16,100}$/.test(String(body.requestId || ""))) {
+            return json({ error: "Invalid clear-history request" }, 400);
+          }
+          return json(await paperStateCall(env, { operation: "clear-history", requestId: body.requestId }));
+        } catch (error) {
+          return json({ error: "Could not clear paper-trading history" }, error.status || 503);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
@@ -889,12 +950,9 @@ export default {
               (body.paused !== undefined && typeof body.paused !== "boolean")) {
             return json({ error: "Invalid automation settings" }, 400);
           }
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid settings" }, 400); }
+          const result = await paperStateCall(env, { operation: "automation", settings: body });
+          return json(result);
+        } catch (error) { return json({ error: "Invalid settings" }, error.status || 400); }
       }
       return json({ error: "Not found" }, 404);
     }
@@ -998,3 +1056,6 @@ export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";
 
 // Exported for the dedicated transactional authentication Durable Object.
 export { AuthGuard } from "./auth-guard.mjs";
+
+// Exported for authoritative, transactional paper-trading state.
+export { PaperTradingState } from "./paper-trading-state.mjs";
