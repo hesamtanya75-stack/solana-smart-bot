@@ -246,6 +246,19 @@ export class AuthGuard {
     });
   }
 
+  async importLegacyFailure(scope, count, now = Date.now()) {
+    if (!validScope(scope) || !Number.isSafeInteger(count) || count < 1 || count > 5 ||
+        !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid legacy failure counter");
+    return this.withState(state => {
+      state.failures ||= {};
+      const key = "scope:" + scope;
+      const current = state.failures[key];
+      if (current && Number(current.resetAt) > now) return false;
+      state.failures[key] = { count, resetAt: now + 900000 };
+      return true;
+    });
+  }
+
   async isRateLimited(scope, now = Date.now()) {
     if (!validScope(scope) || !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid rate-limit scope");
     return this.withState(state => {
@@ -383,6 +396,9 @@ export class AuthGuard {
       if (body.operation === "confirm-totp-setup") return json(await this.confirmTotpSetup({
         code: body.code, backupHash: body.backupHash, failureScope: body.failureScope
       }));
+      if (body.operation === "import-legacy-failure") return json({
+        imported: await this.importLegacyFailure(body.scope, body.count)
+      });
       if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
       if (body.operation === "create-challenge") {
         return json({ created: await this.createMfaChallenge(body.challengeId) });
