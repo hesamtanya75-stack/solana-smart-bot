@@ -669,7 +669,8 @@ export default {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
         if (!expected || typeof password !== "string" || password !== expected) {
-          await recordAuthFailure(env, loginScope);
+          const failure = await recordAuthFailure(env, loginScope);
+          if (failure.limited) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
         await clearAuthFailures(env, loginScope);
