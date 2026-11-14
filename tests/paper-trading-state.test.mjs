@@ -20,11 +20,16 @@ class MemoryStorage {
   }
 }
 class MemoryKV {
-  constructor(value = null) { this.value = value; }
-  async get(key, type) {
-    if (key !== "bot_state" || this.value === null) return null;
-    return type === "json" ? structuredClone(this.value) : JSON.stringify(this.value);
+  constructor(value = null) {
+    this.values = new Map();
+    if (value !== null) this.values.set("bot_state", JSON.stringify(value));
   }
+  async get(key, type) {
+    const value = this.values.get(key);
+    if (value === undefined) return null;
+    return type === "json" ? JSON.parse(value) : value;
+  }
+  async put(key, value) { this.values.set(key, String(value)); }
 }
 function makeDO(legacy = null) {
   const storage = new MemoryStorage();
@@ -50,6 +55,15 @@ test("PaperTradingState imports the existing KV paper state once", async () => {
   assert.equal(result.body.state.trades.length, 1);
   assert.equal(result.body.state.autoEnabled, true);
   assert.equal(result.body.revision, 0);
+});
+
+test("missing Durable Object storage never resurrects the stale KV snapshot", async () => {
+  const kv = new MemoryKV({ balance: 44, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
+  await kv.put("paper_state_do_migration_v1", "complete");
+  const instance = new PaperTradingState({ storage: new MemoryStorage() }, { BOT_STATE: kv });
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.match(result.body.error, /missing after its one-time KV migration/);
 });
 
 test("compare-and-set rejects stale snapshots without overwriting current state", async () => {
