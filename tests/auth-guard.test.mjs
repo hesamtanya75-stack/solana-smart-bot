@@ -143,6 +143,7 @@ test("internal endpoint requires one exact Bearer credential", async () => {
 test("an MFA challenge and its TOTP counter can only be completed once", async () => {
   const { guard } = makeGuard();
   const id = "123e4567-e89b-12d3-a456-426614174000";
+  await guard.initializeFromLegacy({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP" });
   assert.equal(await guard.createMfaChallenge(id, 1000), true);
   const results = await Promise.all(Array.from({ length: 20 }, () =>
     guard.completeMfaChallenge({
