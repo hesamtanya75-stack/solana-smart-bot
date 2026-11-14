@@ -203,6 +203,14 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal(setupWithoutPassword.status, 401);
   const setupWithWrongPassword = await post("/api/totp/setup", { password: "incorrect-password" }, env, authHeader);
   assert.equal(setupWithWrongPassword.status, 401);
+  const limitedSetupAttempts = await Promise.all(Array.from({ length: 5 }, () =>
+    post("/api/totp/setup", { password: "wrong-password" }, env, {
+      ...authHeader,
+      "CF-Connecting-IP": "203.0.113.44"
+    })
+  ));
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 401).length, 4);
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 429).length, 1);
   const setup = await post("/api/totp/setup", { password: LOGIN_PASSWORD }, env, authHeader);
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
