@@ -23,6 +23,10 @@ jobs:
       - name: Run unit and real Durable Objects runtime tests
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
+        env:
+          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
         run: node scripts/devnet-preflight.mjs
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
+        env:
+          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
         run: node scripts/devnet-signed-lifecycle.mjs
