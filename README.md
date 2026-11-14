@@ -1,1 +1,57 @@
-# solana-smart-bot
+# Solana Smart Bot
+
+A Solana token scanner with server-authoritative **paper trading**. The current Worker does not submit real transactions.
+
+## Security and deployment checklist
+
+The security changes in PR #26 are not a production deployment approval. Keep the PR unmerged until the required Cloudflare configuration and operational checks below have been completed.
+
+### Required Cloudflare Worker secrets
+
+Configure these in the Cloudflare dashboard or with Wrangler. Never commit their values, paste them into issues, or expose them in logs.
+
+- `BOT_LOGIN_PASSWORD` — administrator login password.
+- `AUTH_GUARD_INTERNAL_TOKEN` — random internal credential of at least 32 characters used for Worker-to-AuthGuard Durable Object calls.
+
+Example secret setup (Wrangler prompts for each value):
+
+```sh
+npx wrangler secret put BOT_LOGIN_PASSWORD
+npx wrangler secret put AUTH_GUARD_INTERNAL_TOKEN
+```
+
+Use independently generated, high-entropy values. Do not reuse the administrator password as the internal token.
+
+### Required bindings
+
+Verify the deployed Worker has the bindings defined in `wrangler.jsonc`:
+
+- KV namespace: `BOT_STATE`
+- Durable Object: `AUTH_GUARD`
+- Durable Object: `PAPER_TRADING_STATE`
+- Durable Object: `LIVE_TRADE_COORDINATOR`
+- Static assets: `ASSETS`
+
+The Durable Object migrations in `wrangler.jsonc` must be applied in order. A local build or CI dry-run does not prove that production bindings, migrations, or secrets are configured correctly.
+
+### Verification before any production release
+
+1. Confirm the production Worker name, route/domain, KV namespace ID, and all Durable Object bindings in the Cloudflare dashboard.
+2. Confirm both required secrets are present without revealing their values.
+3. Run the repository test suite: `npm test`.
+4. Confirm the Cloudflare Worker build validation and Devnet signed lifecycle CI checks pass for the exact commit being considered.
+5. Verify login, MFA enrollment and recovery, logout/revocation, paper buy, paper sell thresholds, and one-time legacy-state migration in a non-production environment.
+6. Review Cloudflare logs for errors without logging credentials, session tokens, MFA secrets, backup codes, or API keys.
+
+### Live trading remains disabled
+
+The LiveTradeCoordinator is an isolated safety component; the Worker currently has no live-trading route that invokes it. Settlement transitions fail closed until independent on-chain transaction verification and replay-safe settlement are implemented and tested. Do not enable live trading, remove its kill switch, or treat a successful Devnet test as authorization for Mainnet activity.
+
+## Development
+
+Requires Node.js 20 or newer.
+
+```sh
+npm install
+npm test
+```
