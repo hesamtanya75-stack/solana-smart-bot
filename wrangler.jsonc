@@ -38,6 +38,10 @@
       {
         "name": "LIVE_TRADE_COORDINATOR",
         "class_name": "LiveTradeCoordinator"
+      },
+      {
+        "name": "AUTH_GUARD",
+        "class_name": "AuthGuard"
       }
     ]
   },
@@ -46,6 +50,12 @@
       "tag": "v1-live-trade-coordinator",
       "new_sqlite_classes": [
         "LiveTradeCoordinator"
+      ]
+    },
+    {
+      "tag": "v2-auth-guard",
+      "new_sqlite_classes": [
+        "AuthGuard"
       ]
     }
   ]
