@@ -501,6 +501,17 @@ async function readProfile(env) {
     totpEnabled: false, totpSecret: null, backupHash: null
   };
 }
+async function isTotpIpRateLimited(env, ip) {
+  const state = await env.BOT_STATE.get("totp_fail:" + ip, "json");
+  return Number(state?.count || 0) >= 5;
+}
+async function recordTotpIpFailure(env, ip) {
+  const key = "totp_fail:" + ip;
+  const state = await env.BOT_STATE.get(key, "json") || { count: 0 };
+  await env.BOT_STATE.put(key, JSON.stringify({
+    count: Number(state.count || 0) + 1
+  }), { expirationTtl: 900 });
+}
 
 export default {
   async fetch(request, env) {
@@ -570,6 +581,10 @@ export default {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        if (await isTotpIpRateLimited(env, ip)) {
+          return json({ error: "زۆر هەوڵی کۆدی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
@@ -585,11 +600,13 @@ export default {
           }
         }
         if (!valid) {
+          await recordTotpIpFailure(env, ip);
           challenge.attempts = Number(challenge.attempts || 0) + 1;
           await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         }
         await env.BOT_STATE.delete(key);
+        await env.BOT_STATE.delete("totp_fail:" + ip);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
@@ -643,10 +660,18 @@ export default {
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
         try {
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          if (await isTotpIpRateLimited(env, ip)) {
+            return json({ error: "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          }
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          if (!(await verifyTotp(p.pendingTotpSecret, code))) {
+            await recordTotpIpFailure(env, ip);
+            return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          }
+          await env.BOT_STATE.delete("totp_fail:" + ip);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
