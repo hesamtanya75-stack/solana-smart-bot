@@ -899,16 +899,25 @@ export default {
               !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0) {
             return json({ error: "Unsupported state fields or revision" }, 400);
           }
-          const current = await readState(env);
-          if (current.__revision !== body.expectedRevision) {
-            return json({ error: "Server state changed; refresh before migration" }, 409);
+          let migrationError = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const current = await readState(env);
+            if (current.__migrationOpen !== true) {
+              return json({ error: "Legacy paper-state migration is no longer available" }, 409);
+            }
+            const state = cleanState({ ...current, ...body });
+            try {
+              return json(await paperStateCall(env, {
+                operation: "migrate-legacy",
+                expectedRevision: current.__revision,
+                state
+              }));
+            } catch (error) {
+              if (error.status !== 409 || attempt === 1) throw error;
+              migrationError = error;
+            }
           }
-          const state = cleanState({ ...current, ...body });
-          return json(await paperStateCall(env, {
-            operation: "migrate-legacy",
-            expectedRevision: body.expectedRevision,
-            state
-          }));
+          return json({ error: "Server state changed during migration; retry once more" }, migrationError?.status || 409);
         } catch (error) {
           return json({ error: error.status === 409 ? "State changed; refresh and retry" : "Invalid state" }, error.status || 400);
         }
