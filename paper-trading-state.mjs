@@ -79,7 +79,11 @@ export class PaperTradingState {
     // is interrupted, the old KV snapshot will not be silently imported again.
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
-    const candidate = { state: cleanState(legacy || DEFAULT_STATE), revision: 0, recentOperations: [] };
+    const initialState = cleanState(legacy || DEFAULT_STATE);
+    const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
+      initialState.autoEnabled === false && initialState.paused === false &&
+      initialState.scannedMints.length === 0;
+    const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
       if (existing) return existing;
@@ -122,9 +126,15 @@ export class PaperTradingState {
           if (record.revision !== body.expectedRevision) {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
+          const nextState = cleanState(body.state);
+          const migrationStillOpen = record.migrationOpen === true &&
+            nextState.balance === 100 && nextState.trades.length === 0 &&
+            nextState.autoEnabled === false && nextState.paused === false &&
+            nextState.scannedMints.length === 0;
           const next = {
             ...record,
-            state: cleanState(body.state),
+            state: nextState,
+            migrationOpen: migrationStillOpen,
             revision: record.revision + 1
           };
           next.state.updatedAt = new Date().toISOString();
@@ -142,10 +152,18 @@ export class PaperTradingState {
           if (record.revision !== body.expectedRevision) {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
-          if (record.revision !== 0 || record.state.updatedAt !== null || record.state.trades.length) {
-            return { value: { conflict: true, revision: record.revision, state: record.state } };
+          const current = record.state;
+          const canMigrate = record.migrationOpen === true &&
+            current.balance === 100 && current.trades.length === 0 &&
+            current.autoEnabled === false && current.paused === false &&
+            current.scannedMints.length === 0;
+          if (!canMigrate) {
+            return { value: { conflict: true, revision: record.revision, state: current } };
           }
-          const next = { ...record, state: cleanState(body.state), revision: record.revision + 1 };
+          const next = {
+            ...record, state: cleanState(body.state),
+            migrationOpen: false, revision: record.revision + 1
+          };
           next.state.updatedAt = new Date().toISOString();
           return { write: true, record: next, value: { ok: true, state: next.state, revision: next.revision } };
         });
@@ -165,7 +183,7 @@ export class PaperTradingState {
           if (typeof body.settings.enabled === "boolean") state.autoEnabled = body.settings.enabled;
           if (typeof body.settings.paused === "boolean") state.paused = body.settings.paused;
           state.updatedAt = new Date().toISOString();
-          const next = { ...record, state, revision: record.revision + 1 };
+          const next = { ...record, state, migrationOpen: false, revision: record.revision + 1 };
           return { write: true, record: next, value: { ok: true, state, revision: next.revision } };
         });
         return response(result);
@@ -205,7 +223,7 @@ export class PaperTradingState {
             });
           }
           state.updatedAt = new Date().toISOString();
-          const next = { ...record, state, revision: record.revision + 1 };
+          const next = { ...record, state, migrationOpen: false, revision: record.revision + 1 };
           const value = { ok: true, state, revision: next.revision };
           next.recentOperations = [...record.recentOperations, { id: requestId, operation: body.operation, intent }].slice(-500);
           return { write: true, record: next, value };
