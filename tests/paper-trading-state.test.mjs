@@ -57,6 +57,17 @@ test("PaperTradingState imports the existing KV paper state once", async () => {
   assert.equal(result.body.revision, 0);
 });
 
+test("interrupted initializing marker safely resumes the one-time KV import", async () => {
+  const kv = new MemoryKV({ balance: 61.5, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
+  await kv.put("paper_state_do_migration_v1", "initializing");
+  const instance = new PaperTradingState({ storage: new MemoryStorage() }, { BOT_STATE: kv });
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.balance, 61.5);
+  assert.equal(result.body.revision, 0);
+  assert.equal(await kv.get("paper_state_do_migration_v1"), "complete");
+});
+
 test("missing Durable Object storage never resurrects the stale KV snapshot", async () => {
   const kv = new MemoryKV({ balance: 44, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
   await kv.put("paper_state_do_migration_v1", "complete");
