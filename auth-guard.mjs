@@ -302,7 +302,7 @@ export class AuthGuard {
         return { ok: false, reason: "rate-limited", resetAt: failures.resetAt };
       }
 
-      if (totpCounter !== null && totpCounter > Number(state.lastTotpCounter ?? -1)) {
+      if (totpCounter !== null && state.totpEnabled && totpCounter > Number(state.lastTotpCounter ?? -1)) {
         state.lastTotpCounter = totpCounter;
         delete state.challenges[challengeId];
         if (failureKey) delete state.failures[failureKey];
