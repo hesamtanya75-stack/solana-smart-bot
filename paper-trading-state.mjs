@@ -66,16 +66,28 @@ export class PaperTradingState {
   async ensureRecord() {
     let record = await this.ctx.storage.get("paper_state_v1");
     if (record) return record;
-    // Read the legacy KV snapshot before entering the SQLite transaction. The
-    // transaction then guarantees that only one concurrent initializer wins.
+    const migrationKey = "paper_state_do_migration_v1";
+    const marker = await this.env.BOT_STATE.get(migrationKey);
+    if (marker) {
+      // Never re-import an old KV snapshot if the Durable Object's own storage
+      // was reset after migration; fail closed instead of resurrecting stale trades.
+      record = await this.ctx.storage.get("paper_state_v1");
+      if (record) return record;
+      throw new Error("PaperTradingState storage is missing after its one-time KV migration");
+    }
+    // Mark migration as started before creating the DO record. If initialization
+    // is interrupted, the old KV snapshot will not be silently imported again.
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+    await this.env.BOT_STATE.put(migrationKey, "initializing");
     const candidate = { state: cleanState(legacy || DEFAULT_STATE), revision: 0, recentOperations: [] };
-    return this.ctx.storage.transaction(async txn => {
+    record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
       if (existing) return existing;
       await txn.put("paper_state_v1", candidate);
       return candidate;
     });
+    await this.env.BOT_STATE.put(migrationKey, "complete");
+    return record;
   }
 
   async transact(mutator) {
