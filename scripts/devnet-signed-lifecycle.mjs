@@ -6,7 +6,9 @@ import {
   Transaction
 } from "@solana/web3.js";
 
-const DEVNET_RPC = "https://api.devnet.solana.com";
+// A dedicated Devnet RPC may be supplied through GitHub Actions secrets.
+// The genesis-hash guard below still refuses to sign against any other cluster.
+const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
 const TRANSFER_LAMPORTS = 1_000_000; // 0.001 SOL; Devnet only
 const AIRDROP_LAMPORTS = LAMPORTS_PER_SOL / 2;
 
