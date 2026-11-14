@@ -45,6 +45,8 @@ test("state-changing API requests reject cross-origin browser requests", () => {
   assert.ok(workerSource.includes("function sameOriginApiRequest(request, url)"));
   assert.ok(workerSource.includes('new URL(origin).origin !== url.origin'));
   assert.ok(workerSource.includes('request.headers.get("Sec-Fetch-Site") !== "cross-site"'));
+  assert.ok(workerSource.includes('request.headers.get("Sec-Fetch-Site") !== "same-origin"'));
+  assert.ok(workerSource.includes("Reject requests where both Origin and Fetch Metadata are absent."));
   assert.ok(workerSource.includes('if (!sameOriginApiRequest(request, url))'));
 });
 
