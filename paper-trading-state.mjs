@@ -68,15 +68,16 @@ export class PaperTradingState {
     if (record) return record;
     const migrationKey = "paper_state_do_migration_v1";
     const marker = await this.env.BOT_STATE.get(migrationKey);
-    if (marker) {
+    if (marker === "complete") {
       // Never re-import an old KV snapshot if the Durable Object's own storage
-      // was reset after migration; fail closed instead of resurrecting stale trades.
+      // was reset after a completed migration; fail closed instead of resurrecting stale trades.
       record = await this.ctx.storage.get("paper_state_v1");
       if (record) return record;
       throw new Error("PaperTradingState storage is missing after its one-time KV migration");
     }
-    // Mark migration as started before creating the DO record. If initialization
-    // is interrupted, the old KV snapshot will not be silently imported again.
+    // An "initializing" marker is recoverable: a prior isolate may have stopped
+    // after writing the marker but before committing the Durable Object record.
+    // If a record had committed, the first storage.get above would have returned it.
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
