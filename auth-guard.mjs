@@ -141,6 +141,9 @@ export class AuthGuard {
     }
     return this.withState(state => {
       state.failures ||= {};
+      for (const [failureKey, entry] of Object.entries(state.failures)) {
+        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) delete state.failures[failureKey];
+      }
       const key = "scope:" + scope;
       const current = state.failures[key];
       const active = current && Number(current.resetAt) > now ? current : { count: 0, resetAt: now + 900000 };
