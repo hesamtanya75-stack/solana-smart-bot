@@ -613,6 +613,9 @@ async function isAuthRateLimited(env, scope) {
 async function recordAuthFailure(env, scope) {
   return authGuardCall(env, { operation: "record-failure", scope });
 }
+async function authFailureScope(prefix, ip) {
+  return prefix + ":" + await hashText(ip);
+}
 async function clearAuthFailures(env, scope) {
   return authGuardCall(env, { operation: "clear-failures", scope });
 }
@@ -660,7 +663,7 @@ export default {
         const { password } = await readBoundedJson(request, 4096);
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginScope = "login:" + ip;
+        const loginScope = await authFailureScope("login", ip);
         const profile = await ensureAuthGuard(env);
         if (await isAuthRateLimited(env, loginScope)) {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
@@ -680,14 +683,14 @@ export default {
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await readBoundedJson(request, 4096);
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const failureScope = "totp:" + ip;
+        const failureScope = await authFailureScope("totp", ip);
         if (await isAuthRateLimited(env, failureScope)) {
           return json({ error: "زۆر هەوڵی کۆدی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
@@ -759,7 +762,7 @@ export default {
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
         try {
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-          const failureScope = "totp:" + ip;
+          const failureScope = await authFailureScope("totp", ip);
           if (await isAuthRateLimited(env, failureScope)) {
             return json({ error: "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           }
