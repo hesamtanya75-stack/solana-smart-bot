@@ -208,3 +208,16 @@ test("concurrent bad password attempts are atomically throttled by AuthGuard", a
   const scope = "login:" + await sha256("203.0.113.25");
   assert.equal(await guard.isRateLimited(scope), true);
 });
+
+
+test("Worker migrates an active legacy password rate limit before checking login", async () => {
+  const { env, guard } = makeEnvironment();
+  const legacyKey = "login_fail:203.0.113.90";
+  await env.BOT_STATE.put(legacyKey, JSON.stringify({ count: 5 }));
+  const response = await post("/api/login", { password: LOGIN_PASSWORD }, env, {
+    "CF-Connecting-IP": "203.0.113.90"
+  });
+  assert.equal(response.status, 429);
+  assert.equal(await env.BOT_STATE.get(legacyKey), null);
+  assert.equal(await guard.isRateLimited("login:" + await sha256("203.0.113.90")), true);
+});
