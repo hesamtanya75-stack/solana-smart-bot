@@ -19,6 +19,36 @@ function json(data, status = 200) {
   });
 }
 
+async function readBoundedJson(request, maxBytes = 16384) {
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      const error = new Error("Request body too large");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  return value;
+}
+
 function emptyState() {
   return { killSwitch: true, reservations: {} };
 }
@@ -106,9 +136,12 @@ export class LiveTradeCoordinator {
 
     let body;
     try {
-      body = await request.json();
-    } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      body = await readBoundedJson(request);
+    } catch (error) {
+      return json(
+        { error: error.status === 413 ? "Request body too large" : "Invalid JSON body" },
+        error.status || 400
+      );
     }
 
     try {
