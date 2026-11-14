@@ -647,7 +647,6 @@ export default {
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
-        if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
         const p = await readProfile(env);
         if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
         const secretBytes = crypto.getRandomValues(new Uint8Array(20));
@@ -661,7 +660,6 @@ export default {
         return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
-        if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
         try {
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           if (await isTotpIpRateLimited(env, ip)) {
