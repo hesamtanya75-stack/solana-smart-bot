@@ -181,7 +181,7 @@ export class PaperTradingState {
             if (previous.operation !== body.operation || previous.intent !== intent) {
               return { value: { error: "Idempotency key was reused for a different operation" } };
             }
-            return { value: previous.result };
+            return { value: { ok: true, state: record.state, revision: record.revision, replayed: true } };
           }
           const state = { ...record.state, trades: [...record.state.trades] };
           if (body.operation === "clear-history") {
@@ -207,7 +207,7 @@ export class PaperTradingState {
           state.updatedAt = new Date().toISOString();
           const next = { ...record, state, revision: record.revision + 1 };
           const value = { ok: true, state, revision: next.revision };
-          next.recentOperations = [...record.recentOperations, { id: requestId, operation: body.operation, intent, result: value }].slice(-500);
+          next.recentOperations = [...record.recentOperations, { id: requestId, operation: body.operation, intent }].slice(-500);
           return { write: true, record: next, value };
         });
         if (result?.error) return response(result, 409);
