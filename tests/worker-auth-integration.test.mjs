@@ -274,6 +274,32 @@ test("Worker rejects malformed and oversized session identifiers before authoriz
   }
 });
 
+test("Worker requires a strict Bearer header for dashboard sessions", async () => {
+  const { env } = makeEnvironment();
+  const token = "123e4567-e89b-42d3-a456-426614174000";
+  await env.BOT_STATE.put("session:" + token, JSON.stringify({
+    expiresAt: Date.now() + 60_000
+  }));
+
+  for (const authorization of [
+    token,
+    "Basic " + token,
+    "Bearer " + token + " extra",
+    "Bearer  " + token,
+    "Bearer"
+  ]) {
+    const response = await worker.fetch(new Request("https://bot.example/api/profile", {
+      headers: { Authorization: authorization }
+    }), env);
+    assert.equal(response.status, 401, authorization);
+  }
+
+  const valid = await worker.fetch(new Request("https://bot.example/api/profile", {
+    headers: { Authorization: "Bearer " + token }
+  }), env);
+  assert.equal(valid.status, 200);
+});
+
 test("concurrent bad password attempts are atomically throttled by AuthGuard", async () => {
   const { env, guard } = makeEnvironment();
   const results = await Promise.all(Array.from({ length: 12 }, () =>
