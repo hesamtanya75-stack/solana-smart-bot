@@ -255,11 +255,12 @@ test("TOTP enrollment secret is stored and confirmed atomically in AuthGuard", a
   const { guard } = makeGuard();
   const secret = "JBSWY3DPEHPK3PXP";
   const now = 1800000000000;
+  await guard.initializeFromLegacy();
   assert.equal(await guard.beginTotpSetup(secret, now), true);
   const counter = Math.floor(now / 30000);
   const code = await testTotpCode(secret, counter);
   const backupHash = "f".repeat(64);
-  const result = await guard.confirmTotpSetup({ code, backupHash, now });
+  const result = await guard.confirmTotpSetup({ code, backupHash, failureScope: "totp:test", now });
   assert.deepEqual(result, { ok: true, counter });
   assert.deepEqual(await guard.getProfile(), {
     initialized: false,
@@ -268,15 +269,33 @@ test("TOTP enrollment secret is stored and confirmed atomically in AuthGuard", a
     pendingTotpSecret: null,
     pendingTotpAt: null
   });
-  assert.equal((await guard.confirmTotpSetup({ code, backupHash, now })).ok, false);
+  assert.equal((await guard.confirmTotpSetup({ code, backupHash, failureScope: "totp:test", now })).ok, false);
 });
 
 test("TOTP setup rejects expired secrets and invalid legacy secret formats", async () => {
   const { guard } = makeGuard();
+  await guard.initializeFromLegacy();
   await assert.rejects(() => guard.beginTotpSetup("not-base32", 1000));
   await assert.rejects(() => guard.initializeFromLegacy({
     totpEnabled: true,
     totpSecret: null,
     lastTotpCounter: -1
   }));
+});
+
+
+test("TOTP enrollment failure counter is enforced within one transaction", async () => {
+  const { guard } = makeGuard();
+  await guard.initializeFromLegacy();
+  await guard.beginTotpSetup("JBSWY3DPEHPK3PXP", 1000);
+  const attempts = await Promise.all(Array.from({ length: 8 }, () =>
+    guard.confirmTotpSetup({
+      code: "000000",
+      backupHash: "a".repeat(64),
+      failureScope: "totp:atomic-test",
+      now: 1001
+    })
+  ));
+  assert.equal(attempts.filter(result => result.reason === "invalid").length, 4);
+  assert.equal(attempts.filter(result => result.reason === "rate-limited").length, 4);
 });
