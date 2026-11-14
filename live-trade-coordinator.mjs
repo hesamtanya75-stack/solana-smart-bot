@@ -237,35 +237,11 @@ export class LiveTradeCoordinator {
     });
   }
 
-  async transition(body, targetStatus) {
+  async transition(_body, _targetStatus) {
     // Fail closed until settlement can independently verify the submitted
     // transaction signature/status (or cryptographically prove non-submission).
     // Caller-supplied booleans and reason strings are not settlement evidence.
     throw new Error("Independent on-chain settlement proof is not implemented; state transitions are disabled");
-    const key = validateIdempotencyKey(body?.idempotencyKey);
-    return this.withState(state => {
-      const reservation = state.reservations[key];
-      if (!reservation) throw new Error("Reservation not found");
-      if (reservation.status === targetStatus) return { ok: true, duplicate: true, reservation };
-      if (targetStatus === "confirmed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be confirmed");
-      }
-      if (targetStatus === "failed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be failed");
-      }
-      if (targetStatus === "failed" &&
-          (body?.definitelyNotSubmitted !== true ||
-           typeof body?.resolutionReason !== "string" ||
-           body.resolutionReason.trim().length < 12)) {
-        throw new Error("Fail resolution requires explicit proof of non-submission and a reason of at least 12 characters");
-      }
-      if (targetStatus === "closed" && reservation.status !== "confirmed") {
-        throw new Error("Only confirmed positions can be closed");
-      }
-      reservation.status = targetStatus;
-      reservation.updatedAt = new Date().toISOString();
-      return { ok: true, duplicate: false, reservation };
-    });
   }
 
   async setKillSwitch(body) {
