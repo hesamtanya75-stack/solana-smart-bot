@@ -166,6 +166,12 @@ export class LiveTradeCoordinator {
         Object.values(risk.checks).some(value => value !== true)) {
       throw new Error("Trusted token risk checks are missing, mismatched, or failed; reservation blocked");
     }
+    // A boolean risk flag alone is insufficient: require an explicit semantic
+    // verification attestation before any reservation can pass the coordinator.
+    if (risk.sellRoute?.semanticInstructionVerification !== true ||
+        risk.sellRoute?.routeVerification !== "semantically-verified") {
+      throw new Error("Jupiter instruction semantics and lookup tables are not verified; reservation blocked");
+    }
     const riskTimestamp = risk.fetchedAt;
     if (!Number.isFinite(riskTimestamp) || riskTimestamp > Date.now() + 5000 ||
         Date.now() - riskTimestamp > MAX_QUOTE_AGE_MS) {
