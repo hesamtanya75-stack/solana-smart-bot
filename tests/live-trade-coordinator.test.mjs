@@ -58,6 +58,20 @@ async function post(coordinator, path, body) {
   return { status: response.status, body: await response.json() };
 }
 
+test("coordinator rejects oversized authenticated request bodies before JSON parsing", async () => {
+  const { coordinator } = makeCoordinator();
+  const response = await coordinator.fetch(new Request("https://coordinator/kill-switch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-only-internal-token-32-characters"
+    },
+    body: JSON.stringify({ enabled: false, padding: "x".repeat(16385) })
+  }));
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Request body too large" });
+});
+
 test("kill switch starts active and blocks reservations", async () => {
   const { coordinator } = makeCoordinator();
   const result = await post(coordinator, "/reserve", validReservation());
