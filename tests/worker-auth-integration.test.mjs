@@ -135,6 +135,10 @@ test("Worker login migrates legacy MFA and enforces one-time TOTP and backup cod
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
   assert.equal(await env.BOT_STATE.get("auth_guard_migration_v1"), "complete");
+  const legacyProfile = JSON.parse(await env.BOT_STATE.get("admin_profile"));
+  for (const field of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(legacyProfile, field), false, `legacy MFA field ${field} must be removed from KV`);
+  }
   const challenge = await login.json();
   assert.equal(challenge.mfaRequired, true);
 
