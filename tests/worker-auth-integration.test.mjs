@@ -246,3 +246,29 @@ test("Worker refuses to re-import stale KV MFA secrets if migrated Durable Objec
   assert.equal(refused.status, 503);
   assert.equal((await replacementGuard.getProfile()).initialized, false);
 });
+
+
+test("automation endpoint bounds payloads and rejects unknown or mistyped settings", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const headers = { Authorization: "Bearer " + token };
+
+  const valid = await post("/api/automation", { enabled: true, paused: false }, env, headers);
+  assert.equal(valid.status, 200);
+  assert.deepEqual((await valid.json()).state.autoEnabled, true);
+
+  const unknown = await post("/api/automation", { enabled: false, balance: 999999 }, env, headers);
+  assert.equal(unknown.status, 400);
+
+  const mistyped = await post("/api/automation", { paused: "false" }, env, headers);
+  assert.equal(mistyped.status, 400);
+
+  const oversized = await post("/api/automation", { enabled: true, padding: "x".repeat(5000) }, env, headers);
+  assert.equal(oversized.status, 400);
+
+  const state = await (await get("/api/state", env, token)).json();
+  assert.equal(state.autoEnabled, true);
+  assert.equal(state.balance, 100);
+});
