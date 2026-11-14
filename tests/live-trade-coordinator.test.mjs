@@ -93,8 +93,6 @@ test("daily spend cap is enforced atomically and confirmed/closed spend remains 
   }));
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
-  await post(coordinator, "/confirm", { idempotencyKey: "order-key-0001" });
-  await post(coordinator, "/close", { idempotencyKey: "order-key-0001" });
   const third = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "order-key-0003", amountLamports: 1_000_000, solUsd: 200
   }));
@@ -141,19 +139,30 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
   assert.equal(status.dailySpendUsdCents, 200);
 });
 
-test("only explicitly confirmed non-submission can release a pending reservation", async () => {
+test("confirm, fail, and close transitions remain blocked without independent settlement proof", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
-  const failed = await post(coordinator, "/fail", {
-    idempotencyKey: "order-key-0001",
-    definitelyNotSubmitted: true,
-    resolutionReason: "RPC confirmed no transaction was submitted"
-  });
-  assert.equal(failed.status, 200);
+
+  for (const [path, extra] of [
+    ["/confirm", {}],
+    ["/fail", {
+      definitelyNotSubmitted: true,
+      resolutionReason: "RPC confirmed no transaction was submitted"
+    }],
+    ["/close", {}]
+  ]) {
+    const result = await post(coordinator, path, {
+      idempotencyKey: "order-key-0001",
+      ...extra
+    });
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /Independent on-chain settlement proof is not implemented/);
+  }
+
   const status = await coordinator.status();
-  assert.equal(status.openPositions, 0);
-  assert.equal(status.dailySpendUsdCents, 0);
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 200);
 });
 
 test("browser-supplied risk flag is ignored; server evidence controls approval", async () => {
