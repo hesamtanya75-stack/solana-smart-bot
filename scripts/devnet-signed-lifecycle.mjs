@@ -31,6 +31,12 @@ async function requestDevnetAirdrop(connection, publicKey) {
       return signature;
     } catch (error) {
       lastError = error;
+      const message = String(error?.message || error);
+      // HTTP 410 is a permanent faucet shutdown response, not a transient
+      // rate limit or network error; retrying cannot make this request succeed.
+      if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
+        throw new Error("Devnet RPC faucet is closed: " + message);
+      }
       if (attempt === 3) break;
       await wait(1500 * (attempt + 1));
     }
