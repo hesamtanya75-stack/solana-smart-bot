@@ -1871,7 +1871,10 @@ if (serverToken) {
   document.getElementById("totpStart").onclick=async()=>{
     status().textContent="کلیلی پاراستن دروست دەکرێت...";
     try{
-      const p=await serverRequest("/api/totp/setup",{method:"POST",body:"{}"});
+      const password=window.prompt("Authenticator چالاککردن: تکایە وشەی نهێنی ئێستا دووبارە بنووسە");
+      if(password===null){status().textContent="داواکاریی چالاککردن هەڵوەشایەوە.";return;}
+      if(!password){status().textContent="وشەی نهێنی پێویستە.";return;}
+      const p=await serverRequest("/api/totp/setup",{method:"POST",body:JSON.stringify({password})});
       document.getElementById("totpSecret").textContent=p.secret;
       document.getElementById("totpSetup").style.display="block";
       status().textContent=p.message;
