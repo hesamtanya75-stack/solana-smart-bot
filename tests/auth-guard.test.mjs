@@ -115,3 +115,23 @@ test("legacy auth state rejects malformed migration data", async () => {
     lastTotpCounter: -2
   }));
 });
+
+
+test("internal endpoint requires one exact Bearer credential", async () => {
+  const token = "s".repeat(40);
+  const guard = new AuthGuard({ storage: new TransactionalStorage() }, {
+    AUTH_GUARD_INTERNAL_TOKEN: token
+  });
+  const makeRequest = authorization => new Request("https://internal.invalid/", {
+    method: "POST",
+    headers: { Authorization: authorization, "Content-Type": "application/json" },
+    body: JSON.stringify({ operation: "record-failure", scope: "login:test" })
+  });
+  for (const authorization of [token, "Basic " + token, "Bearer " + token + " extra", "Bearer " + "x".repeat(40)]) {
+    const response = await guard.fetch(makeRequest(authorization));
+    assert.equal(response.status, 401);
+  }
+  const accepted = await guard.fetch(makeRequest("Bearer " + token));
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(await accepted.json(), { count: 1, limited: false, resetAt: 900000 });
+});
