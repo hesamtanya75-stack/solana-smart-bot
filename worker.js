@@ -606,6 +606,14 @@ async function ensureAuthGuard(env) {
   });
   return authGuardCall(env, { operation: "get-profile" });
 }
+async function migrateLegacyFailure(env, scope, legacyKey) {
+  const legacy = await env.BOT_STATE.get(legacyKey, "json");
+  const count = Math.min(5, Math.max(0, Math.floor(Number(legacy?.count || 0))));
+  if (count > 0) {
+    await authGuardCall(env, { operation: "import-legacy-failure", scope, count });
+    await env.BOT_STATE.delete(legacyKey);
+  }
+}
 async function isAuthRateLimited(env, scope) {
   const result = await authGuardCall(env, { operation: "is-rate-limited", scope });
   return result.limited === true;
@@ -665,6 +673,7 @@ export default {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const loginScope = await authFailureScope("login", ip);
         const profile = await ensureAuthGuard(env);
+        await migrateLegacyFailure(env, loginScope, "login_fail:" + ip);
         if (await isAuthRateLimited(env, loginScope)) {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
@@ -692,6 +701,7 @@ export default {
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const failureScope = await authFailureScope("totp", ip);
+        await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
         if (await isAuthRateLimited(env, failureScope)) {
           return json({ error: "زۆر هەوڵی کۆدی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
