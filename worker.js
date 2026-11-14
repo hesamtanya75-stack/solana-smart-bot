@@ -32,11 +32,27 @@ function json(data, status = 200) {
 }
 
 async function readBoundedJson(request, maxBytes = 8192) {
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > maxBytes) {
-    throw new Error("Request body too large");
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error("Request body too large");
+    }
+    chunks.push(value);
   }
-  const value = JSON.parse(raw);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("JSON object required");
   }
@@ -732,7 +748,7 @@ export default {
           if (await isTotpIpRateLimited(env, ip)) {
             return json({ error: "زۆر هەوڵی چالاککردنی Authenticator دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           }
-          const { code } = await request.json();
+          const { code } = await readBoundedJson(request, 4096);
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
           const matchedCounter = await matchingTotpCounter(p.pendingTotpSecret, code);
