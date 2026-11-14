@@ -21,10 +21,21 @@ let rpcCursor = 0;
 let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
 
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=31536000"
+};
+const HTML_SECURITY_POLICY = "base-uri 'self'; object-src 'none'; frame-ancestors 'none'";
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...SECURITY_HEADERS,
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store"
     }
@@ -745,6 +756,8 @@ export default {
       return new Response(html, {
         status: assetResponse.status,
         headers: {
+          ...SECURITY_HEADERS,
+          "Content-Security-Policy": HTML_SECURITY_POLICY,
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
@@ -754,6 +767,7 @@ export default {
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) assetHeaders.set(name, value);
     assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
     return new Response(assetResponse.body, {
       status: assetResponse.status,
