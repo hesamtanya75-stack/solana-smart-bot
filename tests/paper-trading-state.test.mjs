@@ -45,6 +45,17 @@ async function call(instance, body) {
 const mintA = "So11111111111111111111111111111111111111112";
 const requestId = suffix => "paper-test-request-" + suffix;
 
+test("internal state endpoint rejects oversized request bodies before JSON parsing", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const response = await instance.fetch(new Request("https://paper-trading.internal/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operation: "get", padding: "x".repeat(262145) })
+  }));
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Request body too large" });
+});
+
 test("PaperTradingState imports the existing KV paper state once", async () => {
   const { instance } = makeDO({ balance: 73.25, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2.1, tokens: 2.5, sold: false
