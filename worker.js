@@ -30,6 +30,18 @@ function json(data, status = 200) {
     }
   });
 }
+
+async function readBoundedJson(request, maxBytes = 8192) {
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) {
+    throw new Error("Request body too large");
+  }
+  const value = JSON.parse(raw);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  return value;
+}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -598,7 +610,7 @@ export default {
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const { password } = await request.json();
+        const { password } = await readBoundedJson(request, 4096);
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const loginKey = "login_fail:" + ip;
@@ -627,7 +639,7 @@ export default {
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
+        const { challengeId, code } = await readBoundedJson(request, 4096);
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         if (await isTotpIpRateLimited(env, ip)) {
@@ -683,7 +695,7 @@ export default {
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 4096);
           const p = await readProfile(env);
           if (typeof body.email === "string") {
             const email = body.email.trim().slice(0, 254);
