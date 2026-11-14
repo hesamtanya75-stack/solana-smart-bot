@@ -63,7 +63,7 @@ test("missing Durable Object storage never resurrects the stale KV snapshot", as
   const instance = new PaperTradingState({ storage: new MemoryStorage() }, { BOT_STATE: kv });
   const result = await call(instance, { operation: "get" });
   assert.equal(result.status, 503);
-  assert.match(result.body.error, /missing after its one-time KV migration/);
+  assert.equal(result.body.error, "Paper trading state operation failed");
 });
 
 test("compare-and-set rejects stale snapshots without overwriting current state", async () => {
