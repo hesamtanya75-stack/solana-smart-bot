@@ -87,6 +87,20 @@ async function authorized(request, env) {
   const session = await env.BOT_STATE.get("session:" + token, "json");
   return !!session && session.expiresAt > Date.now();
 }
+
+function sameOriginApiRequest(request, url) {
+  if (!url.pathname.startsWith("/api/") ||
+      !["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) return true;
+  const origin = request.headers.get("Origin");
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== url.origin) return false;
+    } catch {
+      return false;
+    }
+  }
+  return request.headers.get("Sec-Fetch-Site") !== "cross-site";
+}
 async function rpc(method, params, env) {
   const errors = [];
   // Try the existing Alchemy key first, then fall back to a public Solana RPC.
@@ -547,6 +561,9 @@ async function recordTotpIpFailure(env, ip) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (!sameOriginApiRequest(request, url)) {
+      return json({ error: "Cross-origin API request rejected" }, 403);
+    }
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
     }
