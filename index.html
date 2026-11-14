@@ -1119,7 +1119,7 @@ const safeValue = Number.isFinite(value) ? value : 0;
   `;
 }
 
-renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
+renderDemoHistory();document.getElementById("demoBuy").onclick = async function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
 
