@@ -695,7 +695,7 @@ export default {
       return json({ error: "Cross-origin API request rejected" }, 403);
     }
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV + Durable Objects", build: "59ef112" });
     }
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
