@@ -838,11 +838,19 @@ export default {
         let reauth;
         try { reauth = await readBoundedJson(request, 4096); }
         catch { return json({ error: "پشتڕاستکردنەوەی وشەی نهێنی پێویستە" }, 400); }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const setupScope = await authFailureScope("totp-setup", ip);
+        if (await isAuthRateLimited(env, setupScope)) {
+          return json({ error: "زۆر هەوڵی پشتڕاستکردنەوەی وشەی نهێنی دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
         const expectedPassword = env.BOT_LOGIN_PASSWORD;
         if (typeof reauth.password !== "string" || typeof expectedPassword !== "string" ||
             !constantTimeTextEqual(reauth.password, expectedPassword)) {
+          const failure = await recordAuthFailure(env, setupScope);
+          if (failure.limited) return json({ error: "زۆر هەوڵی پشتڕاستکردنەوەی وشەی نهێنی دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           return json({ error: "وشەی نهێنی نادروستە؛ چالاککردنی Authenticator ڕەتکرایەوە" }, 401);
         }
+        await clearAuthFailures(env, setupScope);
         const auth = await ensureAuthGuard(env);
         if (auth.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
         const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
