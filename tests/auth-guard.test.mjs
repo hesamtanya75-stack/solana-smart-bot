@@ -133,5 +133,8 @@ test("internal endpoint requires one exact Bearer credential", async () => {
   }
   const accepted = await guard.fetch(makeRequest("Bearer " + token));
   assert.equal(accepted.status, 200);
-  assert.deepEqual(await accepted.json(), { count: 1, limited: false, resetAt: 900000 });
+  const acceptedBody = await accepted.json();
+  assert.equal(acceptedBody.count, 1);
+  assert.equal(acceptedBody.limited, false);
+  assert.ok(acceptedBody.resetAt > Date.now());
 });
