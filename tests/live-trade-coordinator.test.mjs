@@ -323,11 +323,10 @@ test("reservation history is bounded without discarding idempotency records", as
 
   await post(coordinator, "/kill-switch", { enabled: true });
   const duplicate = await post(coordinator, "/reserve", original);
-  assert.equal(duplicate.status, 200);
-  assert.equal(duplicate.body.duplicate, true);
+  assert.equal(duplicate.status, 409);
+  assert.match(duplicate.body.error, /emergency kill switch is active/i);
 
-  // Re-enable reservations only to exercise the capacity guard; the active
-  // emergency stop must take precedence while it is enabled.
+  // Re-enable reservations only to exercise the capacity guard.
   await post(coordinator, "/kill-switch", { enabled: false });
   const blocked = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "capacity-new-order"
