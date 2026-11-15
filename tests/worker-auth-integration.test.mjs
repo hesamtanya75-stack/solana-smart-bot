@@ -301,8 +301,9 @@ test("Worker dashboard HTML responses use a fresh nonce-based CSP", async () => 
   assert.match(policy, /frame-ancestors 'none'/);
   const nonce = policy.match(/script-src 'nonce-([^']+)'/)[1];
   const html = await response.text();
-  assert.equal((html.match(/<script\b/gi) || []).length, 2);
-  assert.equal((html.match(new RegExp(`<script nonce="${nonce}"`, "g")) || []).length, 2);
+  const scriptTags = [...html.matchAll(/<script\\b[^>]*>/gi)].map(match => match[0]);
+  assert.equal(scriptTags.length, 2);
+  assert.equal(scriptTags.filter(tag => tag.includes(`nonce="${nonce}"`)).length, 2);
   assert.notEqual(nonce, "static-nonce");
 });
 
