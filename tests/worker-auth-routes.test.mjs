@@ -107,6 +107,11 @@ test("temporary public diagnostic routes are not exposed by the Worker", () => {
   }
 });
 
+test("security panel escapes untrusted RPC token program metadata before HTML rendering", () => {
+  assert.ok(workerSource.includes('row("Token Program",safe(programOwner||"داتا نییە"))+'));
+  assert.equal(workerSource.includes('row("Token Program",programOwner||"داتا نییە")+'), false);
+});
+
 test("static asset fallback exposes only the self-contained dashboard routes", () => {
   const dashboardGate = workerSource.indexOf(
     'if (!isDashboardHtml) return json({ error: "Not found" }, 404);'
