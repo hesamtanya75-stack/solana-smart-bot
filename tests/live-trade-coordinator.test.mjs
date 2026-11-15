@@ -337,3 +337,45 @@ test("reservation history is bounded without discarding idempotency records", as
   const status = await coordinator.status();
   assert.equal(status.limits.maxReservations, 1000);
 });
+
+
+test("concurrent retries with the same idempotency key create exactly one reservation", async () => {
+  const { coordinator, storage } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+
+  const requests = [0, 1].map(() => post(coordinator, "/reserve", validReservation()));
+  const results = await Promise.all(requests);
+  assert.equal(results.filter(result => result.status === 200).length, 2);
+  assert.equal(results.filter(result => result.body.duplicate === false).length, 1);
+  assert.equal(results.filter(result => result.body.duplicate === true).length, 1);
+
+  const state = await storage.get("coordinator_state");
+  assert.equal(Object.keys(state.reservations).filter(key => key === "order-key-0001").length, 1);
+  assert.equal(Object.keys(state.reservations).length, 1);
+});
+
+test("kill switch activated during evidence retrieval blocks the in-flight reservation", async () => {
+  let signalStarted;
+  let releaseEvidence;
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  const evidenceGate = new Promise(resolve => { releaseEvidence = resolve; });
+  const { coordinator } = makeCoordinator(async () => {
+    signalStarted();
+    await evidenceGate;
+    return trustedEvidence();
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+
+  const pendingReservation = post(coordinator, "/reserve", validReservation());
+  await started;
+  const stopped = await post(coordinator, "/kill-switch", { enabled: true });
+  assert.equal(stopped.status, 200);
+  releaseEvidence();
+
+  const result = await pendingReservation;
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /kill switch/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 0);
+  assert.equal(status.dailySpendUsdCents, 0);
+});
