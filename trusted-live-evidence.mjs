@@ -761,6 +761,9 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   // followed by all readonly addresses, preserving table order within each set.
   const writableAddresses = resolved.flatMap(table => table.writable);
   const readonlyAddresses = resolved.flatMap(table => table.readonly);
+  if (writableAddresses.length + readonlyAddresses.length > 256) {
+    throw new Error("Jupiter address lookup resolution exceeds the 256-account message key limit");
+  }
   // A compiled message has one canonical account-key index per address.
   // Reject duplicate ALT-loaded keys instead of accepting ambiguous layouts.
   const loadedAddresses = [...writableAddresses, ...readonlyAddresses];
@@ -799,6 +802,11 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (!Array.isArray(parsed.addressLookups) ||
       parsed.addressLookups.length !== parsed.addressLookupCount) {
     throw new Error("Jupiter address lookup descriptors are incomplete");
+  }
+  const selectedLookupAddressCount = parsed.addressLookups.reduce((sum, table) =>
+    sum + table.writableIndexes.length + table.readonlyIndexes.length, 0);
+  if (parsed.staticAccountCount + selectedLookupAddressCount > 256) {
+    throw new Error("Jupiter transaction exceeds the 256-account message key limit");
   }
   const resolution = await resolveJupiterAddressLookupTables(parsed.addressLookups, fetchImpl);
   const allMessageKeys = [...parsed.staticAccountKeys, ...resolution.writableAddresses, ...resolution.readonlyAddresses];
