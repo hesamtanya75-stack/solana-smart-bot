@@ -46,6 +46,7 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
+    LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
     VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
@@ -208,6 +209,28 @@ test("reservation requires trusted all-in fee evidence and validates priority-fe
   const invalid = await post(mismatch, "/reserve", validReservation());
   assert.equal(invalid.status, 409);
   assert.match(invalid.body.error, /Priority fee does not match/);
+});
+
+test("reservation fails closed when the reviewed priority-fee ceiling is absent or exceeded", async () => {
+  const storage = new MemoryStorage();
+  const evidenceProvider = async () => trustedEvidence();
+  const missingCap = new LiveTradeCoordinator({ storage }, {
+    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
+    COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
+    FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider
+  });
+  await post(missingCap, "/kill-switch", { enabled: false });
+  const missing = await post(missingCap, "/reserve", validReservation());
+  assert.equal(missing.status, 409);
+  assert.match(missing.body.error, /Reviewed maximum priority fee is not configured/);
+
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    costs: { ...trustedEvidence().costs, maxPriorityFeeLamports: 3001 }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const exceeded = await post(coordinator, "/reserve", validReservation());
+  assert.equal(exceeded.status, 409);
+  assert.match(exceeded.body.error, /Priority fee exceeds the reviewed maximum/);
 });
 
 test("reservation stores the complete all-in lamport cost breakdown", async () => {
