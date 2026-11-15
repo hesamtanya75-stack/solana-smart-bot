@@ -897,7 +897,7 @@ export async function verifyFinalizedJupiterSettlement({
   const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
   if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
       !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
-      !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
+      !validAddress(expectedOwner) ||
       !validAmount(inputAmount) || !validAmount(outputAmount)) {
     throw new Error("Settlement proof request is incomplete or invalid");
   }
@@ -931,9 +931,9 @@ export async function verifyFinalizedJupiterSettlement({
   }
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
   const ownerIndex = keyStrings.indexOf(expectedOwner);
-  // Solana's first required signer is the fee payer. Require the pinned bot
-  // wallet in that position so a third-party transaction cannot settle an order.
-  if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
+  // Solana's first required signer is the fee payer. The caller must bind
+  // expectedOwner to the wallet that received the quote and approved the order.
+  if (ownerIndex !== 0) throw new Error("Expected owner is not the finalized transaction fee payer");
 
   const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
   const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
