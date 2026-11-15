@@ -75,6 +75,28 @@ test("coordinator rejects oversized authenticated request bodies before JSON par
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("status endpoint returns a fail-closed conflict for impossible ledger dates", async () => {
+  const { coordinator, storage } = makeCoordinator();
+  await storage.put("coordinator_state", {
+    killSwitch: true,
+    reservations: {
+      "bad-date-key-0001": {
+        idempotencyKey: "bad-date-key-0001",
+        intentFingerprint: "immutable-intent",
+        amountCents: 100,
+        day: "2026-02-30",
+        status: "closed"
+      }
+    },
+    killSwitchAudit: []
+  });
+  const response = await coordinator.fetch(new Request("https://coordinator/status", {
+    headers: { Authorization: "Bearer test-only-internal-token-32-characters" }
+  }));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /reservation ledger contains an invalid record/);
+});
+
 test("full reservation history blocks new evidence requests but preserves ledger", async () => {
   let evidenceCalls = 0;
   const { coordinator, storage } = makeCoordinator(async () => {
