@@ -1907,7 +1907,38 @@ if (serverToken) {
   const walletSol = document.getElementById("walletSol");
   const walletStatus = document.getElementById("walletStatus");
   let connectedPhantomProvider = null;
+  let walletBalanceRequestId = 0;
   const observedPhantomProviders = new WeakSet();
+
+  async function refreshWalletBalance(provider, address) {
+    const requestId = ++walletBalanceRequestId;
+    walletSol.textContent = "لە پشکنیندایە...";
+    try {
+      const balance = await rpcRequest("getBalance", [
+        address,
+        { commitment: "confirmed" }
+      ]);
+      if (
+        requestId !== walletBalanceRequestId ||
+        connectedPhantomProvider !== provider ||
+        walletAddress.textContent !== address
+      ) return;
+      const lamports = Number(balance?.value);
+      if (!Number.isFinite(lamports) || lamports < 0) {
+        throw new Error("Invalid balance response");
+      }
+      walletSol.textContent = (lamports / 1_000_000_000)
+        .toLocaleString("en-US", { maximumFractionDigits: 6 }) + " SOL";
+    } catch {
+      if (
+        requestId === walletBalanceRequestId &&
+        connectedPhantomProvider === provider &&
+        walletAddress.textContent === address
+      ) {
+        walletSol.textContent = "پشکنینی باڵانس سەرکەوتوو نەبوو";
+      }
+    }
+  }
 
   function getPhantomProvider() {
     const provider = window.phantom?.solana;
@@ -1927,6 +1958,7 @@ if (serverToken) {
   }
 
   function showWalletDisconnected(message) {
+    walletBalanceRequestId++;
     connectedPhantomProvider = null;
     walletAddress.textContent = "هێشتا پەیوەست نەکراوە";
     walletAddress.className = "value warn";
@@ -1945,10 +1977,11 @@ if (serverToken) {
     connectedPhantomProvider = provider;
     walletAddress.textContent = address;
     walletAddress.className = "value good";
-    walletSol.textContent = "پشکنین نەکراوە";
+    walletSol.textContent = "لە پشکنیندایە...";
     walletDisconnectButton.disabled = false;
     walletConnectButton.disabled = true;
-    walletStatus.textContent = "Phantom پەیوەستە. تەنها ناونیشانی گشتی خوێندراوەتەوە؛ هیچ واژۆکردن یان ناردنی مامەڵەیەک نەکراوە.";
+    walletStatus.textContent = "Phantom پەیوەستە. باڵانسی SOL تەنها بە شێوەی خوێندنەوە پشکنین دەکرێت؛ هیچ واژۆکردن یان ناردنی مامەڵەیەک ناکرێت.";
+    refreshWalletBalance(provider, address);
   }
 
   walletConnectButton.addEventListener("click", async () => {
