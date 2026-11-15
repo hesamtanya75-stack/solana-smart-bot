@@ -579,8 +579,8 @@ function sumOwnedTokenBalance(rows, mint, owner) {
 /**
  * Independently verifies a finalized swap using signature status and the
  * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
- * success flags. SOL input requires the exact lamport delta after network fee;
- * account-rent or unexplained balance changes fail closed.
+ * success flags. All input and output mints, including wrapped SOL, are
+ * verified through exact owner-scoped SPL token balance deltas.
  */
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
