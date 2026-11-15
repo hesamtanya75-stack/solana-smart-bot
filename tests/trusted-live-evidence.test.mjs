@@ -223,7 +223,7 @@ test("transaction pinned to a different wallet is rejected", () => {
   const differentWallet = "11111111111111111111111111111111";
   assert.throws(
     () => validateUnsignedJupiterTransaction(validUnsignedTransaction(), differentWallet),
-    /not pinned to the expected bot wallet/
+    /does not match the expected Phantom wallet/
   );
 });
 
