@@ -363,13 +363,16 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   }
   // Solana message account keys must be unique; reject ambiguous static-key layouts.
   const uniqueKeys = new Set();
+  const staticAccountKeys = [];
   for (let i = 0; i < keyCount; i++) {
     const start = cursor + i * 32;
-    const key = Array.from(bytes.subarray(start, start + 32), byte => byte.toString(16).padStart(2, "0")).join("");
+    const keyBytes = bytes.slice(start, start + 32);
+    const key = Array.from(keyBytes, byte => byte.toString(16).padStart(2, "0")).join("");
     if (uniqueKeys.has(key)) {
       throw new Error("Jupiter transaction contains duplicate static account keys");
     }
     uniqueKeys.add(key);
+    staticAccountKeys.push(encodeBase58(keyBytes));
   }
   cursor += keyCount * 32;
   cursor += 32; // recent blockhash
@@ -442,6 +445,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   return {
     signatureCount,
     staticAccountCount: keyCount,
+    staticAccountKeys: Object.freeze(staticAccountKeys),
     instructionCount,
     addressLookupCount,
     addressLookups,
@@ -710,6 +714,10 @@ export async function validateAndResolveUnsignedJupiterTransaction(
     throw new Error("Jupiter address lookup descriptors are incomplete");
   }
   const resolution = await resolveJupiterAddressLookupTables(parsed.addressLookups, fetchImpl);
+  const allMessageKeys = [...parsed.staticAccountKeys, ...resolution.writableAddresses, ...resolution.readonlyAddresses];
+  if (new Set(allMessageKeys).size !== allMessageKeys.length) {
+    throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
+  }
   return Object.freeze({
     ...parsed,
     lookupTableResolution: "finalized-resolved",
