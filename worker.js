@@ -881,7 +881,7 @@ export default {
           if (Object.keys(body).length !== 2 ||
               Object.keys(body).some(key => !allowedKeys.has(key)) ||
               !base58.test(outputMint) ||
-              !/^\\d{1,20}$/.test(amountLamports) ||
+              !/^\d{1,20}$/.test(amountLamports) ||
               BigInt(amountLamports) <= 0n ||
               BigInt(amountLamports) > 18446744073709551615n) {
             return json({ error: "Invalid quote-preview request" }, 400);
@@ -908,7 +908,7 @@ export default {
               order.inputMint !== "So11111111111111111111111111111111111111112" ||
               order.outputMint !== outputMint ||
               String(order.inAmount) !== amountLamports ||
-              !/^\\d+$/.test(String(order.outAmount || "")) ||
+              !/^\d+$/.test(String(order.outAmount || "")) ||
               BigInt(order.outAmount) <= 0n ||
               typeof order.requestId !== "string" || !order.requestId ||
               !Array.isArray(order.routePlan) || order.routePlan.length === 0 ||
