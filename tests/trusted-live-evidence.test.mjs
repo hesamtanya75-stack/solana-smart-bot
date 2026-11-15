@@ -1000,6 +1000,7 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
   const elf = Buffer.alloc(64, 0);
   elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  elf.writeUInt16LE(3, 16);
   elf[18] = 247;
   elf.writeUInt32LE(1, 20);
   elf.writeUInt16LE(64, 52);
@@ -1062,6 +1063,7 @@ test("upgradeable ProgramData evidence marks a no-authority deployment immutable
   Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
   const immutableElf = Buffer.alloc(64, 0);
   immutableElf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  immutableElf.writeUInt16LE(3, 16);
   immutableElf[18] = 247;
   immutableElf.writeUInt32LE(1, 20);
   immutableElf.writeUInt16LE(64, 52);
@@ -1109,12 +1111,13 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
       data: [data.toString("base64"), "base64"]
     };
   };
-  const makeProgramData = ({ owner = loaderOwner, tag = 3, authorityOption = 0 } = {}) => {
+  const makeProgramData = ({ owner = loaderOwner, tag = 3, authorityOption = 0, elfType = 3 } = {}) => {
     const data = Buffer.alloc(77);
     data.writeUInt32LE(tag, 0);
     data.writeBigUInt64LE(1200n, 4);
     data[12] = authorityOption;
     data.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 13);
+    data.writeUInt16LE(elfType, 29);
     data[31] = 247;
     data.writeUInt32LE(1, 33);
     data.writeUInt16LE(64, 65);
@@ -1127,7 +1130,8 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
     null,
     makeProgramData({ owner: encodeBase58(new Uint8Array(32).fill(90)) }),
     makeProgramData({ tag: 9 }),
-    makeProgramData({ authorityOption: 2 })
+    makeProgramData({ authorityOption: 2 }),
+    makeProgramData({ elfType: 2 })
   ]) {
     let calls = 0;
     await assert.rejects(() => fetchProgramAccountIdentityEvidence(
@@ -1142,7 +1146,7 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
           context: { slot: 1300 + calls }, value
         } });
       }
-    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag|ProgramData upgrade authority option is malformed/);
+    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag|ProgramData upgrade authority option is malformed|not a valid Solana SBF ELF64 payload/);
   }
 
   let calls = 0;
