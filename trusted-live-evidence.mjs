@@ -49,6 +49,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     throw new Error("Jupiter transaction is empty or not canonical base64");
   }
   const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+  if (btoa(String.fromCharCode(...bytes)) !== encoded) {
+    throw new Error("Jupiter transaction base64 encoding is non-canonical");
+  }
   const sigHeader = readShortVector(bytes, 0);
   const signatureCount = sigHeader.value;
   if (signatureCount < 1 || signatureCount > 64 ||
