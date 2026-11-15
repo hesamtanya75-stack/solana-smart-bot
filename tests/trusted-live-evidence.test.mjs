@@ -1034,6 +1034,68 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   );
 });
 
+test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or changed pointer", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(35));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(75));
+  const changedAddress = encodeBase58(new Uint8Array(32).fill(76));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const makeProgram = address => {
+    const data = Buffer.alloc(36);
+    data.writeUInt32LE(2, 0);
+    Buffer.from(decodeBase58(address)).copy(data, 4);
+    return {
+      owner: loaderOwner, executable: true, space: data.length,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  const makeProgramData = ({ owner = loaderOwner, tag = 3 } = {}) => {
+    const data = Buffer.alloc(49);
+    data.writeUInt32LE(tag, 0);
+    data.writeBigUInt64LE(1200n, 4);
+    data[12] = 0;
+    data.set([0x7f, 0x45, 0x4c, 0x46], 13);
+    return {
+      owner, executable: false, space: data.length,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  for (const badData of [
+    makeProgramData({ owner: encodeBase58(new Uint8Array(32).fill(90)) }),
+    makeProgramData({ tag: 9 })
+  ]) {
+    let calls = 0;
+    await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+      [{ programId }],
+      async (_url, options) => {
+        const request = JSON.parse(options.body);
+        calls++;
+        const value = calls === 1
+          ? [makeProgram(programDataAddress)]
+          : [makeProgram(programDataAddress), badData];
+        return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+          context: { slot: 1300 + calls }, value
+        } });
+      }
+    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag/);
+  }
+
+  let calls = 0;
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const refreshedAddress = calls === 1 ? programDataAddress : changedAddress;
+      const value = calls === 1
+        ? [makeProgram(programDataAddress)]
+        : [makeProgram(refreshedAddress), makeProgramData()];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1400 + calls }, value
+      } });
+    }
+  ), /ProgramData pointer changed during resolution/);
+});
+
 test("program identity evidence rejects non-executable or malformed program accounts", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(41));
   const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
