@@ -352,3 +352,21 @@ test("truncated v0 address lookup writable indexes are rejected", () => {
     /Jupiter writable lookup indexes are truncated/
   );
 });
+
+
+test("Jupiter transaction requiring an additional signer is rejected", () => {
+  const original = Buffer.from(validUnsignedTransaction(), "base64");
+  const message = Buffer.from(original.subarray(65));
+  // Add a second all-zero signature and declare both static keys as signers.
+  message[0] = 2; // required signatures
+  message[2] = 0; // no readonly unsigned signer accounts
+  const transaction = Buffer.concat([
+    Buffer.from([2]),
+    Buffer.alloc(128),
+    message
+  ]);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(transaction.toString("base64"), BOT_WALLET),
+    /signer header is inconsistent/
+  );
+});
