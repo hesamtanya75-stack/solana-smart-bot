@@ -265,6 +265,19 @@ test("Worker rejects expired bearer sessions", async () => {
   assert.equal(response.status, 401);
 });
 
+test("Worker API responses include baseline browser security headers", async () => {
+  const { env } = makeEnvironment();
+  const response = await get("/api/profile", env);
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.equal(
+    response.headers.get("permissions-policy"),
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  );
+});
+
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
   const { env } = makeEnvironment();
   for (const token of [
