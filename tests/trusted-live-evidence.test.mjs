@@ -305,6 +305,22 @@ test("v0 outer instruction evidence resolves ALT-loaded writable and readonly ac
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("v0 rejects a writable ALT-loaded address used as an instruction program", async () => {
+  const bytes = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  // The compiled instruction program index follows the message header, keys,
+  // blockhash, and instruction count; index 2 is the writable ALT-loaded key.
+  bytes[167] = 2;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      bytes.toString("base64"), BOT_WALLET,
+      async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+        context: { slot: 100 }, value: [mockLookupTableAccount()]
+      } })
+    ),
+    /program account must be readonly and non-signer/
+  );
+});
+
 test("v1 outer instruction evidence preserves inline accounts and opaque instruction data", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV1Transaction(), BOT_WALLET
