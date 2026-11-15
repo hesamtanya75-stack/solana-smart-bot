@@ -90,6 +90,26 @@ test("coordinator rejects oversized authenticated request bodies before JSON par
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("coordinator rejects malformed UTF-8 request bodies without changing state", async () => {
+  const { coordinator } = makeCoordinator();
+  const bytes = new TextEncoder().encode(JSON.stringify({ enabled: false, padding: "x" }));
+  const marker = bytes.indexOf(120); // ASCII "x" inside the JSON string.
+  assert.notEqual(marker, -1);
+  bytes[marker] = 0xff;
+  const response = await coordinator.fetch(new Request("https://coordinator/kill-switch", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-only-internal-token-32-characters",
+      "X-Operator-Token": "test-only-operator-token-32-characters"
+    },
+    body: bytes
+  }));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid JSON body" });
+  assert.equal((await coordinator.status()).killSwitch, true);
+});
+
 test("status endpoint returns a fail-closed conflict for impossible ledger dates", async () => {
   const { coordinator, storage } = makeCoordinator();
   await storage.put("coordinator_state", {
