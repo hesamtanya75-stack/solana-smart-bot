@@ -1031,6 +1031,76 @@ export function decodeReviewedSystemTransfers(outerInstructionEvidence) {
   return Object.freeze(transfers);
 }
 
+/**
+ * Decode only classic SPL Token Transfer and TransferChecked instructions.
+ * Token-2022, multisig authorities, and every other token opcode remain
+ * unsupported until their account and extension semantics are reviewed.
+ */
+export function decodeReviewedSplTokenTransfers(outerInstructionEvidence) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length < 1 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("SPL Token transfer instruction evidence is missing or invalid");
+  }
+  const transfers = [];
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+      throw new Error("Outer instruction evidence contains a malformed entry");
+    }
+    if (instruction.programId !== TOKEN_PROGRAM_ID) continue;
+    if (!Array.isArray(instruction.accounts) ||
+        typeof instruction.dataBase64 !== "string" ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("SPL Token transfer accounts or data are malformed");
+    }
+    const binary = atob(instruction.dataBase64);
+    const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+    if (btoa(binary) !== instruction.dataBase64 || data.length < 1) {
+      throw new Error("SPL Token transfer data is not canonical");
+    }
+    const opcode = data[0];
+    const checked = opcode === 12;
+    if (opcode !== 3 && !checked) {
+      throw new Error("Unsupported SPL Token instruction; only Transfer and TransferChecked are reviewed");
+    }
+    if (data.length !== (checked ? 10 : 9) ||
+        instruction.accounts.length !== (checked ? 4 : 3)) {
+      throw new Error("SPL Token transfer has an invalid data or account length");
+    }
+    const source = instruction.accounts[0];
+    const mint = checked ? instruction.accounts[1] : null;
+    const destination = instruction.accounts[checked ? 2 : 1];
+    const authority = instruction.accounts[checked ? 3 : 2];
+    const accountKeys = [source, ...(mint ? [mint] : []), destination, authority];
+    if (accountKeys.some(account => !account ||
+        !isCanonicalPublicKey(account.pubkey) ||
+        typeof account.isSigner !== "boolean" ||
+        typeof account.isWritable !== "boolean") ||
+        source.pubkey === destination.pubkey ||
+        (mint && (mint.pubkey === source.pubkey || mint.pubkey === destination.pubkey)) ||
+        source.isSigner !== false || source.isWritable !== true ||
+        destination.isSigner !== false || destination.isWritable !== true ||
+        authority.isSigner !== true || authority.isWritable !== false ||
+        (mint && (mint.isSigner !== false || mint.isWritable !== false))) {
+      throw new Error("SPL Token transfer account roles are invalid");
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const amount = view.getBigUint64(1, true);
+    if (amount < 1n) throw new Error("SPL Token transfer amount must be positive");
+    transfers.push(Object.freeze({
+      instructionIndex: instruction.instructionIndex,
+      transferType: checked ? "transfer-checked" : "transfer",
+      source: source.pubkey,
+      ...(mint ? { mint: mint.pubkey, decimals: data[9] } : {}),
+      destination: destination.pubkey,
+      authority: authority.pubkey,
+      amount: amount.toString(),
+      verificationScope: "classic-spl-token-transfer-instruction-only"
+    }));
+  }
+  return Object.freeze(transfers);
+}
+
 const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 
 /**
