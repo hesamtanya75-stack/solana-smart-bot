@@ -147,7 +147,7 @@ test("ALT resolver rejects tables not owned by the Address Lookup Table program"
   await assert.rejects(resolveJupiterAddressLookupTables([{
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
-    context: { slot: 100 }, value: [mockLookupTableAccount({ owner: TOKEN_PROGRAM_ID })]
+    context: { slot: 100 }, value: [mockLookupTableAccount({ owner: "TokenkegQfeZyiNwAJNbGKPFXCWuBvf9Ss623VQ5DA" })]
   } })), /unexpected program/);
 });
 
