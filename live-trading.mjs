@@ -136,7 +136,7 @@ async function getJupiterOrder({
     requestId: order.requestId, transaction: order.transaction,
     inputMint, outputMint, inputAmount: String(amountLamports),
     outputAmount: String(order.outAmount), router: String(order.router || "unknown"),
-    transactionVersion: order.transactionVersion ?? 0,
+    transactionVersion: transactionEvidence.messageVersion,
     feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
     transactionEvidence,
     semanticInstructionVerification: false,
