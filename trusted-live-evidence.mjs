@@ -248,7 +248,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
   const walletAccounts = await rpc(fetchImpl, "getTokenAccountsByOwner", [
     EXPECTED_BOT_WALLET,
     { mint },
-    { encoding: "jsonParsed", commitment: "confirmed" }
+    { encoding: "jsonParsed", commitment: "finalized" }
   ]);
   if (!Array.isArray(walletAccounts?.value) || walletAccounts.value.length === 0) {
     throw new Error("Expected bot wallet has no verified token accounts for this mint");
@@ -309,8 +309,10 @@ async function rpc(fetchImpl, method, params) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
   });
-  if (payload.error || !("result" in payload)) {
-    throw new Error(method + " RPC response is incomplete");
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      payload.jsonrpc !== "2.0" || payload.id !== 1 ||
+      payload.error || !Object.prototype.hasOwnProperty.call(payload, "result")) {
+    throw new Error(method + " RPC response envelope or result is invalid");
   }
   return payload.result;
 }
@@ -389,8 +391,8 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   const [dex, rug, mintAccount, supply, holderAccounts] = await Promise.all([
     fetchJson(fetchImpl, DEX_TOKEN_URL + encodeURIComponent(mint)),
     fetchJson(fetchImpl, RUGCHECK_URL + encodeURIComponent(mint) + "/report"),
-    rpc(fetchImpl, "getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "confirmed" }]),
-    rpc(fetchImpl, "getTokenSupply", [mint, { commitment: "confirmed" }]),
+    rpc(fetchImpl, "getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "finalized" }]),
+    rpc(fetchImpl, "getTokenSupply", [mint, { commitment: "finalized" }]),
     fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey)
   ]);
   const pair = (dex?.pairs || [])
