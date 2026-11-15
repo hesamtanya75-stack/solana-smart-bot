@@ -1,4 +1,4 @@
-import { fetchTrustedLiveEvidence } from "./trusted-live-evidence.mjs";
+import { fetchTrustedLiveEvidence, verifyFinalizedJupiterSettlement } from "./trusted-live-evidence.mjs";
 
 const MAX_TRADE_USD_CENTS = 300;
 const MAX_DAILY_SPEND_USD_CENTS = 500;
@@ -137,6 +137,7 @@ export class LiveTradeCoordinator {
     this.env = env;
     // Injectable only in isolated unit tests; production Worker bindings cannot carry functions.
     this.fetchLiveEvidence = env?.FETCH_TRUSTED_LIVE_EVIDENCE || fetchTrustedLiveEvidence;
+    this.verifySettlement = env?.VERIFY_FINALIZED_SETTLEMENT || verifyFinalizedJupiterSettlement;
   }
 
   authorizeOperator(request) {
@@ -314,6 +315,9 @@ export class LiveTradeCoordinator {
       const reservation = {
         idempotencyKey: key,
         amountLamports,
+        inputMint: body.inputMint,
+        outputMint: body.outputMint,
+        destination: body.destination,
         intentFingerprint,
         quoteProvider: quote.provider,
         quoteId: quote.quoteId,
@@ -333,11 +337,61 @@ export class LiveTradeCoordinator {
     });
   }
 
-  async transition(_body, _targetStatus) {
-    // Fail closed until settlement can independently verify the submitted
-    // transaction signature/status (or cryptographically prove non-submission).
-    // Caller-supplied booleans and reason strings are not settlement evidence.
-    throw new Error("Independent on-chain settlement proof is not implemented; state transitions are disabled");
+  async transition(body, targetStatus) {
+    // Failure/closure require an independently verifiable non-submission or
+    // exit proof, which is not implemented. Confirmation requires finalized
+    // on-chain signature and exact owner-scoped input/output token deltas.
+    if (targetStatus !== "confirmed") {
+      throw new Error("Independent failure and close proofs are not implemented; state transitions are disabled");
+    }
+    const key = validateIdempotencyKey(body?.idempotencyKey);
+    const signature = body?.signature;
+    const outputAmount = body?.outputAmount;
+    const reservation = await this.withState(state => {
+      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
+      const item = state.reservations[key];
+      if (!item) throw new Error("Reservation does not exist");
+      if (item.status === "confirmed") {
+        if (item.settlementProof?.signature !== signature) {
+          throw new Error("Confirmed reservation cannot be replayed with another signature");
+        }
+        return { alreadyConfirmed: true, item };
+      }
+      if (item.status !== "pending") throw new Error("Only a pending reservation can be confirmed");
+      return { alreadyConfirmed: false, item };
+    });
+    if (reservation.alreadyConfirmed) {
+      return { ok: true, duplicate: true, reservation: reservation.item };
+    }
+    const proof = await this.verifySettlement({
+      signature,
+      inputMint: reservation.item.inputMint,
+      outputMint: reservation.item.outputMint,
+      inputAmount: String(reservation.item.amountLamports),
+      outputAmount,
+      expectedOwner: EXPECTED_BOT_WALLET
+    }, this.env?.FETCH_IMPL || fetch);
+    if (!proof || proof.verified !== true ||
+        proof.signature !== signature ||
+        proof.inputMint !== reservation.item.inputMint ||
+        proof.inputAmount !== String(reservation.item.amountLamports) ||
+        proof.outputMint !== reservation.item.outputMint ||
+        proof.outputAmount !== outputAmount ||
+        proof.owner !== EXPECTED_BOT_WALLET ||
+        proof.confirmationStatus !== "finalized") {
+      throw new Error("Independent finalized settlement proof is incomplete or mismatched");
+    }
+    return this.withState(state => {
+      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
+      const item = state.reservations[key];
+      if (!item || item.status !== "pending") {
+        throw new Error("Reservation state changed while settlement proof was being verified");
+      }
+      item.status = "confirmed";
+      item.settlementProof = proof;
+      item.confirmedAt = new Date().toISOString();
+      return { ok: true, duplicate: false, reservation: item };
+    });
   }
 
   async setKillSwitch(body) {
