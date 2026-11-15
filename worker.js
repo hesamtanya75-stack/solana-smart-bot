@@ -1,3 +1,4 @@
+import { parseRpcResponse, parseRpcBatchResponse } from "./rpc-response.mjs";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -215,9 +216,9 @@ async function rpc(method, params, env, diagnostics = null) {
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message || "RPC error");
+      const result = parseRpcResponse(data, 1);
       if (diagnostics) diagnostics.successes.push(endpoint.label);
-      return data.result;
+      return result;
     } catch (error) {
       const message = String(error?.message || error);
       if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") {
@@ -263,13 +264,7 @@ async function rpcBatch(calls, env, diagnostics = null) {
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
-      if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
-      const byId = new Map(data.map(item => [item.id, item]));
-      const results = calls.map((_, index) => {
-        const item = byId.get(index + 1);
-        if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
-        return item.result;
-      });
+      const results = parseRpcBatchResponse(data, calls.length);
       if (diagnostics) diagnostics.successes.push(endpoint.label);
       return results;
     } catch (error) {
