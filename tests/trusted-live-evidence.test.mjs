@@ -998,7 +998,11 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   const programState = Buffer.alloc(36);
   programState.writeUInt32LE(2, 0);
   Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
-  const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 1, 2, 3, 4]);
+  const elf = Buffer.alloc(64, 0);
+  elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  elf[18] = 247;
+  elf.writeUInt32LE(1, 20);
+  elf.writeUInt16LE(64, 52);
   const programDataState = Buffer.alloc(45 + elf.length);
   programDataState.writeUInt32LE(3, 0);
   programDataState.writeBigUInt64LE(1200n, 4);
@@ -1056,11 +1060,16 @@ test("upgradeable ProgramData evidence marks a no-authority deployment immutable
   const programState = Buffer.alloc(36);
   programState.writeUInt32LE(2, 0);
   Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
-  const programDataState = Buffer.alloc(17);
+  const immutableElf = Buffer.alloc(64, 0);
+  immutableElf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  immutableElf[18] = 247;
+  immutableElf.writeUInt32LE(1, 20);
+  immutableElf.writeUInt16LE(64, 52);
+  const programDataState = Buffer.alloc(13 + immutableElf.length);
   programDataState.writeUInt32LE(3, 0);
   programDataState.writeBigUInt64LE(1199n, 4);
   programDataState[12] = 0;
-  programDataState.set([0x7f, 0x45, 0x4c, 0x46], 13);
+  immutableElf.copy(programDataState, 13);
   let calls = 0;
   const evidence = await fetchProgramAccountIdentityEvidence(
     [{ programId }],
@@ -1105,7 +1114,10 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
     data.writeUInt32LE(tag, 0);
     data.writeBigUInt64LE(1200n, 4);
     data[12] = authorityOption;
-    data.set([0x7f, 0x45, 0x4c, 0x46], 13);
+    data.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 13);
+    data[31] = 247;
+    data.writeUInt32LE(1, 33);
+    data.writeUInt16LE(64, 65);
     return {
       owner, executable: false, space: data.length,
       data: [data.toString("base64"), "base64"]
