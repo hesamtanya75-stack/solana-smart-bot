@@ -117,3 +117,21 @@ The security-review documentation was refreshed after the CI results for applica
 This documentation-only commit does not change application behavior and does not resolve the previously recorded live-trading blockers. A source review of the current branch confirms the coordinator remains uncalled by the public Worker, its internal secret is not configured in checked-in Wrangler configuration, semantic Jupiter instruction/address-lookup verification is explicitly false, and settlement transitions remain disabled. The funded Devnet lifecycle and independent verification of deployed Cloudflare secrets, bindings, migrations, and cron remain outstanding.
 
 **Release decision unchanged:** PR #27 remains Draft. No merge, production deployment, Mainnet signing, transaction submission, or live trading is approved.
+
+
+## CI and source-review update — 2026-11-15 (branch head 204ed569fac242c3a6495d4fc6c37c758f593d88)
+
+The documentation-only commit above was checked against the current branch head. All five GitHub check runs completed successfully:
+
+- JavaScript syntax validation: success.
+- Node test job: success; the isolated Miniflare dependency audit enforcement step and the safety/Durable Objects runtime test step both passed.
+- Devnet read-only job: success; the Devnet identity and read-only RPC validation step passed.
+- Funded signed Devnet transfer: **skipped**, because `DEVNET_RPC_URL` was not configured. The workflow explicitly reported the lifecycle test as skipped; no signed transfer is claimed.
+- Cloudflare Worker validation: success; Wrangler build without deploying passed.
+- Cloudflare Workers Preview Build check: success. This is a Preview build result, not a production deployment or proof of deployed runtime configuration.
+
+The current source was also rechecked. The Worker still does not call the Durable Object live coordinator; the coordinator's reservation path requires semantic instruction and lookup-table verification that the current transaction parser does not provide; settlement transitions still reject because independent on-chain proof is not implemented; and `executeLiveOrder()` still throws without signing or submitting. The coordinator remains fail-closed and is not an end-to-end live-trading path.
+
+The earlier dependency-audit warning was superseded for commit `67b0e6f0ffb86a1db5342fc363e058d09c397dd6` by a clean isolated audit, and the current branch-head audit-enforcement step passed again. Historical warnings above are retained as history, not current claims of an unresolved audit finding.
+
+**Current release decision: unchanged.** PR #27 remains Draft and unmerged. Do not merge, deploy to production, sign or submit Mainnet transactions, or enable live trading. Remaining gates include full semantic Jupiter instruction/account and address-lookup-table verification, independent settlement/recovery design, an authenticated emergency-stop integration, bounded reservation retention, a funded signed Devnet lifecycle test using a disposable wallet, and independent review of any future signing/submission implementation. Production Cloudflare secrets, bindings, migrations, and cron settings have not been independently inspected.
