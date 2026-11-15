@@ -480,6 +480,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
   const instructionAccountIndexes = [];
+  const compiledInstructions = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -495,15 +496,21 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
       throw new Error("Jupiter instruction account list is invalid");
     }
-    for (let j = 0; j < accountHeader.value; j++) {
-      instructionAccountIndexes.push(bytes[cursor++]);
-    }
+    const accountIndexes = Array.from(bytes.slice(cursor, cursor + accountHeader.value));
+    instructionAccountIndexes.push(...accountIndexes);
+    cursor += accountHeader.value;
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
     if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
       throw new Error("Jupiter instruction data is invalid");
     }
+    const data = bytes.slice(cursor, cursor + dataHeader.value);
     cursor += dataHeader.value;
+    compiledInstructions.push(Object.freeze({
+      programIdIndex,
+      accountIndexes: Object.freeze(accountIndexes),
+      dataBase64: btoa(String.fromCharCode(...data))
+    }));
   }
   let addressLookupCount = 0;
   let loadedAddressCount = 0;
@@ -546,6 +553,10 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     signatureCount,
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
+    // Preserve every compiled instruction byte and account index so a later
+    // independent verifier can inspect exact program IDs, account roles and data.
+    // This is evidence capture only; it does not authorize any instruction.
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount,
     addressLookups,
