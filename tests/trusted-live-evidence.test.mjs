@@ -2217,3 +2217,26 @@ test("upgradeable ProgramData resolution rejects refreshed Program account size 
     }
   ), /ProgramData pointer or account size changed during resolution/);
 });
+
+
+test("priority-fee verifier rejects malformed outer evidence even for v1 message config", () => {
+  const valid = {
+    programId: "11111111111111111111111111111111",
+    accounts: [],
+    dataBase64: ""
+  };
+  const args = { messageVersion: 1, computeUnitLimit: 200000,
+    priorityFeeLamports: "1", maxPriorityFeeLamports: "2" };
+  assert.equal(verifyComputeBudgetPriorityFee({ ...args, outerInstructionEvidence: [valid] }).verified, true);
+  for (const invalid of [
+    null,
+    { ...valid, programId: "not-a-public-key" },
+    { programId: valid.programId, dataBase64: "" },
+    { ...valid, dataBase64: "!!!!" },
+    { ...valid, accounts: [{ pubkey: valid.programId, isSigner: "false", isWritable: false }] }
+  ]) {
+    assert.throws(() => verifyComputeBudgetPriorityFee({
+      ...args, outerInstructionEvidence: [invalid]
+    }), /Outer instruction/);
+  }
+});
