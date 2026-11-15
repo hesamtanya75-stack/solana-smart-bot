@@ -23,9 +23,37 @@ jobs:
         run: npm install --package-lock-only --ignore-scripts --package-lock=true miniflare@5.20261113.0-beta
       - name: Apply non-breaking fixes to isolated test dependencies
         run: npm audit fix --ignore-scripts --no-fund || true
-      - name: Report dependency audit details for the isolated test runtime
+      - name: Report and enforce dependency audit for the isolated test runtime
         run: |
-          npm audit --json > npm-audit.json || true
-          node --input-type=commonjs -e 'const fs=require("node:fs"); const raw=fs.readFileSync("npm-audit.json","utf8"); let a; try { a=JSON.parse(raw); } catch { console.log("npm audit did not return JSON; see npm output above"); process.exit(0); } for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,via:v.via,fixAvailable:v.fixAvailable})); if (!Object.keys(a.vulnerabilities||{}).length) console.log("No dependency vulnerabilities reported by npm audit.");'
+          npm audit --json > npm-audit.json || audit_exit=$?
+          node --input-type=commonjs <<'NODE'
+          const fs = require("node:fs");
+          let audit;
+          try {
+            audit = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
+          } catch {
+            console.error("npm audit did not produce valid JSON; refusing to treat the audit as clean.");
+            process.exit(1);
+          }
+          const vulnerabilities = Object.entries(audit.vulnerabilities || {});
+          for (const [name, vulnerability] of vulnerabilities) {
+            console.log(JSON.stringify({
+              name,
+              severity: vulnerability.severity,
+              range: vulnerability.range,
+              via: vulnerability.via,
+              fixAvailable: vulnerability.fixAvailable
+            }));
+          }
+          if (vulnerabilities.length) {
+            console.error(`Dependency audit failed: ${vulnerabilities.length} vulnerable package(s) found.`);
+            process.exit(1);
+          }
+          if (audit_exit) {
+            console.error("npm audit exited unsuccessfully despite reporting no package vulnerabilities.");
+            process.exit(1);
+          }
+          console.log("No dependency vulnerabilities reported by npm audit.");
+          NODE
       - name: Run safety and Durable Objects runtime tests
         run: npm test
