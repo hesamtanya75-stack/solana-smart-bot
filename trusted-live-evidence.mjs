@@ -1105,16 +1105,35 @@ export async function fetchProgramAccountIdentityEvidence(
       return decodeUpgradeableProgramAccount(bytes);
     });
     const uniqueProgramDataAddresses = [...new Set(programDataAddresses)];
+    // Re-read the Program accounts in the same RPC snapshot as ProgramData.
+    // This detects a changed ProgramData pointer between the two lookups.
     const programDataResult = await rpc(fetchImpl, "getMultipleAccounts", [
-      uniqueProgramDataAddresses, { commitment: "finalized", encoding: "base64" }
+      [...programIds, ...uniqueProgramDataAddresses],
+      { commitment: "finalized", encoding: "base64" }
     ]);
     programDataContextSlot = programDataResult?.context?.slot;
-    const programDataAccounts = programDataResult?.value;
+    const combinedAccounts = programDataResult?.value;
     if (!Number.isSafeInteger(programDataContextSlot) || programDataContextSlot < contextSlot ||
-        !Array.isArray(programDataAccounts) ||
-        programDataAccounts.length !== uniqueProgramDataAddresses.length) {
+        !Array.isArray(combinedAccounts) ||
+        combinedAccounts.length !== programIds.length + uniqueProgramDataAddresses.length) {
       throw new Error("ProgramData RPC context or account count is invalid");
     }
+    for (const program of upgradeablePrograms) {
+      const refreshedProgram = combinedAccounts[programIds.indexOf(program.programId)];
+      if (!refreshedProgram || refreshedProgram.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
+          refreshedProgram.executable !== true || !Array.isArray(refreshedProgram.data) ||
+          typeof refreshedProgram.data[0] !== "string" || refreshedProgram.data[1] !== "base64") {
+        throw new Error("Upgradeable program identity changed during ProgramData resolution");
+      }
+      const refreshedBinary = atob(refreshedProgram.data[0]);
+      const refreshedBytes = Uint8Array.from(refreshedBinary, character => character.charCodeAt(0));
+      if (btoa(refreshedBinary) !== refreshedProgram.data[0] ||
+          decodeUpgradeableProgramAccount(refreshedBytes) !==
+            programDataAddresses[upgradeablePrograms.indexOf(program)]) {
+        throw new Error("Upgradeable program ProgramData pointer changed during resolution");
+      }
+    }
+    const programDataAccounts = combinedAccounts.slice(programIds.length);
     const decodedProgramData = await Promise.all(programDataAccounts.map(async account => {
       if (!account || account.executable !== false ||
           account.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
