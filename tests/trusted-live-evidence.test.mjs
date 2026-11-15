@@ -1022,7 +1022,8 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint,
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl), /output token balance delta does not match/);
 });
 
