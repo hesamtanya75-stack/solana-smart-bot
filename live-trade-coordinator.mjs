@@ -5,6 +5,7 @@ const MAX_DAILY_SPEND_USD_CENTS = 500;
 const MAX_OPEN_POSITIONS = 10;
 // Preserve idempotency history without allowing unbounded Durable Object state growth.
 const MAX_RESERVATIONS = 1000;
+const MAX_KILL_SWITCH_AUDIT_EVENTS = 1000;
 const MAX_QUOTE_AGE_MS = 30_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -52,7 +53,7 @@ async function readBoundedJson(request, maxBytes = 16384) {
 }
 
 function emptyState() {
-  return { killSwitch: true, reservations: {} };
+  return { killSwitch: true, reservations: {}, killSwitchAudit: [] };
 }
 
 function validateIdempotencyKey(value) {
@@ -113,6 +114,13 @@ export class LiveTradeCoordinator {
     this.fetchLiveEvidence = env?.FETCH_TRUSTED_LIVE_EVIDENCE || fetchTrustedLiveEvidence;
   }
 
+  authorizeOperator(request) {
+    const expected = String(this.env?.COORDINATOR_OPERATOR_TOKEN || "");
+    const supplied = request.headers.get("X-Operator-Token") || "";
+    const internal = String(this.env?.COORDINATOR_INTERNAL_TOKEN || "");
+    return expected.length >= 32 && expected !== internal && constantTimeEqual(supplied, expected);
+  }
+
   async withState(operation) {
     let result;
     await this.ctx.storage.transaction(async () => {
@@ -135,6 +143,10 @@ export class LiveTradeCoordinator {
     if (request.method === "GET" && url.pathname === "/status") {
       return json(await this.status());
     }
+    if (request.method === "GET" && url.pathname === "/audit") {
+      if (!this.authorizeOperator(request)) return json({ error: "Unauthorized operator request" }, 401);
+      return json(await this.killSwitchAudit());
+    }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     let body;
@@ -152,7 +164,10 @@ export class LiveTradeCoordinator {
       if (url.pathname === "/confirm") return json(await this.transition(body, "confirmed"));
       if (url.pathname === "/fail") return json(await this.transition(body, "failed"));
       if (url.pathname === "/close") return json(await this.transition(body, "closed"));
-      if (url.pathname === "/kill-switch") return json(await this.setKillSwitch(body));
+      if (url.pathname === "/kill-switch") {
+        if (!this.authorizeOperator(request)) return json({ error: "Unauthorized operator request" }, 401);
+        return json(await this.setKillSwitch(body));
+      }
       return json({ error: "Not found" }, 404);
     } catch (error) {
       const message = String(error?.message || error);
@@ -293,10 +308,28 @@ export class LiveTradeCoordinator {
   async setKillSwitch(body) {
     if (typeof body?.enabled !== "boolean") throw new Error("enabled must be a boolean");
     return this.withState(state => {
+      const previous = state.killSwitch !== false;
+      const timestamp = new Date().toISOString();
       state.killSwitch = body.enabled;
-      state.killSwitchUpdatedAt = new Date().toISOString();
+      state.killSwitchUpdatedAt = timestamp;
+      if (!Array.isArray(state.killSwitchAudit)) state.killSwitchAudit = [];
+      state.killSwitchAudit.push({
+        timestamp,
+        action: body.enabled ? "activated" : "deactivated",
+        previousKillSwitch: previous,
+        killSwitch: body.enabled
+      });
+      if (state.killSwitchAudit.length > MAX_KILL_SWITCH_AUDIT_EVENTS) {
+        state.killSwitchAudit.splice(0, state.killSwitchAudit.length - MAX_KILL_SWITCH_AUDIT_EVENTS);
+      }
       return { ok: true, killSwitch: state.killSwitch };
     });
+  }
+
+  async killSwitchAudit() {
+    return this.withState(state => ({
+      events: Array.isArray(state.killSwitchAudit) ? state.killSwitchAudit : []
+    }));
   }
 
   async status() {
