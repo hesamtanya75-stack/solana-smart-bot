@@ -149,3 +149,26 @@ GitHub checks for the documentation commit completed:
 - Funded signed Devnet transfer: **skipped** because `DEVNET_RPC_URL` was not configured. The successful read-only job is not a signed transaction lifecycle test.
 
 This commit changes documentation only. It does not remove the transaction semantic-decoding, lookup-table, settlement, emergency-stop, reservation-retention, funded Devnet lifecycle, or production-configuration verification gates. PR #27 remains open, Draft, and unmerged. No production deployment or Mainnet activity is approved.
+
+
+## CI completion and source re-review — 2026-11-15 (documentation commit 1c0a7181530b028ef393c39c8e4ac6ca9a0444e4)
+
+GitHub Actions for documentation commit `1c0a7181530b028ef393c39c8e4ac6ca9a0444e4` completed with all five check runs successful:
+
+- JavaScript syntax validation: success.
+- Node test job: success.
+- Cloudflare Worker validation: success (dry-run validation; no production deployment).
+- Cloudflare Workers Preview Build: success.
+- Devnet read-only validation: success, including the Durable Objects runtime test step.
+- Funded signed Devnet transfer: **skipped** because `DEVNET_RPC_URL` was not configured. No signed Devnet transaction lifecycle is claimed.
+
+A further source review confirms the release blockers remain intentional and fail-closed:
+
+- The public Worker routes and scheduled job operate the paper-trading state; the Worker exports but does not invoke `LiveTradeCoordinator`.
+- The Jupiter transaction parser validates wire structure and indexes only. It returns `semanticInstructionVerification: false`; it does not resolve lookup-table addresses or semantically approve program IDs, account roles, or instruction data.
+- The trusted sell-route probe requires the pinned bot wallet to already hold enough of the output token. This cannot establish an initial buy's exit path for a token the wallet does not yet own.
+- Coordinator settlement transitions still reject because independent on-chain proof of confirmation, closure, or non-submission is not implemented.
+- The coordinator has no trusted production caller or configured internal token in checked-in Wrangler configuration. No public coordinator route should be added.
+- The funded signed Devnet lifecycle remains untested, and deployed Cloudflare production secrets, bindings, migrations, and cron settings have not been independently inspected.
+
+**Release decision unchanged:** PR #27 remains Draft and unmerged. These successful checks validate the CI gates listed above; they do not authorize merge, production deployment, Mainnet signing, transaction submission, or live trading. Keep the application paper-trading only until the blocking items receive a separately reviewed implementation and explicit approval.
