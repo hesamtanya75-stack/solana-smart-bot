@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -33,6 +33,21 @@ function mockLookupTableAccount({ owner = "AddressLookupTab1e1111111111111111111
   data[21] = 0; // no authority
   for (let i = 0; i < addressCount; i++) data.fill(i + 7, 56 + i * 32, 56 + (i + 1) * 32);
   return { owner, data: [data.toString("base64"), "base64"], executable: false, lamports: 1 };
+}
+function validUnsignedV0TransactionWithLookup() {
+  const signer = decodeBase58(BOT_WALLET);
+  const message = Uint8Array.from([
+    0x80, 1, 0, 1,
+    2, ...signer, ...new Array(32).fill(17),
+    ...new Array(32).fill(0),
+    1, 1, 1, 2, 0,
+    1, ...new Array(32).fill(42),
+    1, 0,
+    1, 1
+  ]);
+  return Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
 }
 function validUnsignedV1Transaction() {
   const signer = decodeBase58(BOT_WALLET);
@@ -120,6 +135,21 @@ test("malformed Jupiter instruction program index is rejected", () => {
   );
 });
 
+
+test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(), BOT_WALLET,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  assert.equal(parsed.messageVersion, 0);
+  assert.equal(parsed.lookupTableResolution, "finalized-resolved");
+  assert.equal(parsed.lookupContextSlot, 100);
+  assert.equal(parsed.resolvedWritableAddresses[0], encodeBase58(new Uint8Array(32).fill(7)));
+  assert.equal(parsed.resolvedReadonlyAddresses[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
 
 test("ALT resolver fetches finalized tables and resolves writable/readonly addresses", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
