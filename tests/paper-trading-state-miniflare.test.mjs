@@ -5,6 +5,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 test("PaperTradingState uses real Durable Object transactions and imports KV once", async () => {
   const mf = new Miniflare(convertV4MiniflareOptions({
     modules: true,
+    modulesRoot: process.cwd(),
     scriptPath: "./tests/fixtures/paper-trading-state-runtime.mjs",
     compatibilityDate: "2026-05-03",
     durableObjects: { PAPER_TRADING_STATE: "PaperTradingState" },
