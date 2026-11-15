@@ -434,6 +434,28 @@ test("v1 priority fee and heap config values are parsed in wire order", () => {
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("v1 compute and loaded-data limits accept their supported upper boundaries", () => {
+  const computeMax = Buffer.from(validUnsignedV1Transaction(), "base64");
+  computeMax.writeUInt32LE(1_400_000, 106);
+  const computeParsed = validateUnsignedJupiterTransaction(computeMax.toString("base64"), BOT_WALLET);
+  assert.equal(computeParsed.messageVersion, 1);
+  assert.equal(computeParsed.semanticInstructionVerification, false);
+
+  const loadedDataMax = Buffer.from(validUnsignedV1Transaction(), "base64");
+  loadedDataMax.writeUInt32LE(64 * 1024 * 1024, 110);
+  const loadedDataParsed = validateUnsignedJupiterTransaction(loadedDataMax.toString("base64"), BOT_WALLET);
+  assert.equal(loadedDataParsed.messageVersion, 1);
+  assert.equal(loadedDataParsed.semanticInstructionVerification, false);
+});
+
+test("v1 heap-size config accepts the inclusive 256 KiB upper boundary", () => {
+  const parsed = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithHeap(262144), BOT_WALLET
+  );
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("v1 transaction without explicit compute and loaded-data limits is rejected", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes[4] = 0;
