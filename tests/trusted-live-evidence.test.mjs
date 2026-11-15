@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -820,4 +820,76 @@ test("settlement proof rejects confirmed but non-finalized signatures", async ()
     inputAmount: "10000000",
     outputAmount: "12345"
   }, fetchImpl), /not successfully finalized/);
+});
+
+
+function validBuildResponse(overrides = {}) {
+  return {
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000",
+    outAmount: "250000",
+    otherAmountThreshold: "240000",
+    swapMode: "ExactIn",
+    slippageBps: 100,
+    routePlan: [{ percent: 100, bps: 10000, swapInfo: {
+      ammKey: "11111111111111111111111111111111",
+      label: "untrusted-test-label",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "250000"
+    }}],
+    transactionVersion: 0,
+    computeBudgetInstructions: [],
+    setupInstructions: [],
+    swapInstruction: {
+      programId: "11111111111111111111111111111111",
+      accounts: [],
+      data: ""
+    },
+    cleanupInstruction: null,
+    otherInstructions: [],
+    tipInstruction: null,
+    addressesByLookupTableAddress: {},
+    blockhashWithMetadata: { blockhash: new Array(32).fill(1), lastValidBlockHeight: 123456 },
+    ...overrides
+  };
+}
+
+test("Jupiter /build response envelope is structurally validated without semantic trust", () => {
+  const parsed = validateJupiterBuildResponse(validBuildResponse(), {
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amount: "1000000"
+  });
+  assert.equal(parsed.transactionVersion, 0);
+  assert.equal(parsed.swapInstruction.programId, "11111111111111111111111111111111");
+  assert.equal(parsed.semanticInstructionVerification, false);
+  assert.equal(parsed.routeVerification, "build-envelope-only");
+});
+
+test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
+  const parsed = validateJupiterBuildResponse(validBuildResponse({
+    transactionVersion: 1,
+    computeUnitPrice: "12000"
+  }));
+  assert.equal(parsed.transactionVersion, 1);
+  assert.deepEqual(parsed.addressesByLookupTableAddress, {});
+  assert.equal(parsed.computeBudgetInstructions.length, 0);
+  assert.equal(parsed.semanticInstructionVerification, false);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    transactionVersion: 1,
+    computeBudgetInstructions: [{ programId: "11111111111111111111111111111111", accounts: [], data: "" }],
+    computeUnitPrice: "12000"
+  })), /v1 build response has invalid/);
+});
+
+test("Jupiter /build rejects malformed account metadata and unexpected requested amount", () => {
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: { programId: "11111111111111111111111111111111", accounts: [{
+      pubkey: "11111111111111111111111111111111", isSigner: "false", isWritable: false
+    }], data: "" }
+  })), /instruction account is malformed/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse(), { amount: "1000001" }),
+    /input amount does not match/);
 });
