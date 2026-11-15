@@ -13,7 +13,7 @@ const goodEnv = {
   LIVE_MIN_VOLUME_24H_USD: "1000", LIVE_MAX_OPEN_POSITIONS: "10",
   JUPITER_API_KEY: "test-only"
 };
-function validUnsignedLegacyTransaction() {\n  // Build the minimal unsigned legacy message with the pinned signer and one program key.\n  const decode = value => { const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; let n = 0n; for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch)); const out=[]; while(n>0n){out.unshift(Number(n & 255n));n >>= 8n;} for(let i=0;i<value.length && value[i]==="1";i++) out.unshift(0); return Buffer.from(out); };\n  const key = decode(EXPECTED_BOT_WALLET);\n  const message = Buffer.from([1,0,1,2,...key,...new Array(32).fill(9),...new Array(32).fill(0),1,1,0,0,0]);\n  return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");\n}\n\nconst goodEligibility = {
+function validUnsignedLegacyTransaction() {\n  // Build the minimal unsigned legacy message with the pinned signer and one program key.\n  const decode = value => { const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; let n = 0n; for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch)); const out=[]; while(n>0n){out.unshift(Number(n & 255n));n >>= 8n;} for(let i=0;i<value.length && value[i]==="1";i++) out.unshift(0); return Buffer.from(out); };\n  const key = decode(EXPECTED_BOT_WALLET);\n  const message = Buffer.from([1,0,1,2,...key,...new Array(32).fill(9),...new Array(32).fill(0),1,1,0,0]);\n  return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");\n}\n\nconst goodEligibility = {
   dailySpentLamports: 1000000, openPositions: 1,
   liquidityUsd: 25000, volume24hUsd: 5000,
   riskChecks: {
