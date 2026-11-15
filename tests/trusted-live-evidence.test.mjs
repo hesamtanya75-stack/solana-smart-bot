@@ -145,7 +145,13 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
     mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
+  let clock = 1000;
+  const originalNow = Date.now;
+  Date.now = () => clock;
   const mockFetch = async (url, options = {}) => {
+    // Simulate slow upstream requests. Evidence freshness must remain anchored
+    // to the start of collection, not be refreshed after these requests finish.
+    clock += 1000;
     const value = String(url);
     if (value.includes("dexscreener.com")) return Response.json({ pairs: [{
       chainId: "solana", baseToken: { address: mint }, liquidity: { usd: 50000 },
@@ -196,9 +202,16 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
     } });
     throw new Error("Unexpected RPC method " + request.method);
   };
-  const risk = await fetchTrustedTokenRisk(
-    mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"
-  );
+  let risk;
+  try {
+    risk = await fetchTrustedTokenRisk(
+      mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"
+    );
+  } finally {
+    Date.now = originalNow;
+  }
+  assert.equal(risk.fetchedAt, 1000);
+  assert.ok(clock > risk.fetchedAt);
   assert.equal(holderPages, 2);
   assert.equal(risk.holderSampleOnly, false);
   assert.equal(risk.holderAccountCount, 101);
