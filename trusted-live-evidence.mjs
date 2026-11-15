@@ -264,8 +264,8 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     headers: { "x-api-key": jupiterApiKey.trim(), Accept: "application/json" }
   });
   if (!order || typeof order !== "object" ||
-      (order.requestId != null && (typeof order.requestId !== "string" || !order.requestId)) ||
-      order.transaction != null ||
+      typeof order.requestId !== "string" || order.requestId.length === 0 ||
+      order.transaction !== null ||
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
       !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
