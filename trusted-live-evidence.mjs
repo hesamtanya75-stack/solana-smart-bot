@@ -44,9 +44,9 @@ function readShortVector(bytes, offset) {
 }
 
 function validateUnsignedJupiterV1(bytes, expectedSigner) {
-  // Solana v1 has a distinct wire layout: version byte first, fixed-width
-  // message counts, inline addresses, split instruction headers/payloads,
-  // and signatures at the tail. It has no Address Lookup Tables.
+  // Solana v1 uses fixed-width counts, inline addresses, config values after
+  // the address vector, split instruction headers/payloads, and tail signatures.
+  // It has no Address Lookup Tables.
   if (bytes.length > 4096) {
     throw new Error("V1 Jupiter transaction exceeds the 4,096-byte size limit");
   }
@@ -67,29 +67,12 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
       ((configMask & 0x3) !== 0 && (configMask & 0x3) !== 0x3)) {
     throw new Error("V1 Jupiter transaction config mask is unsupported");
   }
-  if (configMask & 0x3) cursor += 8; // total priority fee in lamports
-  if (configMask & 0x4) cursor += 4; // compute unit limit
-  if (configMask & 0x8) cursor += 4; // loaded accounts data size limit
-  if (configMask & 0x10) cursor += 4; // requested heap size
-  // Config values precede the recent blockhash on the wire.
-  // Rewind and consume them in their specified position after reading the mask.
-  const configBytes = ((configMask & 0x3) ? 8 : 0) +
-    ((configMask & 0x4) ? 4 : 0) +
-    ((configMask & 0x8) ? 4 : 0) +
-    ((configMask & 0x10) ? 4 : 0);
-  const blockhashStart = cursor - 32;
-  // cursor above advanced through config bytes from the start of the mask;
-  // blockhash immediately follows those values.
-  if (blockhashStart < 8 || blockhashStart + 32 > bytes.length) {
-    throw new Error("V1 Jupiter transaction config or blockhash is truncated");
-  }
-  cursor = blockhashStart + 32;
+  cursor += 32; // recent blockhash
   const instructionCount = bytes[cursor++];
   const addressCount = bytes[cursor++];
   if (instructionCount < 1 || instructionCount > 64 ||
       addressCount < requiredSignatures || addressCount > 64 ||
-      readonlyUnsigned > addressCount - requiredSignatures ||
-      readonlySigned > requiredSignatures) {
+      readonlyUnsigned > addressCount - requiredSignatures) {
     throw new Error("V1 Jupiter transaction instruction or address count is invalid");
   }
   const addressesStart = cursor;
@@ -102,6 +85,14 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
   }
   cursor += addressCount * 32;
+  const configBytes = ((configMask & 0x3) ? 8 : 0) +
+    ((configMask & 0x4) ? 4 : 0) +
+    ((configMask & 0x8) ? 4 : 0) +
+    ((configMask & 0x10) ? 4 : 0);
+  if (cursor + configBytes > bytes.length) {
+    throw new Error("V1 Jupiter transaction config values are truncated");
+  }
+  cursor += configBytes;
   const headers = [];
   for (let i = 0; i < instructionCount; i++) {
     if (cursor + 4 > bytes.length) {
