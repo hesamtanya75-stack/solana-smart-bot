@@ -49,6 +49,12 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     throw new Error("Jupiter transaction is empty or not canonical base64");
   }
   const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+  // This parser currently supports legacy and v0 only; both retain the 1,232-byte
+  // serialized-size limit. v1 has a separate 4,096-byte limit and is rejected below.
+  // Bound decoded input before spreading it into String.fromCharCode for canonicality.
+  if (bytes.length > 1232) {
+    throw new Error("Legacy/v0 Jupiter transaction exceeds the 1,232-byte size limit");
+  }
   if (btoa(String.fromCharCode(...bytes)) !== encoded) {
     throw new Error("Jupiter transaction base64 encoding is non-canonical");
   }
