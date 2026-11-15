@@ -98,7 +98,10 @@ function usdCentsFromLamports(amountLamports, solUsd) {
   return Math.ceil((amountLamports / LAMPORTS_PER_SOL) * solUsd * 100);
 }
 
-function validateAllInCostEvidence(costs, amountLamports) {
+function validateAllInCostEvidence(costs, amountLamports, configuredPriorityFeeCap) {
+  if (!Number.isSafeInteger(configuredPriorityFeeCap) || configuredPriorityFeeCap < 0) {
+    throw new Error("Reviewed maximum priority fee is not configured; reservation blocked");
+  }
   const fields = [
     "computeUnitPriceMicroLamports", "computeUnitLimit",
     "maxPriorityFeeLamports", "baseFeeLamports", "tipLamports",
@@ -123,6 +126,9 @@ function validateAllInCostEvidence(costs, amountLamports) {
   if (calculatedPriority > BigInt(Number.MAX_SAFE_INTEGER) ||
       Number(calculatedPriority) !== costs.maxPriorityFeeLamports) {
     throw new Error("Priority fee does not match the verified compute budget");
+  }
+  if (costs.maxPriorityFeeLamports > configuredPriorityFeeCap) {
+    throw new Error("Priority fee exceeds the reviewed maximum");
   }
   const fees = BigInt(costs.maxPriorityFeeLamports) + BigInt(costs.baseFeeLamports) +
     BigInt(costs.tipLamports) + BigInt(costs.rentLamports) + BigInt(costs.otherOutflowLamports);
@@ -325,7 +331,14 @@ export class LiveTradeCoordinator {
     }
     // Cost evidence must come from trusted server-side route/build analysis.
     // Never accept fee estimates supplied by the browser.
-    const allInCosts = validateAllInCostEvidence(evidence.costs, amountLamports);
+    const priorityFeeCapText = String(this.env?.LIVE_MAX_PRIORITY_FEE_LAMPORTS ?? "");
+    if (!/^\\d{1,16}$/.test(priorityFeeCapText) ||
+        !Number.isSafeInteger(Number(priorityFeeCapText))) {
+      throw new Error("Reviewed maximum priority fee is not configured; reservation blocked");
+    }
+    const allInCosts = validateAllInCostEvidence(
+      evidence.costs, amountLamports, Number(priorityFeeCapText)
+    );
     const amountCents = usdCentsFromLamports(allInCosts.totalLamports, quote.price);
     if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade all-in USD limit exceeded");
 
