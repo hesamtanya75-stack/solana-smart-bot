@@ -70,7 +70,8 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  if (requiredSignatures !== 1 || readonlySigned > requiredSignatures) {
+  // The pinned bot wallet is the sole signer and must be writable as fee payer.
+  if (requiredSignatures !== 1 || readonlySigned !== 0) {
     throw new Error("V1 Jupiter transaction signer header is inconsistent");
   }
   const configMask = (bytes[cursor] | (bytes[cursor + 1] << 8) |
