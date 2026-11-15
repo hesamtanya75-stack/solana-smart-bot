@@ -976,7 +976,7 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 
 test("program identity evidence is finalized, deduplicated, and never semantic approval", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(31));
-  const loaderOwner = encodeBase58(new Uint8Array(32).fill(32));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
   let request;
   const evidence = await fetchProgramAccountIdentityEvidence([
     { programId }, { programId }
@@ -998,7 +998,7 @@ test("program identity evidence is finalized, deduplicated, and never semantic a
   assert.equal(request.params[1].commitment, "finalized");
   assert.equal(evidence.contextSlot, 1234);
   assert.deepEqual(evidence.programs, [{
-    programId, accountOwner: loaderOwner, executable: true, dataLength: 3
+    programId, accountOwner: loaderOwner, loaderType: "upgradeable-bpf-loader", executable: true, dataLength: 3
   }]);
   assert.equal(evidence.semanticInstructionVerification, false);
   assert.equal(
@@ -1009,7 +1009,7 @@ test("program identity evidence is finalized, deduplicated, and never semantic a
 
 test("program identity evidence rejects non-executable or malformed program accounts", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(41));
-  const loaderOwner = encodeBase58(new Uint8Array(32).fill(42));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
   await assert.rejects(() => fetchProgramAccountIdentityEvidence(
     [{ programId }],
     async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
@@ -1031,6 +1031,22 @@ test("program identity evidence rejects non-executable or malformed program acco
       }]
     } })
   ), /data size does not match RPC metadata/);
+});
+
+
+test("program identity evidence rejects executable accounts owned by unknown loaders", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(61));
+  const unknownOwner = encodeBase58(new Uint8Array(32).fill(62));
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1237 },
+      value: [{
+        owner: unknownOwner, executable: true, space: 0,
+        data: ["", "base64"]
+      }]
+    } })
+  ), /missing, non-executable, or has malformed identity data/);
 });
 
 test("program identity evidence rejects non-canonical base64 even when decoded size matches", async () => {
