@@ -27,8 +27,6 @@ jobs:
       - name: Verify Devnet cluster identity and read-only RPC methods
         run: node scripts/devnet-preflight.mjs
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
-        if: ${{ env.DEVNET_RPC_URL != '' }}
+        # The script uses the official public Devnet RPC when DEVNET_RPC_URL is unset.
+        # A dedicated GitHub Actions secret may be supplied to avoid public RPC throttling.
         run: node scripts/devnet-signed-lifecycle.mjs
-      - name: Report funded Devnet lifecycle as skipped when no dedicated RPC is configured
-        if: ${{ env.DEVNET_RPC_URL == '' }}
-        run: echo "::notice::Funded Devnet lifecycle skipped; configure DEVNET_RPC_URL to enable this optional on-chain check. Read-only validation and unit tests still run."
