@@ -3,6 +3,9 @@ export function parseRpcResponse(payload, expectedId) {
       payload.id !== expectedId) {
     throw new Error("RPC response missing a valid id");
   }
+  if (payload.jsonrpc !== "2.0") {
+    throw new Error("RPC response has an invalid JSON-RPC version");
+  }
   if (payload.error) throw new Error(payload.error.message || "RPC error");
   if (!Object.prototype.hasOwnProperty.call(payload, "result")) {
     throw new Error("RPC response missing a result");
@@ -16,8 +19,12 @@ export function parseRpcBatchResponse(payload, count) {
   }
   const byId = new Map();
   for (const item of payload) {
-    if (!item || typeof item !== "object" || !Number.isSafeInteger(item.id) || byId.has(item.id)) {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        !Number.isSafeInteger(item.id) || byId.has(item.id)) {
       throw new Error("RPC batch item missing, duplicated, or malformed");
+    }
+    if (item.jsonrpc !== "2.0") {
+      throw new Error("RPC batch item has an invalid JSON-RPC version");
     }
     if (item.error) throw new Error(item.error.message || "RPC batch error");
     if (!Object.prototype.hasOwnProperty.call(item, "result")) {
