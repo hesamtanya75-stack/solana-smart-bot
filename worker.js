@@ -418,8 +418,9 @@ async function inspectMint(mint, env, diagnostics = null) {
   const dex = await getDexJson(
     "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
   );
-  const market = (dex.pairs || []).filter(p => p.chainId === "solana")
-    .sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
+  const market = (dex.pairs || []).filter(p =>
+    p.chainId === "solana" && p.baseToken?.address === mint
+  ).sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
   if (!market) throw new Error("No Solana market pair");
 
   const [rug, rpcResults] = await Promise.all([
