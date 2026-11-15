@@ -109,7 +109,7 @@ function validUnsignedV1Transaction() {
   const message = Uint8Array.from([
     0x81, 1, 0, 1, 0, 0, 0, 0,
     ...new Array(32).fill(0), 1, 2, ...signer,
-    ...new Array(32).fill(17), 1, 1, 1, 0, 0,
+    ...new Array(32).fill(17), 1, 1, 1, 0, 0, 0,
     ...new Array(64).fill(0)
   ]);
   return Buffer.from(message).toString("base64");
