@@ -1,6 +1,6 @@
 # Security review — PR #27
 
-Review target: `security/pr26-clean-main` at commit `75b0f0633f1445362caef68b5541b688632ef5f1` (the code revision covered by the passing CI runs below).
+Historical review baseline: `security/pr26-clean-main` at commit `75b0f0633f1445362caef68b5541b688632ef5f1`. The latest branch-head verification is recorded in the dated addendum at the end of this file.
 
 ## Decision
 
@@ -205,3 +205,18 @@ A source review found that trusted token-risk evidence previously received its `
 CI for `c6eb4d8ffba37cbd2b0a0d0e5065c1be5420ef6b`: Node tests **success**, frontend validation **success**, Cloudflare Worker dry-run build **success**, Devnet workflow **success**. The Devnet read-only checks passed; the funded signed transfer step was **skipped** because `DEVNET_RPC_URL` is not configured. This is not a signed transaction lifecycle test.
 
 This is a freshness hardening change only. It does not implement semantic Jupiter instruction/lookup-table verification, settlement proof, a trusted production caller, or signing/submission. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
+
+
+## 2026-11-15 branch-head verification
+
+Verified against PR #27 branch head `8cfded179336148f31925b0ddcceca7789409d02` (base `main`; PR remains open and Draft). This head adds a coordinator regression test that advances the clock by 31 seconds while trusted evidence is collected and verifies reservation rejection with HTTP 409 for stale risk evidence.
+
+GitHub Actions for this exact head completed successfully:
+- Validate frontend — run `43664419266`: success.
+- Node tests — run `43664419210`: success.
+- Cloudflare Worker build validation — run `43664419208`: success.
+- Devnet signed lifecycle validation — run `43664419235`: overall job success, but the step “Verify ephemeral signing and submit a faucet-funded Devnet test transfer” was **skipped** because `DEVNET_RPC_URL` is not configured. The read-only Devnet checks and Durable Objects runtime tests passed; no signed Devnet transfer is claimed.
+
+This is CI validation, not release approval. The code still reports `semanticInstructionVerification: false`; the coordinator requires semantic verification and therefore fails closed. Independent settlement proof remains unimplemented and coordinator state transitions remain disabled. The public Worker does not expose or invoke the live coordinator, and `executeLiveOrder()` still refuses to sign or submit transactions. Full Jupiter instruction and address-lookup-table verification, settlement/recovery proof, emergency-stop operator separation/integration, and a funded signed Devnet lifecycle remain release blockers.
+
+**Decision unchanged:** keep PR #27 Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is authorized by this review.
