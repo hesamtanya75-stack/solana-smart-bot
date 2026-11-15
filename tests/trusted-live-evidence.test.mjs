@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1051,6 +1051,134 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   assert.equal(
     evidence.verificationScope,
     "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
+  );
+});
+
+test("reviewed deployment allowlist matches exact code hash and upgrade authority without promoting semantics", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(31));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(77));
+  const authority = encodeBase58(new Uint8Array(32).fill(88));
+  const codeHash = "ab".repeat(32);
+  const instructionPolicySha256 = "cd".repeat(32);
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111",
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      dataLength: 36,
+      programDataAddress,
+      deploymentSlot: "1200",
+      upgradeAuthority: authority,
+      immutable: false,
+      deployedCodeLength: 4096,
+      deployedCodeSha256: codeHash
+    }]
+  };
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false,
+    policyId: "jupiter-metis-route",
+    policyVersion: "v1.0.0",
+    instructionPolicySha256
+  };
+  const result = verifyUpgradeableProgramDeploymentAllowlist(identity, [policy]);
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.matchedPrograms, [{
+    programId,
+    policyId: "jupiter-metis-route",
+    policyVersion: "v1.0.0",
+    instructionPolicySha256,
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false
+  }]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "reviewed-upgradeable-deployment-allowlist-only");
+});
+
+test("reviewed deployment allowlist rejects any changed program hash, authority, loader, or missing policy", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(32));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(78));
+  const authority = encodeBase58(new Uint8Array(32).fill(89));
+  const codeHash = "12".repeat(32);
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      programDataAddress,
+      upgradeAuthority: authority,
+      immutable: false,
+      deployedCodeLength: 1024,
+      deployedCodeSha256: codeHash
+    }]
+  };
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false,
+    policyId: "router-policy",
+    policyVersion: "1.2.3",
+    instructionPolicySha256: "34".repeat(32)
+  };
+  const cases = [
+    { identity, allowlist: [{ ...policy, deployedCodeSha256: "56".repeat(32) }] },
+    { identity, allowlist: [{ ...policy, upgradeAuthority: encodeBase58(new Uint8Array(32).fill(90)) }] },
+    { identity, allowlist: [{ ...policy, loaderType: "native-loader" }] },
+    { identity, allowlist: [] },
+    { identity: { ...identity, semanticInstructionVerification: true }, allowlist: [policy] }
+  ];
+  for (const item of cases) {
+    assert.throws(
+      () => verifyUpgradeableProgramDeploymentAllowlist(item.identity, item.allowlist),
+      /does not match the reviewed allowlist|allowlist is incomplete/
+    );
+  }
+});
+
+test("reviewed deployment allowlist rejects duplicate and malformed policy entries", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(33));
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: "ab".repeat(32),
+    upgradeAuthority: null,
+    immutable: true,
+    policyId: "router-policy",
+    policyVersion: "1.0.0",
+    instructionPolicySha256: "cd".repeat(32)
+  };
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      programDataAddress: encodeBase58(new Uint8Array(32).fill(80)),
+      upgradeAuthority: null,
+      immutable: true,
+      deployedCodeLength: 128,
+      deployedCodeSha256: policy.deployedCodeSha256
+    }]
+  };
+  assert.throws(
+    () => verifyUpgradeableProgramDeploymentAllowlist(identity, [policy, policy]),
+    /malformed or duplicated/
+  );
+  assert.throws(
+    () => verifyUpgradeableProgramDeploymentAllowlist(identity, [{ ...policy, instructionPolicySha256: "not-a-hash" }]),
+    /malformed or duplicated/
   );
 });
 
