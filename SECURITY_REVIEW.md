@@ -629,3 +629,18 @@ Next safe work: design and test an all-in cost reservation model that includes e
 The coordinator now requires an explicitly configured `LIVE_MAX_PRIORITY_FEE_LAMPORTS` value before it can reserve a live order. The value must be a non-negative safe integer; missing, malformed, or exceeded ceilings fail closed. This prevents the compute-unit price from being accepted solely because the aggregate trade amount happens to remain below the per-trade USD cap. Regression tests cover a missing ceiling and an order exceeding the configured ceiling.
 
 No production ceiling has been selected or configured in this change. The test fixture uses a test-only value and is not a recommended operational limit. The production Worker therefore remains unable to reserve a live order until an operator reviews and explicitly configures a suitable ceiling. In addition, production `fetchTrustedLiveEvidence` does not yet provide verified all-in fee evidence, and Jupiter instruction semantics remain unverified; those independent gates continue to block reservations. No signing, submission, deployment, or Mainnet activity is enabled.
+
+
+## Focused Jupiter and ALT re-review — 2026-11-15 (code head 904bf4b534646b4b97f4f04eaf3ed94fa6633e1d)
+
+This update corrects older review notes that described address lookup table (ALT) resolution as not implemented. At this code head, `validateAndResolveUnsignedJupiterTransaction` does resolve v0 ALT descriptors against finalized RPC account state. The resolver checks table ownership by the Address Lookup Table program, account-data bounds and layout, initialized state, metadata option/padding bounds, non-deactivation, extension-slot warmup, requested index bounds, duplicate indexes, duplicate loaded addresses, and duplicate collisions with static message keys. Regression tests cover successful resolution and rejection cases including malformed descriptors, foreign ownership, oversized data, deactivated tables, not-yet-warmed addresses, and out-of-range indexes.
+
+**This is address resolution, not semantic transaction approval.** The parser still returns `semanticInstructionVerification: false`. It does not decode and authorize the full instruction sequence, program IDs, account roles and writable/signer flags, instruction data, downstream CPI effects, token/system transfers, tip recipients, or immutable order-intent bindings. The Jupiter /build response validator also remains envelope/resource validation only. Historical statements above that say ALT resolution itself is missing are superseded by this focused source review; the semantic instruction-verification blocker remains current.
+
+The latest GitHub Actions runs for this exact code head report:
+- Node tests: success (203 passed, 0 failed, 0 skipped, as recorded by the run).
+- Frontend validation: success.
+- Cloudflare Worker dry-run build validation: success; no deployment.
+- Devnet workflow: overall success for read-only/runtime checks. Its ephemeral signing and faucet-funded transfer step was **skipped** because `DEVNET_RPC_URL` is not configured. No signed Devnet lifecycle is claimed.
+
+Other release blockers remain unchanged: production all-in fee evidence and a reviewed production priority-fee ceiling are absent; the coordinator is not called by the Worker and settlement transitions remain disabled; no secure signer implementation exists; deployed Cloudflare production configuration has not been independently verified. PR #27 remains Draft, Open, and unmerged. No merge, production deployment, signing, transaction submission, or Mainnet activity was performed or authorized.
