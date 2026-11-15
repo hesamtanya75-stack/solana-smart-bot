@@ -382,3 +382,21 @@ test("Jupiter order rejects route plans exceeding the bounded entry count", asyn
     }), { status: 200 })
   }), /incomplete or non-executable/);
 });
+
+
+test("Jupiter order response is rejected before reading an oversized provider body", async () => {
+  let reads = 0;
+  const body = new ReadableStream({
+    pull(controller) { reads++; controller.enqueue(new TextEncoder().encode("{}")); },
+    cancel() {}
+  });
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(body, {
+      status: 200,
+      headers: { "Content-Length": String(2 * 1024 * 1024 + 1) }
+    })
+  }), /exceeds the 2097152-byte limit/);
+  assert.equal(reads, 0);
+});
