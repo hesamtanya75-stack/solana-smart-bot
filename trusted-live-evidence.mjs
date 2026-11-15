@@ -8,6 +8,12 @@ const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
 const DEVNET_OR_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 const EXPECTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
+const SOLANA_PROGRAM_LOADER_TYPES = new Map([
+  ["BPFLoader1111111111111111111111111111111111", "legacy-bpf-loader"],
+  ["BPFLoader2111111111111111111111111111111111", "bpf-loader-v2"],
+  ["BPFLoaderUpgradeab1e11111111111111111111111", "upgradeable-bpf-loader"],
+  ["NativeLoader1111111111111111111111111111111", "native-loader"]
+]);
 
 function decodeBase58(value) {
   let number = 0n;
@@ -1005,6 +1011,7 @@ export async function fetchProgramAccountIdentityEvidence(
   const programs = accounts.map((account, index) => {
     if (!account || account.executable !== true ||
         !validAddress(account.owner) ||
+        !SOLANA_PROGRAM_LOADER_TYPES.has(account.owner) ||
         !Number.isSafeInteger(account.space) || account.space < 0 ||
         account.space > 1024 * 1024 ||
         !Array.isArray(account.data) ||
@@ -1031,6 +1038,7 @@ export async function fetchProgramAccountIdentityEvidence(
     return Object.freeze({
       programId: programIds[index],
       accountOwner: account.owner,
+      loaderType: SOLANA_PROGRAM_LOADER_TYPES.get(account.owner),
       executable: true,
       dataLength: account.space
     });
