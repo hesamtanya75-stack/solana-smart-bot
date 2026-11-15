@@ -221,12 +221,16 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         errors: []
       } });
     }
-    if (request.method === "getTokenAccountsByOwner") return Response.json({ result: { value: [{
+    if (request.method === "getTokenAccountsByOwner") {
+      assert.equal(request.params[2].commitment, "finalized");
+      return Response.json({ jsonrpc: "2.0", id: 1, result: { value: [{
       account: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: { parsed: { info: {
         mint, owner: BOT_WALLET, tokenAmount: { amount: "10" }
       } } } }
     }] } });
-    if (request.method === "getAccountInfo") return Response.json({ result: {
+    if (request.method === "getAccountInfo") {
+      assert.equal(request.params[1].commitment, "finalized");
+      return Response.json({ jsonrpc: "2.0", id: 1, result: {
       value: {
         owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         data: { parsed: { info: {
@@ -236,9 +240,12 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         } } }
       }
     } });
-    if (request.method === "getTokenSupply") return Response.json({ result: {
+    if (request.method === "getTokenSupply") {
+      assert.equal(request.params[1].commitment, "finalized");
+      return Response.json({ jsonrpc: "2.0", id: 1, result: {
       value: { amount: "1001", decimals: 0 }
     } });
+    }
     throw new Error("Unexpected RPC method " + request.method);
   };
   let risk;
