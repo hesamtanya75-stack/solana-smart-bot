@@ -57,7 +57,7 @@ function emptyState() {
 }
 
 function isUtcDay(value) {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(value + "T00:00:00.000Z");
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
@@ -72,8 +72,8 @@ function readReservationRecords(state) {
     if (!item || typeof item !== "object" || Array.isArray(item) ||
         item.idempotencyKey !== key ||
         typeof item.intentFingerprint !== "string" || item.intentFingerprint.length === 0 ||
-        !Number.isSafeInteger(item.amountCents) || item.amountCents < 0 ||
-        typeof item.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(item.day) ||
+        !Number.isSafeInteger(item.amountCents) || item.amountCents <= 0 ||
+        !isUtcDay(item.day) ||
         !["pending", "confirmed", "failed", "closed"].includes(item.status)) {
       throw new Error("Coordinator reservation ledger contains an invalid record; operator review required");
     }
