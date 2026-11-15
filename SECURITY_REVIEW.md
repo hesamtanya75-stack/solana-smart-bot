@@ -522,3 +522,19 @@ References:
 - Jupiter documentation linking the Swap Program IDL: https://developers.jup.ag/docs/swap/v1/common-errors
 - Jupiter Aggregator v6 program account and current upgradeability metadata: https://solscan.io/account/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
 - Jupiter's current Swap API V2 routing and build/order distinction: https://developers.jup.ag/docs/swap
+
+
+## Solana v1 resource-configuration validation — 2026-11-15
+
+A review against Solana's current v1 transaction-format documentation found that v1 transactions must explicitly include both a non-zero compute-unit limit and a non-zero loaded-account-data-size limit. Omitted fields default to zero, which makes the transaction non-executable. The unsigned-message parser previously accepted v1 envelopes with these required fields absent.
+
+The parser now rejects v1 messages unless config-mask bits 2 and 3 are both present, and validates the decoded values against the supported transaction resource bounds: compute units 1..1,400,000 and loaded account data 1..64 MiB. Existing optional priority-fee and heap-size parsing remains in bit order; heap requests retain the protocol's 32..256 KiB, 1 KiB-alignment validation. Regression coverage now includes missing limits, zero limits, valid configured v1 fixtures, and the instruction-header offset after config values.
+
+This is stricter structural/executability validation only. It does not decode program instructions, establish account roles or economic intent, authenticate any Jupiter or downstream program behavior, or promote semantic trust. `semanticInstructionVerification` remains false; the coordinator remains fail-closed.
+
+References:
+- Solana Versioned Transactions: https://solana.com/docs/core/transactions/versioned-transactions
+- Solana Compute Budget: https://solana.com/docs/core/fees/compute-budget
+- SIMD-0385 transaction v1 proposal: https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md
+
+CI must pass on the final branch head before this change is considered validated. PR #27 remains Draft and unmerged. No production deployment, signing, transaction submission, or Mainnet activity is authorized.
