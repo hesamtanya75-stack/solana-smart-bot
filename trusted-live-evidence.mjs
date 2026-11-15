@@ -45,10 +45,16 @@ function isCanonicalPublicKey(value) {
   }
 }
 
+function isU64DecimalString(value, allowZero = false) {
+  if (typeof value !== "string" || value.length > 20 ||
+      !/^(?:0|[1-9]\d*)$/.test(value)) return false;
+  const amount = BigInt(value);
+  return (allowZero || amount > 0n) && amount <= 18446744073709551615n;
+}
+
 function validateBuildRoutePlan(routePlan) {
   return Object.freeze(routePlan.map((step, index) => {
     const info = step?.swapInfo;
-    const amountFields = ["inAmount", "outAmount"];
     if (!step || typeof step !== "object" || Array.isArray(step) ||
         !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
         (step.bps != null && (!Number.isInteger(step.bps) || step.bps < 1 || step.bps > 10000)) ||
@@ -56,11 +62,8 @@ function validateBuildRoutePlan(routePlan) {
         !isCanonicalPublicKey(info.ammKey) ||
         !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
         info.inputMint === info.outputMint ||
-        amountFields.some(field => !/^\d+$/.test(String(info[field] ?? "")) ||
-          String(info[field]).length > 20 || BigInt(info[field]) <= 0n ||
-          BigInt(info[field]) > 18446744073709551615n) ||
-        (info.feeAmount != null && (!/^\d+$/.test(String(info.feeAmount)) ||
-          String(info.feeAmount).length > 20 || BigInt(info.feeAmount) > 18446744073709551615n)) ||
+        !isU64DecimalString(info.inAmount) || !isU64DecimalString(info.outAmount) ||
+        (info.feeAmount != null && !isU64DecimalString(info.feeAmount, true)) ||
         (info.feeMint != null && !isCanonicalPublicKey(info.feeMint)) ||
         ((info.feeAmount == null) !== (info.feeMint == null))) {
       throw new Error("Jupiter build routePlan[" + index + "] is malformed");
@@ -72,10 +75,10 @@ function validateBuildRoutePlan(routePlan) {
         ammKey: info.ammKey,
         inputMint: info.inputMint,
         outputMint: info.outputMint,
-        inAmount: String(info.inAmount),
-        outAmount: String(info.outAmount),
+        inAmount: info.inAmount,
+        outAmount: info.outAmount,
         ...(info.feeAmount == null ? {} : {
-          feeAmount: String(info.feeAmount),
+          feeAmount: info.feeAmount,
           feeMint: info.feeMint
         })
       })
@@ -122,13 +125,9 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       build.inputMint === build.outputMint ||
       (expected.inputMint && build.inputMint !== expected.inputMint) ||
       (expected.outputMint && build.outputMint !== expected.outputMint) ||
-      !/^\d+$/.test(String(build.inAmount ?? "")) || String(build.inAmount).length > 20 ||
-      !/^\d+$/.test(String(build.outAmount ?? "")) || String(build.outAmount).length > 20 ||
-      BigInt(build.inAmount) <= 0n || BigInt(build.inAmount) > 18446744073709551615n ||
-      BigInt(build.outAmount) <= 0n || BigInt(build.outAmount) > 18446744073709551615n ||
-      !/^\d+$/.test(String(build.otherAmountThreshold ?? "")) ||
-      String(build.otherAmountThreshold).length > 20 ||
-      BigInt(build.otherAmountThreshold) > 18446744073709551615n ||
+      !isU64DecimalString(build.inAmount) ||
+      !isU64DecimalString(build.outAmount) ||
+      !isU64DecimalString(build.otherAmountThreshold, true) ||
       !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
       !Array.isArray(build.routePlan) || build.routePlan.length === 0 || build.routePlan.length > 64 ||
       !["ExactIn", "ExactOut"].includes(build.swapMode) ||
