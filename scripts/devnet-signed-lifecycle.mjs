@@ -17,20 +17,14 @@ async function wait(ms) {
 }
 
 async function requestDevnetAirdrop(connection, publicKey) {
+  let signature;
   let lastError;
+  // Retry only the faucet request itself. Once a signature exists, never
+  // request another airdrop just because confirmation is delayed or fails.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const signature = await connection.requestAirdrop(publicKey, AIRDROP_LAMPORTS);
-      const latest = await connection.getLatestBlockhash("confirmed");
-      const confirmation = await connection.confirmTransaction({
-        signature,
-        blockhash: latest.blockhash,
-        lastValidBlockHeight: latest.lastValidBlockHeight
-      }, "confirmed");
-      if (confirmation.value.err) {
-        throw new Error("Devnet airdrop transaction failed: " + JSON.stringify(confirmation.value.err));
-      }
-      return signature;
+      signature = await connection.requestAirdrop(publicKey, AIRDROP_LAMPORTS);
+      break;
     } catch (error) {
       lastError = error;
       const message = String(error?.message || error);
@@ -43,7 +37,16 @@ async function requestDevnetAirdrop(connection, publicKey) {
       await wait(1500 * (attempt + 1));
     }
   }
-  throw new Error("Devnet airdrop failed after retries: " + String(lastError?.message || lastError));
+  if (!signature) {
+    throw new Error("Devnet airdrop request failed after retries: " + String(lastError?.message || lastError));
+  }
+  // requestAirdrop does not return the transaction's blockhash metadata.
+  // Confirm by signature rather than pairing it with an unrelated later blockhash.
+  const confirmation = await connection.confirmTransaction(signature, "confirmed");
+  if (confirmation.value.err) {
+    throw new Error("Devnet airdrop transaction failed: " + JSON.stringify(confirmation.value.err));
+  }
+  return signature;
 }
 
 async function main() {
