@@ -6,6 +6,7 @@ import {
 } from "../live-trading.mjs";
 
 const TEST_PHANTOM_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
+const ALTERNATE_TEST_PHANTOM_WALLET = "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw";
 
 const goodEnv = {
   LIVE_TRADING_ENABLED: "true", LIVE_TRADING_KILL_SWITCH: "false",
@@ -256,7 +257,7 @@ test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table p
 });
 
 test("Jupiter order binds the unsigned transaction signer to a non-default Phantom wallet", async () => {
-  const phantomWallet = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+  const phantomWallet = ALTERNATE_TEST_PHANTOM_WALLET;
   let requestedUrl;
   const result = await getJupiterOrder({
     env: goodEnv, takerWallet: phantomWallet,
