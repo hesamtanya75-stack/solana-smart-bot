@@ -56,6 +56,12 @@ function emptyState() {
   return { killSwitch: true, reservations: {}, killSwitchAudit: [] };
 }
 
+function isUtcDay(value) {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function readReservationRecords(state) {
   const ledger = state?.reservations;
   if (!ledger || typeof ledger !== "object" || Array.isArray(ledger)) {
@@ -160,7 +166,11 @@ export class LiveTradeCoordinator {
     }
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/status") {
-      return json(await this.status());
+      try {
+        return json(await this.status());
+      } catch (error) {
+        return json({ error: String(error?.message || error) }, 409);
+      }
     }
     if (request.method === "GET" && url.pathname === "/audit") {
       if (!this.authorizeOperator(request)) return json({ error: "Unauthorized operator request" }, 401);
