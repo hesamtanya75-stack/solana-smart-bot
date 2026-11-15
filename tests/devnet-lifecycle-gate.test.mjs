@@ -33,7 +33,7 @@ test("Devnet preflight retries transient network failures without exposing the R
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /catch \(error\)[\s\S]*network request failed after 4 attempts/);
+  assert.match(script, /catch \(error\)[\s\S]*networkFailures\.push[\s\S]*network request failed for all Devnet RPC endpoints after retries/);
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
   assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
@@ -96,4 +96,18 @@ test("funded Devnet lifecycle verifies cluster identity before creating signers"
   assert.ok(payerCreation > genesisCheck, "payer must not be created before Devnet identity is checked");
   assert.ok(recipientCreation > genesisCheck, "recipient must not be created before Devnet identity is checked");
   assert.match(main, /Refusing to sign: RPC is not official Solana Devnet/);
+});
+
+
+test("Devnet preflight falls back only to the official Devnet RPC after network failures", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-preflight.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /configuredDevnetRpc/);
+  assert.match(script, /"https:\/\/api\.devnet\.solana\.com"/);
+  assert.match(script, /new Set\(\[/);
+  assert.match(script, /if \(endpointFailed\) continue/);
+  assert.match(script, /EXPECTED_DEVNET_GENESIS/);
+  assert.doesNotMatch(script, /api\.mainnet-beta\.solana\.com/);
 });
