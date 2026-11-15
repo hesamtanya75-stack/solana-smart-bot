@@ -307,6 +307,29 @@ test("empty or malformed unsigned transaction is rejected", async () => {
 });
 
 
+test("Jupiter order bounds request identifiers and serialized transaction size", async () => {
+  const base = {
+    requestId: "req-bounded",
+    transaction: validUnsignedLegacyTransaction(),
+    inputMint: SOL_MINT,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000", outAmount: "12345",
+    routePlan: [{ swapInfo: { label: "test" } }],
+    router: "metis", feeBps: 0
+  };
+  for (const overrides of [
+    { requestId: "bad\\nrequest" },
+    { requestId: "x".repeat(257) },
+    { transaction: "A".repeat(1648) }
+  ]) {
+    await assert.rejects(() => getJupiterOrder({
+      env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amountLamports: 1000000, eligibility: goodEligibility,
+      fetchImpl: async () => new Response(JSON.stringify({ ...base, ...overrides }), { status: 200 })
+    }), /incomplete or non-executable/);
+  }
+});
+
 test("Jupiter order rejects output amounts outside canonical u64 bounds", async () => {
   for (const outAmount of [
     "18446744073709551616",
