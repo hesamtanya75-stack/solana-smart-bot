@@ -84,10 +84,13 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       build.inputMint === build.outputMint ||
       (expected.inputMint && build.inputMint !== expected.inputMint) ||
       (expected.outputMint && build.outputMint !== expected.outputMint) ||
-      !/^\d+$/.test(String(build.inAmount ?? "")) ||
-      !/^\d+$/.test(String(build.outAmount ?? "")) ||
-      BigInt(build.inAmount) <= 0n || BigInt(build.outAmount) <= 0n ||
+      !/^\d+$/.test(String(build.inAmount ?? "")) || String(build.inAmount).length > 20 ||
+      !/^\d+$/.test(String(build.outAmount ?? "")) || String(build.outAmount).length > 20 ||
+      BigInt(build.inAmount) <= 0n || BigInt(build.inAmount) > 18446744073709551615n ||
+      BigInt(build.outAmount) <= 0n || BigInt(build.outAmount) > 18446744073709551615n ||
       !/^\d+$/.test(String(build.otherAmountThreshold ?? "")) ||
+      String(build.otherAmountThreshold).length > 20 ||
+      BigInt(build.otherAmountThreshold) > 18446744073709551615n ||
       !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
       !Array.isArray(build.routePlan) || build.routePlan.length === 0 || build.routePlan.length > 64 ||
       !Array.isArray(build.computeBudgetInstructions) || build.computeBudgetInstructions.length > 64 ||
