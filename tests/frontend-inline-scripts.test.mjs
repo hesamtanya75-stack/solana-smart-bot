@@ -52,6 +52,10 @@ test("Jupiter preview UI requests authenticated quote-only data with a bounded S
   assert.match(html, /quote\.quoteOnly !== true/);
   assert.match(html, /transactionAvailable !== false/);
   assert.match(html, /raw token units/);
+  assert.match(html, /otherAmountThreshold/);
+  assert.match(html, /outUsdValue/);
+  assert.match(html, /slippageBps/);
+  assert.match(html, /platformFeeAmount/);
   const start = html.indexOf('const jupiterQuoteButton');
   const end = html.indexOf('function renderServerControls', start);
   const source = html.slice(start, end);
