@@ -1616,21 +1616,21 @@ jupiterQuoteButton.addEventListener("click", async () => {
     if (quote.quoteOnly !== true || quote.transactionAvailable !== false) {
       throw new Error("وەڵامی Quote تەنها پشتڕاست نەکرایەوە.");
     }
-    const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact) + "%";
+    const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact);
     const fee = quote.feeBps == null ? "بەردەست نییە" : String(quote.feeBps) + " bps";
     const minOut = quote.otherAmountThreshold || "بەردەست نییە";
     const usd = quote.outUsdValue == null ? "بەردەست نییە" : "$" + Number(quote.outUsdValue).toFixed(4);
     const slippage = quote.slippageBps == null ? "بەردەست نییە" : (Number(quote.slippageBps) / 100) + "%";
     const platformFee = quote.platformFeeAmount == null ? "بەردەست نییە" : quote.platformFeeAmount + (quote.feeMint ? " (" + quote.feeMint + ")" : "");
     jupiterQuoteResult.textContent =
-      "بڕی نێردراو: " + amountText + " SOL\\n" +
-      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\\n" +
-      "نرخی نزیکەیی دەرچوون: " + usd + "\\n" +
-      "کەمترین بڕ دوای Slippage (raw units): " + minOut + "\\n" +
-      "Slippage: " + slippage + "\\n" +
-      "کاریگەری نرخ: " + impact + "\\n" +
-      "کۆی کرێی ڕێڕەو: " + fee + "\\n" +
-      "کرێی پلاتفۆرمی Jupiter (raw units): " + platformFee + "\\n" +
+      "بڕی نێردراو: " + amountText + " SOL\n" +
+      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\n" +
+      "نرخی نزیکەیی دەرچوون: " + usd + "\n" +
+      "کەمترین بڕ دوای Slippage (raw units): " + minOut + "\n" +
+      "Slippage: " + slippage + "\n" +
+      "کاریگەری نرخ: " + impact + "\n" +
+      "کۆی کرێی ڕێڕەو: " + fee + "\n" +
+      "کرێی پلاتفۆرمی Jupiter (raw units): " + platformFee + "\n" +
       "ژمارەی هەنگاوەکانی ڕێڕەو: " + quote.routePlanCount;
     jupiterQuoteStatus.textContent = "Quote ـی تەنها خوێندنەوە وەرگیرا. ئەمە نرخێکی پێشبینیکراوە، نەک بەڵێنی جێبەجێبوون.";
   } catch (error) {
