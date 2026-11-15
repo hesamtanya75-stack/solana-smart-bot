@@ -358,3 +358,15 @@ Official references checked:
 - Jupiter /build API reference: https://developers.jup.ag/docs/api-reference/swap/build
 
 **Decision unchanged:** this is a documentation-only security clarification. No transaction signing, submission, live-trading path, merge, or production deployment is authorized. PR #27 remains Draft and unmerged.
+
+## CI verification for Jupiter router review — 2026-11-15 (commit `7006781f60ff1e4fef9cd4e8c5bdab4afe1c3542`)
+
+GitHub Actions completed successfully for this exact documentation commit:
+
+- Frontend JavaScript syntax validation: success.
+- Node tests: **139 passed, 0 failed, 0 skipped**.
+- Cloudflare Worker build validation: success (dry-run only; no deployment).
+- Devnet read-only validation: success; the workflow identified Devnet and completed read-only RPC checks.
+- Funded signed Devnet lifecycle: **skipped** because `DEVNET_RPC_URL` was empty. The job log explicitly reports `signing: not performed` and `transactionsSubmitted: 0`.
+
+These results verify repository tests and build checks only. They do not complete the funded Devnet lifecycle, semantic Jupiter instruction verification, or independent verification of production Cloudflare configuration. The Jupiter semantic gate remains false; the coordinator remains fail-closed. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is authorized.
