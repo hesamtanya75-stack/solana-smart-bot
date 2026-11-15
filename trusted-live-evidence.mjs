@@ -234,6 +234,16 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (expectedBytes.length !== 32 || signerBytes.some((byte, i) => byte !== expectedBytes[i])) {
     throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
   }
+  // Solana message account keys must be unique; reject ambiguous static-key layouts.
+  const uniqueKeys = new Set();
+  for (let i = 0; i < keyCount; i++) {
+    const start = cursor + i * 32;
+    const key = Array.from(bytes.subarray(start, start + 32), byte => byte.toString(16).padStart(2, "0")).join("");
+    if (uniqueKeys.has(key)) {
+      throw new Error("Jupiter transaction contains duplicate static account keys");
+    }
+    uniqueKeys.add(key);
+  }
   cursor += keyCount * 32;
   cursor += 32; // recent blockhash
   const instructionHeader = readShortVector(bytes, cursor);
@@ -246,7 +256,10 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   for (let i = 0; i < instructionCount; i++) {
     if (cursor >= bytes.length) throw new Error("Jupiter instruction is truncated");
     const programIdIndex = bytes[cursor++];
-    if (programIdIndex >= keyCount) throw new Error("Jupiter instruction program index is invalid");
+    // Account zero is the writable fee payer, never an executable program account.
+    if (programIdIndex === 0 || programIdIndex >= keyCount) {
+      throw new Error("Jupiter instruction program index is invalid");
+    }
     const accountHeader = readShortVector(bytes, cursor);
     cursor = accountHeader.offset;
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
