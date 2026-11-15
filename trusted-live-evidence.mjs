@@ -1454,6 +1454,76 @@ export function verifyReviewedNativeProgramIdentities(programIdentityEvidence) {
   });
 }
 
+/**
+ * Requires finalized identity evidence for the exact set of outer programs.
+ * Native and upgradeable programs are matched by their separate reviewed
+ * identity policies. This is still identity-only evidence, never semantic
+ * instruction or CPI approval.
+ */
+export function verifyCompleteOuterProgramIdentity({
+  outerInstructionEvidence, programIdentityEvidence, reviewedUpgradeableAllowlist = []
+}) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length === 0 ||
+      outerInstructionEvidence.length > 256 ||
+      outerInstructionEvidence.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.programId !== "string")) {
+    throw new Error("Outer instruction program set is incomplete or malformed");
+  }
+  const expected = outerInstructionEvidence.map(item => item.programId);
+  const expectedSet = new Set(expected);
+  if (expectedSet.size !== expected.length || expectedSet.size > 50) {
+    throw new Error("Outer instruction program set contains duplicates or exceeds its limit");
+  }
+  if (!programIdentityEvidence ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length !== expectedSet.size) {
+    throw new Error("Finalized program identity evidence does not cover every outer program");
+  }
+  const evidenceIds = programIdentityEvidence.programs.map(item => item?.programId);
+  if (new Set(evidenceIds).size !== evidenceIds.length ||
+      evidenceIds.some(id => !expectedSet.has(id)) ||
+      expected.some(id => !evidenceIds.includes(id))) {
+    throw new Error("Finalized program identity evidence contains missing or unexpected programs");
+  }
+
+  const nativePrograms = programIdentityEvidence.programs.filter(program =>
+    program?.loaderType === "native-loader"
+  );
+  const upgradeablePrograms = programIdentityEvidence.programs.filter(program =>
+    program?.loaderType === "upgradeable-bpf-loader"
+  );
+  if (nativePrograms.length + upgradeablePrograms.length !==
+      programIdentityEvidence.programs.length) {
+    throw new Error("Outer program uses an unsupported or unreviewed loader type");
+  }
+  const base = {
+    ...programIdentityEvidence,
+    programs: nativePrograms
+  };
+  const native = nativePrograms.length
+    ? verifyReviewedNativeProgramIdentities(base)
+    : { matchedPrograms: [] };
+  const upgradeable = upgradeablePrograms.length
+    ? verifyUpgradeableProgramDeploymentAllowlist({
+        ...programIdentityEvidence,
+        programs: upgradeablePrograms
+      }, reviewedUpgradeableAllowlist)
+    : { matchedPrograms: [] };
+
+  return Object.freeze({
+    matched: true,
+    expectedProgramCount: expectedSet.size,
+    matchedPrograms: Object.freeze([
+      ...native.matchedPrograms,
+      ...upgradeable.matchedPrograms
+    ]),
+    semanticInstructionVerification: false,
+    verificationScope: "complete-outer-program-deployment-identity-only"
+  });
+}
+
 function sumOwnedTokenBalance(rows, mint, owner) {
   if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
   let total = 0n;
