@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1224,6 +1224,57 @@ test("native program identity allowlist accepts only reviewed built-ins without 
   assert.throws(() => verifyReviewedNativeProgramIdentities({
     ...identity, programs: [{ ...identity.programs[0], dataLength: 1 }]
   }), /malformed or unsupported/);
+});
+
+test("complete outer-program identity requires an exact reviewed set and never approves semantics", () => {
+  const nativeOwner = "NativeLoader1111111111111111111111111111111";
+  const system = {
+    programId: "11111111111111111111111111111111",
+    accountOwner: nativeOwner, loaderType: "native-loader",
+    executable: true, dataLength: 0
+  };
+  const compute = {
+    programId: "ComputeBudget111111111111111111111111111111",
+    accountOwner: nativeOwner, loaderType: "native-loader",
+    executable: true, dataLength: 0
+  };
+  const evidence = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [system, compute]
+  };
+  const outer = [{ programId: system.programId }, { programId: compute.programId }];
+  const result = verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: evidence
+  });
+  assert.equal(result.matched, true);
+  assert.equal(result.expectedProgramCount, 2);
+  assert.deepEqual(result.matchedPrograms.map(item => item.programId),
+    [system.programId, compute.programId]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "complete-outer-program-deployment-identity-only");
+
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system] }
+  }), /does not cover every outer program/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system, {
+      ...compute, programId: encodeBase58(new Uint8Array(32).fill(112))
+    }] }
+  }), /missing or unexpected programs/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: [...outer, { programId: system.programId }],
+    programIdentityEvidence: evidence
+  }), /duplicates or exceeds its limit/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system, {
+      ...compute, loaderType: "legacy-bpf-loader"
+    }] }
+  }), /unsupported or unreviewed loader type/);
 });
 
 test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
