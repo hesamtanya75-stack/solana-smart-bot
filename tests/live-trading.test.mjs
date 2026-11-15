@@ -207,14 +207,15 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
   assert.equal(result.inputMint, SOL_MINT);
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
-  assert.match(request.url, /receiver=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
-  assert.match(request.url, /excludeRouters=jupiterz/);
-  assert.equal(new URL(request.url).searchParams.get("excludeRouters"), "jupiterz");
+  const orderUrl = new URL(request.url);
+  assert.equal(orderUrl.searchParams.get("taker"), EXPECTED_BOT_WALLET);
+  assert.equal(orderUrl.searchParams.has("receiver"), false);
+  assert.equal(orderUrl.searchParams.get("excludeRouters"), "jupiterz");
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
 
-test("Jupiter order rejects every router except the explicitly constrained Metis route", async () => {
+test("Jupiter order rejects every router except a returned Metis route", async () => {
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
