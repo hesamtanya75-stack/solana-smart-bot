@@ -924,17 +924,17 @@ export default {
             outputMint: order.outputMint,
             inAmount: String(order.inAmount),
             outAmount: String(order.outAmount),
-            otherAmountThreshold: /^\\d+$/.test(String(order.otherAmountThreshold || "")) ? String(order.otherAmountThreshold) : null,
+            otherAmountThreshold: /^\d+$/.test(String(order.otherAmountThreshold || "")) ? String(order.otherAmountThreshold) : null,
             inUsdValue: Number.isFinite(Number(order.inUsdValue)) ? Number(order.inUsdValue) : null,
             outUsdValue: Number.isFinite(Number(order.outUsdValue)) ? Number(order.outUsdValue) : null,
             swapUsdValue: Number.isFinite(Number(order.swapUsdValue)) ? Number(order.swapUsdValue) : null,
-            slippageBps: Number.isSafeInteger(Number(order.slippageBps)) ? Number(order.slippageBps) : null,
+            slippageBps: order.slippageBps != null && Number.isSafeInteger(Number(order.slippageBps)) ? Number(order.slippageBps) : null,
             router: typeof order.router === "string" ? order.router : "unknown",
             priceImpact: Number.isFinite(Number(order.priceImpact)) ? Number(order.priceImpact) : null,
             feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
             feeMint: typeof order.feeMint === "string" ? order.feeMint : null,
-            platformFeeAmount: /^\\d+$/.test(String(order.platformFee?.amount || "")) ? String(order.platformFee.amount) : null,
-            platformFeeBps: Number.isFinite(Number(order.platformFee?.feeBps)) ? Number(order.platformFee.feeBps) : null,
+            platformFeeAmount: /^\d+$/.test(String(order.platformFee?.amount || "")) ? String(order.platformFee.amount) : null,
+            platformFeeBps: order.platformFee?.feeBps != null && Number.isFinite(Number(order.platformFee.feeBps)) ? Number(order.platformFee.feeBps) : null,
             routePlanCount: order.routePlan.length
           });
         } catch (error) {
