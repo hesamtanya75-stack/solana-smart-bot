@@ -135,6 +135,10 @@ test("Jupiter live quote preview is authenticated, bounded, and quote-only", () 
   assert.ok(source.includes('order.transaction !== null'));
   assert.ok(source.includes('quoteOnly: true'));
   assert.ok(source.includes('transactionAvailable: false'));
+  assert.ok(source.includes('otherAmountThreshold:'));
+  assert.ok(source.includes('outUsdValue:'));
+  assert.ok(source.includes('slippageBps:'));
+  assert.ok(source.includes('platformFeeAmount:'));
   assert.equal(source.includes('taker:'), false, "preview must not request an assembled transaction");
   assert.equal(source.includes('signedTransaction'), false, "preview must never sign or submit");
   assert.ok(source.includes('BigInt(amountLamports) > 18446744073709551615n'));
