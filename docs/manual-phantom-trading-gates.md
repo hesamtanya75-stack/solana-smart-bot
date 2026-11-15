@@ -65,6 +65,19 @@ The current official Jupiter V2 documentation establishes these integration cons
 - The /execute response's aggregate input/output fields include applicable swap fees; route-result fields do not necessarily equal the wallet's final token deltas. Final settlement must still be checked independently against finalized chain state and the Phantom owner's balances.
 - Jupiter's managed landing and requestId matching do not replace our independent pre-sign semantic verification, all-in outflow ceiling, or owner-scoped settlement proof.
 
+## CI evidence snapshot (2026-11-15)
+
+Commit `f097be88dadac47eedc7a41970aad9d2ae54e55a` completed these GitHub Actions checks:
+
+- Node tests: success.
+- Cloudflare Worker build validation: success. This is a build-only check; it does not deploy.
+- Devnet read-only cluster/RPC validation: success.
+- Faucet-funded Devnet signing and transfer step: skipped because a dedicated funded Devnet RPC was not available.
+
+The Devnet workflow's overall success therefore proves read-only connectivity and unit/runtime tests only. It does not prove Phantom signing, transaction submission, confirmation, or finalized settlement. Do not treat the skipped step as a successful signed lifecycle test.
+
+The combined commit status also reports a failure for the legacy Deno Deploy status context `deploy/hesamtanya75-stack/solana-smart-bot-17`; that legacy status is separate from the successful Cloudflare build validation and is not evidence of a Cloudflare deployment.
+
 ## Next implementation slice — blocked until evidence is available
 
 1. Build a wallet-bound transaction-intent model from the requested mints, exact input amount, expected minimum output, taker, allowed router, and fee limits.
