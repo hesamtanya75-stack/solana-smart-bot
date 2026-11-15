@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PaperTradingState } from "../paper-trading-state.mjs";
+import Worker from "../worker.js";
 
 class MemoryStorage {
   constructor() { this.values = new Map(); this.tail = Promise.resolve(); }
@@ -220,4 +221,30 @@ test("clearing history preserves the current paper balance", async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.state.balance, 87.5);
   assert.deepEqual(result.body.state.trades, []);
+});
+
+
+test("scheduled cron persists its cycle status through authoritative paper state", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+  const namespace = {
+    idFromName: name => name,
+    get: id => {
+      assert.equal(id, "paper-trading");
+      return instance;
+    }
+  };
+  const pending = [];
+  await Worker.scheduled({}, { PAPER_TRADING_STATE: namespace }, {
+    waitUntil: promise => pending.push(promise)
+  });
+  await Promise.all(pending);
+
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.status, 200);
+  assert.equal(current.body.state.balance, 100);
+  assert.equal(current.body.state.trades.length, 0);
+  assert.ok(Number.isFinite(Date.parse(current.body.state.lastRunAt)));
+  assert.match(current.body.state.lastMessage, /Server cycle complete/);
+  assert.match(current.body.state.lastMessage, /Auto-buy inactive/);
+  assert.equal(current.body.revision, 1);
 });
