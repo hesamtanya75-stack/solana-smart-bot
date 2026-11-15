@@ -393,3 +393,14 @@ Validation at code head f4a6357019066db034a1c46a203d7893b20d97a8:
 - Funded signed Devnet lifecycle: skipped because DEVNET_RPC_URL is not configured; logs explicitly report signing not performed and zero transactions submitted.
 
 PR #27 remains Draft, Open, and Unmerged. No production deployment, Mainnet signing, transaction submission, or live trading was performed or authorized.
+
+
+## Correction: Jupiter receiver must differ from taker — 2026-11-15
+
+A follow-up check against the current official `/order` API reference found that `receiver` is explicitly required to differ from `taker`. The earlier request populated both with the same pinned bot wallet; that was invalid and could cause Jupiter to reject the order request.
+
+The request now omits `receiver` to preserve the single-wallet model and pinned settlement destination. It retains `excludeRouters=jupiterz`, but this parameter alone does **not** guarantee Metis-only routing: Dflow and OKX may still be eligible. The code therefore accepts only a response whose actual `router` field is exactly `metis` and rejects all other router responses. This is a fail-closed selection check, not semantic instruction verification and not a claim that only Metis was eligible upstream.
+
+Regression tests now assert that `taker` is the pinned bot wallet, `receiver` is absent, JupiterZ is excluded, and non-Metis responses are rejected. Node tests: 142 passed, 0 failed, 0 skipped; frontend validation, Cloudflare Worker build-only validation, and Devnet read-only validation completed successfully on code commit `43bceacd631472929659c60e0703ca219e0cbffc`. Funded signed Devnet lifecycle remained skipped because `DEVNET_RPC_URL` is empty; no signing or transaction submission occurred.
+
+Semantic instruction verification remains false. The coordinator remains fail-closed. PR #27 remains Draft and unmerged. No production deployment, merge, Mainnet signing, transaction submission, or live trading was performed.
