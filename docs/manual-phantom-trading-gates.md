@@ -127,3 +127,15 @@ No signing prompt, execute route, automatic trading, Mainnet transaction, merge,
 - The helper intentionally supports only upgradeable BPF deployments in this stage. It rejects other loader classes instead of pretending owner classification is equivalent to a code identity hash.
 - This matcher returns `semanticInstructionVerification: false` unconditionally. It only confirms that a deployment matches a code-owned reviewed identity record. It does not decode any instruction, prove CPI effects, authorize a reservation, or enable Phantom signing.
 - Never pass the allowlist from browser/request input. The remaining implementation must add actual independently reviewed program policies with real deployment hashes and exact instruction/CPI semantics, then bind decoded transaction instructions to those policies. No production program hashes or trust entries were invented or inserted by this change.
+
+## Enabling the funded Devnet lifecycle
+
+The read-only Devnet preflight can pass without credentials. The funded ephemeral-signing transfer remains skipped until a dedicated Devnet RPC endpoint is configured as a GitHub Actions repository secret.
+
+1. Open the repository on GitHub: `hesamtanya75-stack/solana-smart-bot`.
+2. Go to **Settings → Secrets and variables → Actions → New repository secret**.
+3. Set the secret name to exactly `DEVNET_RPC_URL` and paste a dedicated Devnet RPC HTTPS endpoint as its value. Do not commit the endpoint, place it in a workflow file, or send it in chat.
+4. Save the secret, then rerun the **Devnet signed lifecycle validation** workflow from the Actions tab (or push a later PR commit).
+5. Confirm that the step **Verify ephemeral signing and submit a faucet-funded Devnet test transfer** completes successfully. A green overall workflow with that step marked **skipped** is only a read-only preflight pass, not proof of signing or settlement.
+
+The lifecycle uses an ephemeral test key only for a faucet-funded Devnet transfer; it must not use a Phantom seed phrase, production wallet key, or Mainnet endpoint. The Devnet transfer test is separate from swap semantic verification and does not authorize Mainnet trading.
