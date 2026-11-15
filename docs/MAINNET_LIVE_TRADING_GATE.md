@@ -51,3 +51,8 @@ The current $3 per-buy and $5 per-day reservation accounting converts only the S
 ## Not implemented here
 
 No live signer, private-key handling, Jupiter/DEX swap execution, Mainnet transaction submission, or automatic real-money trading is implemented by this branch. Do not add a wallet secret or deposit funds based on this preparation branch.
+
+
+### Explicit priority-fee ceiling configuration
+
+The coordinator requires `LIVE_MAX_PRIORITY_FEE_LAMPORTS` to be explicitly configured as a non-negative safe integer and rejects any computed priority fee above it. There is intentionally no default value and no production ceiling is selected by this repository change. Until an operator reviews the fee policy and configures this value, reservation attempts fail closed. A test-only fixture value is used solely for unit tests and must not be copied as an operational recommendation. This setting alone does not make fee evidence trustworthy: instruction semantics and all-in outflow decoding remain mandatory blockers.
