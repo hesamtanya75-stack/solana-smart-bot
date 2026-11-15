@@ -975,6 +975,21 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 });
 
 
+test("program identity evidence caps combined Program and ProgramData RPC snapshots at 100 accounts", async () => {
+  const instructions = Array.from({ length: 51 }, (_, index) => ({
+    programId: encodeBase58(new Uint8Array(32).fill(index + 1))
+  }));
+  let called = false;
+  await assert.rejects(
+    fetchProgramAccountIdentityEvidence(instructions, async () => {
+      called = true;
+      throw new Error("RPC must not be called for an oversized program set");
+    }),
+    /50-program RPC snapshot limit/
+  );
+  assert.equal(called, false);
+});
+
 test("program identity evidence resolves upgrade authority and hashes finalized deployed code", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(31));
   const programDataAddress = encodeBase58(new Uint8Array(32).fill(77));
