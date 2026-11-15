@@ -131,10 +131,6 @@ function mockLookupTableAccount(owner = "AddressLookupTab1e111111111111111111111
 }
 
 test("Jupiter v0 order resolves finalized ALT addresses before returning route evidence", async () => {
-  const tableKey = (() => {
-    const bytes = Buffer.from([42]);
-    return "11111111111111111111111111111112"; // 32-byte key of repeated 42 bytes is asserted from parser request below
-  })();
   let rpcRequest;
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -158,8 +154,8 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
   assert.equal(result.transactionEvidence.messageVersion, 0);
   assert.equal(result.transactionEvidence.lookupTableResolution, "finalized-resolved");
   assert.equal(result.transactionEvidence.lookupContextSlot, 100);
-  assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["11111111111111111111111111111111"]);
-  assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["11111111111111111111111111111112"]);
+  assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx"]);
+  assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf"]);
   assert.equal(rpcRequest.method, "getMultipleAccounts");
   assert.equal(rpcRequest.params[1].commitment, "finalized");
   assert.equal(result.semanticInstructionVerification, false);
