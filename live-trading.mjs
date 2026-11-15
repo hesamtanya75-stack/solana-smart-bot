@@ -124,9 +124,11 @@ async function getJupiterOrder({
       String(order.inAmount) !== String(amountLamports) ||
       order.inputMint !== inputMint || order.outputMint !== outputMint ||
       order.router !== "metis" ||
-      !/^[0-9]+$/.test(String(order.outAmount || "")) ||
-      BigInt(order.outAmount) <= 0n ||
-      !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
+      !/^(?:0|[1-9][0-9]*)$/.test(String(order.outAmount || "")) ||
+      String(order.outAmount).length > 20 ||
+      BigInt(order.outAmount) <= 0n || BigInt(order.outAmount) > 18446744073709551615n ||
+      (order.feeBps != null && (!Number.isInteger(order.feeBps) || order.feeBps < 0 || order.feeBps > 10000)) ||
+      !Array.isArray(order.routePlan) || order.routePlan.length === 0 || order.routePlan.length > 64) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
