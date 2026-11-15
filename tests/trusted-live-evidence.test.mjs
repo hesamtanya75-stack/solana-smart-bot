@@ -274,6 +274,26 @@ test("ALT resolver fetches finalized tables and resolves writable/readonly addre
   assert.deepEqual(result.readonlyAddresses, [encodeBase58(new Uint8Array(32).fill(8))]);
 });
 
+test("ALT resolver rejects more than 256 aggregate loaded addresses", async () => {
+  const tableKeys = [42, 43].map(value => encodeBase58(new Uint8Array(32).fill(value)));
+  const makeAccount = (start) => {
+    const data = Buffer.alloc(56 + 129 * 32);
+    data.writeUInt32LE(1, 0);
+    data.writeBigUInt64LE(0xffffffffffffffffn, 4);
+    data.writeBigUInt64LE(90n, 12);
+    data[20] = 129;
+    for (let i = 0; i < 129; i++) data.fill(start + i, 56 + i * 32, 56 + (i + 1) * 32);
+    return { owner: "AddressLookupTab1e1111111111111111111111111", data: [data.toString("base64"), "base64"] };
+  };
+  await assert.rejects(resolveJupiterAddressLookupTables(tableKeys.map(accountKey => ({
+    accountKey,
+    writableIndexes: Array.from({ length: 129 }, (_, index) => index),
+    readonlyIndexes: []
+  })), async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [makeAccount(1), makeAccount(130)]
+  } })), /exceeds the 256-account message key limit/);
+});
+
 test("ALT resolver rejects duplicate addresses across loaded writable and readonly keys", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const account = mockLookupTableAccount();
