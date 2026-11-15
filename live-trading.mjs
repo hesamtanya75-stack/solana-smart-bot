@@ -3,7 +3,6 @@
  * Server-side Jupiter V2 order retrieval only; no signing or submission.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 import { isCanonicalPublicKey, validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
@@ -149,6 +148,6 @@ async function executeLiveOrder() {
 }
 
 export {
-  SOL_MINT, EXPECTED_BOT_WALLET, readLivePolicy,
+  SOL_MINT, readLivePolicy,
   evaluateLiveTradeEligibility, getJupiterOrder, executeLiveOrder
 };
