@@ -333,6 +333,10 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   // Config values are encoded in ascending bit order: priority fee (u64),
   // compute-unit limit (u32), loaded-account data limit (u32), heap size (u32).
   let configOffset = cursor;
+  const priorityFeeLamports = (configMask & 0x3) !== 0
+    ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      .getBigUint64(configOffset, true)
+    : 0n;
   if ((configMask & 0x3) !== 0) configOffset += 8;
   const computeUnitLimit = (configMask & 0x4) !== 0
     ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
@@ -351,12 +355,14 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     throw new Error("V1 transaction loaded-data limit is outside the supported range");
   }
   // Solana requires a 1 KiB multiple in the inclusive 32–256 KiB range.
+  let requestedHeapFrameBytes = null;
   if ((configMask & 0x10) !== 0) {
-    const heapSize = (bytes[configOffset] |
+    requestedHeapFrameBytes = (bytes[configOffset] |
       (bytes[configOffset + 1] << 8) |
       (bytes[configOffset + 2] << 16) |
       (bytes[configOffset + 3] << 24)) >>> 0;
-    if (heapSize < 32768 || heapSize > 262144 || heapSize % 1024 !== 0) {
+    if (requestedHeapFrameBytes < 32768 || requestedHeapFrameBytes > 262144 ||
+        requestedHeapFrameBytes % 1024 !== 0) {
       throw new Error("V1 Jupiter transaction heap size is outside the valid range");
     }
   }
@@ -417,6 +423,10 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     instructionCount,
     addressLookupCount: 0,
     messageVersion: 1,
+    computeUnitLimit,
+    loadedAccountsDataSizeLimit,
+    requestedHeapFrameBytes,
+    priorityFeeLamports: priorityFeeLamports.toString(),
     semanticInstructionVerification: false
   };
 }
@@ -958,6 +968,117 @@ export async function validateAndResolveUnsignedJupiterTransaction(
     resolvedReadonlyAddresses: resolution.readonlyAddresses,
     outerInstructionEvidence,
     semanticInstructionVerification: false
+  });
+}
+
+
+const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+
+/**
+ * Decodes and caps the explicit priority fee component. Legacy/v0 use
+ * Compute Budget instructions; v1 stores the absolute fee in message config.
+ * This is a fee sub-check only, not complete all-in outflow verification.
+ */
+export function verifyComputeBudgetPriorityFee({
+  messageVersion, outerInstructionEvidence = [],
+  computeUnitLimit: v1ComputeUnitLimit = null,
+  priorityFeeLamports: v1PriorityFeeLamports = "0",
+  maxPriorityFeeLamports
+}) {
+  if (!isU64DecimalString(String(maxPriorityFeeLamports), true) ||
+      !Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("Priority fee cap or instruction evidence is invalid");
+  }
+  const maximumPriorityFee = BigInt(maxPriorityFeeLamports);
+  let computeUnitLimit = null;
+  let computeUnitPriceMicroLamports = 0n;
+  let requestedHeapFrameBytes = null;
+  let loadedAccountsDataSizeLimit = null;
+  let priorityFee;
+
+  if (messageVersion === 1) {
+    if (outerInstructionEvidence.some(instruction =>
+      instruction?.programId === COMPUTE_BUDGET_PROGRAM_ID)) {
+      throw new Error("V1 transaction must use message config, not Compute Budget instructions");
+    }
+    if (!Number.isInteger(v1ComputeUnitLimit) ||
+        v1ComputeUnitLimit < 1 || v1ComputeUnitLimit > 1400000 ||
+        !isU64DecimalString(String(v1PriorityFeeLamports), true)) {
+      throw new Error("V1 message compute budget or priority fee is invalid");
+    }
+    computeUnitLimit = v1ComputeUnitLimit;
+    priorityFee = BigInt(v1PriorityFeeLamports);
+  } else if (messageVersion === 0 || messageVersion === "legacy") {
+    const seen = new Set();
+    for (const instruction of outerInstructionEvidence) {
+      if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+        throw new Error("Outer instruction evidence contains a malformed entry");
+      }
+      if (instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID) continue;
+      if (!Array.isArray(instruction.accounts) || instruction.accounts.length !== 0 ||
+          typeof instruction.dataBase64 !== "string" ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+        throw new Error("Compute Budget instruction accounts or data are malformed");
+      }
+      const binary = atob(instruction.dataBase64);
+      const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== instruction.dataBase64 || data.length < 1) {
+        throw new Error("Compute Budget instruction data is not canonical");
+      }
+      const variant = data[0];
+      const key = String(variant);
+      if (seen.has(key)) throw new Error("Duplicate Compute Budget instruction variant");
+      seen.add(key);
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      if (variant === 1) {
+        if (data.length !== 5) throw new Error("RequestHeapFrame instruction has invalid data length");
+        requestedHeapFrameBytes = view.getUint32(1, true);
+        if (requestedHeapFrameBytes < 32768 || requestedHeapFrameBytes > 262144 ||
+            requestedHeapFrameBytes % 1024 !== 0) {
+          throw new Error("RequestHeapFrame value is outside the supported range");
+        }
+      } else if (variant === 2) {
+        if (data.length !== 5) throw new Error("SetComputeUnitLimit instruction has invalid data length");
+        computeUnitLimit = view.getUint32(1, true);
+        if (computeUnitLimit < 1 || computeUnitLimit > 1400000) {
+          throw new Error("SetComputeUnitLimit value is outside the supported range");
+        }
+      } else if (variant === 3) {
+        if (data.length !== 9) throw new Error("SetComputeUnitPrice instruction has invalid data length");
+        computeUnitPriceMicroLamports = view.getBigUint64(1, true);
+      } else if (variant === 4) {
+        if (data.length !== 5) throw new Error("SetLoadedAccountsDataSizeLimit instruction has invalid data length");
+        loadedAccountsDataSizeLimit = view.getUint32(1, true);
+        if (loadedAccountsDataSizeLimit < 1 || loadedAccountsDataSizeLimit > 64 * 1024 * 1024) {
+          throw new Error("SetLoadedAccountsDataSizeLimit value is outside the supported range");
+        }
+      } else {
+        throw new Error("Unsupported Compute Budget instruction variant");
+      }
+    }
+    if (computeUnitLimit === null) {
+      throw new Error("Legacy/v0 transaction must explicitly set a bounded compute-unit limit");
+    }
+    priorityFee =
+      (computeUnitPriceMicroLamports * BigInt(computeUnitLimit) + 999999n) / 1000000n;
+  } else {
+    throw new Error("Transaction message version is unsupported for priority-fee verification");
+  }
+
+  if (priorityFee > maximumPriorityFee) {
+    throw new Error("Transaction priority fee exceeds the configured maximum");
+  }
+  return Object.freeze({
+    verified: true,
+    messageVersion,
+    computeUnitLimit,
+    computeUnitPriceMicroLamports: computeUnitPriceMicroLamports.toString(),
+    priorityFeeLamports: priorityFee.toString(),
+    maxPriorityFeeLamports: maximumPriorityFee.toString(),
+    requestedHeapFrameBytes,
+    loadedAccountsDataSizeLimit,
+    verificationScope: "explicit-compute-budget-and-priority-fee-only"
   });
 }
 
