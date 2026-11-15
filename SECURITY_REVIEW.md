@@ -439,3 +439,12 @@ References:
 - Jupiter Build: https://developers.jup.ag/docs/swap/build
 - Jupiter Transaction Versions: https://developers.jup.ag/docs/swap/advanced/transaction-versions
 - Jupiter October 2026 changelog: https://developers.jup.ag/changelog/2026-10
+
+## Review update — 2026-11-15 (latest Devnet attempt)
+
+- The Devnet workflow now attempts the signed lifecycle test on every PR run. It uses `DEVNET_RPC_URL` when configured and otherwise falls back to the official public Devnet RPC; it no longer silently skips the funded test just because the secret is absent.
+- On commit `31ed776088639140bf40b3aff91e11477747f721`, Node/runtime tests passed **152/152**, the Devnet cluster identity and read-only RPC checks passed, and the Cloudflare Worker dry-run build passed.
+- The funded lifecycle was actually attempted, but the public Devnet RPC faucet returned HTTP **410 Gone**. The workflow correctly failed the funded step and reported that offline signature verification is not an on-chain lifecycle pass. No funded transfer was submitted.
+- To complete this test, configure a dedicated Devnet RPC endpoint with working faucet/airdrop support as the GitHub Actions repository secret `DEVNET_RPC_URL`. Never put the endpoint or API key in source code or chat.
+- Semantic instruction verification is still **not implemented**. The transaction parser and ALT resolver prove wire structure and lookup-table resolution only. Jupiter's current V2 `/order` path is a multi-router endpoint; accepting a response labelled `metis` is not a substitute for decoding the Jupiter instruction, every downstream AMM CPI, and all account/mint/amount roles against pinned, versioned schemas. The coordinator therefore continues to reject reservations unless `semanticInstructionVerification === true` and `routeVerification === "semantically-verified"`.
+- No Mainnet signing, submission, live trading, merge, or production deployment was performed. Keep PR #27 Draft and unmerged.
