@@ -500,8 +500,14 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
       readonly: table.readonlyIndexes.map(index => addresses[index])
     });
   }
+  // Solana compiles loaded account keys as all writable addresses first,
+  // followed by all readonly addresses, preserving table order within each set.
+  const writableAddresses = resolved.flatMap(table => table.writable);
+  const readonlyAddresses = resolved.flatMap(table => table.readonly);
   return Object.freeze({
     contextSlot,
+    writableAddresses: Object.freeze(writableAddresses),
+    readonlyAddresses: Object.freeze(readonlyAddresses),
     tables: Object.freeze(resolved.map(table => Object.freeze({
       ...table,
       writable: Object.freeze(table.writable),
