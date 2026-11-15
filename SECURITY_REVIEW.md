@@ -334,3 +334,27 @@ Reviewed the current application code at commit `3e7b504438515ed1d5417feb5a83227
 - CI for code commit `3e7b504438515ed1d5417feb5a83227c311623c6`: Node tests **139 passed, 0 failed**; frontend validation **success**; Cloudflare Worker dry-run build **success**; Devnet read-only workflow **success**, with funded transfer skipped. These results do not prove production runtime configuration or a signed transaction lifecycle.
 
 **Decision unchanged:** PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved. Keep all semantic-verification gates and the disabled execution path fail-closed.
+
+## Jupiter V2 router coverage and semantic-verification boundary — 2026-11-15
+
+The current Jupiter V2 documentation was checked against the transaction parser and order integration. It confirms an important constraint on any safe semantic decoder:
+
+- `/swap/v2/order` without `taker` is quote-only and returns no assembled transaction. Supplying `taker` is required to receive a transaction. The current sell-route probe intentionally omits `taker`, so it remains a price/route quote only and cannot prove that a wallet-specific executable exit transaction is safe.
+- The Meta-Aggregator `/order` path can select among **Metis, JupiterZ RFQ, Dflow, and OKX**. The response identifies the selected router. Its transaction version is not uniform: v1 is currently limited to eligible non-gasless Metis orders when requested as a supported ceiling; other routers and gasless orders return v0.
+- The alternative `/build` path returns raw instructions and ALT data but is **Metis-only**; it is not interchangeable with the multi-router `/order` path. Jupiter documents `/execute` for signed `/order` transactions, not `/build` transactions.
+- Consequently, a decoder that assumes one Jupiter program/discriminator/account layout, or that trusts `routePlan`/router labels without decoding the returned compiled instructions and resolved account keys, would not cover the advertised order surface. The current parser's structural validation and finalized ALT resolution are useful prerequisites, but do not prove instruction intent.
+
+### Current safe state
+
+- Legacy/v0 structural parsing and finalized ALT resolution are integrated for transaction-bearing order responses. V1 parsing is structural and has no ALT vector.
+- Resolved ALT keys remain untrusted as instruction semantics until each compiled instruction is decoded against a pinned, versioned allowlist for the actual selected router and every permitted downstream program.
+- The verifier must bind the decoded instruction sequence to immutable order intent: exact input/output mints and raw amounts, pinned taker/receiver, token-account owners, allowed token programs, fees/tips, and permitted account roles. Unknown routers, programs, discriminators, account layouts, or extra value-moving instructions must reject.
+- No trustworthy, complete, version-pinned decoder/allowlist for all four Meta-Aggregator router families is present in this repository. Therefore `semanticInstructionVerification` must remain `false`, route status must not be promoted to semantically verified, and the coordinator must continue rejecting new reservations. No heuristic or router-label-only shortcut is acceptable.
+
+Official references checked:
+- Jupiter Order & Execute: https://developers.jup.ag/docs/swap/order-and-execute
+- Jupiter Swap API overview (Meta-Aggregator versus Metis-only Router path): https://developers.jup.ag/docs/swap
+- Jupiter /order API reference: https://developers.jup.ag/docs/api-reference/swap/order
+- Jupiter /build API reference: https://developers.jup.ag/docs/api-reference/swap/build
+
+**Decision unchanged:** this is a documentation-only security clarification. No transaction signing, submission, live-trading path, merge, or production deployment is authorized. PR #27 remains Draft and unmerged.
