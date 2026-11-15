@@ -327,6 +327,8 @@ export class AuthGuard {
       state.challenges ||= {};
       for (const [id, challenge] of Object.entries(state.challenges)) {
         if (!Number.isSafeInteger(challenge?.createdAt) ||
+            !Number.isSafeInteger(challenge?.attempts) ||
+            challenge.attempts < 0 || challenge.attempts >= 5 ||
             now - challenge.createdAt > 300000 || now < challenge.createdAt) {
           delete state.challenges[id];
         }
@@ -361,7 +363,12 @@ export class AuthGuard {
         delete state.challenges[challengeId];
         return { ok: false, reason: "expired" };
       }
-      if (Number(challenge.attempts || 0) >= 5) {
+      if (!Number.isSafeInteger(challenge.attempts) ||
+          challenge.attempts < 0 || challenge.attempts >= 5) {
+        delete state.challenges[challengeId];
+        return { ok: false, reason: "invalid-state" };
+      }
+      if (challenge.attempts >= 5) {
         delete state.challenges[challengeId];
         return { ok: false, reason: "attempts-exhausted" };
       }
