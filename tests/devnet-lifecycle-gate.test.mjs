@@ -25,4 +25,5 @@ test("funded Devnet lifecycle requires a dedicated RPC and is explicitly skipped
   assert.match(skippedStep, /status: "skipped"/);
   assert.match(skippedStep, /signing: "not performed"/);
   assert.match(skippedStep, /transactionsSubmitted: 0/);
+  assert.doesNotMatch(skippedStep, /`DEVNET_RPC_URL`/);
 });
