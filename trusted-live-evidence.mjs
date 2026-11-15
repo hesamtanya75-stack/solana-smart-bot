@@ -45,6 +45,44 @@ function isCanonicalPublicKey(value) {
   }
 }
 
+function validateBuildRoutePlan(routePlan) {
+  return Object.freeze(routePlan.map((step, index) => {
+    const info = step?.swapInfo;
+    const amountFields = ["inAmount", "outAmount"];
+    if (!step || typeof step !== "object" || Array.isArray(step) ||
+        !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
+        (step.bps != null && (!Number.isInteger(step.bps) || step.bps < 1 || step.bps > 10000)) ||
+        !info || typeof info !== "object" || Array.isArray(info) ||
+        !isCanonicalPublicKey(info.ammKey) ||
+        !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
+        info.inputMint === info.outputMint ||
+        amountFields.some(field => !/^\\d+$/.test(String(info[field] ?? "")) ||
+          String(info[field]).length > 20 || BigInt(info[field]) <= 0n ||
+          BigInt(info[field]) > 18446744073709551615n) ||
+        (info.feeAmount != null && (!/^\\d+$/.test(String(info.feeAmount)) ||
+          String(info.feeAmount).length > 20 || BigInt(info.feeAmount) > 18446744073709551615n)) ||
+        (info.feeMint != null && !isCanonicalPublicKey(info.feeMint)) ||
+        ((info.feeAmount == null) !== (info.feeMint == null))) {
+      throw new Error("Jupiter build routePlan[" + index + "] is malformed");
+    }
+    return Object.freeze({
+      percent: step.percent,
+      ...(step.bps == null ? {} : { bps: step.bps }),
+      swapInfo: Object.freeze({
+        ammKey: info.ammKey,
+        inputMint: info.inputMint,
+        outputMint: info.outputMint,
+        inAmount: String(info.inAmount),
+        outAmount: String(info.outAmount),
+        ...(info.feeAmount == null ? {} : {
+          feeAmount: String(info.feeAmount),
+          feeMint: info.feeMint
+        })
+      })
+    });
+  }));
+}
+
 function validateBuildInstruction(instruction, name) {
   if (!instruction || typeof instruction !== "object" ||
       !isCanonicalPublicKey(instruction.programId) ||
@@ -93,6 +131,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       BigInt(build.otherAmountThreshold) > 18446744073709551615n ||
       !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
       !Array.isArray(build.routePlan) || build.routePlan.length === 0 || build.routePlan.length > 64 ||
+      !["ExactIn", "ExactOut"].includes(build.swapMode) ||
       !Array.isArray(build.computeBudgetInstructions) || build.computeBudgetInstructions.length > 64 ||
       !Array.isArray(build.setupInstructions) || build.setupInstructions.length > 64 ||
       !Array.isArray(build.otherInstructions) || build.otherInstructions.length > 64 ||
@@ -109,6 +148,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   if (version !== "0" && version !== "1") {
     throw new Error("Jupiter build transaction version is unsupported");
   }
+  const routePlan = validateBuildRoutePlan(build.routePlan);
   const validateList = (items, name) => Object.freeze(items.map((item, index) =>
     validateBuildInstruction(item, name + "[" + index + "]")));
   const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
@@ -148,6 +188,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     outAmount: String(build.outAmount),
     otherAmountThreshold: String(build.otherAmountThreshold),
     slippageBps: build.slippageBps,
+    swapMode: build.swapMode,
+    routePlan,
     transactionVersion: Number(version),
     computeBudgetInstructions,
     setupInstructions,
