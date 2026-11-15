@@ -1374,6 +1374,9 @@ test("classic SPL Token decoder accepts only Transfer and TransferChecked with s
     ...transfer, dataBase64: Buffer.from([9, ...transferData.subarray(1)]).toString("base64")
   }]), /only Transfer and TransferChecked are reviewed/);
   assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, programId: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  }]), /Token-2022 instructions are unsupported/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
     ...transfer, accounts: [
       { ...transfer.accounts[0], isWritable: false },
       transfer.accounts[1], transfer.accounts[2]
