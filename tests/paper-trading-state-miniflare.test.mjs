@@ -1,15 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Miniflare } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
 test("PaperTradingState uses real Durable Object transactions and imports KV once", async () => {
-  const mf = new Miniflare({
+  const mf = new Miniflare(convertV4MiniflareOptions({
     modules: true,
     scriptPath: "./tests/fixtures/paper-trading-state-runtime.mjs",
     compatibilityDate: "2026-05-03",
     durableObjects: { PAPER_TRADING_STATE: "PaperTradingState" },
     kvNamespaces: ["BOT_STATE"]
-  });
+  }));
 
   try {
     const kv = await mf.getKVNamespace("BOT_STATE");
