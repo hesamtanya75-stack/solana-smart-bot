@@ -1048,11 +1048,11 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
       data: [data.toString("base64"), "base64"]
     };
   };
-  const makeProgramData = ({ owner = loaderOwner, tag = 3 } = {}) => {
+  const makeProgramData = ({ owner = loaderOwner, tag = 3, authorityOption = 0 } = {}) => {
     const data = Buffer.alloc(49);
     data.writeUInt32LE(tag, 0);
     data.writeBigUInt64LE(1200n, 4);
-    data[12] = 0;
+    data[12] = authorityOption;
     data.set([0x7f, 0x45, 0x4c, 0x46], 13);
     return {
       owner, executable: false, space: data.length,
@@ -1060,8 +1060,10 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
     };
   };
   for (const badData of [
+    null,
     makeProgramData({ owner: encodeBase58(new Uint8Array(32).fill(90)) }),
-    makeProgramData({ tag: 9 })
+    makeProgramData({ tag: 9 }),
+    makeProgramData({ authorityOption: 2 })
   ]) {
     let calls = 0;
     await assert.rejects(() => fetchProgramAccountIdentityEvidence(
@@ -1076,7 +1078,7 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
           context: { slot: 1300 + calls }, value
         } });
       }
-    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag/);
+    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag|ProgramData upgrade authority option is malformed/);
   }
 
   let calls = 0;
