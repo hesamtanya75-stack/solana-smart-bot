@@ -300,3 +300,37 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   assert.equal(changed.status, 400);
   assert.match(changed.body.error, /immutable order intent/);
 });
+
+
+test("reservation history is bounded without discarding idempotency records", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const original = validReservation();
+  const first = await post(coordinator, "/reserve", original);
+  assert.equal(first.status, 200);
+
+  await coordinator.withState(state => {
+    for (let i = 1; i < 1000; i++) {
+      state.reservations["capacity-key-" + String(i).padStart(4, "0")] = {
+        idempotencyKey: "capacity-key-" + String(i).padStart(4, "0"),
+        intentFingerprint: "historical-" + i,
+        amountCents: 0,
+        day: new Date().toISOString().slice(0, 10),
+        status: "failed"
+      };
+    }
+  });
+
+  await post(coordinator, "/kill-switch", { enabled: true });
+  const duplicate = await post(coordinator, "/reserve", original);
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.duplicate, true);
+
+  const blocked = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "capacity-new-order"
+  }));
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.body.error, /history capacity reached/);
+  const status = await coordinator.status();
+  assert.equal(status.limits.maxReservations, 1000);
+});
