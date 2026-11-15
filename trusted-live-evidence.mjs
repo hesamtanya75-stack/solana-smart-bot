@@ -35,6 +35,131 @@ function encodeBase58(bytes) {
   return encoded || "1";
 }
 
+function isCanonicalPublicKey(value) {
+  if (typeof value !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) return false;
+  try {
+    const decoded = decodeBase58(value);
+    return decoded.length === 32 && encodeBase58(decoded) === value;
+  } catch {
+    return false;
+  }
+}
+
+function validateBuildInstruction(instruction, name) {
+  if (!instruction || typeof instruction !== "object" ||
+      !isCanonicalPublicKey(instruction.programId) ||
+      !Array.isArray(instruction.accounts) ||
+      typeof instruction.data !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.data)) {
+    throw new Error("Jupiter build " + name + " instruction is malformed");
+  }
+  const data = Uint8Array.from(atob(instruction.data), char => char.charCodeAt(0));
+  if (btoa(String.fromCharCode(...data)) !== instruction.data) {
+    throw new Error("Jupiter build " + name + " instruction data is non-canonical");
+  }
+  const accounts = instruction.accounts.map((account) => {
+    if (!account || typeof account !== "object" ||
+        !isCanonicalPublicKey(account.pubkey) ||
+        typeof account.isSigner !== "boolean" ||
+        typeof account.isWritable !== "boolean") {
+      throw new Error("Jupiter build " + name + " instruction account is malformed");
+    }
+    return Object.freeze({
+      pubkey: account.pubkey,
+      isSigner: account.isSigner,
+      isWritable: account.isWritable
+    });
+  });
+  return Object.freeze({ programId: instruction.programId, accounts: Object.freeze(accounts), data: instruction.data });
+}
+
+/**
+ * Validates the documented Jupiter Swap V2 /build response envelope only.
+ * It does not decode instruction semantics or establish program trust.
+ */
+export function validateJupiterBuildResponse(build, expected = {}) {
+  if (!build || typeof build !== "object" ||
+      !isCanonicalPublicKey(build.inputMint) ||
+      !isCanonicalPublicKey(build.outputMint) ||
+      build.inputMint === build.outputMint ||
+      (expected.inputMint && build.inputMint !== expected.inputMint) ||
+      (expected.outputMint && build.outputMint !== expected.outputMint) ||
+      !/^\d+$/.test(String(build.inAmount ?? "")) ||
+      !/^\d+$/.test(String(build.outAmount ?? "")) ||
+      BigInt(build.inAmount) <= 0n || BigInt(build.outAmount) <= 0n ||
+      !/^\d+$/.test(String(build.otherAmountThreshold ?? "")) ||
+      !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
+      !Array.isArray(build.routePlan) || build.routePlan.length === 0 ||
+      !Array.isArray(build.computeBudgetInstructions) ||
+      !Array.isArray(build.setupInstructions) ||
+      !Array.isArray(build.otherInstructions) ||
+      !Object.prototype.hasOwnProperty.call(build, "cleanupInstruction") ||
+      !Object.prototype.hasOwnProperty.call(build, "tipInstruction") ||
+      !build.blockhashWithMetadata || !Array.isArray(build.blockhashWithMetadata.blockhash) ||
+      build.blockhashWithMetadata.blockhash.length !== 32 ||
+      !build.blockhashWithMetadata.blockhash.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255) ||
+      !Number.isSafeInteger(build.blockhashWithMetadata.lastValidBlockHeight) ||
+      build.blockhashWithMetadata.lastValidBlockHeight <= 0) {
+    throw new Error("Jupiter build response envelope is incomplete or inconsistent");
+  }
+  const version = String(build.transactionVersion ?? "0");
+  if (version !== "0" && version !== "1") {
+    throw new Error("Jupiter build transaction version is unsupported");
+  }
+  const validateList = (items, name) => Object.freeze(items.map((item, index) =>
+    validateBuildInstruction(item, name + "[" + index + "]")));
+  const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
+  const setupInstructions = validateList(build.setupInstructions, "setup");
+  const swapInstruction = validateBuildInstruction(build.swapInstruction, "swap");
+  const cleanupInstruction = build.cleanupInstruction === null
+    ? null : validateBuildInstruction(build.cleanupInstruction, "cleanup");
+  const otherInstructions = validateList(build.otherInstructions, "other");
+  const tipInstruction = build.tipInstruction === null
+    ? null : validateBuildInstruction(build.tipInstruction, "tip");
+  const rawAlts = build.addressesByLookupTableAddress;
+  if (rawAlts !== null && (typeof rawAlts !== "object" || Array.isArray(rawAlts))) {
+    throw new Error("Jupiter build lookup-table map is malformed");
+  }
+  const lookupTables = {};
+  for (const [table, addresses] of Object.entries(rawAlts || {})) {
+    if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) ||
+        !addresses.every(isCanonicalPublicKey) || new Set(addresses).size !== addresses.length) {
+      throw new Error("Jupiter build lookup-table addresses are malformed");
+    }
+    lookupTables[table] = Object.freeze([...addresses]);
+  }
+  if (version === "1" && (computeBudgetInstructions.length !== 0 ||
+      Object.keys(lookupTables).length !== 0 ||
+      !/^\d+$/.test(String(build.computeUnitPrice ?? "")))) {
+    throw new Error("Jupiter v1 build response has invalid inline-account compute-budget fields");
+  }
+  if (expected.amount != null && String(build.inAmount) !== String(expected.amount)) {
+    throw new Error("Jupiter build input amount does not match the requested amount");
+  }
+  return Object.freeze({
+    inputMint: build.inputMint,
+    outputMint: build.outputMint,
+    inAmount: String(build.inAmount),
+    outAmount: String(build.outAmount),
+    otherAmountThreshold: String(build.otherAmountThreshold),
+    slippageBps: build.slippageBps,
+    transactionVersion: Number(version),
+    computeBudgetInstructions,
+    setupInstructions,
+    swapInstruction,
+    cleanupInstruction,
+    otherInstructions,
+    tipInstruction,
+    addressesByLookupTableAddress: Object.freeze(lookupTables),
+    blockhashWithMetadata: Object.freeze({
+      blockhash: Object.freeze([...build.blockhashWithMetadata.blockhash]),
+      lastValidBlockHeight: build.blockhashWithMetadata.lastValidBlockHeight
+    }),
+    semanticInstructionVerification: false,
+    routeVerification: "build-envelope-only"
+  });
+}
+
 function readShortVector(bytes, offset) {
   let value = 0, shift = 0, cursor = offset;
   for (let i = 0; i < 3; i++) {
