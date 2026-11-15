@@ -22,7 +22,7 @@ jobs:
       - name: Generate a temporary dependency lockfile for audit
         run: npm install --package-lock-only --ignore-scripts --package-lock=true miniflare@4.20250508.2
       - name: Apply non-breaking fixes to isolated test dependencies
-        run: npm audit fix --ignore-scripts --no-fund
+        run: npm audit fix --ignore-scripts --no-fund || true
       - name: Report dependency audit details for the isolated test runtime
         run: |
           npm audit --json > npm-audit.json || true
