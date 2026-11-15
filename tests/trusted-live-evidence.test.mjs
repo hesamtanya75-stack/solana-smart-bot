@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
-const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
   let number = 0n;
   for (const char of value) number = number * 58n +
@@ -925,11 +925,27 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint,
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl);
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+});
+
+test("settlement proof requires the connected Phantom owner explicitly", async () => {
+  let rpcCalled = false;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature: encodeBase58(new Uint8Array(64).fill(7)),
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, async () => {
+    rpcCalled = true;
+    throw new Error("RPC must not run without an explicit wallet owner");
+  }), /incomplete or invalid/);
+  assert.equal(rpcCalled, false);
 });
 
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
@@ -964,7 +980,8 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
   };
   await assert.rejects(
     verifyFinalizedJupiterSettlement({
-      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
+      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345",
+      expectedOwner: BOT_WALLET
     }, fetchImpl),
     /not the finalized transaction fee payer/
   );
@@ -1023,7 +1040,8 @@ test("settlement proof rejects confirmed but non-finalized signatures", async ()
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl), /not successfully finalized/);
 });
 
