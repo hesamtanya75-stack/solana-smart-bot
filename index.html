@@ -304,7 +304,7 @@ main>.panel{
 <button id="autoDiscover">🔎 دۆزینەوەی خۆکاری کۆینە نوێیەکان</button>
 <div id="discoverStatus"></div>
 <div id="discoverList"></div><input id="mint" placeholder="ناونیشانی Mint لێرە دابنێ" autocomplete="off">
-<button id="scan" onclick="scanToken()">پشکنینی کۆین</button>
+<button id="scan">پشکنینی کۆین</button>
 <div id="status"></div>
 </div>
 
@@ -501,6 +501,8 @@ async function discoverTokens() {
 
 document.getElementById("autoDiscover")
   .addEventListener("click", discoverTokens);
+document.getElementById("scan")
+  .addEventListener("click", scanToken);
 async function scanToken(){
  window.demoBuyAllowed=false;
  window.demoBuyBlockReasons=["پشکنین تەواو نییە."];
