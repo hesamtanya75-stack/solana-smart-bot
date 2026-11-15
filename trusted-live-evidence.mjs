@@ -1187,6 +1187,99 @@ export async function fetchProgramAccountIdentityEvidence(
   });
 }
 
+
+/**
+ * Matches finalized upgradeable-program provenance against a separately
+ * reviewed, versioned allowlist. The allowlist must be a code-owned constant,
+ * never request/browser input. A match binds only deployment identity; it
+ * deliberately does not authorize instruction semantics or CPI behavior.
+ */
+export function verifyUpgradeableProgramDeploymentAllowlist(
+  programIdentityEvidence, reviewedAllowlist
+) {
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  const validDigest = value => typeof value === "string" &&
+    /^[a-f0-9]{64}$/.test(value);
+
+  if (!programIdentityEvidence ||
+      programIdentityEvidence.verificationScope !==
+        "finalized-program-identity-and-upgradeable-code-hash-evidence-only" ||
+      programIdentityEvidence.semanticInstructionVerification !== false ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length === 0 ||
+      programIdentityEvidence.programs.length > 50 ||
+      !Array.isArray(reviewedAllowlist) ||
+      reviewedAllowlist.length === 0 ||
+      reviewedAllowlist.length > 50) {
+    throw new Error("Reviewed program deployment evidence or allowlist is incomplete");
+  }
+
+  const policyByProgram = new Map();
+  for (const policy of reviewedAllowlist) {
+    if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+        !validAddress(policy.programId) ||
+        policy.loaderType !== "upgradeable-bpf-loader" ||
+        !validDigest(policy.deployedCodeSha256) ||
+        !(policy.upgradeAuthority === null || validAddress(policy.upgradeAuthority)) ||
+        typeof policy.immutable !== "boolean" ||
+        policy.immutable !== (policy.upgradeAuthority === null) ||
+        typeof policy.policyId !== "string" ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(policy.policyId) ||
+        typeof policy.policyVersion !== "string" ||
+        !/^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(policy.policyVersion) ||
+        !validDigest(policy.instructionPolicySha256) ||
+        policyByProgram.has(policy.programId)) {
+      throw new Error("Reviewed program deployment allowlist entry is malformed or duplicated");
+    }
+    policyByProgram.set(policy.programId, policy);
+  }
+
+  const seenPrograms = new Set();
+  const matchedPrograms = programIdentityEvidence.programs.map(program => {
+    if (!program || typeof program !== "object" || Array.isArray(program) ||
+        !validAddress(program.programId) ||
+        seenPrograms.has(program.programId) ||
+        program.loaderType !== "upgradeable-bpf-loader" ||
+        program.executable !== true ||
+        !validAddress(program.programDataAddress) ||
+        !validDigest(program.deployedCodeSha256) ||
+        !Number.isSafeInteger(program.deployedCodeLength) ||
+        program.deployedCodeLength < 64 ||
+        !(program.upgradeAuthority === null || validAddress(program.upgradeAuthority)) ||
+        typeof program.immutable !== "boolean" ||
+        program.immutable !== (program.upgradeAuthority === null)) {
+      throw new Error("Finalized upgradeable program identity evidence is malformed or unsupported");
+    }
+    seenPrograms.add(program.programId);
+    const policy = policyByProgram.get(program.programId);
+    if (!policy ||
+        policy.loaderType !== program.loaderType ||
+        policy.deployedCodeSha256 !== program.deployedCodeSha256 ||
+        policy.upgradeAuthority !== program.upgradeAuthority ||
+        policy.immutable !== program.immutable) {
+      throw new Error("Finalized program deployment does not match the reviewed allowlist");
+    }
+    return Object.freeze({
+      programId: program.programId,
+      policyId: policy.policyId,
+      policyVersion: policy.policyVersion,
+      instructionPolicySha256: policy.instructionPolicySha256,
+      deployedCodeSha256: program.deployedCodeSha256,
+      upgradeAuthority: program.upgradeAuthority,
+      immutable: program.immutable
+    });
+  });
+
+  return Object.freeze({
+    matched: true,
+    matchedPrograms: Object.freeze(matchedPrograms),
+    semanticInstructionVerification: false,
+    verificationScope: "reviewed-upgradeable-deployment-allowlist-only"
+  });
+}
+
 function sumOwnedTokenBalance(rows, mint, owner) {
   if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
   let total = 0n;
