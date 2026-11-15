@@ -237,3 +237,19 @@ Validation for the code head before this documentation addendum, commit 3e41b68d
 - Devnet workflow: **success**; read-only checks passed, but the funded signed transfer step was **skipped** because DEVNET_RPC_URL is not configured.
 
 The Devnet result does not establish a signed transaction lifecycle. This fix does not resolve semantic Jupiter instruction/ALT verification, settlement proof, emergency-stop operator separation, or the absence of a trusted production caller. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
+
+
+## AuthGuard hardening and branch-head verification — 2026-11-15
+
+Reviewed the current AuthGuard and Worker authentication routes after the MFA challenge-state hardening.
+
+- AuthGuard MFA challenge records now fail closed when persisted attempt counters are missing, non-integer, negative, or outside the supported range. Challenge creation also prunes malformed counters rather than retaining them.
+- Added a regression test proving a malformed persisted attempt counter invalidates the challenge and cannot complete MFA.
+- Re-reviewed Worker route ordering: same-origin protection runs before login and private API routes; private API session authorization precedes private handlers; TOTP setup and confirmation remain behind session authorization. No authentication bypass was identified in this source review.
+- Current branch head: `f3463de50b89467a116a85f70e3b92f1b80b8095`.
+- GitHub checks for this exact commit completed successfully: Node tests, JavaScript syntax, Cloudflare Worker validation, Devnet read-only checks, and Cloudflare Workers Preview build. These are CI/Preview results, not a production deployment.
+- The funded signed Devnet transfer step remains skipped because `DEVNET_RPC_URL` is not configured. No signed transaction lifecycle is claimed.
+
+The authentication hardening does not resolve the independent live-trading blockers: Jupiter instruction/account semantics and Address Lookup Table resolution remain unverified; settlement/recovery transitions remain disabled; the emergency stop is not integrated into the production Worker; and the coordinator remains isolated from the Worker. Production Cloudflare secrets, bindings, migrations, and cron settings have not been independently inspected.
+
+**Decision unchanged: NOT APPROVED for Mainnet, signing, transaction submission, or live trading. PR #27 remains Draft and unmerged. No production deployment or Mainnet action is authorized.**
