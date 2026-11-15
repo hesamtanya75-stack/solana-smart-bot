@@ -562,6 +562,106 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
+function sumOwnedTokenBalance(rows, mint, owner) {
+  if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
+  let total = 0n;
+  for (const row of rows) {
+    if (row?.mint !== mint || row?.owner !== owner) continue;
+    const amount = row?.uiTokenAmount?.amount;
+    if (typeof amount !== "string" || !/^\\d+$/.test(amount)) {
+      throw new Error("Finalized transaction contains an invalid owned token balance");
+    }
+    total += BigInt(amount);
+  }
+  return total;
+}
+
+/**
+ * Independently verifies a finalized swap using signature status and the
+ * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
+ * success flags. SOL input requires the exact lamport delta after network fee;
+ * account-rent or unexplained balance changes fail closed.
+ */
+export async function verifyFinalizedJupiterSettlement({
+  signature, inputMint, outputMint, inputAmount, outputAmount,
+  expectedOwner = EXPECTED_BOT_WALLET
+}, fetchImpl = fetch) {
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
+  const validAmount = value => typeof value === "string" && /^\\d+$/.test(value) && BigInt(value) > 0n;
+  if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
+      !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
+      !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
+      !validAmount(inputAmount) || !validAmount(outputAmount)) {
+    throw new Error("Settlement proof request is incomplete or invalid");
+  }
+
+  const statusResult = await rpc(fetchImpl, "getSignatureStatuses", [
+    [signature], { searchTransactionHistory: true }
+  ]);
+  const status = statusResult?.value?.[0];
+  if (!status || status.err !== null || status.confirmationStatus !== "finalized") {
+    throw new Error("Swap signature is not successfully finalized");
+  }
+
+  const transaction = await rpc(fetchImpl, "getTransaction", [
+    signature, {
+      commitment: "finalized",
+      encoding: "json",
+      maxSupportedTransactionVersion: 0
+    }
+  ]);
+  const meta = transaction?.meta;
+  const message = transaction?.transaction?.message;
+  const signatures = transaction?.transaction?.signatures;
+  const accountKeys = message?.accountKeys;
+  if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
+      !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
+      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
+      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
+      meta.postBalances.length !== accountKeys.length ||
+      !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
+    throw new Error("Finalized transaction metadata is incomplete or indicates failure");
+  }
+  const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  const ownerIndex = keyStrings.indexOf(expectedOwner);
+  if (ownerIndex < 0) throw new Error("Expected bot wallet is absent from finalized transaction");
+
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  if (postOutput - preOutput !== BigInt(outputAmount)) {
+    throw new Error("Finalized output token balance delta does not match the reserved amount");
+  }
+
+  if (inputMint === SOL_MINT) {
+    const pre = meta.preBalances[ownerIndex];
+    const post = meta.postBalances[ownerIndex];
+    if (!Number.isSafeInteger(pre) || !Number.isSafeInteger(post) ||
+        BigInt(pre) - BigInt(post) - BigInt(meta.fee) !== BigInt(inputAmount)) {
+      throw new Error("Finalized SOL balance delta does not match input amount plus network fee");
+    }
+  } else {
+    const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
+    const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+    if (preInput - postInput !== BigInt(inputAmount)) {
+      throw new Error("Finalized input token balance delta does not match the reserved amount");
+    }
+  }
+
+  return Object.freeze({
+    verified: true,
+    signature,
+    slot: transaction.slot,
+    confirmationStatus: "finalized",
+    inputMint,
+    inputAmount,
+    outputMint,
+    outputAmount,
+    owner: expectedOwner
+  });
+}
+
+
 function parseMintAccount(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account is unavailable");
