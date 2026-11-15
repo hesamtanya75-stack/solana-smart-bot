@@ -597,3 +597,28 @@ GitHub Actions on this exact head completed successfully:
 - Funded signed Devnet lifecycle: **skipped**, because `DEVNET_RPC_URL` is not configured. No signer was created, no signing occurred, and no transaction was submitted.
 
 These results validate the current automated checks and response-size regression. They do not establish Jupiter instruction semantics, wallet signing safety, a funded Devnet transaction lifecycle, or Mainnet readiness. `semanticInstructionVerification` remains false; live coordinator and Worker execution remain fail-closed. PR #27 remains Draft, Open, and unmerged. No deployment, merge, Mainnet access, signing, or real-money transaction occurred.
+
+
+## Wallet, spend-cap, and current Jupiter V2 build review — 2026-11-15
+
+Latest code head `6ff76a8e8d64290f1424eaa891288ace3c6d76cc` passed all four required CI workflows: Node tests, frontend validation, Cloudflare Worker dry-run build, and Devnet workflow. The Node suite includes the newly added exact per-trade-cap boundary, over-cap rejection, invalid amount rejection, and exact remaining daily-budget boundary tests. No deployment or transaction submission occurred.
+
+Wallet custody review:
+- The live-trading module pins a dedicated public wallet address and rejects a mismatched configured public key.
+- The unsigned transaction parser requires the pinned wallet as the sole required signer/fee payer.
+- There is no signer implementation: `executeLiveOrder()` always throws, and the Worker does not call the live coordinator. No private key, seed phrase, or signing bytes are accepted through a request.
+- This verifies fail-closed preparation code, not an operational wallet custody design. A dedicated signer, secure key custody, rotation/revocation, signer authorization policy, and independent review remain unimplemented.
+
+Important spend-cap gap identified: the coordinator's $3 per-trade and $5 daily accounting currently derives USD cents from the SOL input amount. It does not yet reserve a verified all-in cost that includes priority fees, base transaction fees, tips, account rent/creation, and any other SOL/token outflows. Jupiter's current v1 documentation explicitly requires integrators to validate `computeUnitPrice` against their own ceiling before converting it into a priority fee. Until every possible value-moving instruction and fee is decoded and included in the same atomic daily budget, the selected $5 daily cap cannot be represented as a complete maximum-loss/spend limit. This is an additional Mainnet blocker; do not infer a fee ceiling or enable execution.
+
+Current official Jupiter Swap V2 documentation was checked:
+- `/build` returns raw instructions and ALT address lists; the app's `validateJupiterBuildResponse` validates the response envelope and resource bounds only. It does not semantically authorize any program, instruction, account role, transfer, fee, or CPI.
+- For v1, Jupiter returns no compute-budget instructions or ALTs and supplies `computeUnitPrice` as a string; compute-unit and loaded-account-data limits must be explicitly configured. The API documentation warns that `computeUnitPrice` must be checked against an integrator-defined ceiling.
+- The existing v1 parser structurally validates the resource configuration but does not establish instruction semantics or a maximum all-in transaction cost.
+
+References:
+- https://developers.jup.ag/docs/swap/build.md
+- https://developers.jup.ag/docs/swap/advanced/transaction-versions.md
+- https://developers.jup.ag/changelog/2026-10
+
+Next safe work: design and test an all-in cost reservation model that includes every fee and outflow, without enabling signing or submission; continue the independent program/instruction provenance review. PR #27 remains Draft, Open, and unmerged. No Mainnet access, signing, deployment, or real-money transaction was performed.
