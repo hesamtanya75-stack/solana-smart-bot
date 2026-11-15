@@ -93,6 +93,40 @@ test("v1 transaction rejects duplicate inline account addresses", () => {
   );
 });
 
+test("legacy transaction rejects duplicate static account keys", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  bytes.copy(bytes, 101, 69, 101);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /duplicate static account keys/
+  );
+});
+
+test("v0 transaction rejects duplicate static account keys", () => {
+  const bytes = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  bytes.copy(bytes, 102, 70, 102);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /duplicate static account keys/
+  );
+});
+
+test("legacy and v0 transactions reject fee payer as instruction program", () => {
+  const legacy = Buffer.from(validUnsignedTransaction(), "base64");
+  legacy[legacy.length - 4] = 0;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(legacy.toString("base64"), BOT_WALLET),
+    /program index is invalid/
+  );
+
+  const v0 = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  v0[167] = 0;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(v0.toString("base64"), BOT_WALLET),
+    /program index is invalid/
+  );
+});
+
 test("legacy and v0 transactions reject a readonly sole signer fee payer", () => {
   const legacy = Buffer.from(validUnsignedTransaction(), "base64");
   legacy[66] = 1;
