@@ -28,12 +28,17 @@ function trustedEvidence(overrides = {}) {
     ...overrides
   };
 }
-function makeCoordinator(evidenceProvider = async () => trustedEvidence()) {
+function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settlementVerifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint, inputAmount: args.inputAmount,
+    outputMint: args.outputMint, outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized"
+  })) {
   const storage = new MemoryStorage();
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
-    FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider
+    FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
+    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
   return { coordinator, storage };
 }
@@ -269,13 +274,12 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
   assert.equal(status.dailySpendUsdCents, 200);
 });
 
-test("confirm, fail, and close transitions remain blocked without independent settlement proof", async () => {
+test("fail and close transitions remain blocked without independent proof; confirmation requires finalized settlement", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
 
   for (const [path, extra] of [
-    ["/confirm", {}],
     ["/fail", {
       definitelyNotSubmitted: true,
       resolutionReason: "RPC confirmed no transaction was submitted"
@@ -287,12 +291,57 @@ test("confirm, fail, and close transitions remain blocked without independent se
       ...extra
     });
     assert.equal(result.status, 409);
-    assert.match(result.body.error, /Independent on-chain settlement proof is not implemented/);
+    assert.match(result.body.error, /Independent failure and close proofs are not implemented/);
   }
 
   const status = await coordinator.status();
   assert.equal(status.openPositions, 1);
   assert.equal(status.dailySpendUsdCents, 200);
+});
+
+test("confirmation stores only independently verified finalized settlement evidence", async () => {
+  let verifiedArgs;
+  const verifier = async args => {
+    verifiedArgs = args;
+    return {
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized"
+    };
+  };
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "5".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.reservation.status, "confirmed");
+  assert.equal(result.body.reservation.settlementProof.verified, true);
+  assert.equal(verifiedArgs.inputMint, "So11111111111111111111111111111111111111112");
+  assert.equal(verifiedArgs.inputAmount, "10000000");
+  assert.equal(verifiedArgs.outputAmount, "987654");
+  assert.equal((await coordinator.status()).openPositions, 1);
+});
+
+test("mismatched settlement proof cannot confirm a reservation", async () => {
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: "1", owner: args.expectedOwner, confirmationStatus: "finalized"
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001", signature: "5".repeat(64), outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /proof is incomplete or mismatched/);
+  assert.equal((await coordinator.status()).openPositions, 1);
 });
 
 test("browser-supplied risk flag is ignored; server evidence controls approval", async () => {
