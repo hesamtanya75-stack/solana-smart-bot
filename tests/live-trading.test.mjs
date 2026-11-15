@@ -386,16 +386,27 @@ test("Jupiter order rejects route plans exceeding the bounded entry count", asyn
 
 test("Jupiter order response is rejected before reading an oversized provider body", async () => {
   let reads = 0;
-  const body = new ReadableStream({
-    pull(controller) { reads++; controller.enqueue(new TextEncoder().encode("{}")); },
-    cancel() {}
-  });
+  const body = {
+    getReader() {
+      return {
+        async read() {
+          reads++;
+          return { done: false, value: new TextEncoder().encode("{}") };
+        },
+        async cancel() {},
+        releaseLock() {}
+      };
+    }
+  };
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
-    fetchImpl: async () => new Response(body, {
-      status: 200,
-      headers: { "Content-Length": String(2 * 1024 * 1024 + 1) }
+    fetchImpl: async () => ({
+      ok: true, status: 200, body,
+      headers: { get(name) {
+        return name.toLowerCase() === "content-length"
+          ? String(2 * 1024 * 1024 + 1) : null;
+      } }
     })
   }), /exceeds the 2097152-byte limit/);
   assert.equal(reads, 0);
