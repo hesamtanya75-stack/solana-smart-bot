@@ -6,9 +6,11 @@ This repository currently implements paper trading only. The scheduled Worker up
 
 This branch is preparation and policy enforcement only. It does not enable live trading and must not be deployed as a live trader.
 
-## Latest automated Devnet result (2026-11-15)
+## Latest automated validation result (2026-11-15)
 
-The CI run for head `a230c5a577ada3c274dadec92bf7f3c360a8d179` successfully verified the Devnet cluster genesis hash, RPC health, confirmed slot, reference mint, token program, and supply availability. Holder enumeration was rate-limited, so holder concentration was not validated. The ephemeral signing script verified an offline signature, but its funded on-chain transfer was blocked because the public Devnet faucet returned HTTP 410. The run confirms `transactionsSubmitted: 0`, `mainnetTouched: false`, and `swapExecuted: false`. This is not a successful on-chain lifecycle test. A dedicated funded Devnet RPC/faucet path is still required before the Phantom signing/submission gate can pass.
+The latest verified head before this documentation update is `632532cba6861c18559f0710468d5d97caa4a88d`. Its Node test workflow completed successfully with **248 tests passed, 0 failed**; the Cloudflare Worker build completed successfully without deploying. The Devnet workflow passed its unit/runtime tests and read-only cluster identity/RPC preflight. The ephemeral CI keypair's offline signature was verified, but the funded on-chain transfer was blocked because the Devnet RPC faucet returned HTTP 410. The run reports `transactionsSubmitted: 0`, `mainnetTouched: false`, and `swapExecuted: false`. This is not a successful signed on-chain lifecycle test. A dedicated funded Devnet RPC/faucet endpoint is still required.
+
+The latest settlement hardening also binds token-balance `accountIndex` values to the finalized transaction's account-key list and rejects rows that point at the wallet fee-payer key. Regression coverage rejects duplicate, out-of-range, and fee-payer-indexed token-balance rows. These checks strengthen settlement metadata validation; they do not prove the transaction's instruction semantics.
 
 ## Required architecture
 
