@@ -1011,6 +1011,34 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     /response envelope/);
 });
 
+test("Jupiter /build enforces route split totals and top-level token mints", () => {
+  const step = validBuildResponse().routePlan[0];
+  const split = [
+    { ...step, percent: 50, bps: 5000 },
+    { ...step, percent: 50, bps: 5000 }
+  ];
+  assert.equal(validateJupiterBuildResponse(validBuildResponse({ routePlan: split })).routePlan.length, 2);
+
+  for (const routePlan of [
+    [{ ...step, percent: 99 }],
+    [
+      { ...step, percent: 50, bps: 4000 },
+      { ...step, percent: 50, bps: 4000 }
+    ],
+    [
+      { ...step, percent: 50, bps: 5000 },
+      { ...step, percent: 50, bps: undefined }
+    ],
+    [{ ...step, swapInfo: {
+      ...step.swapInfo,
+      inputMint: "11111111111111111111111111111111"
+    }}]
+  ]) {
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
+      /routePlan totals or token mints are inconsistent/);
+  }
+});
+
 test("Jupiter /build rejects malformed account metadata and unexpected requested amount", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: { programId: "11111111111111111111111111111111", accounts: [{
