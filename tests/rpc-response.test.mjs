@@ -43,13 +43,16 @@ test("bounded provider JSON reader accepts valid JSON within the byte limit", as
 test("bounded provider JSON reader rejects oversized declared content before reading", async () => {
   const { readBoundedJsonResponse } = await import("../rpc-response.mjs");
   let read = false;
-  const response = new Response(new ReadableStream({
-    pull(controller) {
-      read = true;
-      controller.enqueue(new TextEncoder().encode("{}"));
-      controller.close();
-    }
-  }), { headers: { "Content-Length": "100" } });
+  const response = {
+    headers: { get: name => name === "Content-Length" ? "100" : null },
+    body: new ReadableStream({
+      pull(controller) {
+        read = true;
+        controller.enqueue(new TextEncoder().encode("{}"));
+        controller.close();
+      }
+    })
+  };
   await assert.rejects(readBoundedJsonResponse(response, 16), /exceeds the 16-byte limit/);
   assert.equal(read, false);
 });
