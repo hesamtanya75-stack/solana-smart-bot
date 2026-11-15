@@ -105,6 +105,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionHeader = readShortVector(bytes, cursor);
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
+  const instructionAccountIndexes = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -118,7 +119,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
       throw new Error("Jupiter instruction account list is invalid");
     }
     for (let j = 0; j < accountHeader.value; j++) {
-      if (bytes[cursor++] >= keyCount) throw new Error("Jupiter instruction account index is invalid");
+      instructionAccountIndexes.push(bytes[cursor++]);
     }
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
@@ -128,6 +129,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     cursor += dataHeader.value;
   }
   let addressLookupCount = 0;
+  let loadedAddressCount = 0;
   if (messageVersion === 0) {
     const lookupHeader = readShortVector(bytes, cursor);
     addressLookupCount = lookupHeader.value;
@@ -139,12 +141,19 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
       const writable = readShortVector(bytes, cursor);
       cursor = writable.offset;
       if (cursor + writable.value > bytes.length) throw new Error("Jupiter writable lookup indexes are truncated");
+      loadedAddressCount += writable.value;
       cursor += writable.value;
       const readonly = readShortVector(bytes, cursor);
       cursor = readonly.offset;
       if (cursor + readonly.value > bytes.length) throw new Error("Jupiter readonly lookup indexes are truncated");
+      loadedAddressCount += readonly.value;
       cursor += readonly.value;
     }
+  }
+  // Compiled instruction account indexes address static keys followed by
+  // writable and readonly ALT-loaded keys. Validate against the complete key space.
+  if (instructionAccountIndexes.some(index => index >= keyCount + loadedAddressCount)) {
+    throw new Error("Jupiter instruction account index is invalid");
   }
   if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
   return {
