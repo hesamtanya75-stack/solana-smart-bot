@@ -45,7 +45,7 @@ function readShortVector(bytes, offset) {
 
 export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (typeof encoded !== "string" || encoded.length === 0 ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(encoded)) {
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
     throw new Error("Jupiter transaction is empty or not canonical base64");
   }
   const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
