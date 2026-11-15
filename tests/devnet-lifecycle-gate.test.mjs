@@ -80,3 +80,20 @@ test("funded Devnet lifecycle verifies the finalized transaction's recipient bal
   assert.match(script, /payer\.publicKey\.toBase58\(\)/);
   assert.match(script, /postBalances\[recipientIndex\] - preBalances\[recipientIndex\] < TRANSFER_LAMPORTS/);
 });
+
+test("funded Devnet lifecycle verifies cluster identity before creating signers", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
+    "utf8"
+  );
+  const mainStart = script.indexOf("async function main()");
+  assert.notEqual(mainStart, -1);
+  const main = script.slice(mainStart);
+  const genesisCheck = main.indexOf('if (genesis !== expectedGenesis)');
+  const payerCreation = main.indexOf("const payer = Keypair.generate()");
+  const recipientCreation = main.indexOf("const recipient = Keypair.generate()");
+  assert.notEqual(genesisCheck, -1);
+  assert.ok(payerCreation > genesisCheck, "payer must not be created before Devnet identity is checked");
+  assert.ok(recipientCreation > genesisCheck, "recipient must not be created before Devnet identity is checked");
+  assert.match(main, /Refusing to sign: RPC is not official Solana Devnet/);
+});
