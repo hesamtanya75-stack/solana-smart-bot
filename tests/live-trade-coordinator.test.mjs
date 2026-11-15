@@ -32,6 +32,7 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence()) {
   const storage = new MemoryStorage();
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
+    COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider
   });
   return { coordinator, storage };
@@ -51,9 +52,11 @@ function validReservation(overrides = {}) {
     ...overrides
   };
 }
-async function post(coordinator, path, body) {
+async function post(coordinator, path, body, operatorToken = "test-only-operator-token-32-characters") {
+  const headers = { "Content-Type": "application/json", Authorization: "Bearer test-only-internal-token-32-characters" };
+  if (operatorToken) headers["X-Operator-Token"] = operatorToken;
   const response = await coordinator.fetch(new Request("https://coordinator" + path, {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-only-internal-token-32-characters" }, body: JSON.stringify(body)
+    method: "POST", headers, body: JSON.stringify(body)
   }));
   return { status: response.status, body: await response.json() };
 }
@@ -294,6 +297,41 @@ test("emergency stop blocks new reservations immediately", async () => {
   await post(coordinator, "/kill-switch", { enabled: true });
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
+});
+
+test("kill switch requires a separate operator credential and records an audit trail", async () => {
+  const { coordinator } = makeCoordinator();
+
+  const missingOperator = await post(coordinator, "/kill-switch", { enabled: false }, null);
+  assert.equal(missingOperator.status, 401);
+  assert.match(missingOperator.body.error, /operator/i);
+
+  const reusedInternal = await post(coordinator, "/kill-switch", { enabled: false },
+    "test-only-internal-token-32-characters");
+  assert.equal(reusedInternal.status, 401);
+  assert.equal((await coordinator.status()).killSwitch, true);
+
+  const disabled = await post(coordinator, "/kill-switch", { enabled: false });
+  assert.equal(disabled.status, 200);
+  const enabled = await post(coordinator, "/kill-switch", { enabled: true });
+  assert.equal(enabled.status, 200);
+
+  const unauthorizedAudit = await coordinator.fetch(new Request("https://coordinator/audit", {
+    headers: { Authorization: "Bearer test-only-internal-token-32-characters" }
+  }));
+  assert.equal(unauthorizedAudit.status, 401);
+
+  const audit = await coordinator.fetch(new Request("https://coordinator/audit", {
+    headers: {
+      Authorization: "Bearer test-only-internal-token-32-characters",
+      "X-Operator-Token": "test-only-operator-token-32-characters"
+    }
+  }));
+  assert.equal(audit.status, 200);
+  const body = await audit.json();
+  assert.deepEqual(body.events.map(event => event.action), ["deactivated", "activated"]);
+  assert.equal(body.events[1].previousKillSwitch, false);
+  assert.equal(body.events[1].killSwitch, true);
 });
 
 
