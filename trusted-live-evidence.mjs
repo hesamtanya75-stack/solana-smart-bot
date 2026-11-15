@@ -43,20 +43,124 @@ function readShortVector(bytes, offset) {
   throw new Error("Jupiter transaction has an invalid compact length");
 }
 
+function validateUnsignedJupiterV1(bytes, expectedSigner) {
+  // Solana v1 has a distinct wire layout: version byte first, fixed-width
+  // message counts, inline addresses, split instruction headers/payloads,
+  // and signatures at the tail. It has no Address Lookup Tables.
+  if (bytes.length > 4096) {
+    throw new Error("V1 Jupiter transaction exceeds the 4,096-byte size limit");
+  }
+  let cursor = 1;
+  if (cursor + 3 + 4 + 32 + 2 > bytes.length) {
+    throw new Error("V1 Jupiter transaction message is truncated");
+  }
+  const requiredSignatures = bytes[cursor++];
+  const readonlySigned = bytes[cursor++];
+  const readonlyUnsigned = bytes[cursor++];
+  if (requiredSignatures !== 1 || readonlySigned > requiredSignatures) {
+    throw new Error("V1 Jupiter transaction signer header is inconsistent");
+  }
+  const configMask = (bytes[cursor] | (bytes[cursor + 1] << 8) |
+    (bytes[cursor + 2] << 16) | (bytes[cursor + 3] << 24)) >>> 0;
+  cursor += 4;
+  if ((configMask & ~0x1f) !== 0 ||
+      ((configMask & 0x3) !== 0 && (configMask & 0x3) !== 0x3)) {
+    throw new Error("V1 Jupiter transaction config mask is unsupported");
+  }
+  if (configMask & 0x3) cursor += 8; // total priority fee in lamports
+  if (configMask & 0x4) cursor += 4; // compute unit limit
+  if (configMask & 0x8) cursor += 4; // loaded accounts data size limit
+  if (configMask & 0x10) cursor += 4; // requested heap size
+  // Config values precede the recent blockhash on the wire.
+  // Rewind and consume them in their specified position after reading the mask.
+  const configBytes = ((configMask & 0x3) ? 8 : 0) +
+    ((configMask & 0x4) ? 4 : 0) +
+    ((configMask & 0x8) ? 4 : 0) +
+    ((configMask & 0x10) ? 4 : 0);
+  const blockhashStart = cursor - 32;
+  // cursor above advanced through config bytes from the start of the mask;
+  // blockhash immediately follows those values.
+  if (blockhashStart < 8 || blockhashStart + 32 > bytes.length) {
+    throw new Error("V1 Jupiter transaction config or blockhash is truncated");
+  }
+  cursor = blockhashStart + 32;
+  const instructionCount = bytes[cursor++];
+  const addressCount = bytes[cursor++];
+  if (instructionCount < 1 || instructionCount > 64 ||
+      addressCount < requiredSignatures || addressCount > 64 ||
+      readonlyUnsigned > addressCount - requiredSignatures ||
+      readonlySigned > requiredSignatures) {
+    throw new Error("V1 Jupiter transaction instruction or address count is invalid");
+  }
+  const addressesStart = cursor;
+  if (cursor + addressCount * 32 > bytes.length) {
+    throw new Error("V1 Jupiter transaction addresses are truncated");
+  }
+  const expectedBytes = decodeBase58(expectedSigner);
+  if (expectedBytes.length !== 32 ||
+      bytes.slice(addressesStart, addressesStart + 32).some((byte, i) => byte !== expectedBytes[i])) {
+    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+  }
+  cursor += addressCount * 32;
+  const headers = [];
+  for (let i = 0; i < instructionCount; i++) {
+    if (cursor + 4 > bytes.length) {
+      throw new Error("V1 Jupiter instruction headers are truncated");
+    }
+    const programIdIndex = bytes[cursor++];
+    const accountCount = bytes[cursor++];
+    const dataLength = bytes[cursor] | (bytes[cursor + 1] << 8);
+    cursor += 2;
+    if (programIdIndex >= addressCount || accountCount > addressCount ||
+        dataLength > 4096) {
+      throw new Error("V1 Jupiter instruction header is invalid");
+    }
+    headers.push({ programIdIndex, accountCount, dataLength });
+  }
+  for (const header of headers) {
+    if (cursor + header.accountCount + header.dataLength > bytes.length) {
+      throw new Error("V1 Jupiter instruction payload is truncated");
+    }
+    for (let i = 0; i < header.accountCount; i++) {
+      if (bytes[cursor++] >= addressCount) {
+        throw new Error("V1 Jupiter instruction account index is invalid");
+      }
+    }
+    cursor += header.dataLength;
+  }
+  const signaturesLength = requiredSignatures * 64;
+  if (cursor + signaturesLength !== bytes.length) {
+    throw new Error("V1 Jupiter transaction signature section or trailing bytes are invalid");
+  }
+  for (let i = cursor; i < bytes.length; i++) {
+    if (bytes[i] !== 0) throw new Error("Jupiter order transaction must be unsigned");
+  }
+  return {
+    signatureCount: requiredSignatures,
+    staticAccountCount: addressCount,
+    instructionCount,
+    addressLookupCount: 0,
+    messageVersion: 1,
+    semanticInstructionVerification: false
+  };
+}
+
 export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (typeof encoded !== "string" || encoded.length === 0 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
     throw new Error("Jupiter transaction is empty or not canonical base64");
   }
   const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
-  // This parser currently supports legacy and v0 only; both retain the 1,232-byte
-  // serialized-size limit. v1 has a separate 4,096-byte limit and is rejected below.
-  // Bound decoded input before spreading it into String.fromCharCode for canonicality.
-  if (bytes.length > 1232) {
-    throw new Error("Legacy/v0 Jupiter transaction exceeds the 1,232-byte size limit");
+  // Bound decoded input before canonicalization; v1 has a larger protocol limit.
+  if (bytes.length > 4096) {
+    throw new Error("Jupiter transaction exceeds the 4,096-byte size limit");
   }
   if (btoa(String.fromCharCode(...bytes)) !== encoded) {
     throw new Error("Jupiter transaction base64 encoding is non-canonical");
+  }
+  if (bytes[0] === 0x81) return validateUnsignedJupiterV1(bytes, expectedSigner);
+  if (bytes.length > 1232) {
+    throw new Error("Legacy/v0 Jupiter transaction exceeds the 1,232-byte size limit");
   }
   const sigHeader = readShortVector(bytes, 0);
   const signatureCount = sigHeader.value;
