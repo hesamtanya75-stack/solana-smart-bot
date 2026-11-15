@@ -362,6 +362,38 @@ test("concurrent retries with the same idempotency key create exactly one reserv
   assert.equal(Object.keys(state.reservations).length, 1);
 });
 
+test("kill switch blocks an in-flight duplicate after another request reserves the same key", async () => {
+  let releaseFirstEvidence;
+  let signalFirstEvidence;
+  const firstEvidenceStarted = new Promise(resolve => { signalFirstEvidence = resolve; });
+  const firstEvidenceGate = new Promise(resolve => { releaseFirstEvidence = resolve; });
+  let evidenceCalls = 0;
+  const { coordinator } = makeCoordinator(async () => {
+    evidenceCalls += 1;
+    if (evidenceCalls === 1) {
+      signalFirstEvidence();
+      await firstEvidenceGate;
+    }
+    return trustedEvidence();
+  });
+
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const inFlight = post(coordinator, "/reserve", validReservation());
+  await firstEvidenceStarted;
+
+  // A second request with the same intent wins the reservation while the
+  // first request is still fetching evidence.
+  const winner = await post(coordinator, "/reserve", validReservation());
+  assert.equal(winner.status, 200);
+  assert.equal(winner.body.duplicate, false);
+
+  await post(coordinator, "/kill-switch", { enabled: true });
+  releaseFirstEvidence();
+  const stopped = await inFlight;
+  assert.equal(stopped.status, 409);
+  assert.match(stopped.body.error, /emergency kill switch is active/i);
+});
+
 test("kill switch activated during evidence retrieval blocks the in-flight reservation", async () => {
   let signalStarted;
   let releaseEvidence;
