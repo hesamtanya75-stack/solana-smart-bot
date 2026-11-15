@@ -197,3 +197,11 @@ This hardening does not implement signing, transaction submission, semantic Jupi
 
 
 A follow-up race review found a second idempotency path inside the final reservation transaction: an in-flight request could finish evidence retrieval after another request had created the same reservation and the operator had activated the emergency stop. The final transaction now checks the stop before returning an existing reservation, matching the fast path. A regression test holds one evidence fetch, lets a concurrent same-key request reserve, activates the stop, then releases the in-flight request and verifies it is rejected with HTTP 409. This closes the duplicate-return race without weakening fail-closed behavior.
+
+## Evidence freshness hardening — 2026-11-15 (commit c6eb4d8ffba37cbd2b0a0d0e5065c1be5420ef6b)
+
+A source review found that trusted token-risk evidence previously received its `fetchedAt` timestamp only after all upstream requests, including paginated holder enumeration and the Jupiter sell-route probe. A slow evidence collection could therefore make earlier market, RugCheck, RPC, or holder responses appear newer than they were. The timestamp is now captured at the start of `fetchTrustedTokenRisk()`, before upstream requests begin. The coordinator's existing 30-second freshness check consequently measures age conservatively from the beginning of evidence collection and rejects a slow/stale collection instead of refreshing its apparent age at completion.
+
+CI for `c6eb4d8ffba37cbd2b0a0d0e5065c1be5420ef6b`: Node tests **success**, frontend validation **success**, Cloudflare Worker dry-run build **success**, Devnet workflow **success**. The Devnet read-only checks passed; the funded signed transfer step was **skipped** because `DEVNET_RPC_URL` is not configured. This is not a signed transaction lifecycle test.
+
+This is a freshness hardening change only. It does not implement semantic Jupiter instruction/lookup-table verification, settlement proof, a trusted production caller, or signing/submission. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
