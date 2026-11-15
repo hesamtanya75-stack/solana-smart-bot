@@ -274,6 +274,19 @@ test("ALT resolver fetches finalized tables and resolves writable/readonly addre
   assert.deepEqual(result.readonlyAddresses, [encodeBase58(new Uint8Array(32).fill(8))]);
 });
 
+test("ALT resolver rejects duplicate addresses across loaded writable and readonly keys", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const account = mockLookupTableAccount();
+  const data = Buffer.from(account.data[0], "base64");
+  data.copy(data, 56 + 32, 56, 56 + 32);
+  account.data = [data.toString("base64"), "base64"];
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: [1]
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [account]
+  } })), /duplicate account addresses/);
+});
+
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   await assert.rejects(resolveJupiterAddressLookupTables([{
