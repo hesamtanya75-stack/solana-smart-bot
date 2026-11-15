@@ -24,7 +24,7 @@ The user selected a maximum of **USD $3 per buy**, a maximum cumulative spend of
 
 - LIVE_TRADING_ENABLED must be exactly true; missing or malformed configuration disables live trading.
 - LIVE_TRADING_KILL_SWITCH must be exactly false; otherwise live trading is disabled.
-- The current order builder still pins a dedicated bot wallet public key. This is incompatible with the requested user-controlled Phantom signer and must be refactored before any Phantom transaction can be built.
+- Jupiter order construction now requires an explicit connected Phantom public key and passes it as the `taker`; the unsigned transaction parser checks that this key is the required fee payer/signer. This is order preparation only: no browser Phantom signing or transaction submission is wired.
 - Per-trade spend, daily spend, open-position count, maximum slippage, minimum liquidity, and minimum 24-hour volume must be explicit bounded values.
 - evaluateLiveTradeEligibility enforces the per-trade cap, cumulative daily spend cap, open-position cap, minimum liquidity, minimum volume, and explicit passing results for mint authority, freeze authority, Token-2022 extension safety, holder concentration, and sell-route availability.
 - getJupiterOrder requires eligibility data and rejects a trade before network access if any check is missing or fails.
