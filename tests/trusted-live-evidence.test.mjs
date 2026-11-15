@@ -1051,7 +1051,7 @@ test("program identity evidence rejects executable accounts owned by unknown loa
 
 test("program identity evidence rejects non-canonical base64 even when decoded size matches", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(51));
-  const loaderOwner = encodeBase58(new Uint8Array(32).fill(52));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
   await assert.rejects(() => fetchProgramAccountIdentityEvidence(
     [{ programId }],
     async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
