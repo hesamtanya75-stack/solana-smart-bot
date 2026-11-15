@@ -110,3 +110,10 @@ No signing prompt, execute route, automatic trading, Mainnet transaction, merge,
 - Other recognized loader types remain classified by owner only; this does not parse their executable formats.
 - A code hash and upgrade-authority value do not establish semantic safety. They must be compared against a separately reviewed, versioned allowlist and policy. Unknown or changed deployments must fail closed.
 - `semanticInstructionVerification` remains `false`; no signing or execution path consumes this evidence. Adversarial coverage must include missing ProgramData, wrong owner/state tag, malformed authority option, truncated headers, changed ProgramData pointer, malformed/oversized account data, and altered deployed code hashes.
+
+
+## SBF ELF deployment-header hardening (2026-11-15)
+
+- The upgradeable ProgramData provenance parser now requires ELF64 little-endian shared-object type (ET_DYN), SBF machine type (EM_BPF), ELF version 1, and a 64-byte ELF header before hashing deployed code.
+- Regression fixtures explicitly encode ET_DYN and reject an otherwise ELF-shaped payload with a different ELF object type.
+- This is a format-integrity check only. It does not prove the deployed program's instruction semantics or CPI behavior; the reviewed program/version/hash allowlist and semantic verifier remain outstanding.
