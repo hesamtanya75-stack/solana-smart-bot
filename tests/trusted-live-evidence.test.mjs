@@ -48,6 +48,14 @@ test("non-canonical base64 transaction is rejected", () => {
   );
 });
 
+test("non-canonical padded base64 encoding is rejected", () => {
+  // "AB==" decodes to the same byte as canonical "AA==" but has non-zero pad bits.
+  assert.throws(
+    () => validateUnsignedJupiterTransaction("AB==", BOT_WALLET),
+    /base64 encoding is non-canonical/
+  );
+});
+
 test("pre-signed Jupiter transaction is rejected", () => {
   assert.throws(
     () => validateUnsignedJupiterTransaction(validUnsignedTransaction(undefined, 1), BOT_WALLET),
