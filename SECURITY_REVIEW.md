@@ -1,63 +1,60 @@
-# Live-trade security review — PR #18
+# Security review — PR #27
 
-Review target: `live-trade-coordinator-prep` at the current PR head.
+Review target: `security/pr26-clean-main` at commit `ace850996d5fd1f9437a30a723fbaf531494dab6`.
 
 ## Decision
 
-**NOT APPROVED for Mainnet, signing, or transaction submission.** The coordinator is an isolated reservation primitive, not an end-to-end trading system. Keep the PR in Draft and keep the emergency stop enabled.
+**NOT APPROVED for Mainnet, signing, transaction submission, or live trading.** This branch remains a paper-trading and security-preparation change. Keep PR #27 in Draft. No merge or production deployment is authorized by this review.
 
-## Findings requiring resolution before any live integration
+## Current implementation verified
 
-### Critical — no end-to-end live-trade path exists
+- Paper-trading state is stored in the `PaperTradingState` Durable Object and updated with revision-based compare-and-set operations.
+- Authentication state, TOTP counters, backup-code consumption, MFA challenges, and failure buckets are serialized through the `AuthGuard` Durable Object.
+- AuthGuard requires an internal Bearer token of at least 32 characters, limits MFA challenges to five minutes and five attempts, and consumes backup codes atomically.
+- The Worker enforces same-origin signals for mutating API requests and validates session identifiers before KV lookup.
+- The live coordinator obtains SOL/USD and token-risk evidence through trusted server-side code. Browser-supplied quote timestamps, quote IDs, SOL/USD prices, and risk booleans are ignored.
+- The latest paper scanner change selects only Solana DexScreener pairs whose `baseToken.address` exactly matches the requested mint.
+- RPC response parsing now rejects mismatched IDs, missing results, malformed batch items, and duplicate or missing batch IDs.
+- CI on this commit passed Node tests, frontend syntax validation, and Cloudflare Worker dry-run build validation. Devnet read-only checks passed. The funded signed Devnet transfer step was skipped because `DEVNET_RPC_URL` was not configured.
 
-The Worker does not call `LiveTradeCoordinator`; no route exposes it. The parent branch contains `live-trading.mjs`, which can retrieve and parse an unsigned Jupiter V2 order, but `executeLiveOrder()` deliberately throws and there is no transaction message decoder, signer, submitter, confirmation reconciler, or chain-state settlement verification. This is safe as a preparation prototype, but it does not demonstrate that a live order can be constrained end to end.
+## Findings blocking any live-trading use
 
-### High — quote and risk claims are caller-supplied
+### Critical — no end-to-end live-trade path
 
-`reserve()` currently trusts `solUsd`, `quoteTimestamp`, and `riskPassed` from its request body. A caller that can invoke the Durable Object can provide a fabricated price, timestamp, or `riskPassed: true`. The timestamp check only checks the supplied timestamp; it does not establish the quote's source or authenticity.
+The Worker does not call `LiveTradeCoordinator`. There is no production route that reserves, signs, submits, or reconciles a live order. `executeLiveOrder()` deliberately throws. No transaction is signed or submitted.
 
-Required: obtain the SOL/USD quote inside trusted server-side code from an allowlisted provider; validate currency, positive finite price, response shape, and fetch-time freshness. Run token risk inspection server-side for the exact mint immediately before reservation. Never accept a client boolean as risk approval. The parent `getJupiterOrder()` also accepts an `eligibility` object from its caller; before any integration, its values must be built inside the trusted Worker from fresh scanner data and serialized spend state, never from browser input. Bind the quote and risk evidence to the reservation and order identity.
+### High — sell-route verification makes reservations fail closed
 
-### High — coordinator endpoints require a provisioned internal credential
+`fetchTrustedSellRoute()` requires the expected bot wallet to already own enough of the output token to run a $3 sell probe. That condition normally cannot hold before the first purchase of a new token. In addition, `validateUnsignedJupiterTransaction()` validates transaction wire structure only and explicitly returns `semanticInstructionVerification: false`. The risk evidence consequently cannot satisfy the coordinator's requirement for semantic instruction verification. **Reservations are currently blocked by design.** Do not weaken these checks. A future implementation needs a safe, independently verified exit-route simulation and full instruction/account/program and address-lookup-table decoding.
 
-The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes.
+### High — settlement transitions are disabled
 
-### High — lifecycle transitions are not chain-verified
+The coordinator's `transition()` method always rejects because independent on-chain settlement proof is not implemented. Confirm, close, and failure transitions cannot safely update state or release capacity. A future reconciler must verify transaction signatures and finalized chain state, or cryptographically establish non-submission, before changing reservation status.
 
-`/confirm` accepts a caller assertion without a transaction signature or finalized-chain lookup. `/close` accepts a caller assertion without verified settlement. `/fail` now requires an explicit non-submission assertion and reason, which is a useful guard, but the assertion itself is not independently verified. A future reconciler must query the correct cluster and prove transaction outcome before changing state or releasing capacity.
+### High — coordinator is isolated and has no trusted caller
 
-### High — idempotency now binds the immutable order intent, but caller evidence remains untrusted
+The coordinator requires `COORDINATOR_INTERNAL_TOKEN`; the Worker does not call it and the Wrangler file does not configure that secret. This is fail-closed. Any future integration must use a dedicated secret, enforce operator authorization for kill-switch changes, and keep the coordinator inaccessible to browser-controlled requests. Do not expose a public coordinator route.
 
-The coordinator now requires and compares amount, input mint, output mint, destination, slippage basis points, and quote identity for every idempotency key. Reuse with any changed field is rejected. However, this fingerprint does not authenticate the quote or prove that risk checks ran; those values remain caller-supplied. Do not integrate reservations until trusted server-side quote/risk evidence is generated and bound to the order.
+### High — no funded signed Devnet lifecycle test
 
-### Medium — reservation history is stored as one unbounded object
+The current workflow ran unit/runtime tests and read-only Devnet checks, but skipped the ephemeral signing and faucet-funded transfer step because `DEVNET_RPC_URL` was absent. The workflow's overall success must not be described as proof that a signed transfer or transaction lifecycle was tested.
 
-The full reservation map is read and rewritten under one storage key. It grows indefinitely and makes each transaction increasingly expensive. Use indexed SQLite tables with bounded retention/archival and database constraints; test migrations and recovery.
+### Medium — holder concentration and market feeds remain bounded evidence
 
-### Medium — holder concentration is an approximation
+Trusted live evidence requires paginated Alchemy token-account data and reconciles holder balances to supply before considering concentration. Missing or incomplete data fails closed. DexScreener and RugCheck remain external signals, not proof of safe liquidity, fair price, ownership, or executable exit liquidity. The scanner's top-account concentration estimate in the paper-trading path must not be represented as a complete wallet-level holder census.
 
-The market inspection resolves only the largest 20 token accounts and aggregates owners represented in that limited set. It does not prove full wallet-level top-10 concentration because a wallet may hold additional token accounts outside the returned set. Label it as an estimate or implement a complete, defensible holder aggregation source before using it as a hard safety gate.
+### Medium — reservation retention is unbounded
 
-### Medium — external market/risk feeds are not a complete security oracle
+The coordinator stores the reservation map as one object and has no bounded retention/archival strategy. Before any live integration, use a bounded/indexed transactional storage design and test migration, recovery, and long-running growth.
 
-DexScreener liquidity/volume/sells and RugCheck score are useful signals, not proof of safe liquidity, fair pricing, ownership, or absence of malicious behavior. The selected highest-liquidity pair is not independently checked for quote-token quality, price impact, pool lock/burn status, or executable exit liquidity. Fail closed on missing, stale, contradictory, or malformed data.
+## Authentication review
 
-## Existing safeguards verified in code
+The reviewed AuthGuard implementation serializes state changes transactionally. Concurrent tests cover one-time backup-code use, one-time TOTP counter acceptance, MFA challenge completion, attempt limits, bounded failure buckets, and one-time legacy initialization. The internal endpoint rejects missing or malformed Bearer credentials and oversized bodies. Runtime secrets and bindings in the deployed Cloudflare environment have not been independently inspected; repository configuration alone does not prove that production secrets are present or correct.
 
-- Kill switch defaults active.
-- Per-trade cap is $3; daily cap is $5; open-position cap is 10.
-- Quote timestamp age is limited to 30 seconds, but the timestamp, price, and risk assertion are currently caller-supplied and not trusted.
-- Idempotency binds amount, input/output mint, destination, slippage, and quote identity; changed immutable order intent is rejected.
-- Ambiguous pending reservations cannot be failed without an explicit non-submission assertion and reason.
-- Storage mutations use a Durable Object storage transaction.
-- Coordinator routes require a dedicated internal Bearer secret; no secret is configured, so the isolated coordinator fails closed. No live route, signing, or transaction submission is present.
+## Deployment and configuration boundary
 
-## Devnet validation boundary
-
-The Devnet preflight workflow added with this review successfully checked the official Devnet genesis hash, RPC health, confirmed slot, parsed mint data, token program, supply, and a positive SOL/USD spot quote from Coinbase. The reference Devnet USDC mint reports both mint and freeze authorities present, so it would not pass the current strict authority-safety rule. The public Devnet RPC returned HTTP 429 for largest-account enumeration; holder concentration is therefore **not validated**. The Coinbase quote check verifies source connectivity and response schema only; it is not wired into the coordinator's reservation calculation. The workflow performs **zero signing and zero transaction submissions**.
-
-Devnet does not provide representative mainnet liquidity or a dependable market-risk dataset. DexScreener/RugCheck mainnet market results must not be presented as Devnet risk validation. A real Devnet transaction lifecycle test would require an explicitly provisioned Devnet-only test wallet and a separately reviewed transaction harness; no private key or wallet secret is included in this repository change.
+The checked-in Wrangler configuration declares KV `BOT_STATE`, Durable Objects `LIVE_TRADE_COORDINATOR`, `AUTH_GUARD`, and `PAPER_TRADING_STATE`, plus their migration tags and the `ASSETS` binding. CI validates the configuration and performs a dry-run build only. It does not inspect live Cloudflare account settings or prove that production secrets, namespace bindings, migrations, or cron settings are correctly applied.
 
 ## Release gate
 
-Do not merge this PR, enable Mainnet, add a public coordinator route, or enable signing until all High findings are fixed, migrations/recovery are tested, an independent reviewer approves the complete order path, and Devnet-only signed transaction tests pass using a dedicated test wallet.
+Do not merge this PR or enable Mainnet/live trading. Before any separate live-trading proposal, resolve the blocking findings above, verify deployed Cloudflare configuration without exposing secret values, run a dedicated Devnet-only signed lifecycle test with a disposable wallet, test recovery and ambiguous submissions, and obtain independent review of transaction decoding, signing, submission, and settlement reconciliation. Any Mainnet enablement requires separate explicit user approval.
