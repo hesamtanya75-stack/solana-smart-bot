@@ -57,7 +57,7 @@ function validReservation(overrides = {}) {
     idempotencyKey: "order-key-0001",
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    destination: "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy",
+    destination: "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw",
     slippageBps: 50,
     quoteId: "coinbase-quote-0001",
     amountLamports: 10_000_000,
