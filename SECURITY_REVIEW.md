@@ -185,3 +185,12 @@ A focused re-review of `LiveTradeCoordinator`, its tests, the Worker route dispa
 - The tests cover stop activation and credential rejection, but do not constitute an operator control-plane or settlement implementation.
 
 **Decision unchanged:** this review found no safe reason to enable the live path. PR #27 remains Draft and unmerged; paper-trading only. No production deployment, signing, submission, or Mainnet activity was performed.
+
+
+## Emergency-stop retry precedence fix — 2026-11-15
+
+A focused review found that the coordinator's idempotent fast path returned an existing reservation before checking the emergency-stop state. Although this path did not itself sign or submit a transaction, a future trusted caller could incorrectly interpret the successful duplicate response as permission to continue processing while the stop was active.
+
+The coordinator now checks the kill switch inside the same serialized state transaction before returning any duplicate reservation. An active stop therefore blocks both new reservations and retries of existing reservations. The reservation-history regression test now asserts that a duplicate retry receives HTTP 409 while the stop is active, then separately verifies the capacity guard after the stop is explicitly disabled.
+
+This hardening does not implement signing, transaction submission, semantic Jupiter instruction verification, settlement, or a trusted production caller. The coordinator remains isolated and fail-closed. PR #27 remains Draft; no merge, production deployment, or Mainnet activity is authorized.
