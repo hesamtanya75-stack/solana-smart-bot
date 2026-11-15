@@ -547,3 +547,18 @@ The official v1 wire-format documentation specifies that config bits 0 and 1 mus
 The priority-fee field is only structurally consumed; no fee policy or economic approval is inferred. Semantic instruction verification remains false and live execution remains blocked.
 
 Reference: https://solana.com/docs/core/transactions/versioned-transactions
+
+## CI completion and V1 boundary-test update — 2026-11-15 (code commit 996ecaab59aab41fe64745b10b815ab34b2489fc)
+
+GitHub Actions for the current branch head completed successfully:
+
+- Frontend JavaScript validation: success.
+- Node safety and Durable Objects runtime tests: **189 passed, 0 failed, 0 skipped**.
+- Isolated Miniflare dependency audit: **0 vulnerabilities reported**.
+- Cloudflare Worker validation: success; Wrangler dry-run only, no deployment.
+- Devnet read-only cluster identity/RPC checks: success.
+- Funded signed Devnet transfer: **skipped**, because `DEVNET_RPC_URL` is not configured. No signing or transaction submission occurred.
+
+The test log specifically confirms the V1 compute-unit and loaded-data upper-bound test and the inclusive 256 KiB heap-size boundary test passed. The parser continues to reject values outside its configured supported ranges. These are structural resource checks only; they do not validate instruction semantics or economic intent.
+
+The PR remains Draft, Open, and unmerged. `semanticInstructionVerification` remains false; live reservations/signing/submission remain blocked. No production deployment, Mainnet activity, or real transaction was performed.
