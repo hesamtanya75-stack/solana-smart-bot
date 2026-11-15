@@ -124,3 +124,15 @@ test("signed Devnet lifecycle uses only a configured endpoint or official Devnet
   assert.match(script, /candidateGenesis !== EXPECTED_DEVNET_GENESIS/);
   assert.doesNotMatch(script, /api\.mainnet-beta\.solana\.com/);
 });
+
+
+test("Devnet scripts ignore malformed or insecure configured RPC URLs without exposing them", () => {
+  for (const path of ["../scripts/devnet-preflight.mjs", "../scripts/devnet-signed-lifecycle.mjs"]) {
+    const script = readFileSync(new URL(path, import.meta.url), "utf8");
+    assert.match(script, /function isSecureDevnetRpcEndpoint\(value\)/);
+    assert.match(script, /parsed\.protocol === "https:"/);
+    assert.match(script, /!parsed\.username && !parsed\.password/);
+    assert.match(script, /filter\(value => value && isSecureDevnetRpcEndpoint\(value\)\)/);
+    assert.match(script, /"https:\/\/api\.devnet\.solana\.com"/);
+  }
+});
