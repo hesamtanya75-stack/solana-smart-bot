@@ -125,7 +125,7 @@ async function getJupiterOrder({
       !/^[0-9]+$/.test(String(order.outAmount || "")) ||
       BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
-    throw new Error("Jupiter returned an incomplete, non-Metis, or non-executable order");
+    throw new Error("Jupiter returned an incomplete or non-executable order");
   }
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
     order.transaction, policy.wallet, fetchImpl
