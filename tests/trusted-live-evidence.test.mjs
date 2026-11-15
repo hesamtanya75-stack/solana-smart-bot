@@ -93,6 +93,22 @@ test("v1 transaction rejects duplicate inline account addresses", () => {
   );
 });
 
+test("legacy and v0 transactions reject a readonly sole signer fee payer", () => {
+  const legacy = Buffer.from(validUnsignedTransaction(), "base64");
+  legacy[66] = 1;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(legacy.toString("base64"), BOT_WALLET),
+    /signer header is inconsistent/
+  );
+
+  const v0 = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  v0[67] = 1;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(v0.toString("base64"), BOT_WALLET),
+    /signer header is inconsistent/
+  );
+});
+
 test("v1 transaction rejects a readonly sole signer fee payer", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes[2] = 1;
