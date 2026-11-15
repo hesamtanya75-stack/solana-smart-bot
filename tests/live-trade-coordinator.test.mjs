@@ -225,7 +225,7 @@ test("reservation fails closed when the reviewed priority-fee ceiling is absent 
   assert.match(missing.body.error, /Reviewed maximum priority fee is not configured/);
 
   const { coordinator } = makeCoordinator(async () => trustedEvidence({
-    costs: { ...trustedEvidence().costs, maxPriorityFeeLamports: 3001 }
+    costs: { ...trustedEvidence().costs, computeUnitPriceMicroLamports: "15005", maxPriorityFeeLamports: 3001 }
   }));
   await post(coordinator, "/kill-switch", { enabled: false });
   const exceeded = await post(coordinator, "/reserve", validReservation());
