@@ -230,7 +230,9 @@ test("scheduled cron persists its cycle status through authoritative paper state
     idFromName: name => name,
     get: id => {
       assert.equal(id, "paper-trading");
-      return instance;
+      return {
+        fetch: (url, init) => instance.fetch(new Request(url, init))
+      };
     }
   };
   const pending = [];
