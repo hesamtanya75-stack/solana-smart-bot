@@ -778,7 +778,7 @@ if(!mintChecked){
          show("security",
     row("Mint Authority",mintStatus)+
     row("Freeze Authority",freezeStatus)+
-    row("Token Program",programOwner||"داتا نییە")+
+    row("Token Program",safe(programOwner||"داتا نییە"))+
 row("Token-2022 Extensions",
   foundExtensions.length
     ? foundExtensions.join("، ")
