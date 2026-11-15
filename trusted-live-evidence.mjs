@@ -202,7 +202,11 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
         params: { mintAddress: mint, page, limit, options: { showZeroBalance: false } }
       })
     });
-    if (payload.error) throw new Error("Alchemy getTokenAccounts failed");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+        payload.jsonrpc !== "2.0" || payload.id !== page || payload.error ||
+        !payload.result || typeof payload.result !== "object" || Array.isArray(payload.result)) {
+      throw new Error("Alchemy getTokenAccounts response envelope is invalid");
+    }
     const result = payload.result;
     const rows = result?.token_accounts;
     if (!Array.isArray(rows)) throw new Error("Alchemy holder page has an invalid response shape");
