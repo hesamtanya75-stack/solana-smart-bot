@@ -289,11 +289,25 @@ main>.panel{
   <p class="dash-note">ئەم ئامارانە خەیاڵین؛ قازانج/زیان تەنها مامەڵە تۆمارکراوەکان دەژمێرێت. ئەگەر مێژووی کۆن سڕابێتەوە، باڵانس دەتوانێت لە کۆی قازانج/زیان جیاواز بێت. باڵانسی Phantom نین.</p>
 </section>
 
-<section class="section" id="walletPanel" aria-label="دۆخی وۆڵێتی تایبەتی بۆت">
-  <h2>👛 وۆڵێتی تایبەتی بۆت</h2>
+<section class="section" id="walletPanel" aria-label="وۆڵێتی کەسی بە پەیوەندی خوێندنەوە">
+  <h2>👛 وۆڵێتی کەسی (پەیوەندی خوێندنەوە)</h2>
   <div class="item"><span>دۆخی پەیوەندی</span><b class="value warn" id="walletAddress">هێشتا پەیوەست نەکراوە</b></div>
-  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">پشکنین نەکراوە</b></div>
-  <div id="walletStatus" role="status" aria-live="polite" class="small">هیچ وۆڵێتێک پەیوەست نییە. دوای دروستکردنی وۆڵێتی نوێی Phantom، تەنها ناونیشانی گشتییەکەی لێرە زیاد دەکرێت. Seed Phrase و Private Key مەنووسە.</div>
+  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">لەم قۆناغەدا ناپشکنرێت</b></div>
+  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+    <button id="walletConnectButton" type="button">🔗 پەیوەستکردنی Phantom</button>
+    <button id="walletDisconnectButton" type="button" disabled>دەرچوون لە وۆڵێت</button>
+  </div>
+  <div id="walletStatus" role="status" aria-live="polite" class="small">تەنها ناونیشانی گشتیی وۆڵێت پیشان دەدرێت؛ ئەم پەیوەندییە هێشتا بە ڕێڕەوی داواکاریی کڕینەوە نەبەستراوە. هیچ مامەڵەیەک واژۆ ناکات و هیچ پارەیەک نانێرێت. Seed Phrase و Private Key مەنووسە.</div>
+  <div class="section" id="jupiterQuotePanel">
+    <h3>📈 پێشبینینی کڕین لە Jupiter (تەنها Quote)</h3>
+    <label for="quoteAmountSol">بڕی SOL بۆ پێشبینین</label>
+    <input id="quoteAmountSol" type="number" min="0.000001" max="1" step="0.000001" value="0.01" inputmode="decimal">
+    <label for="quoteOutputMint">ناونیشانی کۆینی مەبەست</label>
+    <input id="quoteOutputMint" type="text" placeholder="Mint address" autocomplete="off" spellcheck="false">
+    <button id="jupiterQuoteButton" type="button">پشکنینی Quote لە Jupiter</button>
+    <div id="jupiterQuoteStatus" class="small" role="status" aria-live="polite">ئەم بەشە تەنها نرخی پێشبینیکراو دەهێنێت؛ هیچ Transaction دروست ناکات و هیچ پارەیەک ناگوازێتەوە.</div>
+    <div id="jupiterQuoteResult" class="small"></div>
+  </div>
 </section>
 
 
@@ -1048,7 +1062,7 @@ if (liveNotice) {
 }
 const walletNotice = document.createElement("p");
 walletNotice.className = "bot-warning";
-walletNotice.textContent = "Phantom: پەیوەندیی وۆڵێت لەم وێبسایتەدا چالاک نییە؛ ناونیشانی گشتیی دانراوی کۆن وەک وۆڵێتی تۆ پیشان نادرێت. هیچ Seed Phrase یان Private Key مەنووسە.";
+walletNotice.textContent = "پاراستن: پەیوەندی تەنها بۆ خوێندنەوەی ناونیشانی گشتییە؛ واژۆکردن و ناردنی مامەڵە لەم قۆناغەدا ناچالاکە.";
 demoPanel.appendChild(walletNotice);
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
@@ -1562,6 +1576,69 @@ async function serverRequest(path, options = {}) {
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
   return data;
 }
+
+const jupiterQuoteButton = document.getElementById("jupiterQuoteButton");
+const jupiterQuoteStatus = document.getElementById("jupiterQuoteStatus");
+const jupiterQuoteResult = document.getElementById("jupiterQuoteResult");
+const quoteOutputMint = document.getElementById("quoteOutputMint");
+const quoteAmountSol = document.getElementById("quoteAmountSol");
+
+jupiterQuoteButton.addEventListener("click", async () => {
+  jupiterQuoteResult.textContent = "";
+  if (!serverModeReady || !serverToken) {
+    jupiterQuoteStatus.textContent = "سەرەتا بچۆ ژوورەوە بۆ بەکارهێنانی Quote Preview.";
+    return;
+  }
+  const outputMint = quoteOutputMint.value.trim() || document.getElementById("mint")?.value.trim() || "";
+  const amountText = quoteAmountSol.value.trim();
+  const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  if (!base58.test(outputMint)) {
+    jupiterQuoteStatus.textContent = "تکایە ناونیشانی Mint ـی دروست بنووسە.";
+    return;
+  }
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,9})?$/.test(amountText)) {
+    jupiterQuoteStatus.textContent = "بڕی SOL دروست نییە.";
+    return;
+  }
+  const [whole, fraction = ""] = amountText.split(".");
+  const lamports = BigInt(whole) * 1000000000n + BigInt((fraction + "000000000").slice(0, 9));
+  if (lamports < 1000n || lamports > 1000000000n) {
+    jupiterQuoteStatus.textContent = "بڕی Quote دەبێت لە 0.000001 تا 1 SOL بێت.";
+    return;
+  }
+  jupiterQuoteButton.disabled = true;
+  jupiterQuoteStatus.textContent = "داواکاریی پێشبینین بۆ Jupiter دەنێردرێت...";
+  try {
+    const quote = await serverRequest("/api/live/quote-preview", {
+      method: "POST",
+      body: JSON.stringify({ outputMint, amountLamports: lamports.toString() })
+    });
+    if (quote.quoteOnly !== true || quote.transactionAvailable !== false) {
+      throw new Error("وەڵامی Quote تەنها پشتڕاست نەکرایەوە.");
+    }
+    const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact);
+    const fee = quote.feeBps == null ? "بەردەست نییە" : String(quote.feeBps) + " bps";
+    const minOut = quote.otherAmountThreshold || "بەردەست نییە";
+    const usd = quote.outUsdValue == null ? "بەردەست نییە" : "$" + Number(quote.outUsdValue).toFixed(4);
+    const slippage = quote.slippageBps == null ? "بەردەست نییە" : (Number(quote.slippageBps) / 100) + "%";
+    const platformFee = quote.platformFeeAmount == null ? "بەردەست نییە" : quote.platformFeeAmount + (quote.feeMint ? " (" + quote.feeMint + ")" : "");
+    jupiterQuoteResult.textContent =
+      "بڕی نێردراو: " + amountText + " SOL\n" +
+      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\n" +
+      "نرخی نزیکەیی دەرچوون: " + usd + "\n" +
+      "کەمترین بڕ دوای Slippage (raw units): " + minOut + "\n" +
+      "Slippage: " + slippage + "\n" +
+      "کاریگەری نرخ: " + impact + "\n" +
+      "کۆی کرێی ڕێڕەو: " + fee + "\n" +
+      "کرێی پلاتفۆرمی Jupiter (raw units): " + platformFee + "\n" +
+      "ژمارەی هەنگاوەکانی ڕێڕەو: " + quote.routePlanCount;
+    jupiterQuoteStatus.textContent = "Quote ـی تەنها خوێندنەوە وەرگیرا. ئەمە نرخێکی پێشبینیکراوە، نەک بەڵێنی جێبەجێبوون.";
+  } catch (error) {
+    jupiterQuoteStatus.textContent = "پێشبینین سەرکەوتوو نەبوو: " + error.message;
+  } finally {
+    jupiterQuoteButton.disabled = false;
+  }
+});
 function renderServerControls(state) {
   autoDemoBuyEnabled = state.autoEnabled === true;
   autoDemoBuyPaused = state.paused === true;
@@ -1894,6 +1971,124 @@ if (serverToken) {
       status().textContent=p.message;
     }catch(e){status().textContent=e.message;}
   };
+
+  // Read-only Phantom connection. This intentionally exposes no signing or
+  // transaction-submission path; the wallet remains in full control.
+  const walletConnectButton = document.getElementById("walletConnectButton");
+  const walletDisconnectButton = document.getElementById("walletDisconnectButton");
+  const walletAddress = document.getElementById("walletAddress");
+  const walletSol = document.getElementById("walletSol");
+  const walletStatus = document.getElementById("walletStatus");
+  let connectedPhantomProvider = null;
+  let walletBalanceRequestId = 0;
+  const observedPhantomProviders = new WeakSet();
+
+  async function refreshWalletBalance(provider, address) {
+    const requestId = ++walletBalanceRequestId;
+    walletSol.textContent = "لە پشکنیندایە...";
+    try {
+      const balance = await rpcRequest("getBalance", [
+        address,
+        { commitment: "confirmed" }
+      ]);
+      if (
+        requestId !== walletBalanceRequestId ||
+        connectedPhantomProvider !== provider ||
+        walletAddress.textContent !== address
+      ) return;
+      const lamports = Number(balance?.value);
+      if (!Number.isFinite(lamports) || lamports < 0) {
+        throw new Error("Invalid balance response");
+      }
+      walletSol.textContent = (lamports / 1_000_000_000)
+        .toLocaleString("en-US", { maximumFractionDigits: 6 }) + " SOL";
+    } catch {
+      if (
+        requestId === walletBalanceRequestId &&
+        connectedPhantomProvider === provider &&
+        walletAddress.textContent === address
+      ) {
+        walletSol.textContent = "پشکنینی باڵانس سەرکەوتوو نەبوو";
+      }
+    }
+  }
+
+  function getPhantomProvider() {
+    const provider = window.phantom?.solana;
+    return provider?.isPhantom === true ? provider : null;
+  }
+
+  function observePhantomProvider(provider) {
+    if (!provider || observedPhantomProviders.has(provider)) return;
+    observedPhantomProviders.add(provider);
+    provider.on?.("accountChanged", publicKey => {
+      if (publicKey) showWalletConnected(provider, publicKey);
+      else showWalletDisconnected("هەژماری Phantom گۆڕا یان پەیوەندی پچڕا؛ دووبارە پەیوەست ببە.");
+    });
+    provider.on?.("disconnect", () => {
+      showWalletDisconnected("Phantom پەیوەندییەکەی پچڕاند.");
+    });
+  }
+
+  function showWalletDisconnected(message) {
+    walletBalanceRequestId++;
+    connectedPhantomProvider = null;
+    walletAddress.textContent = "هێشتا پەیوەست نەکراوە";
+    walletAddress.className = "value warn";
+    walletSol.textContent = "هێشتا پشکنین نەکراوە";
+    walletDisconnectButton.disabled = true;
+    walletConnectButton.disabled = false;
+    walletStatus.textContent = message;
+  }
+
+  function showWalletConnected(provider, publicKey) {
+    const address = publicKey?.toString?.() || "";
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+      showWalletDisconnected("ناونیشانی وۆڵێت دروست نییە؛ پەیوەندی نوێ بکەوە.");
+      return;
+    }
+    connectedPhantomProvider = provider;
+    walletAddress.textContent = address;
+    walletAddress.className = "value good";
+    walletSol.textContent = "لە پشکنیندایە...";
+    walletDisconnectButton.disabled = false;
+    walletConnectButton.disabled = true;
+    walletStatus.textContent = "Phantom پەیوەستە. باڵانسی SOL تەنها بە شێوەی خوێندنەوە پشکنین دەکرێت؛ هیچ واژۆکردن یان ناردنی مامەڵەیەک ناکرێت.";
+    refreshWalletBalance(provider, address);
+  }
+
+  walletConnectButton.addEventListener("click", async () => {
+    const provider = getPhantomProvider();
+    if (!provider) {
+      walletStatus.textContent = "Phantom نەدۆزرایەوە. لە مۆبایلدا ئەم ماڵپەڕە لە ناو وێبگەڕی ناوخۆی Phantom بکەرەوە و دووبارە هەوڵ بدەوە.";
+      return;
+    }
+    walletConnectButton.disabled = true;
+    walletStatus.textContent = "داوای پەیوەندی لە Phantom کراوە؛ تکایە لە Wallet پەسەندی بکە.";
+    try {
+      const response = await provider.connect();
+      observePhantomProvider(provider);
+      showWalletConnected(provider, response?.publicKey || provider.publicKey);
+    } catch (error) {
+      showWalletDisconnected(error?.code === 4001
+        ? "داواکاریی پەیوەندی لەلایەن تۆوە ڕەتکرایەوە."
+        : "پەیوەندی سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
+    }
+  });
+
+  walletDisconnectButton.addEventListener("click", async () => {
+    const provider = connectedPhantomProvider;
+    walletDisconnectButton.disabled = true;
+    try {
+      await provider?.disconnect?.();
+    } catch {
+      // Clear the local connection display even if the provider is already closed.
+    }
+    showWalletDisconnected("پەیوەندیی Phantom لەم ماڵپەڕەدا داخرا.");
+  });
+
+  observePhantomProvider(getPhantomProvider());
+
 })();
 </script>
 </body>
