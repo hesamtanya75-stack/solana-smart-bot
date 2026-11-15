@@ -970,6 +970,31 @@ test("Jupiter /build rejects token amounts outside the Solana u64 range", () => 
   }
 });
 
+
+test("Jupiter /build rejects numeric or non-canonical amount values without coercion", () => {
+  for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+      [field]: 9007199254740992
+    })), /response envelope/);
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+      [field]: "01"
+    })), /response envelope/);
+  }
+});
+
+test("Jupiter route-plan amounts must be exact decimal strings", () => {
+  for (const field of ["inAmount", "outAmount", "feeAmount"]) {
+    const swapInfo = {
+      ...validBuildResponse().routePlan[0].swapInfo,
+      ...(field === "feeAmount" ? { feeMint: "So11111111111111111111111111111111111111112" } : {}),
+      [field]: 9007199254740992
+    };
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+      routePlan: [{ ...validBuildResponse().routePlan[0], swapInfo }]
+    })), /routePlan\\[0\\] is malformed/);
+  }
+});
+
 test("Jupiter /build validates route-plan entries and swap mode", () => {
   const valid = validBuildResponse();
   assert.equal(validateJupiterBuildResponse(valid).routePlan.length, 1);
