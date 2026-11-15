@@ -1001,7 +1001,7 @@ export default {
       const sourceHtml = await assetResponse.text();
       // The dashboard uses inline scripts; bind each script to a fresh per-response
       // nonce instead of weakening script-src with unsafe-inline.
-      const html = sourceHtml.replace(/<script\\b(?![^>]*\\bnonce=)([^>]*)>/gi,
+      const html = sourceHtml.replace(/<script\b(?![^>]*\bnonce=)([^>]*)>/gi,
         (_match, attributes) => `<script nonce="${nonce}"${attributes}>`);
       return new Response(html, {
         status: assetResponse.status,
