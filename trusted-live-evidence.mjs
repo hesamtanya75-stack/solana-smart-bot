@@ -1095,6 +1095,7 @@ export async function fetchProgramAccountIdentityEvidence(
   const upgradeablePrograms = programs.filter(program =>
     program.loaderType === "upgradeable-bpf-loader"
   );
+  let programDataContextSlot = null;
   if (upgradeablePrograms.length > 0) {
     const programDataAddresses = upgradeablePrograms.map(program => {
       const account = accounts[programIds.indexOf(program.programId)];
@@ -1107,9 +1108,9 @@ export async function fetchProgramAccountIdentityEvidence(
     const programDataResult = await rpc(fetchImpl, "getMultipleAccounts", [
       uniqueProgramDataAddresses, { commitment: "finalized", encoding: "base64" }
     ]);
-    const programDataSlot = programDataResult?.context?.slot;
+    programDataContextSlot = programDataResult?.context?.slot;
     const programDataAccounts = programDataResult?.value;
-    if (!Number.isSafeInteger(programDataSlot) || programDataSlot < contextSlot ||
+    if (!Number.isSafeInteger(programDataContextSlot) || programDataContextSlot < contextSlot ||
         !Array.isArray(programDataAccounts) ||
         programDataAccounts.length !== uniqueProgramDataAddresses.length) {
       throw new Error("ProgramData RPC context or account count is invalid");
@@ -1146,7 +1147,7 @@ export async function fetchProgramAccountIdentityEvidence(
   }
   return Object.freeze({
     contextSlot,
-    programDataContextSlot: upgradeablePrograms.length ? programDataResult.context.slot : null,
+    programDataContextSlot,
     programs: Object.freeze(programs),
     semanticInstructionVerification: false,
     verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
