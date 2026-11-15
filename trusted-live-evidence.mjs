@@ -568,7 +568,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
   for (const row of rows) {
     if (row?.mint !== mint || row?.owner !== owner) continue;
     const amount = row?.uiTokenAmount?.amount;
-    if (typeof amount !== "string" || !/^\\d+$/.test(amount)) {
+    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
     total += BigInt(amount);
@@ -588,7 +588,7 @@ export async function verifyFinalizedJupiterSettlement({
 }, fetchImpl = fetch) {
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
-  const validAmount = value => typeof value === "string" && /^\\d+$/.test(value) && BigInt(value) > 0n;
+  const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
   if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
       !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
       !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
