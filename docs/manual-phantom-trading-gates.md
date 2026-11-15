@@ -88,17 +88,17 @@ Official references:
 
 ## CI evidence snapshot (2026-11-15, refreshed)
 
-Latest reviewed PR head: `9946239dcdb4e29ac561d424159683912e552bd5`.
+Latest reviewed PR head: `879c3752c031ae43974049997170acc2bc6d1be6`.
 
-- Node tests and isolated Durable Objects runtime: 229 passed, 0 failed (run `43746298924`, job `132910232155`).
-- Cloudflare Worker build validation: success (run `43746298946`; build-only; no deployment).
-- Devnet cluster identity and read-only RPC validation: success (run `43746298956`).
-- Faucet-funded Devnet signing and transfer step: skipped because `DEVNET_RPC_URL` is not configured; job step `Verify ephemeral signing and submit a faucet-funded Devnet test transfer` was explicitly skipped.
-- The Devnet workflow reports success because its explicit skip-report step succeeds; this does not prove a signed transfer or settlement. No signing or transaction submission was attempted.
+- Node tests and isolated Durable Objects runtime: 236 passed, 0 failed (run `43753666397`, job `132932957148`).
+- Cloudflare Worker build validation: success (run `43753666419`, job `132932957650`; build validation only, no deployment).
+- Devnet cluster identity and read-only RPC validation: success (run `43753666403`, job `132932957143`).
+- Faucet-funded Devnet signing and transfer step: explicitly skipped because `DEVNET_RPC_URL` is not configured.
+- The Devnet workflow reports success because its explicit skip-report step succeeds; this does not prove a signed transfer, token swap, or settlement. No signing or transaction submission was attempted.
+- The earlier run on parent head `ab7eae678473a3128c0a7c159eb8cdd506bf8f8b` also passed Node, Cloudflare build, and read-only Devnet checks, with the funded transfer skipped.
 - The combined status may still include the legacy Deno Deploy context failure; this is separate from the Cloudflare Worker build and is not a Worker deployment result.
 
 No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this documentation update.
-
 
 ## Program loader ownership and deployment evidence (2026-11-15)
 
