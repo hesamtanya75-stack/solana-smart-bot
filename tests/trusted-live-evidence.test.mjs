@@ -1683,23 +1683,26 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(21)), encodeBase58(new Uint8Array(32).fill(22))] }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [89_995_000],
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{
+              accountIndex: 1,
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
               {
+                accountIndex: 1,
                 mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
+                accountIndex: 2,
                 mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
               }
@@ -1750,7 +1753,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(41)), encodeBase58(new Uint8Array(32).fill(42))] }
           },
           meta: {
             err: null, fee: 5000,
@@ -1786,19 +1789,22 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))] } },
           meta: {
-            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
+            err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{
+              accountIndex: 1,
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
               {
+                accountIndex: 1,
                 mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
+                accountIndex: 2,
                 mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
