@@ -311,3 +311,26 @@ Validation at code head `17d543f6690c96b6dfd895da9d11d521e2bf1eff`:
 References: Solana's current v0 format documentation describes the full account-key vector as static keys followed by loaded writable and then loaded readonly addresses; the Solana protocol specification states instruction account indexes must be within that combined vector and program-ID indexes must refer to static keys.
 
 **Decision unchanged:** PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
+
+
+## Settlement evidence and ALT integration update — 2026-11-15
+
+Reviewed the current application code at commit `3e7b504438515ed1d5417feb5a83227c311623c6` (PR #27 head at the time of this update is `b6cd2302d2a0f988b663eb31d99cc2edfc845699`; this commit contains documentation changes only).
+
+### Implemented and tested
+
+- The unsigned Jupiter transaction path now calls `validateAndResolveUnsignedJupiterTransaction()`. For transaction-bearing legacy/v0 orders it performs wire-structure validation and resolves supplied ALT descriptors against finalized on-chain account data, checking ALT ownership, deactivation/warm-up state, index bounds, and compiled-key ordering.
+- The Jupiter quote-only request deliberately omits `taker`. That response has `transaction: null`; consequently it cannot exercise transaction parsing or ALT resolution and is not proof of executable sellability.
+- If an order response does contain an unsigned transaction, the evidence status is explicitly `unsigned-structure-and-alt-only`. It continues to report `semanticInstructionVerification: false`; no router or downstream program instruction is treated as approved.
+- `verifyFinalizedJupiterSettlement()` now checks signature status at finalized commitment, transaction success, signature inclusion, bot-wallet fee-payer position, and exact owner-scoped input/output token balance deltas for the requested mints and amounts. Wrapped SOL input is checked through its SPL token balance delta rather than a lamport delta that could be confounded by fees or rent.
+- The coordinator's `confirmed` transition requires that independent proof to match the pending reservation and pinned bot wallet. Duplicate confirmation with the same signature is idempotent; a different signature is rejected. Failure and close transitions remain blocked because independent proofs for those states are not implemented.
+- Regression tests cover valid settlement evidence, mismatched output, non-finalized status, a different fee payer, coordinator proof matching, and replay protection.
+
+### Remaining blockers and validation boundary
+
+- Semantic instruction verification is **not implemented**. Program IDs, instruction discriminators/types, account roles, token mints, amounts, destination, and downstream operations are not yet decoded and matched against immutable intent. The coordinator therefore remains fail-closed for new reservations.
+- Quote-only Jupiter evidence contains no transaction. The transaction-bearing order path has structural/ALT resolution only; neither path establishes semantic route safety.
+- Funded signed Devnet lifecycle validation was skipped because `DEVNET_RPC_URL` was absent. The successful Devnet workflow performed read-only checks only; logs state signing was not performed and zero transactions were submitted.
+- CI for code commit `3e7b504438515ed1d5417feb5a83227c311623c6`: Node tests **139 passed, 0 failed**; frontend validation **success**; Cloudflare Worker dry-run build **success**; Devnet read-only workflow **success**, with funded transfer skipped. These results do not prove production runtime configuration or a signed transaction lifecycle.
+
+**Decision unchanged:** PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved. Keep all semantic-verification gates and the disabled execution path fail-closed.
