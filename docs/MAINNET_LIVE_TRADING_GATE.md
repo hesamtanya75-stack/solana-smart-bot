@@ -10,11 +10,11 @@ This branch is preparation and policy enforcement only. It does not enable live 
 
 1. Keep the existing paper-trading engine unchanged.
 2. Keep the live-trading module separate and default-off.
-3. Use a dedicated bot wallet only. The personal wallet must never be used as the server signer.
-4. Keep signing material out of GitHub, browser code, KV state, logs, error messages, and chat.
-5. Before selecting a signer, verify the exact Solana transaction format, key custody model, and Cloudflare Workers compatibility. Do not accept a private key through an HTTP request.
-6. Quote and swap through a supported Solana swap provider, validate the returned transaction and all account/program destinations, then sign and submit only after every policy check passes.
-7. Verify confirmed transaction status and reconcile actual token/SOL balances from RPC. Never treat a quote or successful HTTP response as a completed trade.
+3. Use the user's connected Phantom wallet as the transaction fee payer and signer, with the wallet public key explicitly bound to the approved trade intent and finalized settlement owner. The server must never act as that wallet's signer.
+4. Keep seed phrases and private keys out of GitHub, browser code, server environment, KV state, logs, error messages, and chat. Only the Phantom extension may access and use its own signing capability.
+5. Before requesting Phantom approval, independently verify the exact Solana transaction message, signer, input/output mints, spend amount, recipient/token accounts, every invoked program, every writable account, lookup-table resolution, and all fee/tip/rent outflows. Reject unknown instruction types and unsupported transaction versions.
+6. Quote and build through a supported Solana swap provider, validate the complete returned transaction against the approved Phantom public key and immutable trade intent, then request explicit Phantom signing only after every policy check passes.
+7. Submit only the Phantom-signed transaction, then verify finalized transaction status and reconcile actual token/SOL balances from RPC. Never treat a quote or successful HTTP response as a completed trade.
 
 ## User-requested initial trade cap (not yet operational)
 
@@ -24,14 +24,14 @@ The user selected a maximum of **USD $3 per buy**, a maximum cumulative spend of
 
 - LIVE_TRADING_ENABLED must be exactly true; missing or malformed configuration disables live trading.
 - LIVE_TRADING_KILL_SWITCH must be exactly false; otherwise live trading is disabled.
-- Dedicated wallet public key must exactly match the pinned expected public key.
+- The current order builder still pins a dedicated bot wallet public key. This is incompatible with the requested user-controlled Phantom signer and must be refactored before any Phantom transaction can be built.
 - Per-trade spend, daily spend, open-position count, maximum slippage, minimum liquidity, and minimum 24-hour volume must be explicit bounded values.
 - evaluateLiveTradeEligibility enforces the per-trade cap, cumulative daily spend cap, open-position cap, minimum liquidity, minimum volume, and explicit passing results for mint authority, freeze authority, Token-2022 extension safety, holder concentration, and sell-route availability.
 - getJupiterOrder requires eligibility data and rejects a trade before network access if any check is missing or fails.
 - Jupiter response parsing rejects malformed Base64 syntax, non-positive output, missing route data, and mismatched input/output mint or input amount.
 - Execution remains intentionally unimplemented; no transaction is signed or submitted.
 
-Eligibility values must come from trusted, fresh server-side scanner and persisted trading state. Do not accept these values from browser input. The branch now contains a SQLite-backed Durable Object coordinator with internal bearer authentication, immutable-intent idempotency, serialized reservation state, kill-switch state, per-trade and daily USD limits, open-position limits, trusted server-side SOL/USD and token-risk evidence, and bounded unsigned Jupiter transaction structure parsing. The parser deliberately does not semantically verify instruction programs/accounts or resolve address lookup tables. The coordinator therefore rejects every reservation until semantic instruction and lookup-table verification is independently implemented. Settlement transitions are also deliberately disabled until transaction submission status or cryptographic proof of non-submission can be independently established. The current Worker does not call the coordinator; no public coordinator route or live execution path is wired. The paper-trading Worker continues to use its separate paper-state Durable Object.
+Eligibility values must come from trusted, fresh server-side scanner and persisted trading state. Do not accept these values from browser input. The branch now contains a SQLite-backed Durable Object coordinator with internal bearer authentication, immutable-intent idempotency, serialized reservation state, kill-switch state, per-trade and daily USD limits, open-position limits, trusted server-side SOL/USD and token-risk evidence, and bounded unsigned Jupiter transaction structure parsing. The parser preserves compiled instruction bytes and account indexes and resolves v0 address lookup tables, but deliberately does not semantically verify instruction programs/accounts. The coordinator therefore rejects every reservation until semantic instruction and lookup-table verification is independently implemented. Settlement transitions are also deliberately disabled until transaction submission status or cryptographic proof of non-submission can be independently established. The current Worker does not call the coordinator; no public coordinator route or live execution path is wired. The paper-trading Worker continues to use its separate paper-state Durable Object.
 
 ### Additional all-in spend accounting gate
 
@@ -39,12 +39,12 @@ The current $3 per-buy and $5 per-day reservation accounting converts only the S
 
 ## Mandatory remaining release gates
 
-1. Complete independent semantic verification of Jupiter instruction programs/accounts and resolve every address lookup table; the current parser validates wire structure only.
+1. Complete independent semantic verification of Jupiter instruction programs/accounts, writable/signer roles, and all value-moving instructions; v0 lookup tables are currently resolved but their contents are not semantically trusted.
 2. Establish quote freshness and validate all relevant amounts, fees, and token programs.
 3. Complete and independently test the existing Durable Object coordinator's durable idempotency and settlement state machine, including restart recovery and duplicate Cron/request behavior.
 4. Wire an authenticated emergency stop into the same strongly coordinated component and prove that it blocks new reservations immediately; define safe exit behavior.
 5. Test RPC outages, provider errors, ambiguous submissions, partial confirmations, and restart recovery.
-6. Complete a Devnet-only signing/submission test using a disposable wallet and tiny test amount.
+6. Refactor order construction and settlement binding to the connected Phantom public key, then complete a Devnet-only Phantom signing/submission test using a disposable wallet and tiny test amount.
 7. Obtain independent review of signing and transaction-decoding code.
 8. Have the user review final limits and explicitly approve before any Mainnet enablement.
 
