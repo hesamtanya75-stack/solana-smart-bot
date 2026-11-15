@@ -117,8 +117,9 @@ async function getJupiterOrder({
   const order = await response.json();
 
   if (!order || typeof order !== "object" ||
-      typeof order.requestId !== "string" || !order.requestId ||
+      typeof order.requestId !== "string" || !/^[!-~]{1,256}$/.test(order.requestId) ||
       typeof order.transaction !== "string" || order.transaction.length === 0 ||
+      order.transaction.length > 1644 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)$/.test(order.transaction) ||
       !/^[0-9]+$/.test(String(order.inAmount || "")) ||
       String(order.inAmount) !== String(amountLamports) ||
