@@ -75,6 +75,38 @@ test("coordinator rejects oversized authenticated request bodies before JSON par
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("full reservation history blocks new evidence requests but preserves ledger", async () => {
+  let evidenceCalls = 0;
+  const { coordinator, storage } = makeCoordinator(async () => {
+    evidenceCalls += 1;
+    return trustedEvidence();
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const day = new Date().toISOString().slice(0, 10);
+  const reservations = {};
+  for (let index = 0; index < 1000; index += 1) {
+    const key = "history-key-" + String(index).padStart(4, "0");
+    reservations[key] = {
+      idempotencyKey: key,
+      intentFingerprint: "immutable-intent-" + index,
+      amountCents: 100,
+      day,
+      status: "closed"
+    };
+  }
+  await storage.put("coordinator_state", {
+    killSwitch: false,
+    reservations,
+    killSwitchAudit: []
+  });
+
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /history capacity reached/);
+  assert.equal(evidenceCalls, 0);
+  assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 1000);
+});
+
 test("malformed reservation ledger fails closed before requesting live evidence", async () => {
   let evidenceCalls = 0;
   const { coordinator, storage } = makeCoordinator(async () => {
