@@ -8,7 +8,7 @@ test("AuthGuard runs on the Miniflare Durable Objects runtime with transactional
   const mf = new Miniflare({
     modules: true,
     scriptPath: "./tests/fixtures/auth-guard-runtime.mjs",
-    compatibilityDate: "2026-11-06",
+    compatibilityDate: "2026-05-03",
     durableObjects: {
       AUTH_GUARD: "AuthGuard"
     },
