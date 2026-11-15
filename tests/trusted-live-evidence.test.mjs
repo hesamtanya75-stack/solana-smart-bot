@@ -375,6 +375,13 @@ test("v1 transaction with a nonzero signature is rejected", () => {
   );
 });
 
+test("oversized Jupiter base64 input is rejected before decoding", () => {
+  assert.throws(
+    () => validateUnsignedJupiterTransaction("A".repeat(5468), BOT_WALLET),
+    /empty or not canonical base64/
+  );
+});
+
 test("v1 transaction exceeding its protocol size limit is rejected", () => {
   const bytes = Buffer.alloc(4097);
   bytes[0] = 0x81;
