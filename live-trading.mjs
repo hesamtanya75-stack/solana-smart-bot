@@ -122,12 +122,18 @@ async function getJupiterOrder({
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
+  const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    order.transaction, policy.wallet, fetchImpl
+  );
   return Object.freeze({
     requestId: order.requestId, transaction: order.transaction,
     inputMint, outputMint, inputAmount: String(amountLamports),
     outputAmount: String(order.outAmount), router: String(order.router || "unknown"),
     transactionVersion: order.transactionVersion ?? 0,
-    feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null
+    feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
+    transactionEvidence,
+    semanticInstructionVerification: false,
+    routeVerification: "unsigned-structure-and-alt-only"
   });
 }
 
