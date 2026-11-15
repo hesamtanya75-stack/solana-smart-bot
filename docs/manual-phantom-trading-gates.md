@@ -41,3 +41,15 @@ Status: design contract only. This document does not enable signing, transaction
 - Any weakening of existing fail-closed semantic-verification, fee, kill-switch, or settlement gates.
 
 A manual buy must not be enabled until all implementation and test gates above are independently reviewed and pass.
+
+## Verified repository audit (2026-11-15)
+
+The following are code-level findings from this branch, not assumptions about the deployed site:
+
+- index.html contains a Phantom connection and SOL-balance display, but its status text explicitly says it is not connected to the buy-request flow. The browser code uses connect and read-only getBalance; there is no signTransaction or signAndSendTransaction call in that wallet panel.
+- worker.js exposes POST /api/live/quote-preview only. It intentionally omits a taker, expects a quote-only response with transaction === null, and does not return an unsigned transaction. No Worker route calls the live-trade coordinator.
+- live-trading.mjs requires BOT_WALLET_PUBLIC_KEY to equal the pinned EXPECTED_BOT_WALLET, then sends that address as Jupiter's taker. Its returned evidence sets semanticInstructionVerification: false and routeVerification: unsigned-structure-and-alt-only.
+- executeLiveOrder() deliberately throws that live execution is not implemented. The coordinator independently requires semantic verification and finalized settlement proof; its failure/close proofs are also intentionally unavailable.
+- Therefore the existing Phantom balance display cannot currently initiate a manual trade, and changing the taker parameter alone would be unsafe: the transaction validator, coordinator ownership model, fee accounting, Worker authentication/route, browser confirmation, and settlement proof all need to be redesigned and tested together.
+
+These findings are why this branch keeps the real-trading path disabled. The next implementation slice must first introduce wallet-bound transaction-intent verification with a complete, reviewed supported-instruction allowlist; it must not expose a signable transaction or a signing button while semantic verification remains false.
