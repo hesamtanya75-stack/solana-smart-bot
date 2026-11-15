@@ -970,6 +970,22 @@ test("Jupiter /build rejects token amounts outside the Solana u64 range", () => 
   }
 });
 
+test("Jupiter /build validates route-plan entries and swap mode", () => {
+  const valid = validBuildResponse();
+  assert.equal(validateJupiterBuildResponse(valid).routePlan.length, 1);
+  for (const routePlan of [
+    [{}],
+    [{ ...valid.routePlan[0], percent: 101 }],
+    [{ ...valid.routePlan[0], swapInfo: { ...valid.routePlan[0].swapInfo, inputMint: "bad" } }],
+    [{ ...valid.routePlan[0], swapInfo: { ...valid.routePlan[0].swapInfo, inAmount: "18446744073709551616" } }]
+  ]) {
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
+      /routePlan\\[0\\] is malformed/);
+  }
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ swapMode: "Unknown" })),
+    /response envelope/);
+});
+
 test("Jupiter /build rejects malformed account metadata and unexpected requested amount", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: { programId: "11111111111111111111111111111111", accounts: [{
