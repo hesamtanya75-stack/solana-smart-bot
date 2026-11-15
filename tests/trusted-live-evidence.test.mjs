@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -574,4 +574,94 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
     () => validateUnsignedJupiterTransaction(transaction.toString("base64"), BOT_WALLET),
     /signer header is inconsistent/
   );
+});
+
+
+test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 123,
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: [BOT_WALLET] }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [89_995_000],
+            preTokenBalances: [],
+            postTokenBalances: [{
+              mint: outputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "12345", decimals: 6 }
+            }]
+          }
+        };
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0", id: 1, result
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.confirmationStatus, "finalized");
+  assert.equal(proof.slot, 123);
+});
+
+test("settlement proof rejects a finalized transaction with mismatched output", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(8));
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 124,
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          meta: {
+            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
+            preTokenBalances: [],
+            postTokenBalances: [{
+              mint: outputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "12344", decimals: 6 }
+            }]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /output token balance delta does not match/);
+});
+
+test("settlement proof rejects confirmed but non-finalized signatures", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(9));
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "confirmed" }] }
+      : null;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /not successfully finalized/);
 });
