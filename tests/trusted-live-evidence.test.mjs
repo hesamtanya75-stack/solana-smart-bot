@@ -996,15 +996,17 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
     async (_url, options) => {
       const request = JSON.parse(options.body);
       requests.push(request);
-      const value = request.params[0][0] === programId
-        ? [{
-            owner: loaderOwner, executable: true, space: programState.length,
-            data: [programState.toString("base64"), "base64"]
-          }]
-        : [{
-            owner: loaderOwner, executable: false, space: programDataState.length,
-            data: [programDataState.toString("base64"), "base64"]
-          }];
+      const programAccount = {
+        owner: loaderOwner, executable: true, space: programState.length,
+        data: [programState.toString("base64"), "base64"]
+      };
+      const programDataAccount = {
+        owner: loaderOwner, executable: false, space: programDataState.length,
+        data: [programDataState.toString("base64"), "base64"]
+      };
+      const value = request.params[0].length === 1
+        ? [programAccount]
+        : [programAccount, programDataAccount];
       return Response.json({ jsonrpc: "2.0", id: request.id, result: {
         context: { slot: requests.length === 1 ? 1234 : 1235 }, value
       } });
@@ -1014,7 +1016,7 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   assert.equal(requests.length, 2);
   assert.equal(requests[0].method, "getMultipleAccounts");
   assert.deepEqual(requests[0].params[0], [programId]);
-  assert.deepEqual(requests[1].params[0], [programDataAddress]);
+  assert.deepEqual(requests[1].params[0], [programId, programDataAddress]);
   assert.equal(requests[1].params[1].commitment, "finalized");
   assert.equal(evidence.contextSlot, 1234);
   assert.equal(evidence.programDataContextSlot, 1235);
