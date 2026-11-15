@@ -95,6 +95,37 @@ test("unparsed trailing Jupiter transaction bytes are rejected", () => {
   );
 });
 
+test("non-canonical compact instruction count is rejected", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  // Message begins after the one-byte signature count and 64-byte signature.
+  // The instruction count follows the three-byte message header, account
+  // count, two 32-byte keys, and the 32-byte recent blockhash.
+  const instructionCountOffset = 65 + 3 + 1 + 64 + 32;
+  const malformed = Buffer.concat([
+    bytes.subarray(0, instructionCountOffset),
+    Buffer.from([0x81, 0x00]),
+    bytes.subarray(instructionCountOffset + 1)
+  ]);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(malformed.toString("base64"), BOT_WALLET),
+    /compact length is non-canonical/
+  );
+});
+
+test("compact instruction count exceeding u16 is rejected", () => {
+  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
+  const instructionCountOffset = 65 + 3 + 1 + 64 + 32;
+  const malformed = Buffer.concat([
+    bytes.subarray(0, instructionCountOffset),
+    Buffer.from([0xff, 0xff, 0x04]),
+    bytes.subarray(instructionCountOffset + 1)
+  ]);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(malformed.toString("base64"), BOT_WALLET),
+    /compact length exceeds u16/
+  );
+});
+
 test("SOL/USD quote is fetched and timestamped by the server", async () => {
   const quote = await fetchTrustedSolUsdQuote(async (url) => {
     assert.match(String(url), /api\.coinbase\.com\/v2\/prices\/SOL-USD\/spot/);
