@@ -104,7 +104,7 @@ No signing prompt, execute route, automatic trading, Mainnet transaction, merge,
 
 - Finalized executable program-account snapshots reject owner IDs outside the recognized Solana loader-owner set: legacy BPF loader, BPF loader v2, upgradeable BPF loader, and native loader.
 - For upgradeable BPF programs, the evidence reader parses the Program account's state tag and ProgramData address, then fetches Program accounts again alongside ProgramData at finalized commitment. A changed ProgramData pointer is rejected.
-- ProgramData parsing validates its state tag, deployment slot, authority option encoding, account owner, canonical base64, and account-size metadata. It reports the upgrade authority (or immutable state) and SHA-256 of the deployed ELF payload, excluding the loader header.
+- ProgramData parsing validates its state tag, deployment slot, authority option encoding, account owner, canonical base64, account-size metadata, and ELF magic bytes. It reports the upgrade authority (or immutable state) and SHA-256 of the deployed ELF payload, excluding the loader header.
 - The second RPC read binds the ProgramData account to a refreshed Program pointer snapshot; it is still read-only provenance evidence and is not a transaction-wide atomic guarantee across separate RPC calls.
 - Other recognized loader types remain classified by owner only; this does not parse their executable formats.
 - A code hash and upgrade-authority value do not establish semantic safety. They must be compared against a separately reviewed, versioned allowlist and policy. Unknown or changed deployments must fail closed.
