@@ -57,7 +57,7 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
     const info = step?.swapInfo;
     if (!step || typeof step !== "object" || Array.isArray(step) ||
         !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
-        (step.bps != null && (!Number.isInteger(step.bps) || step.bps < 1 || step.bps > 10000)) ||
+        !Number.isInteger(step.bps) || step.bps < 1 || step.bps > 10000 ||
         !info || typeof info !== "object" || Array.isArray(info) ||
         !isCanonicalPublicKey(info.ammKey) ||
         !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
