@@ -46,13 +46,13 @@ test("Devnet airdrop confirmation uses its signature and never repeats a submitt
     "utf8"
   );
   const helperStart = script.indexOf("async function requestDevnetAirdrop");
-  const helperEnd = script.indexOf("\\nasync function main()", helperStart);
+  const helperEnd = script.indexOf("\nasync function main()", helperStart);
   assert.notEqual(helperStart, -1);
   assert.notEqual(helperEnd, -1);
   const helper = script.slice(helperStart, helperEnd);
-  assert.match(helper, /signature = await connection\\.requestAirdrop/);
-  assert.match(helper, /connection\\.confirmTransaction\\(signature, "confirmed"\\)/);
+  assert.match(helper, /signature = await connection\.requestAirdrop/);
+  assert.match(helper, /connection\.confirmTransaction\(signature, "confirmed"\)/);
   assert.doesNotMatch(helper, /getLatestBlockhash/);
   assert.match(helper, /Retry only the faucet request itself/);
-  assert.match(helper, /if \\(!signature\\)/);
+  assert.match(helper, /if \(!signature\)/);
 });
