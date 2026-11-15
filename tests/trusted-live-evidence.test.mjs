@@ -1069,6 +1069,15 @@ test("Jupiter /build rejects sparse route and instruction collections", () => {
   })), /instruction is malformed/);
 });
 
+test("Jupiter /build rejects array-shaped blockhash metadata", () => {
+  const metadata = [];
+  metadata.blockhash = new Array(32).fill(1);
+  metadata.lastValidBlockHeight = 123456;
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    blockhashWithMetadata: metadata
+  })), /response envelope/);
+});
+
 test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
   const sparseBlockhash = new Array(32).fill(1);
   delete sparseBlockhash[7];
