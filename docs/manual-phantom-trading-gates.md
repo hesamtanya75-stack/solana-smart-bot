@@ -72,9 +72,10 @@ Solana's official transaction model confirms that a compiled instruction contain
 
 - The official Solana transaction-introspection guide explains that versioned messages use static keys plus loaded ALT addresses, while CPI instructions are supplied separately in transaction metadata as `innerInstructions`. The helper's `walkInstructions` combines outer instructions and recorded inner instructions.
 - The official RPC JSON-structures guide documents `meta.innerInstructions` as execution metadata. It is not part of the unsigned message the wallet is asked to sign.
-- Therefore, resolving every static key and ALT is necessary but not sufficient for pre-sign approval. The current evidence builder also does not independently fetch each program account to verify its on-chain executable state or pin its loader/upgrade authority. A local decoder must not claim it has proven CPI behavior merely because all top-level program IDs are known.
+- Therefore, resolving every static key and ALT is necessary but not sufficient for pre-sign approval. A new read-only helper now fetches finalized account snapshots for referenced program IDs and records each account's owner, executable bit and data size. This is identity evidence only: it does not pin loader/upgrade authority, deployed code hashes, or prove CPI behavior. A local decoder must not claim it has proven CPI behavior merely because all top-level program IDs are known.
 - A simulation can provide useful execution evidence for the current state, but it is not a durable proof that a state-dependent program will invoke only the same CPIs when the signed transaction lands. Treat simulation as an additional rejection gate, never as a replacement for reviewed program semantics and deployment identity.
 - Any supported router/program must have a reviewed, versioned policy describing its possible CPI targets, argument constraints, writable-account effects, signer privilege propagation, and upgrade authority/deployment identity. If that cannot be established, reject that route and keep semantic verification false.
+- The program identity snapshot is deliberately not wired to a signing path and always returns `semanticInstructionVerification: false`. It rejects missing/non-executable accounts, malformed owner/data fields, mismatched account data sizes, invalid RPC context, and excessive/invalid program lists.
 - Add fixtures with nested CPI traces, missing or incomplete inner-instruction metadata, unexpected CPI programs, altered account privileges, and state-dependent route changes. Missing trace evidence must never be interpreted as an empty CPI list.
 
 Official references:
@@ -87,9 +88,9 @@ Official references:
 
 ## CI evidence snapshot (2026-11-15, refreshed)
 
-Latest reviewed PR head: `4577312be10e473528881e22bd2b86752c7af6a4`.
+Latest reviewed PR head: `1d0f6b78cee927228ad431c7b0caa1522eaf5c84`.
 
-- Node tests and isolated Durable Objects runtime: 226 passed, 0 failed.
+- Node tests and isolated Durable Objects runtime: 228 passed, 0 failed.
 - Cloudflare Worker build validation: success (build-only; no deployment).
 - Devnet cluster identity and read-only RPC validation: success.
 - Faucet-funded Devnet signing and transfer step: skipped because `DEVNET_RPC_URL` is not configured.
