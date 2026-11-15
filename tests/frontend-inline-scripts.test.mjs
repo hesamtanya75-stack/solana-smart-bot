@@ -41,3 +41,19 @@ test("Phantom SOL balance is read-only and ignores stale wallet responses", () =
   assert.match(source, /lamports \/ 1_000_000_000/);
   assert.doesNotMatch(source, /signTransaction|signAndSendTransaction|sendTransaction/);
 });
+
+
+test("Jupiter preview UI requests authenticated quote-only data with a bounded SOL amount", () => {
+  assert.match(html, /id="jupiterQuotePanel"/);
+  assert.match(html, /id="jupiterQuoteButton"/);
+  assert.match(html, /serverRequest\("\/api\/live\/quote-preview"/);
+  assert.match(html, /amountLamports: lamports\.toString\(\)/);
+  assert.match(html, /lamports > 1000000000n/);
+  assert.match(html, /quote\.quoteOnly !== true/);
+  assert.match(html, /transactionAvailable !== false/);
+  assert.match(html, /raw token units/);
+  const start = html.indexOf('const jupiterQuoteButton');
+  const end = html.indexOf('function renderServerControls', start);
+  const source = html.slice(start, end);
+  assert.doesNotMatch(source, /signTransaction|signAndSendTransaction|sendTransaction/);
+});
