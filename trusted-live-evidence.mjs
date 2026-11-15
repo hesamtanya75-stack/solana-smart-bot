@@ -241,7 +241,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     throw new Error("Token decimals are unavailable for sell-route verification");
   }
   const priceText = String(priceUsd);
-  const match = /^(\\d+)(?:\\.(\\d+))?$/.exec(priceText);
+  const match = /^(\d+)(?:\\.(\d+))?$/.exec(priceText);
   if (!match) throw new Error("Token USD price format is unsupported for sell-route verification");
   const priceScale = 24;
   const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(priceScale, "0").slice(0, priceScale));
@@ -268,7 +268,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
       order.transaction != null ||
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
-      !/^\\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
+      !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0 ||
       order.errorCode != null) {
     throw new Error("Jupiter did not return a complete quote-only sell-route response");
