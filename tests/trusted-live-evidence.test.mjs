@@ -1115,6 +1115,19 @@ test("Jupiter /build bounds aggregate instruction bundle resources", () => {
   })), /aggregate resource limits/);
 });
 
+test("Jupiter /build requires basis points on every route-plan step", () => {
+  const step = validBuildResponse().routePlan[0];
+  for (const routePlan of [
+    [{ ...step, bps: undefined }],
+    [{ ...step, bps: null }]
+  ]) {
+    assert.throws(
+      () => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
+      /routePlan\\[0\\] is malformed/
+    );
+  }
+});
+
 test("Jupiter /build enforces route split totals and top-level token mints", () => {
   const step = validBuildResponse().routePlan[0];
   const split = [
@@ -1129,10 +1142,7 @@ test("Jupiter /build enforces route split totals and top-level token mints", () 
       { ...step, percent: 50, bps: 4000 },
       { ...step, percent: 50, bps: 4000 }
     ],
-    [
-      { ...step, percent: 50, bps: 5000 },
-      { ...step, percent: 50, bps: undefined }
-    ],
+    [{ ...step, percent: 99, bps: 9900 }, { ...step, percent: 1, bps: 100 }],
     [{ ...step, swapInfo: {
       ...step.swapInfo,
       inputMint: "11111111111111111111111111111111"
