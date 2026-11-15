@@ -279,7 +279,9 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   }
   assert.equal(risk.fetchedAt, 1000);
   assert.ok(clock > risk.fetchedAt);
-  assert.equal(holderPages, 2);
+  // Three full evidence fetches run: one valid quote and two malformed quote regressions.
+  // Each must still page both holder-census pages completely.
+  assert.equal(holderPages, 6);
   assert.equal(risk.holderSampleOnly, false);
   assert.equal(risk.holderAccountCount, 101);
   assert.equal(risk.holderOwnerCount, 2);
