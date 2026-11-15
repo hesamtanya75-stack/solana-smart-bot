@@ -8,6 +8,10 @@ const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
 const DEVNET_OR_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 const EXPECTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
+const REVIEWED_NATIVE_PROGRAM_IDENTITIES = new Map([
+  ["11111111111111111111111111111111", "solana-system-program"],
+  ["ComputeBudget111111111111111111111111111111", "solana-compute-budget"]
+]);
 const SOLANA_PROGRAM_LOADER_TYPES = new Map([
   ["BPFLoader1111111111111111111111111111111111", "legacy-bpf-loader"],
   ["BPFLoader2111111111111111111111111111111111", "bpf-loader-v2"],
@@ -1405,6 +1409,48 @@ export function verifyUpgradeableProgramDeploymentAllowlist(
     matchedPrograms: Object.freeze(matchedPrograms),
     semanticInstructionVerification: false,
     verificationScope: "reviewed-upgradeable-deployment-allowlist-only"
+  });
+}
+
+/**
+ * Matches only the small, code-owned set of native built-in programs whose
+ * identity can be established from the finalized account owner. This is
+ * identity evidence only: it does not decode or approve their instructions.
+ */
+export function verifyReviewedNativeProgramIdentities(programIdentityEvidence) {
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  if (!programIdentityEvidence ||
+      programIdentityEvidence.verificationScope !==
+        "finalized-program-identity-and-upgradeable-code-hash-evidence-only" ||
+      programIdentityEvidence.semanticInstructionVerification !== false ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length === 0 ||
+      programIdentityEvidence.programs.length > 50) {
+    throw new Error("Finalized native program identity evidence is incomplete");
+  }
+  const seen = new Set();
+  const matchedPrograms = programIdentityEvidence.programs.map(program => {
+    if (!program || typeof program !== "object" || Array.isArray(program) ||
+        !validAddress(program.programId) || seen.has(program.programId) ||
+        program.accountOwner !== "NativeLoader1111111111111111111111111111111" ||
+        program.loaderType !== "native-loader" ||
+        program.executable !== true || program.dataLength !== 0) {
+      throw new Error("Native program identity is malformed or unsupported");
+    }
+    seen.add(program.programId);
+    const policyId = REVIEWED_NATIVE_PROGRAM_IDENTITIES.get(program.programId);
+    if (!policyId) {
+      throw new Error("Native program is not in the code-reviewed identity allowlist");
+    }
+    return Object.freeze({ programId: program.programId, policyId });
+  });
+  return Object.freeze({
+    matched: true,
+    matchedPrograms: Object.freeze(matchedPrograms),
+    semanticInstructionVerification: false,
+    verificationScope: "reviewed-native-program-identity-only"
   });
 }
 
