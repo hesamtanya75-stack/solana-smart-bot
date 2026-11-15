@@ -12,10 +12,10 @@ const goodEnv = {
   LIVE_MIN_VOLUME_24H_USD: "1000", LIVE_MAX_OPEN_POSITIONS: "10",
   JUPITER_API_KEY: "test-only"
 };
-function validUnsignedLegacyTransaction() {
-  // Build the minimal unsigned legacy message with the pinned signer and one program key.
+function validUnsignedLegacyTransaction(signerWallet = EXPECTED_BOT_WALLET) {
+  // Build the minimal unsigned legacy message with the supplied Phantom signer and one program key.
   const decode = value => { const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; let n = 0n; for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch)); const out=[]; while(n>0n){out.unshift(Number(n & 255n));n >>= 8n;} for(let i=0;i<value.length && value[i]==="1";i++) out.unshift(0); return Buffer.from(out); };
-  const key = decode(EXPECTED_BOT_WALLET);
+  const key = decode(signerWallet);
   const message = Buffer.from([1,0,1,2,...key,...new Array(32).fill(9),...new Array(32).fill(0),1,1,0,0]);
   return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");
 }
@@ -242,6 +242,41 @@ test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table p
       } });
     }
   }), /unexpected program/);
+});
+
+test("Jupiter order binds the unsigned transaction signer to a non-default Phantom wallet", async () => {
+  const phantomWallet = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
+  let requestedUrl;
+  const result = await getJupiterOrder({
+    env: goodEnv, takerWallet: phantomWallet,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async (url) => {
+      requestedUrl = new URL(url);
+      return new Response(JSON.stringify({
+        requestId: "req-phantom", transaction: validUnsignedLegacyTransaction(phantomWallet),
+        inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount: "12345",
+        routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+        transactionVersion: 0, feeBps: 0
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+  });
+  assert.equal(requestedUrl.searchParams.get("taker"), phantomWallet);
+  assert.equal(result.transactionEvidence.staticAccountKeys[0], phantomWallet);
+  assert.equal(result.semanticInstructionVerification, false);
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, takerWallet: EXPECTED_BOT_WALLET,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-wrong-signer", transaction: validUnsignedLegacyTransaction(phantomWallet),
+      inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+      transactionVersion: 0, feeBps: 0
+    }), { status: 200 })
+  }), /expected bot wallet/);
 });
 
 test("valid Jupiter order is parsed but never executed", async () => {
