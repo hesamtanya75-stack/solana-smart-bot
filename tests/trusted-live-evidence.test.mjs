@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
@@ -1022,7 +1023,7 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
     executable: true, dataLength: 36, programDataAddress,
     deploymentSlot: "1200", upgradeAuthority: authority, immutable: false,
     deployedCodeLength: elf.length,
-    deployedCodeSha256: "9a4c4e0e6a5a2b1f3f0a9b2e1f8b6e1c0a7b3b8c9d5e6f7a8b9c0d1e2f3a4b5c"
+    deployedCodeSha256: createHash("sha256").update(elf).digest("hex")
   });
   assert.equal(evidence.semanticInstructionVerification, false);
   assert.equal(
