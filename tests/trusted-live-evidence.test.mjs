@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1181,6 +1181,49 @@ test("reviewed deployment allowlist rejects duplicate and malformed policy entri
     () => verifyUpgradeableProgramDeploymentAllowlist(identity, [{ ...policy, instructionPolicySha256: "not-a-hash" }]),
     /malformed or duplicated/
   );
+});
+
+test("native program identity allowlist accepts only reviewed built-ins without semantic approval", () => {
+  const nativeOwner = "NativeLoader1111111111111111111111111111111";
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [
+      {
+        programId: "11111111111111111111111111111111",
+        accountOwner: nativeOwner,
+        loaderType: "native-loader",
+        executable: true,
+        dataLength: 0
+      },
+      {
+        programId: "ComputeBudget111111111111111111111111111111",
+        accountOwner: nativeOwner,
+        loaderType: "native-loader",
+        executable: true,
+        dataLength: 0
+      }
+    ]
+  };
+  const result = verifyReviewedNativeProgramIdentities(identity);
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.matchedPrograms, [
+    { programId: "11111111111111111111111111111111", policyId: "solana-system-program" },
+    { programId: "ComputeBudget111111111111111111111111111111", policyId: "solana-compute-budget" }
+  ]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "reviewed-native-program-identity-only");
+
+  const unknown = encodeBase58(new Uint8Array(32).fill(111));
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], programId: unknown }]
+  }), /not in the code-reviewed identity allowlist/);
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111" }]
+  }), /malformed or unsupported/);
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], dataLength: 1 }]
+  }), /malformed or unsupported/);
 });
 
 test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
