@@ -516,6 +516,38 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   });
 }
 
+/**
+ * Validates the unsigned message and resolves every v0 ALT against finalized
+ * RPC state. The result remains structurally trusted only; instruction
+ * semantics are deliberately never promoted by address resolution alone.
+ */
+export async function validateAndResolveUnsignedJupiterTransaction(
+  encoded, expectedSigner, fetchImpl = fetch
+) {
+  const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
+  if (parsed.addressLookupCount === 0) {
+    return Object.freeze({
+      ...parsed,
+      lookupTableResolution: "not-required",
+      resolvedWritableAddresses: Object.freeze([]),
+      resolvedReadonlyAddresses: Object.freeze([])
+    });
+  }
+  if (!Array.isArray(parsed.addressLookups) ||
+      parsed.addressLookups.length !== parsed.addressLookupCount) {
+    throw new Error("Jupiter address lookup descriptors are incomplete");
+  }
+  const resolution = await resolveJupiterAddressLookupTables(parsed.addressLookups, fetchImpl);
+  return Object.freeze({
+    ...parsed,
+    lookupTableResolution: "finalized-resolved",
+    lookupContextSlot: resolution.contextSlot,
+    resolvedWritableAddresses: resolution.writableAddresses,
+    resolvedReadonlyAddresses: resolution.readonlyAddresses,
+    semanticInstructionVerification: false
+  });
+}
+
 async function rpc(fetchImpl, method, params) {
   const payload = await fetchJson(fetchImpl, DEVNET_OR_MAINNET_RPC, {
     method: "POST",
