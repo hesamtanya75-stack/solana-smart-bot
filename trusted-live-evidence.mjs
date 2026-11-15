@@ -149,7 +149,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       !Object.prototype.hasOwnProperty.call(build, "tipInstruction") ||
       !build.blockhashWithMetadata || !Array.isArray(build.blockhashWithMetadata.blockhash) ||
       build.blockhashWithMetadata.blockhash.length !== 32 ||
-      !build.blockhashWithMetadata.blockhash.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255) ||
+      !Array.from(build.blockhashWithMetadata.blockhash).every(byte =>
+        Number.isInteger(byte) && byte >= 0 && byte <= 255) ||
       !Number.isSafeInteger(build.blockhashWithMetadata.lastValidBlockHeight) ||
       build.blockhashWithMetadata.lastValidBlockHeight <= 0) {
     throw new Error("Jupiter build response envelope is incomplete or inconsistent");
@@ -192,7 +193,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   let totalLookupAddresses = 0;
   for (const [table, addresses] of altEntries) {
     if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) || addresses.length > 256 ||
-        !addresses.every(isCanonicalPublicKey) || new Set(addresses).size !== addresses.length) {
+        !Array.from(addresses).every(isCanonicalPublicKey) ||
+        new Set(addresses).size !== addresses.length) {
       throw new Error("Jupiter build lookup-table addresses are malformed");
     }
     totalLookupAddresses += addresses.length;
