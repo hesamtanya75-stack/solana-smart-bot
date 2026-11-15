@@ -996,7 +996,13 @@ export default {
     const assetRequest = new Request(assetUrl, { method: "GET" });
     const assetResponse = await env.ASSETS.fetch(assetRequest);
     if (isDashboardHtml && assetResponse.ok) {
-      const html = await assetResponse.text();
+      const nonceBytes = crypto.getRandomValues(new Uint8Array(18));
+      const nonce = btoa(String.fromCharCode(...nonceBytes));
+      const sourceHtml = await assetResponse.text();
+      // The dashboard uses inline scripts; bind each script to a fresh per-response
+      // nonce instead of weakening script-src with unsafe-inline.
+      const html = sourceHtml.replace(/<script\\b(?![^>]*\\bnonce=)([^>]*)>/gi,
+        (_match, attributes) => `<script nonce="${nonce}"${attributes}>`);
       return new Response(html, {
         status: assetResponse.status,
         headers: {
@@ -1007,6 +1013,7 @@ export default {
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "strict-origin-when-cross-origin",
           "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+          "Content-Security-Policy": `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic' 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:`,
           "X-Solana-Smart-Bot-Build": build
         }
       });
