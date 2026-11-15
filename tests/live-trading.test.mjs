@@ -318,7 +318,7 @@ test("Jupiter order bounds request identifiers and serialized transaction size",
     router: "metis", feeBps: 0
   };
   for (const overrides of [
-    { requestId: "bad\\nrequest" },
+    { requestId: "bad\nrequest" },
     { requestId: "x".repeat(257) },
     { transaction: "A".repeat(1648) }
   ]) {
