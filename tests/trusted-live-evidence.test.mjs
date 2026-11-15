@@ -627,6 +627,44 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.slot, 123);
 });
 
+test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(9));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 125,
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET] }
+          },
+          meta: {
+            err: null, fee: 5000,
+            preBalances: [1, 100_000_000], postBalances: [1, 89_995_000],
+            preTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
+            ],
+            postTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 } },
+              { accountIndex: 1, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "12345", decimals: 6 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(
+    verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
+    }, fetchImpl),
+    /not the finalized transaction fee payer/
+  );
+});
+
 test("settlement proof rejects a finalized transaction with mismatched output", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(8));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
