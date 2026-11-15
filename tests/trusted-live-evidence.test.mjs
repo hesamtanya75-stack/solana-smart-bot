@@ -247,7 +247,6 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       value: { amount: "1001", decimals: 0 }
     } });
     }
-    }
     throw new Error("Unexpected RPC method " + request.method);
   };
   let risk;
