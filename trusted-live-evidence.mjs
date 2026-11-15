@@ -302,7 +302,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
 }
 
 export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
-  if (typeof encoded !== "string" || encoded.length === 0 ||
+  // Reject oversized transport strings before regex scanning or base64 decoding.
+  // A 4,096-byte transaction needs at most 5,464 base64 characters.
+  if (typeof encoded !== "string" || encoded.length === 0 || encoded.length > 5464 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
     throw new Error("Jupiter transaction is empty or not canonical base64");
   }
