@@ -67,6 +67,37 @@ test("eligibility gate enforces daily spend, open positions, liquidity, volume a
   }), /Token safety checks/);
 });
 
+test("eligibility gate enforces the exact per-trade cap and accepts its boundary", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.deepEqual(evaluateLiveTradeEligibility({
+    policy, amountLamports: policy.maxTradeLamports, ...goodEligibility
+  }), { allowed: true });
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: policy.maxTradeLamports + 1, ...goodEligibility
+  }), /per-trade limit/);
+  for (const amountLamports of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => evaluateLiveTradeEligibility({
+      policy, amountLamports, ...goodEligibility
+    }), /per-trade limit/);
+  }
+});
+
+test("eligibility gate enforces exact remaining daily budget without arithmetic overflow", () => {
+  const policy = readLivePolicy(goodEnv);
+  assert.deepEqual(evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000,
+    ...goodEligibility, dailySpentLamports: policy.maxDailyLamports - 1000000
+  }), { allowed: true });
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000001,
+    ...goodEligibility, dailySpentLamports: policy.maxDailyLamports - 1000000
+  }), /daily spend limit/);
+  assert.throws(() => evaluateLiveTradeEligibility({
+    policy, amountLamports: 1000000,
+    ...goodEligibility, dailySpentLamports: policy.maxDailyLamports + 1
+  }), /daily spend limit/);
+});
+
 test("eligibility gate rejects missing or invalid server-side state", () => {
   const policy = readLivePolicy(goodEnv);
   assert.throws(() => evaluateLiveTradeEligibility({ policy, amountLamports: 1000000 }), /daily spend limit/);
