@@ -44,9 +44,9 @@ The current workflow ran unit/runtime tests and read-only Devnet checks, but ski
 
 Trusted live evidence requires paginated Alchemy token-account data and reconciles holder balances to supply before considering concentration. Missing or incomplete data fails closed. DexScreener and RugCheck remain external signals, not proof of safe liquidity, fair price, ownership, or executable exit liquidity. The scanner's top-account concentration estimate in the paper-trading path must not be represented as a complete wallet-level holder census.
 
-### Medium — reservation retention is unbounded
+### Medium — reservation history is capped but still requires an archival design
 
-The coordinator stores the reservation map as one object and has no bounded retention/archival strategy. Before any live integration, use a bounded/indexed transactional storage design and test migration, recovery, and long-running growth.
+The coordinator now enforces `MAX_RESERVATIONS = 1000` and rejects new reservations at capacity without deleting historical idempotency records. A regression test verifies the capacity guard and preserves duplicate-request handling. This bounds growth and fails closed, but it is not a complete long-term retention solution: before any live integration, design and test an indexed/archival strategy with safe idempotency retention, migration, recovery, and long-running growth behavior.
 
 ## Authentication review
 
