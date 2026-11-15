@@ -151,6 +151,28 @@ async function main() {
     throw new Error("Finalized Devnet transaction could not be independently verified");
   }
 
+  // Verify the finalized transaction itself credited this ephemeral recipient,
+  // rather than relying only on a separate balance RPC response.
+  const message = transactionInfo.transaction?.message;
+  const accountKeys = message?.accountKeys;
+  const preBalances = transactionInfo.meta?.preBalances;
+  const postBalances = transactionInfo.meta?.postBalances;
+  const recipientIndex = Array.isArray(accountKeys)
+    ? accountKeys.findIndex(key =>
+        (typeof key?.toBase58 === "function" ? key.toBase58() :
+          typeof key?.pubkey?.toBase58 === "function" ? key.pubkey.toBase58() :
+            String(key?.pubkey ?? key)) === recipient.publicKey.toBase58())
+    : -1;
+  const transactionSignatures = transactionInfo.transaction?.signatures;
+  if (!Array.isArray(transactionSignatures) ||
+      !transactionSignatures.includes(signature) ||
+      recipientIndex < 0 ||
+      !Array.isArray(preBalances) || !Array.isArray(postBalances) ||
+      recipientIndex >= preBalances.length || recipientIndex >= postBalances.length ||
+      postBalances[recipientIndex] - preBalances[recipientIndex] < TRANSFER_LAMPORTS) {
+    throw new Error("Finalized transaction metadata does not prove the expected recipient credit");
+  }
+
   console.log(JSON.stringify({
     ok: true,
     cluster: "devnet",
