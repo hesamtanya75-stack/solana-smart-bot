@@ -1014,10 +1014,16 @@ export async function fetchProgramAccountIdentityEvidence(
     }
     let decoded;
     try {
+      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+        throw new Error("non-canonical base64");
+      }
       const binary = atob(account.data[0]);
       decoded = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== account.data[0]) {
+        throw new Error("non-canonical base64");
+      }
     } catch {
-      throw new Error("Referenced program account data is not valid base64");
+      throw new Error("Referenced program account data is not valid canonical base64");
     }
     if (decoded.length !== account.space) {
       throw new Error("Referenced program account data size does not match RPC metadata");
