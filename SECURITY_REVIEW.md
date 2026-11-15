@@ -501,3 +501,24 @@ No application execution path was enabled by this review. `semanticInstructionVe
 - Added a regression test asserting these retry, envelope-validation, and no-URL-logging guards.
 - These changes improve preflight resilience only. They do not provide the missing dedicated faucet-capable Devnet endpoint, and they do not establish a funded signed transaction lifecycle.
 - No Mainnet signing, transaction submission, live trading, production deployment, or merge was performed. PR #27 remains Draft and unmerged.
+
+
+## Jupiter program provenance and upgradeability review — 2026-11-15
+
+A follow-up source-provenance check found that Jupiter's own legacy Metis error documentation links the Jupiter Swap Program IDL to the on-chain program account on Solscan. The explorer currently identifies `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` as Jupiter Aggregator v6 and reports the program as upgradeable, with an upgrade authority. This is important: a program ID alone does not pin immutable executable behavior.
+
+Current third-party generated decoder references expose V2 instruction families (including `routeV2` and `sharedAccountsRouteV2`) and typed route-plan fields. These are useful cross-checks for research, but they are not accepted as the sole authority for a security-critical verifier. The checked-in Jupiter instruction-parser snapshot remains an older schema and is not sufficient to authorize the current V2 order path.
+
+Before any semantic verifier can be considered, a separate review must:
+- obtain and pin the authoritative on-chain IDL and its exact hash/version;
+- record and verify the deployed Jupiter program's ProgramData/deployment identity and define how upgrades invalidate or renew the allowlist;
+- reconcile instruction discriminators, argument layouts, account order/flags, and optional/remaining-account behavior against independent official or on-chain evidence;
+- decode and constrain every permitted downstream AMM CPI and every value-moving setup, cleanup, token, system, compute-budget, and tip instruction;
+- bind the decoded sequence to the immutable order intent, including exact mints, raw amounts, token-account owners, destination, fee recipients and maximum fees.
+
+The explorer's current upgradeability/authority metadata is evidence about the program's mutability, not evidence that any particular instruction is safe. No decoder, allowlist, or execution capability is enabled by this review. `semanticInstructionVerification` remains false; the coordinator remains fail-closed; PR #27 remains Draft and unmerged. No signing, submission, Mainnet activity, merge, or production deployment is authorized.
+
+References:
+- Jupiter documentation linking the Swap Program IDL: https://developers.jup.ag/docs/swap/v1/common-errors
+- Jupiter Aggregator v6 program account and current upgradeability metadata: https://solscan.io/account/JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+- Jupiter's current Swap API V2 routing and build/order distinction: https://developers.jup.ag/docs/swap
