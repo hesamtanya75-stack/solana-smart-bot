@@ -376,6 +376,10 @@ function parseMintAccount(account) {
  * implemented, so sell-route safety remains false and reservations fail closed.
  */
 export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
+  // Timestamp evidence before the slowest upstream request begins. Recording it
+  // only after holder pagination and the Jupiter probe could make old market,
+  // RugCheck, RPC, or holder data appear freshly fetched.
+  const fetchedAt = Date.now();
   if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || mint === SOL_MINT) {
     throw new Error("A valid non-SOL output mint is required for risk inspection");
   }
@@ -443,7 +447,7 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   return Object.freeze({
     mint,
     provider: "DexScreener + RugCheck + Alchemy DAS + Solana mainnet RPC + Jupiter Swap API V2",
-    fetchedAt: Date.now(),
+    fetchedAt,
     priceUsd,
     liquidityUsd,
     volume24hUsd,
