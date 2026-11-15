@@ -54,11 +54,13 @@ function validUnsignedV1Transaction() {
   const message = Uint8Array.from([
     0x81, // v1 version prefix
     1, 0, 1, // one required signer, writable signer, one readonly unsigned address
-    0, 0, 0, 0, // no transaction config fields
+    0x0c, 0, 0, 0, // compute-unit and loaded-account-data limits are required
     ...new Array(32).fill(0), // recent blockhash
     1, 2, // one instruction, two inline addresses
     ...signer,
     ...new Array(32).fill(17), // instruction program
+    0x20, 0x4e, 0, 0, // 20,000 compute units
+    0, 0, 0x40, 0, // 4 MiB loaded-account data limit
     1, 1, 1, 0, // program index, account count, u16 data length
     0, 0, // account index, one-byte instruction data
     ...new Array(64).fill(0) // signatures are at the tail in v1
@@ -68,10 +70,10 @@ function validUnsignedV1Transaction() {
 function unsignedV1TransactionWithHeap(heapSize) {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   // Set config-mask bit 4 (heap size) and insert its u32 LE value after inline addresses.
-  bytes[4] = 0x10;
+  bytes[4] = 0x1c;
   const heap = Buffer.alloc(4);
   heap.writeUInt32LE(heapSize, 0);
-  return Buffer.concat([bytes.subarray(0, 106), heap, bytes.subarray(106)]).toString("base64");
+  return Buffer.concat([bytes.subarray(0, 114), heap, bytes.subarray(114)]).toString("base64");
 }
 function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
@@ -392,6 +394,28 @@ test("v1 transaction is structurally parsed but never semantically trusted", () 
   assert.equal(parsed.instructionCount, 1);
   assert.equal(parsed.addressLookupCount, 0);
   assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 transaction without explicit compute and loaded-data limits is rejected", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[4] = 0;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /must explicitly set compute and loaded-data limits/
+  );
+});
+
+test("v1 transaction rejects zero compute-unit or loaded-data limits", () => {
+  for (const offset of [106, 110]) {
+    const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+    bytes.fill(0, offset, offset + 4);
+    assert.throws(
+      () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+      offset === 106
+        ? /compute-unit limit is outside the supported range/
+        : /loaded-data limit is outside the supported range/
+    );
+  }
 });
 
 test("v1 transaction with unknown config bits is rejected", () => {
