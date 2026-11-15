@@ -280,3 +280,18 @@ This is safe rejection, not semantic verification or full current-format support
 Reference: current Solana documentation states v1 is active on Mainnet, Devnet, and Testnet, with a 4,096-byte limit and no Address Lookup Tables. This review does not change application code or authorize signing, submission, Mainnet activity, deployment, or merge.
 
 **Decision unchanged:** PR #27 remains Draft and unmerged. Keep the live path disabled and fail-closed.
+
+
+## Solana SDK candidate assessment — 2026-11-15
+
+The current application dependency manifest contains no Solana SDK or transaction-introspection package; its only declared runtime dependency is `better-sqlite3`. The custom `validateUnsignedJupiterTransaction()` parser accepts legacy and v0 wire layouts and rejects v1 before interpreting its message. This is a fail-closed compatibility limitation, not evidence that v1 is semantically verified.
+
+The official Solana documentation now describes `@solana/kit` and `@solana/transaction-introspection` as supporting legacy, v0, and v1 decoding. The introspection package resolves ALT-loaded addresses and outer/inner instructions from a `getTransaction` RPC response. However, that API shape is for confirmed transaction responses (including metadata/loaded addresses); it is not, by itself, a drop-in verifier for an unsigned Jupiter order before signing. It must not be wired into the pre-sign gate on the assumption that it independently proves the unsigned transaction's ALT contents or economic intent.
+
+A safe implementation study must separately establish how to retrieve and validate each referenced ALT account at an appropriate commitment, resolve writable/readonly indexes with bounds and ownership/deactivation checks, decode the exact Jupiter and downstream program instructions, and prove that all accounts, amounts, destinations, fees, and token program operations match immutable order intent. The selected SDK version must be pinned with a reproducible lockfile and exercised in the Cloudflare Worker Preview build/runtime. No dependency or application code was changed in this assessment.
+
+Cloudflare's current documentation says the project's `compatibility_date` of 2026-11-06 is after the 2026-08-04 Node.js compatibility default date. That is a favorable compatibility baseline, but does not prove this SDK bundle works in the Worker; Preview/runtime verification remains required.
+
+References: Solana Versioned Transactions and Transaction Introspection documentation; Cloudflare Workers Node.js compatibility documentation. 
+
+**Decision unchanged:** no semantic verification or settlement proof is implemented; coordinator stays fail-closed and isolated. PR #27 remains Draft and unmerged. No production deployment, signing, transaction submission, or live trading is approved.
