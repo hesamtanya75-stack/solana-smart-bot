@@ -299,6 +299,8 @@ test("Worker dashboard HTML responses use a fresh nonce-based CSP", async () => 
   assert.match(policy, /object-src 'none'/);
   assert.match(policy, /base-uri 'self'/);
   assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /connect-src 'self' https:\/\/solana\.drpc\.org https:\/\/api\.mainnet-beta\.solana\.com https:\/\/solana-rpc\.publicnode\.com https:\/\/api\.dexscreener\.com https:\/\/api\.rugcheck\.xyz/);
+  assert.doesNotMatch(policy, /connect-src[^;]*\shttps:\s*;/);
   const nonce = policy.match(/script-src 'nonce-([^']+)'/)[1];
   const html = await response.text();
   const scriptTags = [...html.matchAll(/<script\b[^>]*>/gi)].map(match => match[0]);
