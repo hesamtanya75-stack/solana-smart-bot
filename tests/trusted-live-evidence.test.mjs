@@ -1265,3 +1265,22 @@ test("Jupiter /build rejects malformed account metadata and unexpected requested
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse(), { amount: "1000001" }),
     /input amount does not match/);
 });
+
+test("trusted evidence rejects oversized declared external responses before JSON parsing", async () => {
+  await assert.rejects(
+    fetchTrustedSolUsdQuote(async () => new Response("{}", {
+      status: 200,
+      headers: { "content-length": String(2 * 1024 * 1024 + 1) }
+    })),
+    /exceeds the maximum allowed size/
+  );
+});
+
+test("trusted evidence rejects oversized streamed external responses", async () => {
+  await assert.rejects(
+    fetchTrustedSolUsdQuote(async () => new Response(" ".repeat(2 * 1024 * 1024 + 1), {
+      status: 200
+    })),
+    /exceeds the maximum allowed size/
+  );
+});
