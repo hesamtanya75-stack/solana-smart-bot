@@ -56,6 +56,25 @@ function emptyState() {
   return { killSwitch: true, reservations: {}, killSwitchAudit: [] };
 }
 
+function readReservationRecords(state) {
+  const ledger = state?.reservations;
+  if (!ledger || typeof ledger !== "object" || Array.isArray(ledger)) {
+    throw new Error("Coordinator reservation ledger is invalid; operator review required");
+  }
+  const records = Object.entries(ledger);
+  for (const [key, item] of records) {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        item.idempotencyKey !== key ||
+        typeof item.intentFingerprint !== "string" || item.intentFingerprint.length === 0 ||
+        !Number.isSafeInteger(item.amountCents) || item.amountCents < 0 ||
+        typeof item.day !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(item.day) ||
+        !["pending", "confirmed", "failed", "closed"].includes(item.status)) {
+      throw new Error("Coordinator reservation ledger contains an invalid record; operator review required");
+    }
+  }
+  return records.map(([, item]) => item);
+}
+
 function validateIdempotencyKey(value) {
   if (typeof value !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(value)) {
     throw new Error("A valid idempotency key is required");
@@ -191,6 +210,7 @@ export class LiveTradeCoordinator {
       // already-reserved idempotent request. A duplicate response must never
       // be mistaken for permission to continue toward signing or submission.
       if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
+      const records = readReservationRecords(state);
       const existing = state.reservations[key];
       if (!existing) return null;
       if (existing.intentFingerprint !== intentFingerprint) {
@@ -260,7 +280,7 @@ export class LiveTradeCoordinator {
         return { ok: true, duplicate: true, reservation: existing };
       }
 
-      const records = Object.values(state.reservations);
+      const records = readReservationRecords(state);
       if (records.length >= MAX_RESERVATIONS) {
         throw new Error("Coordinator reservation history capacity reached; operator review required");
       }
@@ -335,7 +355,7 @@ export class LiveTradeCoordinator {
   async status() {
     return this.withState(state => {
       const day = currentUtcDay(Date.now());
-      const records = Object.values(state.reservations);
+      const records = readReservationRecords(state);
       return {
         killSwitch: state.killSwitch !== false,
         dailySpendUsdCents: records
