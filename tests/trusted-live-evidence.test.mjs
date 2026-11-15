@@ -184,6 +184,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
     mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
+  let jupiterResponseOverride = null;
   let clock = 1000;
   const originalNow = Date.now;
   Date.now = () => clock;
@@ -201,7 +202,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       const params = new URL(value).searchParams;
       assert.equal(params.has("taker"), false, "quote-only sell check must not require a funded taker");
       const amount = params.get("amount");
-      return Response.json({
+      return Response.json(jupiterResponseOverride || {
         requestId: "test-sell-quote",
         transaction: null,
         inputMint: mint,
@@ -248,6 +249,30 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   try {
     risk = await fetchTrustedTokenRisk(
       mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"
+    );
+    jupiterResponseOverride = {
+      requestId: "missing-transaction-field",
+      inputMint: mint,
+      outputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "3000000",
+      outAmount: "1000000",
+      routePlan: [{ swapInfo: { label: "test-route" } }]
+    };
+    await assert.rejects(
+      fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
+      /complete quote-only sell-route response/
+    );
+    jupiterResponseOverride = {
+      transaction: null,
+      inputMint: mint,
+      outputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "3000000",
+      outAmount: "1000000",
+      routePlan: [{ swapInfo: { label: "test-route" } }]
+    };
+    await assert.rejects(
+      fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
+      /complete quote-only sell-route response/
     );
   } finally {
     Date.now = originalNow;
