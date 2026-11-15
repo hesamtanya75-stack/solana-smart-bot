@@ -6,9 +6,11 @@ const INTERNAL_TOKEN = "runtime-test-token-that-is-longer-than-thirty-two-charac
 
 test("AuthGuard runs on the Miniflare Durable Objects runtime with transactional storage", async () => {
   const mf = new Miniflare(convertV4MiniflareOptions({
-    modules: true,
+    modules: [
+      { type: "ESModule", path: "tests/fixtures/auth-guard-runtime.mjs" },
+      { type: "ESModule", path: "auth-guard.mjs" }
+    ],
     modulesRoot: process.cwd(),
-    scriptPath: "./tests/fixtures/auth-guard-runtime.mjs",
     compatibilityDate: "2026-05-03",
     durableObjects: {
       AUTH_GUARD: "AuthGuard"
