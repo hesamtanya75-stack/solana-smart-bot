@@ -1397,7 +1397,7 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
         context: { slot: 1400 + calls }, value
       } });
     }
-  ), /ProgramData pointer changed during resolution/);
+  ), /ProgramData pointer or account size changed during resolution/);
 });
 
 test("program identity evidence rejects non-executable or malformed program accounts", async () => {
