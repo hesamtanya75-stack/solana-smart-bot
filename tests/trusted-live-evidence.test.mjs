@@ -1110,7 +1110,7 @@ test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or 
     };
   };
   const makeProgramData = ({ owner = loaderOwner, tag = 3, authorityOption = 0 } = {}) => {
-    const data = Buffer.alloc(49);
+    const data = Buffer.alloc(77);
     data.writeUInt32LE(tag, 0);
     data.writeBigUInt64LE(1200n, 4);
     data[12] = authorityOption;
