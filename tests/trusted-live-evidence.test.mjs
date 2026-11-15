@@ -1112,6 +1112,7 @@ test("reviewed deployment allowlist rejects any changed program hash, authority,
     semanticInstructionVerification: false,
     programs: [{
       programId,
+      accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111",
       loaderType: "upgradeable-bpf-loader",
       executable: true,
       programDataAddress,
@@ -1141,7 +1142,7 @@ test("reviewed deployment allowlist rejects any changed program hash, authority,
   for (const item of cases) {
     assert.throws(
       () => verifyUpgradeableProgramDeploymentAllowlist(item.identity, item.allowlist),
-      /does not match the reviewed allowlist|allowlist is incomplete/
+      /does not match the reviewed allowlist|allowlist is incomplete|malformed or duplicated/
     );
   }
 });
