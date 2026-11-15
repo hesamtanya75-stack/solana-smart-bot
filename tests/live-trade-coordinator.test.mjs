@@ -75,6 +75,33 @@ test("coordinator rejects oversized authenticated request bodies before JSON par
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("malformed reservation ledger fails closed before requesting live evidence", async () => {
+  let evidenceCalls = 0;
+  const { coordinator, storage } = makeCoordinator(async () => {
+    evidenceCalls += 1;
+    return trustedEvidence();
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await storage.put("coordinator_state", {
+    killSwitch: false,
+    reservations: {
+      "corrupt-key-0001": {
+        idempotencyKey: "corrupt-key-0001",
+        intentFingerprint: "immutable-intent",
+        amountCents: "not-a-number",
+        day: new Date().toISOString().slice(0, 10),
+        status: "pending"
+      }
+    },
+    killSwitchAudit: []
+  });
+
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /reservation ledger contains an invalid record/);
+  assert.equal(evidenceCalls, 0);
+});
+
 test("kill switch starts active and blocks reservations", async () => {
   const { coordinator } = makeCoordinator();
   const result = await post(coordinator, "/reserve", validReservation());
