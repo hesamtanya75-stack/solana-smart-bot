@@ -27,6 +27,13 @@ jobs:
       - name: Verify Devnet cluster identity and read-only RPC methods
         run: node scripts/devnet-preflight.mjs
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
-        # The script uses the official public Devnet RPC when DEVNET_RPC_URL is unset.
-        # A dedicated GitHub Actions secret may be supplied to avoid public RPC throttling.
+        if: ${{ env.DEVNET_RPC_URL != '' }}
+        # Only a dedicated RPC is accepted for the funded lifecycle. The public
+        # Devnet faucet may be unavailable or rate-limited and is not a CI fallback.
         run: node scripts/devnet-signed-lifecycle.mjs
+      - name: Report funded Devnet lifecycle as skipped without a dedicated RPC
+        if: ${{ env.DEVNET_RPC_URL == '' }}
+        run: |
+          echo "::notice title=Funded Devnet lifecycle skipped::DEVNET_RPC_URL is not configured; no faucet-funded transfer was attempted."
+          node -e 'console.log(JSON.stringify({ status: "skipped", reason: "DEVNET_RPC_URL is not configured", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
+          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: `DEVNET_RPC_URL` is not configured. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
