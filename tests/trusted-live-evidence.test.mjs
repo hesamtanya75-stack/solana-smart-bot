@@ -1011,6 +1011,22 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     /response envelope/);
 });
 
+test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
+  const sparseBlockhash = new Array(32).fill(1);
+  delete sparseBlockhash[7];
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    blockhashWithMetadata: { blockhash: sparseBlockhash, lastValidBlockHeight: 123456 }
+  })), /response envelope/);
+
+  const sparseAddresses = new Array(2);
+  sparseAddresses[0] = "11111111111111111111111111111111";
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: {
+      "SysvarRent111111111111111111111111111111111": sparseAddresses
+    }
+  })), /lookup-table addresses are malformed/);
+});
+
 test("Jupiter /build bounds aggregate lookup-table address resources", () => {
   const addresses = Array.from({ length: 256 }, (_, index) =>
     encodeBase58(new Uint8Array(32).fill(index + 1)));
