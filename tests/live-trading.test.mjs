@@ -98,6 +98,23 @@ test("order request enforces eligibility before network access", async () => {
   assert.equal(called, false);
 });
 
+
+function validUnsignedV1Transaction() {
+  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let n = 0n;
+  for (const ch of EXPECTED_BOT_WALLET) n = n * 58n + BigInt(alphabet.indexOf(ch));
+  const signer = [];
+  while (n > 0n) { signer.unshift(Number(n & 255n)); n >>= 8n; }
+  for (let i = 0; i < EXPECTED_BOT_WALLET.length && EXPECTED_BOT_WALLET[i] === "1"; i++) signer.unshift(0);
+  const message = Uint8Array.from([
+    0x81, 1, 0, 1, 0, 0, 0, 0,
+    ...new Array(32).fill(0), 1, 2, ...signer,
+    ...new Array(32).fill(17), 1, 1, 1, 0, 0,
+    ...new Array(64).fill(0)
+  ]);
+  return Buffer.from(message).toString("base64");
+}
+
 function validUnsignedV0TransactionWithLookup() {
   const decode = value => {
     const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -214,6 +231,29 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(orderUrl.searchParams.get("excludeRouters"), "jupiterz");
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
+});
+
+
+test("Jupiter v1 order reports the parsed message version, not provider metadata", async () => {
+  const result = await getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async (url) => {
+      if (String(url).startsWith("https://api.jup.ag/")) {
+        return new Response(JSON.stringify({
+          requestId: "req-v1", transaction: validUnsignedV1Transaction(),
+          inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          inAmount: "1000000", outAmount: "12345", routePlan: [{ swapInfo: { label: "test" } }],
+          router: "metis", transactionVersion: 0, feeBps: 0
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error("v1 transactions must not trigger ALT RPC lookup");
+    }
+  });
+  assert.equal(result.transactionEvidence.messageVersion, 1);
+  assert.equal(result.transactionVersion, 1);
+  assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
+  assert.equal(result.semanticInstructionVerification, false);
 });
 
 test("Jupiter order rejects every router except a returned Metis route", async () => {
