@@ -75,6 +75,22 @@ function unsignedV1TransactionWithHeap(heapSize) {
   heap.writeUInt32LE(heapSize, 0);
   return Buffer.concat([bytes.subarray(0, 114), heap, bytes.subarray(114)]).toString("base64");
 }
+function unsignedV1TransactionWithPriorityFee(priorityFeeLamports) {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // Bits 0-1 jointly encode the optional total priority fee (u64 LE).
+  bytes[4] = 0x0f;
+  const fee = Buffer.alloc(8);
+  fee.writeBigUInt64LE(BigInt(priorityFeeLamports), 0);
+  return Buffer.concat([bytes.subarray(0, 106), fee, bytes.subarray(106)]).toString("base64");
+}
+function unsignedV1TransactionWithPriorityFeeAndHeap(priorityFeeLamports, heapSize) {
+  const bytes = Buffer.from(unsignedV1TransactionWithPriorityFee(priorityFeeLamports), "base64");
+  // Add heap-size bit and value after priority fee, compute limit and loaded-data limit.
+  bytes[4] = 0x1f;
+  const heap = Buffer.alloc(4);
+  heap.writeUInt32LE(heapSize, 0);
+  return Buffer.concat([bytes.subarray(0, 122), heap, bytes.subarray(122)]).toString("base64");
+}
 function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
   const systemProgram = new Array(32).fill(0);
@@ -393,6 +409,28 @@ test("v1 transaction is structurally parsed but never semantically trusted", () 
   assert.equal(parsed.staticAccountCount, 2);
   assert.equal(parsed.instructionCount, 1);
   assert.equal(parsed.addressLookupCount, 0);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 priority fee requires both mask bits and preserves config offsets", () => {
+  const parsed = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFee(5000), BOT_WALLET
+  );
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[4] = 0x0d; // only one of the two priority-fee mask bits
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /config mask is unsupported/
+  );
+});
+
+test("v1 priority fee and heap config values are parsed in wire order", () => {
+  const parsed = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFeeAndHeap(5000, 32768), BOT_WALLET
+  );
+  assert.equal(parsed.messageVersion, 1);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
