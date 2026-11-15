@@ -65,6 +65,9 @@ test("authentication failure buckets are bounded and fail closed at capacity", a
   assert.equal(blocked.count, 5);
   await assert.rejects(() => guard.importLegacyFailure("login:overflow", 5, 1001));
   assert.equal((await guard.recordFailure("login:bucket-0", 1001)).count, 2);
+  assert.equal(await guard.isRateLimited("login:unseen-scope", 1001), true);
+  // Once the bounded buckets expire, a new scope can be evaluated normally.
+  assert.equal(await guard.isRateLimited("login:unseen-scope", 901000), false);
 });
 
 test("backup hashes and TOTP counters reject malformed values", async () => {
