@@ -117,3 +117,13 @@ No signing prompt, execute route, automatic trading, Mainnet transaction, merge,
 - The upgradeable ProgramData provenance parser now requires ELF64 little-endian shared-object type (ET_DYN), SBF machine type (EM_BPF), ELF version 1, and a 64-byte ELF header before hashing deployed code.
 - Regression fixtures explicitly encode ET_DYN and reject an otherwise ELF-shaped payload with a different ELF object type.
 - This is a format-integrity check only. It does not prove the deployed program's instruction semantics or CPI behavior; the reviewed program/version/hash allowlist and semantic verifier remain outstanding.
+
+
+## Reviewed deployment allowlist matcher (2026-11-15)
+
+- Added `verifyUpgradeableProgramDeploymentAllowlist` as a fail-closed provenance gate for upgradeable BPF programs observed in the finalized outer-instruction evidence.
+- Each code-owned allowlist entry must pin the exact program ID, loader type, deployed ELF SHA-256, upgrade authority (including immutable/null), policy ID/version, and SHA-256 of the reviewed instruction-policy document. Duplicate or malformed entries are rejected.
+- The observed executable account owner must map to the expected upgradeable loader; program ID, ProgramData address, code hash, authority, and immutability fields are validated before a match is returned.
+- The helper intentionally supports only upgradeable BPF deployments in this stage. It rejects other loader classes instead of pretending owner classification is equivalent to a code identity hash.
+- This matcher returns `semanticInstructionVerification: false` unconditionally. It only confirms that a deployment matches a code-owned reviewed identity record. It does not decode any instruction, prove CPI effects, authorize a reservation, or enable Phantom signing.
+- Never pass the allowlist from browser/request input. The remaining implementation must add actual independently reviewed program policies with real deployment hashes and exact instruction/CPI semantics, then bind decoded transaction instructions to those policies. No production program hashes or trust entries were invented or inserted by this change.
