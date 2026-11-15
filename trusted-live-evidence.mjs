@@ -976,6 +976,61 @@ export async function validateAndResolveUnsignedJupiterTransaction(
 }
 
 
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * Decode the narrowly supported System Program transfer instruction.
+ * Any other System Program instruction is rejected until separately reviewed.
+ * This is a per-instruction semantic decoder, not whole-transaction approval.
+ */
+export function decodeReviewedSystemTransfers(outerInstructionEvidence) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length < 1 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("System transfer instruction evidence is missing or invalid");
+  }
+  const transfers = [];
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+      throw new Error("Outer instruction evidence contains a malformed entry");
+    }
+    if (instruction.programId !== SYSTEM_PROGRAM_ID) continue;
+    if (!Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
+        typeof instruction.dataBase64 !== "string" ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("System transfer accounts or data are malformed");
+    }
+    const binary = atob(instruction.dataBase64);
+    const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+    if (btoa(binary) !== instruction.dataBase64 || data.length !== 12) {
+      throw new Error("System transfer data is not canonical or has an invalid length");
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (view.getUint32(0, true) !== 2) {
+      throw new Error("Unsupported System Program instruction; only Transfer is reviewed");
+    }
+    const [source, destination] = instruction.accounts;
+    if (!source || !destination ||
+        !isCanonicalPublicKey(source.pubkey) ||
+        !isCanonicalPublicKey(destination.pubkey) ||
+        source.pubkey === destination.pubkey ||
+        source.isSigner !== true || source.isWritable !== true ||
+        destination.isSigner !== false || destination.isWritable !== true) {
+      throw new Error("System transfer source or destination account roles are invalid");
+    }
+    const lamports = view.getBigUint64(4, true);
+    if (lamports < 1n) throw new Error("System transfer amount must be positive");
+    transfers.push(Object.freeze({
+      instructionIndex: instruction.instructionIndex,
+      source: source.pubkey,
+      destination: destination.pubkey,
+      lamports: lamports.toString(),
+      verificationScope: "system-program-transfer-instruction-only"
+    }));
+  }
+  return Object.freeze(transfers);
+}
+
 const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 
 /**
