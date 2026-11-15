@@ -13,7 +13,15 @@ const goodEnv = {
   LIVE_MIN_VOLUME_24H_USD: "1000", LIVE_MAX_OPEN_POSITIONS: "10",
   JUPITER_API_KEY: "test-only"
 };
-function validUnsignedLegacyTransaction() {\n  // Build the minimal unsigned legacy message with the pinned signer and one program key.\n  const decode = value => { const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; let n = 0n; for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch)); const out=[]; while(n>0n){out.unshift(Number(n & 255n));n >>= 8n;} for(let i=0;i<value.length && value[i]==="1";i++) out.unshift(0); return Buffer.from(out); };\n  const key = decode(EXPECTED_BOT_WALLET);\n  const message = Buffer.from([1,0,1,2,...key,...new Array(32).fill(9),...new Array(32).fill(0),1,1,0,0]);\n  return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");\n}\n\nconst goodEligibility = {
+function validUnsignedLegacyTransaction() {
+  // Build the minimal unsigned legacy message with the pinned signer and one program key.
+  const decode = value => { const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; let n = 0n; for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch)); const out=[]; while(n>0n){out.unshift(Number(n & 255n));n >>= 8n;} for(let i=0;i<value.length && value[i]==="1";i++) out.unshift(0); return Buffer.from(out); };
+  const key = decode(EXPECTED_BOT_WALLET);
+  const message = Buffer.from([1,0,1,2,...key,...new Array(32).fill(9),...new Array(32).fill(0),1,1,0,0]);
+  return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");
+}
+
+const goodEligibility = {
   dailySpentLamports: 1000000, openPositions: 1,
   liquidityUsd: 25000, volume24hUsd: 5000,
   riskChecks: {
@@ -106,7 +114,11 @@ test("valid Jupiter order is parsed but never executed", async () => {
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
   });
-  assert.equal(result.requestId, "req-test");\n  assert.equal(result.transactionEvidence.messageVersion, "legacy");\n  assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");\n  assert.equal(result.semanticInstructionVerification, false);\n  assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
+  assert.equal(result.requestId, "req-test");
+  assert.equal(result.transactionEvidence.messageVersion, "legacy");
+  assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
   assert.equal(result.inputMint, SOL_MINT);
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   assert.equal(request.options.headers["x-api-key"], "test-only");
