@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+const dashboardSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const privateApiStart = workerSource.indexOf('if (url.pathname.startsWith("/api/"))');
 const authGuard = workerSource.indexOf(
   'if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);',
@@ -108,8 +109,8 @@ test("temporary public diagnostic routes are not exposed by the Worker", () => {
 });
 
 test("security panel escapes untrusted RPC token program metadata before HTML rendering", () => {
-  assert.ok(workerSource.includes('row("Token Program",safe(programOwner||"داتا نییە"))+'));
-  assert.equal(workerSource.includes('row("Token Program",programOwner||"داتا نییە")+'), false);
+  assert.ok(dashboardSource.includes('row("Token Program",safe(programOwner||"داتا نییە"))+'));
+  assert.equal(dashboardSource.includes('row("Token Program",programOwner||"داتا نییە")+'), false);
 });
 
 test("static asset fallback exposes only the self-contained dashboard routes", () => {
