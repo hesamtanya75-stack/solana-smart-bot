@@ -149,3 +149,13 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 - Devnet cluster identity and read-only RPC validation: success (run `43753853659`, job `132933532186`).
 - The faucet-funded ephemeral signing/transfer step was explicitly skipped because `DEVNET_RPC_URL` is not configured. The overall green Devnet workflow is not evidence of a signed transfer or settlement.
 - No Phantom key, Mainnet RPC, swap, Mainnet transaction, merge, or production deployment was used or authorized.
+
+
+## Priority-fee decoding (2026-11-15)
+
+- Added `verifyComputeBudgetPriorityFee` for legacy/v0 Compute Budget instructions and v1 message-config priority fees.
+- Legacy/v0 parsing validates the exact instruction variant and byte length, rejects duplicate variants and unexpected account metas, requires an explicit bounded compute-unit limit, validates heap/data limits, and calculates `ceil(price_micro_lamports × CU_limit / 1,000,000)` with integer arithmetic.
+- V1 parsing now preserves the absolute priority-fee lamport value from the message config; a v1 transaction containing a Compute Budget instruction is rejected by this helper.
+- The supplied priority-fee ceiling must be an explicit canonical u64 decimal value. The helper rejects fees above it.
+- Official formula and encoding references checked on 2026-11-15: https://solana.com/docs/core/fees/fee-structure and https://solana.com/docs/core/fees/compute-budget
+- This is only the priority-fee component. It is not yet wired to the coordinator and does not include base signature fees, precompile signature fees, System Program transfers, rent/account creation, tips, token outflows, or unknown instructions. Those must be decoded and bounded before all-in spend accounting or any signing request. The helper does not set `semanticInstructionVerification` to true.
