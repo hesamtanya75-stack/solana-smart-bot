@@ -1018,6 +1018,7 @@ async function decodeUpgradeableProgramData(data) {
       elfBytes[0] !== 0x7f || elfBytes[1] !== 0x45 ||
       elfBytes[2] !== 0x4c || elfBytes[3] !== 0x46 ||
       elfBytes[4] !== 2 || elfBytes[5] !== 1 || elfBytes[6] !== 1 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint16(16, true) !== 3 ||
       elfBytes[18] !== 247 || elfBytes[19] !== 0 ||
       new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint32(20, true) !== 1 ||
       new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint16(52, true) !== 64) {
