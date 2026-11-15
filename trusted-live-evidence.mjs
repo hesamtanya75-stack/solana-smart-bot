@@ -48,8 +48,8 @@ function isCanonicalPublicKey(value) {
 function validateBuildInstruction(instruction, name) {
   if (!instruction || typeof instruction !== "object" ||
       !isCanonicalPublicKey(instruction.programId) ||
-      !Array.isArray(instruction.accounts) ||
-      typeof instruction.data !== "string" ||
+      !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+      typeof instruction.data !== "string" || instruction.data.length > 16384 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.data)) {
     throw new Error("Jupiter build " + name + " instruction is malformed");
   }
@@ -89,10 +89,10 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       BigInt(build.inAmount) <= 0n || BigInt(build.outAmount) <= 0n ||
       !/^\d+$/.test(String(build.otherAmountThreshold ?? "")) ||
       !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
-      !Array.isArray(build.routePlan) || build.routePlan.length === 0 ||
-      !Array.isArray(build.computeBudgetInstructions) ||
-      !Array.isArray(build.setupInstructions) ||
-      !Array.isArray(build.otherInstructions) ||
+      !Array.isArray(build.routePlan) || build.routePlan.length === 0 || build.routePlan.length > 64 ||
+      !Array.isArray(build.computeBudgetInstructions) || build.computeBudgetInstructions.length > 64 ||
+      !Array.isArray(build.setupInstructions) || build.setupInstructions.length > 64 ||
+      !Array.isArray(build.otherInstructions) || build.otherInstructions.length > 64 ||
       !Object.prototype.hasOwnProperty.call(build, "cleanupInstruction") ||
       !Object.prototype.hasOwnProperty.call(build, "tipInstruction") ||
       !build.blockhashWithMetadata || !Array.isArray(build.blockhashWithMetadata.blockhash) ||
@@ -121,8 +121,10 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     throw new Error("Jupiter build lookup-table map is malformed");
   }
   const lookupTables = {};
-  for (const [table, addresses] of Object.entries(rawAlts || {})) {
-    if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) ||
+  const altEntries = Object.entries(rawAlts || {});
+  if (altEntries.length > 64) throw new Error("Jupiter build contains too many lookup tables");
+  for (const [table, addresses] of altEntries) {
+    if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) || addresses.length > 256 ||
         !addresses.every(isCanonicalPublicKey) || new Set(addresses).size !== addresses.length) {
       throw new Error("Jupiter build lookup-table addresses are malformed");
     }
