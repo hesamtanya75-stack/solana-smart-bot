@@ -670,6 +670,12 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   // followed by all readonly addresses, preserving table order within each set.
   const writableAddresses = resolved.flatMap(table => table.writable);
   const readonlyAddresses = resolved.flatMap(table => table.readonly);
+  // A compiled message has one canonical account-key index per address.
+  // Reject duplicate ALT-loaded keys instead of accepting ambiguous layouts.
+  const loadedAddresses = [...writableAddresses, ...readonlyAddresses];
+  if (new Set(loadedAddresses).size !== loadedAddresses.length) {
+    throw new Error("Address lookup tables resolve duplicate account addresses");
+  }
   return Object.freeze({
     contextSlot,
     writableAddresses: Object.freeze(writableAddresses),
