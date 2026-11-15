@@ -969,6 +969,74 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
+/**
+ * Fetches a finalized, read-only snapshot of the on-chain identity fields for
+ * every program referenced by decoded outer instructions. This records the
+ * account owner, executable bit and data size only; it does not verify loader
+ * upgrade authority, deployed code hashes, instruction semantics or CPI scope.
+ * The result must never be used as a semantic-verification attestation.
+ */
+export async function fetchProgramAccountIdentityEvidence(
+  outerInstructionEvidence, fetchImpl = fetch
+) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length === 0 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("Outer instruction evidence is missing or exceeds the account limit");
+  }
+  const programIds = [...new Set(outerInstructionEvidence.map(item => item?.programId))];
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  if (programIds.length === 0 || programIds.length > 64 ||
+      programIds.some(programId => !validAddress(programId))) {
+    throw new Error("Outer instruction program identities are invalid or exceed the lookup limit");
+  }
+
+  const result = await rpc(fetchImpl, "getMultipleAccounts", [
+    programIds, { commitment: "finalized", encoding: "base64" }
+  ]);
+  const contextSlot = result?.context?.slot;
+  const accounts = result?.value;
+  if (!Number.isSafeInteger(contextSlot) || contextSlot < 1 ||
+      !Array.isArray(accounts) || accounts.length !== programIds.length) {
+    throw new Error("Program identity RPC context or account count is invalid");
+  }
+  const programs = accounts.map((account, index) => {
+    if (!account || account.executable !== true ||
+        !validAddress(account.owner) ||
+        !Number.isSafeInteger(account.space) || account.space < 0 ||
+        account.space > 1024 * 1024 ||
+        !Array.isArray(account.data) ||
+        typeof account.data[0] !== "string" || account.data[1] !== "base64" ||
+        account.data[0].length > 4 * Math.ceil((1024 * 1024) / 3)) {
+      throw new Error("Referenced program is missing, non-executable, or has malformed identity data");
+    }
+    let decoded;
+    try {
+      const binary = atob(account.data[0]);
+      decoded = Uint8Array.from(binary, character => character.charCodeAt(0));
+    } catch {
+      throw new Error("Referenced program account data is not valid base64");
+    }
+    if (decoded.length !== account.space) {
+      throw new Error("Referenced program account data size does not match RPC metadata");
+    }
+    return Object.freeze({
+      programId: programIds[index],
+      accountOwner: account.owner,
+      executable: true,
+      dataLength: account.space
+    });
+  });
+  return Object.freeze({
+    contextSlot,
+    programs: Object.freeze(programs),
+    semanticInstructionVerification: false,
+    verificationScope: "finalized-program-account-identity-snapshot-only"
+  });
+}
+
 function sumOwnedTokenBalance(rows, mint, owner) {
   if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
   let total = 0n;
