@@ -166,3 +166,19 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 - For v1 transactions, the helper validates the message-config compute-unit limit and absolute priority-fee field and rejects legacy Compute Budget instructions.
 - The helper enforces a caller-supplied maximum and returns a narrowly scoped attestation: `explicit-compute-budget-and-priority-fee-only`.
 - This is not a complete transaction-cost verifier. It does not establish base fee, rent, token transfer amounts, tips, other lamport outflows, Jupiter instruction semantics, CPI behavior, or final settlement; it does not enable signing.
+
+## Live-path integration audit (2026-11-15, PR head `159111a1cf5df11fd0da6946b729b5773a799ec9`)
+
+- `worker.js` currently exposes only `POST /api/live/quote-preview` for the live-preview path. It exports `LiveTradeCoordinator` for an isolated Durable Object namespace, but no Worker route invokes the coordinator.
+- `fetchTrustedLiveEvidence` currently returns only `quote`, `risk`, and `passed`; it does not return a `costs` object. The coordinator deliberately rejects a reservation when trusted all-in cost evidence is absent. Therefore the coordinator is not yet an operational reservation path, and no UI/API can currently request a live reservation through the Worker.
+- `verifyComputeBudgetPriorityFee` is unit-tested as a standalone helper, but it is not wired to the unsigned Jupiter transaction evidence returned by `getJupiterOrder` or to the coordinator's cost evidence. Do not treat the passing helper tests as proof that the live order fee is being verified end-to-end.
+- `getJupiterOrder` still returns `semanticInstructionVerification: false` and `routeVerification: "unsigned-structure-and-alt-only"`; the coordinator requires a true semantic attestation and blocks reservation otherwise.
+- Latest CI for PR head `159111a1cf5df11fd0da6946b729b5773a799ec9`: Node tests passed (239/239, run `43754047814`); Cloudflare Worker build passed without deploying (run `43754047786`); Devnet read-only preflight passed (run `43754047800`). The funded Devnet signing/transfer step was explicitly skipped because `DEVNET_RPC_URL` is not configured; logs state signing not performed and transactions submitted 0.
+- PR #30 remains open and Draft. No Worker route integration, live reservation, Phantom signing, Mainnet submission, merge, or production deployment has been performed.
+
+### Required engineering sequence before a Mainnet signing flow
+
+1. Build a versioned semantic decoder registry for each supported top-level program and CPI target; reject unknown programs, unknown instruction discriminators, unsupported account-meta layouts, dynamic/unbounded effects, and unreviewed deployment hashes.
+2. Decode actual unsigned transaction instruction bytes and resolved ALT accounts; compare decoded amounts, mints, recipient, token accounts, signers, writable accounts, and all CPI targets against the immutable user intent and a reviewed policy. Route-plan metadata alone is not sufficient evidence.
+3. Wire the priority-fee decoder to the exact parsed unsigned transaction and construct trusted all-in cost evidence from decoded base fee, priority fee, tips, rent, account creation and every other lamport/token outflow. Do not accept browser-provided estimates.
+4. Only then connect an authenticated Worker route to the coordinator, retaining explicit Phantom user review/signature and independent post-submit settlement verification. Keep signing and Mainnet submission disabled until the preceding gates and dedicated Devnet signed lifecycle are proven.
