@@ -380,3 +380,16 @@ A focused unit test asserts both query parameters and rejects a syntactically va
 Official Jupiter routing matrix: https://developers.jup.ag/docs/swap/order-and-execute#routing-impact-matrix
 
 The code commits are `23a85a9bb1585683fa1931f1587f3872d49814b0`, `723771ce503da8076dbb1c311ef2e265955c7b59`, and `49f53e6ebffb6404e2e74fe77f5c76842a9b0aa6`. CI for the latest code commit has not yet reported. No signing, transaction submission, merge, or production deployment was performed; PR #27 remains Draft and unmerged.
+
+## Jupiter v0 order-to-ALT integration regression coverage — 2026-11-15
+
+The live-order preparation path now has end-to-end unit coverage for a Jupiter Metis v0 order that references an Address Lookup Table. The test verifies that the unsigned order is passed through structural parsing, that the referenced ALT account is fetched with getMultipleAccounts at finalized commitment, and that the resolver returns the expected writable and readonly public keys. A companion negative test proves the order is rejected when the ALT account is owned by the wrong program. The existing fail-closed status remains unchanged: semanticInstructionVerification is false; resolving ALT addresses is not instruction authorization or economic-intent verification.
+
+Validation at code head f4a6357019066db034a1c46a203d7893b20d97a8:
+- Node tests: 142 passed, 0 failed, 0 skipped.
+- Frontend JavaScript syntax validation: success.
+- Cloudflare Worker build validation: success, build-only with no deployment.
+- Devnet read-only validation: success.
+- Funded signed Devnet lifecycle: skipped because DEVNET_RPC_URL is not configured; logs explicitly report signing not performed and zero transactions submitted.
+
+PR #27 remains Draft, Open, and Unmerged. No production deployment, Mainnet signing, transaction submission, or live trading was performed or authorized.
