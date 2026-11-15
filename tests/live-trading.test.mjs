@@ -98,6 +98,95 @@ test("order request enforces eligibility before network access", async () => {
   assert.equal(called, false);
 });
 
+function validUnsignedV0TransactionWithLookup() {
+  const decode = value => {
+    const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let n = 0n;
+    for (const ch of value) n = n * 58n + BigInt(alphabet.indexOf(ch));
+    const out = [];
+    while (n > 0n) { out.unshift(Number(n & 255n)); n >>= 8n; }
+    for (let i = 0; i < value.length && value[i] === "1"; i++) out.unshift(0);
+    return out;
+  };
+  const signer = decode(EXPECTED_BOT_WALLET);
+  const message = Uint8Array.from([
+    0x80, 1, 0, 1, 2, ...signer, ...new Array(32).fill(17),
+    ...new Array(32).fill(0), 1, 1, 1, 2, 0,
+    1, ...new Array(32).fill(42), 1, 0, 1, 1
+  ]);
+  return Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
+}
+function mockLookupTableAccount(owner = "AddressLookupTab1e1111111111111111111111111") {
+  const data = Buffer.alloc(56 + 64);
+  data.writeUInt32LE(1, 0);
+  data.writeBigUInt64LE(0xffffffffffffffffn, 4);
+  data.writeBigUInt64LE(90n, 12);
+  data[20] = 2;
+  data[21] = 0;
+  data.fill(7, 56, 88);
+  data.fill(8, 88, 120);
+  return { owner, data: [data.toString("base64"), "base64"], executable: false, lamports: 1 };
+}
+
+test("Jupiter v0 order resolves finalized ALT addresses before returning route evidence", async () => {
+  const tableKey = (() => {
+    const bytes = Buffer.from([42]);
+    return "11111111111111111111111111111112"; // 32-byte key of repeated 42 bytes is asserted from parser request below
+  })();
+  let rpcRequest;
+  const result = await getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async (url, options = {}) => {
+      if (String(url).startsWith("https://api.jup.ag/")) {
+        return new Response(JSON.stringify({
+          requestId: "req-v0-alt", transaction: validUnsignedV0TransactionWithLookup(),
+          inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          inAmount: "1000000", outAmount: "12345",
+          routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+          transactionVersion: 0, feeBps: 0
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      rpcRequest = JSON.parse(options.body);
+      return Response.json({ jsonrpc: "2.0", id: 1, result: {
+        context: { slot: 100 }, value: [mockLookupTableAccount()]
+      } });
+    }
+  });
+  assert.equal(result.transactionEvidence.messageVersion, 0);
+  assert.equal(result.transactionEvidence.lookupTableResolution, "finalized-resolved");
+  assert.equal(result.transactionEvidence.lookupContextSlot, 100);
+  assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["11111111111111111111111111111111"]);
+  assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["11111111111111111111111111111112"]);
+  assert.equal(rpcRequest.method, "getMultipleAccounts");
+  assert.equal(rpcRequest.params[1].commitment, "finalized");
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
+});
+
+test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table program", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async (url) => {
+      if (String(url).startsWith("https://api.jup.ag/")) {
+        return new Response(JSON.stringify({
+          requestId: "req-v0-bad-alt", transaction: validUnsignedV0TransactionWithLookup(),
+          inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          inAmount: "1000000", outAmount: "12345",
+          routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+          transactionVersion: 0, feeBps: 0
+        }), { status: 200 });
+      }
+      return Response.json({ jsonrpc: "2.0", id: 1, result: {
+        context: { slot: 100 }, value: [mockLookupTableAccount("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")]
+      } });
+    }
+  }), /unexpected program/);
+});
+
 test("valid Jupiter order is parsed but never executed", async () => {
   let request;
   const result = await getJupiterOrder({
