@@ -308,7 +308,12 @@ export class AuthGuard {
   async isRateLimited(scope, now = Date.now()) {
     if (!validScope(scope) || !Number.isSafeInteger(now) || now < 0) throw new Error("Invalid rate-limit scope");
     return this.withState(state => {
-      const entry = state.failures["scope:" + scope];
+      pruneExpiredFailures(state, now);
+      const key = "scope:" + scope;
+      // If every bounded bucket is occupied, deny unknown scopes rather than
+      // allowing an attacker to evade throttling by rotating scope identifiers.
+      if (failureCapacityReached(state, key)) return true;
+      const entry = state.failures[key];
       return !!entry && Number(entry.resetAt) > now && Number(entry.count || 0) >= 5;
     });
   }
