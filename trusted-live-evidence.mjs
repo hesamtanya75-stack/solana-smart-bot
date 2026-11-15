@@ -1675,16 +1675,17 @@ export function verifyCompleteOuterProgramIdentity({
   });
 }
 
-function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount) {
-  if (!Array.isArray(rows) || !Number.isInteger(accountKeyCount) || accountKeyCount < 1) {
+function sumOwnedTokenBalance(rows, mint, owner, accountKeys) {
+  if (!Array.isArray(rows) || !Array.isArray(accountKeys) || accountKeys.length < 1) {
     throw new Error("Finalized transaction token balance metadata is unavailable");
   }
   let total = 0n;
   const seenAccountIndexes = new Set();
+  const decimalsByMint = new Map();
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row) ||
         !Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
-        row.accountIndex >= accountKeyCount ||
+        row.accountIndex >= accountKeys.length || accountKeys[row.accountIndex] === owner ||
         !isCanonicalPublicKey(row.mint) || !isCanonicalPublicKey(row.owner) ||
         !row.uiTokenAmount || typeof row.uiTokenAmount !== "object" ||
         !isU64DecimalString(row.uiTokenAmount.amount, true) ||
@@ -1693,6 +1694,11 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount) {
         seenAccountIndexes.has(row.accountIndex)) {
       throw new Error("Finalized transaction contains malformed or duplicate token balance metadata");
     }
+    const priorDecimals = decimalsByMint.get(row.mint);
+    if (priorDecimals != null && priorDecimals !== row.uiTokenAmount.decimals) {
+      throw new Error("Finalized transaction contains inconsistent token decimals for one mint");
+    }
+    decimalsByMint.set(row.mint, row.uiTokenAmount.decimals);
     seenAccountIndexes.add(row.accountIndex);
     if (row.mint === mint && row.owner === owner) total += BigInt(row.uiTokenAmount.amount);
   }
@@ -1755,8 +1761,8 @@ export async function verifyFinalizedJupiterSettlement({
   // expectedOwner to the wallet that received the quote and approved the order.
   if (ownerIndex !== 0) throw new Error("Expected owner is not the finalized transaction fee payer");
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, accountKeys.length);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, accountKeys.length);
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -1764,8 +1770,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, accountKeys.length);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, accountKeys.length);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
