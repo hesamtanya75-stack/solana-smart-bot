@@ -471,3 +471,24 @@ Verified GitHub Actions for head `54b6f187ce9c03611697ddf93fe5ac23811903bb`:
 The combined commit status still includes the legacy `deploy/hesamtanya75-stack/solana-smart-bot-17` Deno Deploy failure. This is separate from the four current GitHub Actions workflows above and is not evidence of a Cloudflare Worker build failure.
 
 The release decision is unchanged: semantic Jupiter instruction verification remains false, settlement transitions remain disabled, and the Worker still does not provide an enabled end-to-end live-trading path. Production Cloudflare secrets/bindings/migrations have not been independently verified. Keep PR #27 Draft and unmerged; paper-trading only. No production deployment, Mainnet signing, transaction submission, or live trading was performed.
+
+## CI and Jupiter routing review — 2026-11-15 (verified PR head `1f8b20d62fa564870e95e43c7dab71d955719a6e`)
+
+Fresh GitHub Actions results for this PR head:
+- Frontend validation: passed.
+- Cloudflare Worker build validation: passed (build/dry-run only; no deployment).
+- Node tests: passed.
+- Devnet workflow job: passed, but the funded signed-transfer step was **skipped** because `DEVNET_RPC_URL` is not configured. Devnet read-only checks passed. A green job therefore does not establish a funded on-chain lifecycle pass.
+
+The current official Jupiter Swap API V2 documentation clarifies an important routing limitation:
+- `/order` is the Meta-Aggregator path. Metis, JupiterZ RFQ, Dflow, and OKX compete; setting `excludeRouters=jupiterz` does not make the endpoint Metis-only. The application rejects a returned router unless it is labelled `metis`, so non-Metis responses fail closed after selection, but the request is not an upstream Metis-only route restriction.
+- `/build` is the Metis-only Router path, but it returns raw instruction objects and address-lookup-table address lists rather than the serialized unsigned transaction consumed by the current `validateAndResolveUnsignedJupiterTransaction` helper. A `/build` integration therefore requires a separate raw-instruction evidence parser and independent validation of the compiled account indexes, every program ID, all relevant account roles, token mints, amounts, fees, and downstream AMM/CPI semantics. The current serialized-transaction parser cannot be reused as if it verified a `/build` response.
+- The official `program-id-to-label` endpoint is descriptive metadata, not a security allowlist or proof of program identity/version. A production verifier still needs pinned, authoritative schemas and verified program deployments for Jupiter and each supported downstream AMM, plus adversarial tests.
+
+Official references reviewed:
+- https://developers.jup.ag/docs/swap/index
+- https://developers.jup.ag/docs/swap/build
+- https://developers.jup.ag/docs/api-reference/swap/order
+- https://developers.jup.ag/docs/api-reference/swap/program-id-to-label
+
+No application execution path was enabled by this review. `semanticInstructionVerification` remains false for live evidence; the coordinator rejects reservations without an independently verified semantic attestation; `executeLiveOrder()` still throws; the Worker has no enabled end-to-end live-trading path. Do not treat this documentation update or green CI as Mainnet approval. Keep PR #27 Draft and unmerged. No deployment, signing, transaction submission, or live trading was performed.
