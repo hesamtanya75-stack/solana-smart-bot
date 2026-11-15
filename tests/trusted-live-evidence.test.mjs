@@ -1286,7 +1286,7 @@ test("trusted evidence rejects oversized declared external responses before JSON
       status: 200,
       headers: { "content-length": String(2 * 1024 * 1024 + 1) }
     })),
-    /exceeds the maximum allowed size/
+    /exceeds the .*byte limit/
   );
 });
 
@@ -1295,7 +1295,7 @@ test("trusted evidence rejects oversized streamed external responses", async () 
     fetchTrustedSolUsdQuote(async () => new Response(" ".repeat(2 * 1024 * 1024 + 1), {
       status: 200
     })),
-    /exceeds the maximum allowed size/
+    /exceeds the .*byte limit/
   );
 });
 
