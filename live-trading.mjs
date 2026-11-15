@@ -6,6 +6,7 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 import { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
+import { readBoundedJsonResponse } from "./rpc-response.mjs";
 
 function finitePositive(value, name) {
   const n = Number(value);
@@ -114,7 +115,7 @@ async function getJupiterOrder({
     signal: AbortSignal.timeout(10000)
   });
   if (!response.ok) throw new Error("Jupiter order request failed with HTTP " + response.status);
-  const order = await response.json();
+  const order = await readBoundedJsonResponse(response);
 
   if (!order || typeof order !== "object" ||
       typeof order.requestId !== "string" || !/^[!-~]{1,256}$/.test(order.requestId) ||
