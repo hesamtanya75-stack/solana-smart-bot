@@ -139,3 +139,13 @@ The read-only Devnet preflight can pass without credentials. The funded ephemera
 5. Confirm that the step **Verify ephemeral signing and submit a faucet-funded Devnet test transfer** completes successfully. A green overall workflow with that step marked **skipped** is only a read-only preflight pass, not proof of signing or settlement.
 
 The lifecycle uses an ephemeral test key only for a faucet-funded Devnet transfer; it must not use a Phantom seed phrase, production wallet key, or Mainnet endpoint. The Devnet transfer test is separate from swap semantic verification and does not authorize Mainnet trading.
+
+## CI evidence snapshot (2026-11-15, latest PR head)
+
+Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc7de`.
+
+- Node tests and isolated Durable Objects runtime: 236 passed, 0 failed (run `43753853679`, job `132933532143`).
+- Cloudflare Worker build validation: success (run `43753853803`, job `132933532780`; build-only, no deployment).
+- Devnet cluster identity and read-only RPC validation: success (run `43753853659`, job `132933532186`).
+- The faucet-funded ephemeral signing/transfer step was explicitly skipped because `DEVNET_RPC_URL` is not configured. The overall green Devnet workflow is not evidence of a signed transfer or settlement.
+- No Phantom key, Mainnet RPC, swap, Mainnet transaction, merge, or production deployment was used or authorized.
