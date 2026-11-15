@@ -212,7 +212,12 @@ export class LiveTradeCoordinator {
       if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
       const records = readReservationRecords(state);
       const existing = state.reservations[key];
-      if (!existing) return null;
+      if (!existing) {
+        if (records.length >= MAX_RESERVATIONS) {
+          throw new Error("Coordinator reservation history capacity reached; operator review required");
+        }
+        return null;
+      }
       if (existing.intentFingerprint !== intentFingerprint) {
         throw new Error("Idempotency key reused with a different order intent");
       }
