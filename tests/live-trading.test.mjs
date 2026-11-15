@@ -305,3 +305,40 @@ test("empty or malformed unsigned transaction is rejected", async () => {
     }), { status: 200 })
   }), /incomplete or non-executable/);
 });
+
+
+test("Jupiter order rejects output amounts outside canonical u64 bounds", async () => {
+  for (const outAmount of [
+    "18446744073709551616",
+    "999999999999999999999999999999999999",
+    "012345",
+    "0"
+  ]) {
+    await assert.rejects(() => getJupiterOrder({
+      env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amountLamports: 1000000, eligibility: goodEligibility,
+      fetchImpl: async () => new Response(JSON.stringify({
+        requestId: "req-bad-output", transaction: validUnsignedLegacyTransaction(),
+        inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount, routePlan: [{ swapInfo: { label: "test" } }],
+        router: "metis", feeBps: 0
+      }), { status: 200 })
+    }), /incomplete or non-executable/);
+  }
+});
+
+test("Jupiter order rejects invalid fee basis points", async () => {
+  for (const feeBps of [-1, 10001, 1.5, "10"]) {
+    await assert.rejects(() => getJupiterOrder({
+      env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amountLamports: 1000000, eligibility: goodEligibility,
+      fetchImpl: async () => new Response(JSON.stringify({
+        requestId: "req-bad-fee", transaction: validUnsignedLegacyTransaction(),
+        inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        inAmount: "1000000", outAmount: "12345",
+        routePlan: [{ swapInfo: { label: "test" } }],
+        router: "metis", feeBps
+      }), { status: 200 })
+    }), /incomplete or non-executable/);
+  }
+});
