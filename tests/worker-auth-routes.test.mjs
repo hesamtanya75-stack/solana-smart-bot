@@ -106,3 +106,12 @@ test("temporary public diagnostic routes are not exposed by the Worker", () => {
     assert.equal(workerSource.includes('url.pathname === "' + route + '"'), false, route + " must not be public");
   }
 });
+
+test("static asset fallback exposes only the self-contained dashboard routes", () => {
+  const dashboardGate = workerSource.indexOf(
+    'if (!isDashboardHtml) return json({ error: "Not found" }, 404);'
+  );
+  const assetFetch = workerSource.indexOf("const assetResponse = await env.ASSETS.fetch(assetRequest);");
+  assert.ok(dashboardGate >= 0, "all non-dashboard paths must be denied before static asset lookup");
+  assert.ok(assetFetch > dashboardGate, "the asset binding must only be reached after the dashboard allowlist");
+});
