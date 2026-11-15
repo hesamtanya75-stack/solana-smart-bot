@@ -1241,6 +1241,8 @@ export function verifyUpgradeableProgramDeploymentAllowlist(
     if (!program || typeof program !== "object" || Array.isArray(program) ||
         !validAddress(program.programId) ||
         seenPrograms.has(program.programId) ||
+        !validAddress(program.accountOwner) ||
+        SOLANA_PROGRAM_LOADER_TYPES.get(program.accountOwner) !== program.loaderType ||
         program.loaderType !== "upgradeable-bpf-loader" ||
         program.executable !== true ||
         !validAddress(program.programDataAddress) ||
