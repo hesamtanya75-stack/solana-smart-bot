@@ -295,3 +295,19 @@ Cloudflare's current documentation says the project's `compatibility_date` of 20
 References: Solana Versioned Transactions and Transaction Introspection documentation; Cloudflare Workers Node.js compatibility documentation. 
 
 **Decision unchanged:** no semantic verification or settlement proof is implemented; coordinator stays fail-closed and isolated. PR #27 remains Draft and unmerged. No production deployment, signing, transaction submission, or live trading is approved.
+
+## v0 instruction account-index bounds with ALT-loaded addresses — 2026-11-15
+
+A parser review found that the v0 wire parser previously checked every compiled-instruction account index against the static account-key count only. Valid v0 instructions may also reference addresses loaded from lookup tables. The parser now counts writable and readonly loaded-address indexes across the lookup descriptors and validates instruction account indexes against the complete key-space size (static keys plus loaded addresses). Program-ID indexes remain restricted to static keys, consistent with the Solana v0 message rules. A regression fixture exercises an instruction account index that points to an ALT-loaded key.
+
+This remains structural validation only: the parser does not fetch or authenticate the on-chain ALT accounts, resolve the actual public keys, validate lookup-table ownership/activation/deactivation, or decode Jupiter and downstream instruction semantics. Therefore it does not satisfy the coordinator's semantic-verification gate and must not enable reservation or signing.
+
+Validation at code head `17d543f6690c96b6dfd895da9d11d521e2bf1eff`:
+- Node tests: **success**.
+- JavaScript syntax: **success**.
+- Cloudflare Worker build validation (dry-run): **success**.
+- Devnet read-only validation: **success**; funded signed Devnet lifecycle remains unverified unless the separate signed-transfer step runs with `DEVNET_RPC_URL`.
+
+References: Solana's current v0 format documentation describes the full account-key vector as static keys followed by loaded writable and then loaded readonly addresses; the Solana protocol specification states instruction account indexes must be within that combined vector and program-ID indexes must refer to static keys.
+
+**Decision unchanged:** PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
