@@ -639,17 +639,17 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "SysvarRent111111111111111111111111111111111"] }
           },
           meta: {
             err: null, fee: 5000,
-            preBalances: [1, 100_000_000], postBalances: [1, 89_995_000],
+            preBalances: [1, 100_000_000, 1], postBalances: [1, 89_995_000, 1],
             preTokenBalances: [
-              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
+              { accountIndex: 2, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
             ],
             postTokenBalances: [
-              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 } },
-              { accountIndex: 1, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "12345", decimals: 6 } }
+              { accountIndex: 2, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "12345", decimals: 6 } }
             ]
           }
         };
