@@ -97,6 +97,15 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
       bytes.slice(addressesStart, addressesStart + 32).some((byte, i) => byte !== expectedBytes[i])) {
     throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
   }
+  const uniqueAddresses = new Set();
+  for (let i = 0; i < addressCount; i++) {
+    const start = addressesStart + i * 32;
+    const key = Buffer.from(bytes.subarray(start, start + 32)).toString("hex");
+    if (uniqueAddresses.has(key)) {
+      throw new Error("V1 Jupiter transaction contains duplicate account addresses");
+    }
+    uniqueAddresses.add(key);
+  }
   cursor += addressCount * 32;
   const configBytes = ((configMask & 0x3) ? 8 : 0) +
     ((configMask & 0x4) ? 4 : 0) +
@@ -130,8 +139,8 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     const accountCount = bytes[cursor++];
     const dataLength = bytes[cursor] | (bytes[cursor + 1] << 8);
     cursor += 2;
-    if (programIdIndex >= addressCount || accountCount > addressCount ||
-        dataLength > 4096) {
+    if (programIdIndex === 0 || programIdIndex >= addressCount ||
+        accountCount > addressCount || dataLength > 4096) {
       throw new Error("V1 Jupiter instruction header is invalid");
     }
     headers.push({ programIdIndex, accountCount, dataLength });
