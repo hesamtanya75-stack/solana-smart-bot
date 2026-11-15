@@ -959,6 +959,17 @@ test("Jupiter /build rejects oversized route, instruction, account, and lookup-t
   })), /lookup-table addresses are malformed/);
 });
 
+test("Jupiter /build rejects token amounts outside the Solana u64 range", () => {
+  for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+      [field]: "18446744073709551616"
+    })), /response envelope/);
+    assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+      [field]: "9".repeat(100000)
+    })), /response envelope/);
+  }
+});
+
 test("Jupiter /build rejects malformed account metadata and unexpected requested amount", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: { programId: "11111111111111111111111111111111", accounts: [{
