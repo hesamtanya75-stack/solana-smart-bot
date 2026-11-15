@@ -215,8 +215,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const readonlyUnsigned = bytes[cursor++];
   // The coordinator pins exactly one signer: the dedicated bot wallet.
   // Additional required signers are outside the reviewed authorization model.
+  // The pinned bot wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || requiredSignatures !== signatureCount ||
-      readonlySigned > requiredSignatures) {
+      readonlySigned !== 0) {
     throw new Error("Jupiter transaction signer header is inconsistent");
   }
   const keysHeader = readShortVector(bytes, cursor);
