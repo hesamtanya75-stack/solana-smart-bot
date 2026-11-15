@@ -1126,6 +1126,8 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   });
 }
 
+export { isCanonicalPublicKey };
+
 export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   const [quote, risk] = await Promise.all([
     fetchTrustedSolUsdQuote(fetchImpl),
