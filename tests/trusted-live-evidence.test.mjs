@@ -269,6 +269,59 @@ test("malformed Jupiter instruction program index is rejected", () => {
 });
 
 
+test("legacy outer instruction evidence resolves program, signer and writable account roles without semantic approval", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET
+  );
+  assert.equal(parsed.outerInstructionEvidence.length, 1);
+  assert.equal(parsed.outerInstructionEvidence[0].programId, encodeBase58(new Uint8Array(32)));
+  assert.deepEqual(parsed.outerInstructionEvidence[0].accounts, [{
+    accountIndex: 0,
+    messageKeyIndex: 0,
+    pubkey: BOT_WALLET,
+    isSigner: true,
+    isWritable: true
+  }]);
+  assert.equal(parsed.outerInstructionEvidence[0].dataBase64, "");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v0 outer instruction evidence resolves ALT-loaded writable and readonly account roles", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(), BOT_WALLET,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  const instruction = parsed.outerInstructionEvidence[0];
+  assert.equal(instruction.programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(instruction.accounts.map(account => ({
+    pubkey: account.pubkey, isSigner: account.isSigner, isWritable: account.isWritable
+  })), [{
+    pubkey: encodeBase58(new Uint8Array(32).fill(7)),
+    isSigner: false,
+    isWritable: true
+  }]);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 outer instruction evidence preserves inline accounts and opaque instruction data", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV1Transaction(), BOT_WALLET
+  );
+  const instruction = parsed.outerInstructionEvidence[0];
+  assert.equal(instruction.programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(instruction.accounts[0], {
+    accountIndex: 0,
+    messageKeyIndex: 0,
+    pubkey: BOT_WALLET,
+    isSigner: true,
+    isWritable: true
+  });
+  assert.equal(instruction.dataBase64, "AA==");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
