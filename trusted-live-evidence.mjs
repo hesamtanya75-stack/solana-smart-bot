@@ -1012,7 +1012,10 @@ async function decodeUpgradeableProgramData(data) {
     throw new Error("ProgramData upgrade authority option is malformed");
   }
   const elfBytes = data.subarray(elfOffset);
-  if (elfBytes.length === 0) throw new Error("ProgramData deployed code is empty");
+  if (elfBytes.length < 4 || elfBytes[0] !== 0x7f ||
+      elfBytes[1] !== 0x45 || elfBytes[2] !== 0x4c || elfBytes[3] !== 0x46) {
+    throw new Error("ProgramData deployed code is not a valid ELF payload");
+  }
   const digest = await crypto.subtle.digest("SHA-256", elfBytes);
   const codeHash = [...new Uint8Array(digest)]
     .map(byte => byte.toString(16).padStart(2, "0")).join("");
