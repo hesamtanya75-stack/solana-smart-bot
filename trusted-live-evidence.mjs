@@ -83,6 +83,7 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
         })
       })
     });
+  });
   const percentTotal = validated.reduce((sum, step) => sum + step.percent, 0);
   const bpsValues = validated.map(step => step.bps);
   const hasBps = bpsValues.some(value => value != null);
