@@ -269,3 +269,14 @@ Validation for code commit `c3230a694f5aca5625270a6045263249c5ef5fea`:
 This narrows the accepted transaction structure; it does **not** semantically decode or approve Jupiter instructions, resolve and verify Address Lookup Tables, or establish settlement/recovery proof. The coordinator continues to require semantic verification and remains fail-closed. The live coordinator remains isolated from the public Worker, and the emergency stop is not integrated into a production live-trading path.
 
 **Decision unchanged: NOT APPROVED for Mainnet, signing, transaction submission, or live trading. PR #27 remains Draft and unmerged. No production deployment or Mainnet action is authorized.**
+
+
+## Solana transaction format v1 compatibility gate — 2026-11-15
+
+A compatibility review against the current Solana transaction documentation found that transaction format v1 is active on Mainnet, Devnet, and Testnet. The current parser in `trusted-live-evidence.mjs` intentionally accepts legacy and v0 message layouts only; its version-prefix check rejects v1 (and any unsupported future version) with an explicit error. The existing regression test for an unsupported versioned message exercises this fail-closed behavior.
+
+This is safe rejection, not semantic verification or full current-format support. Solana v1 has a different message layout and does not use Address Lookup Tables; the current v0 ALT parser must not be reused as if it verified v1. Any future support must separately decode v1 configuration/resource fields, validate the complete instruction/account authorization model, and add official-format fixtures and regression tests before enabling any coordinator path. Until then, a Jupiter order encoded as v1 must remain unsupported and blocked.
+
+Reference: current Solana documentation states v1 is active on Mainnet, Devnet, and Testnet, with a 4,096-byte limit and no Address Lookup Tables. This review does not change application code or authorize signing, submission, Mainnet activity, deployment, or merge.
+
+**Decision unchanged:** PR #27 remains Draft and unmerged. Keep the live path disabled and fail-closed.
