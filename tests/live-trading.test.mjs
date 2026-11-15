@@ -276,7 +276,7 @@ test("Jupiter order binds the unsigned transaction signer to a non-default Phant
       routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
       transactionVersion: 0, feeBps: 0
     }), { status: 200 })
-  }), /expected bot wallet/);
+  }), /expected Phantom wallet/);
 });
 
 test("valid Jupiter order is parsed but never executed", async () => {
