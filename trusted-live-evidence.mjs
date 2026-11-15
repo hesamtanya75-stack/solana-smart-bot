@@ -442,7 +442,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const readonlyUnsigned = bytes[cursor++];
   // The transaction is expected to have exactly one signer: the connected Phantom wallet.
   // Additional required signers are outside the reviewed authorization model.
-  // The pinned bot wallet is the sole signer and must be writable as fee payer.
+  // The connected Phantom wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || requiredSignatures !== signatureCount ||
       readonlySigned !== 0) {
     throw new Error("Jupiter transaction signer header is inconsistent");
