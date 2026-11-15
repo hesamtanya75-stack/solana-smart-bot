@@ -48,6 +48,14 @@ test("non-canonical base64 transaction is rejected", () => {
   );
 });
 
+test("oversized legacy/v0 transaction is rejected before full-buffer canonicalization", () => {
+  const oversized = Buffer.alloc(1233).toString("base64");
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(oversized, BOT_WALLET),
+    /exceeds the 1,232-byte size limit/
+  );
+});
+
 test("non-canonical padded base64 encoding is rejected", () => {
   // "AB==" decodes to the same byte as canonical "AA==" but has non-zero pad bits.
   assert.throws(
