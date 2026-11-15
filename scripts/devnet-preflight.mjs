@@ -3,10 +3,19 @@
 // official public Devnet endpoint. Cluster genesis is checked before any
 // subsequent RPC evidence is trusted; no Mainnet endpoint is ever used.
 const configuredDevnetRpc = process.env.DEVNET_RPC_URL?.trim();
+function isSecureDevnetRpcEndpoint(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && Boolean(parsed.hostname) &&
+      !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
 const DEVNET_RPCS = [...new Set([
   configuredDevnetRpc,
   "https://api.devnet.solana.com"
-].filter(Boolean))];
+].filter(value => value && isSecureDevnetRpcEndpoint(value)))];
 const EXPECTED_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const TOKEN_PROGRAMS = new Set([
