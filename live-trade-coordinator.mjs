@@ -72,7 +72,7 @@ function readReservationRecords(state) {
     if (!item || typeof item !== "object" || Array.isArray(item) ||
         item.idempotencyKey !== key ||
         typeof item.intentFingerprint !== "string" || item.intentFingerprint.length === 0 ||
-        !Number.isSafeInteger(item.amountCents) || item.amountCents <= 0 ||
+        !Number.isSafeInteger(item.amountCents) || item.amountCents < 0 ||
         !isUtcDay(item.day) ||
         !["pending", "confirmed", "failed", "closed"].includes(item.status)) {
       throw new Error("Coordinator reservation ledger contains an invalid record; operator review required");
