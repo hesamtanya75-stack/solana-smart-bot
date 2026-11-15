@@ -165,7 +165,11 @@ async function main() {
     : -1;
   const transactionSignatures = transactionInfo.transaction?.signatures;
   if (!Array.isArray(transactionSignatures) ||
-      !transactionSignatures.includes(signature) ||
+      transactionSignatures[0] !== signature ||
+      !accountKeys.some(key =>
+        (typeof key?.toBase58 === "function" ? key.toBase58() :
+          typeof key?.pubkey?.toBase58 === "function" ? key.pubkey.toBase58() :
+            String(key?.pubkey ?? key)) === payer.publicKey.toBase58()) ||
       recipientIndex < 0 ||
       !Array.isArray(preBalances) || !Array.isArray(postBalances) ||
       recipientIndex >= preBalances.length || recipientIndex >= postBalances.length ||
