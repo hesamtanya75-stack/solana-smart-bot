@@ -275,7 +275,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  // The pinned bot wallet is the sole signer and must be writable as fee payer.
+  // The connected Phantom wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || readonlySigned !== 0) {
     throw new Error("V1 Jupiter transaction signer header is inconsistent");
   }
@@ -306,7 +306,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const expectedBytes = decodeBase58(expectedSigner);
   if (expectedBytes.length !== 32 ||
       bytes.slice(addressesStart, addressesStart + 32).some((byte, i) => byte !== expectedBytes[i])) {
-    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+    throw new Error("Jupiter transaction fee payer does not match the expected Phantom wallet");
   }
   const uniqueAddresses = new Set();
   for (let i = 0; i < addressCount; i++) {
@@ -440,7 +440,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  // The coordinator pins exactly one signer: the dedicated bot wallet.
+  // The transaction is expected to have exactly one signer: the connected Phantom wallet.
   // Additional required signers are outside the reviewed authorization model.
   // The pinned bot wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || requiredSignatures !== signatureCount ||
@@ -459,7 +459,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const signerBytes = bytes.slice(cursor, cursor + 32);
   const expectedBytes = decodeBase58(expectedSigner);
   if (expectedBytes.length !== 32 || signerBytes.some((byte, i) => byte !== expectedBytes[i])) {
-    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+    throw new Error("Jupiter transaction fee payer does not match the expected Phantom wallet");
   }
   // Solana message account keys must be unique; reject ambiguous static-key layouts.
   const uniqueKeys = new Set();
