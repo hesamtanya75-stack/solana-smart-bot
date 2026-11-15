@@ -100,8 +100,12 @@ Latest reviewed PR head: `9946239dcdb4e29ac561d424159683912e552bd5`.
 No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this documentation update.
 
 
-## Program loader ownership preflight (2026-11-15)
+## Program loader ownership and deployment evidence (2026-11-15)
 
-- Finalized executable program-account snapshots now reject owner IDs outside the recognized Solana loader-owner set: legacy BPF loader, BPF loader v2, upgradeable BPF loader, and native loader.
-- Evidence reports the recognized loader classification as descriptive metadata only. It does not assert that the program is approved, immutable, or semantically safe.
-- The next required layer is parsing the upgradeable loader's Program and ProgramData accounts, extracting upgrade authority and deployed code bytes, and pinning reviewed deployment hashes. Keep all semantic and signing flags false until that work and its adversarial tests are complete.
+- Finalized executable program-account snapshots reject owner IDs outside the recognized Solana loader-owner set: legacy BPF loader, BPF loader v2, upgradeable BPF loader, and native loader.
+- For upgradeable BPF programs, the evidence reader parses the Program account's state tag and ProgramData address, then fetches Program accounts again alongside ProgramData at finalized commitment. A changed ProgramData pointer is rejected.
+- ProgramData parsing validates its state tag, deployment slot, authority option encoding, account owner, canonical base64, and account-size metadata. It reports the upgrade authority (or immutable state) and SHA-256 of the deployed ELF payload, excluding the loader header.
+- The second RPC read binds the ProgramData account to a refreshed Program pointer snapshot; it is still read-only provenance evidence and is not a transaction-wide atomic guarantee across separate RPC calls.
+- Other recognized loader types remain classified by owner only; this does not parse their executable formats.
+- A code hash and upgrade-authority value do not establish semantic safety. They must be compared against a separately reviewed, versioned allowlist and policy. Unknown or changed deployments must fail closed.
+- `semanticInstructionVerification` remains `false`; no signing or execution path consumes this evidence. Adversarial coverage must include missing ProgramData, wrong owner/state tag, malformed authority option, truncated headers, changed ProgramData pointer, malformed/oversized account data, and altered deployed code hashes.
