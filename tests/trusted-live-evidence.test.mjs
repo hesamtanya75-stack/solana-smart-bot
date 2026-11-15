@@ -991,7 +991,7 @@ test("Jupiter route-plan amounts must be exact decimal strings", () => {
     };
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       routePlan: [{ ...validBuildResponse().routePlan[0], swapInfo }]
-    })), /routePlan\\[0\\] is malformed/);
+    })), /routePlan\[0\] is malformed/);
   }
 });
 
