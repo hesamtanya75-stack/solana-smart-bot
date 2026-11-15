@@ -53,3 +53,24 @@ The following are code-level findings from this branch, not assumptions about th
 - Therefore the existing Phantom balance display cannot currently initiate a manual trade, and changing the taker parameter alone would be unsafe: the transaction validator, coordinator ownership model, fee accounting, Worker authentication/route, browser confirmation, and settlement proof all need to be redesigned and tested together.
 
 These findings are why this branch keeps the real-trading path disabled. The next implementation slice must first introduce wallet-bound transaction-intent verification with a complete, reviewed supported-instruction allowlist; it must not expose a signable transaction or a signing button while semantic verification remains false.
+
+## Jupiter Swap V2 integration decisions (documentation checked 2026-11-15)
+
+The current official Jupiter V2 documentation establishes these integration constraints:
+
+- The manual wallet flow must call `GET /swap/v2/order` with the connected Phantom address in `taker`. A quote-only request without `taker` does not provide a transaction.
+- The matching `requestId` returned by `/order` is required by `POST /swap/v2/execute`. The execution endpoint is for signed `/order` transactions; it is not the execution endpoint for `/build`.
+- Read and validate the returned `transactionVersion`; V2 can return v0 or v1. Do not infer the message version from a request parameter or trust provider metadata over the deserialized message.
+- The current implementation explicitly excludes JupiterZ and accepts only a returned Metis route. Keep that restriction until a separate signer/partial-signature design is reviewed: JupiterZ routes can require an additional market-maker signature.
+- The /execute response's aggregate input/output fields include applicable swap fees; route-result fields do not necessarily equal the wallet's final token deltas. Final settlement must still be checked independently against finalized chain state and the Phantom owner's balances.
+- Jupiter's managed landing and requestId matching do not replace our independent pre-sign semantic verification, all-in outflow ceiling, or owner-scoped settlement proof.
+
+## Next implementation slice — blocked until evidence is available
+
+1. Build a wallet-bound transaction-intent model from the requested mints, exact input amount, expected minimum output, taker, allowed router, and fee limits.
+2. Establish a versioned, reviewed instruction allowlist for every supported top-level program and every possible CPI route. Pin source/IDL provenance and program deployment identity; invalidate approval when any trusted program or lookup-table state changes.
+3. Decode all compiled instructions and loaded lookup-table addresses and compare the resulting effects against the immutable intent. Unknown or ambiguous effects must reject the order.
+4. Add adversarial fixtures and property tests before wiring any signable transaction to the browser.
+5. Only after independent review, connect Phantom `signTransaction` to the exact verified bytes and Jupiter `/execute`; then prove finalized settlement on Devnet with a disposable wallet.
+
+No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this design update.
