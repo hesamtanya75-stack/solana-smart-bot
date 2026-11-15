@@ -588,6 +588,34 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
 });
 
 
+test("settlement owner is bound to the approved Phantom destination", async () => {
+  const phantomWallet = "11111111111111111111111111111111";
+  let verifiedOwner = null;
+  const { coordinator } = makeCoordinator(undefined, async args => {
+    verifiedOwner = args.expectedOwner;
+    return {
+      verified: true, signature: "phantom-devnet-signature",
+      inputMint: args.inputMint, inputAmount: args.inputAmount,
+      outputMint: args.outputMint, outputAmount: "900000",
+      owner: args.expectedOwner, confirmationStatus: "finalized"
+    };
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const reservation = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "phantom-wallet-order-01",
+    destination: phantomWallet
+  }));
+  assert.equal(reservation.status, 200);
+  const confirmed = await post(coordinator, "/confirm", {
+    idempotencyKey: "phantom-wallet-order-01",
+    signature: "phantom-devnet-signature",
+    outputAmount: "900000"
+  });
+  assert.equal(confirmed.status, 200);
+  assert.equal(verifiedOwner, phantomWallet);
+  assert.equal(confirmed.body.reservation.settlementProof.owner, phantomWallet);
+});
+
 test("reservation history is bounded without discarding idempotency records", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
