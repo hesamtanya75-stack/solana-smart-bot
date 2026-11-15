@@ -583,8 +583,8 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   const changed = await post(coordinator, "/reserve", validReservation({
     destination: "11111111111111111111111111111111"
   }));
-  assert.equal(changed.status, 400);
-  assert.match(changed.body.error, /immutable order intent/);
+  assert.equal(changed.status, 409);
+  assert.match(changed.body.error, /idempotency key reused with a different order intent/i);
 });
 
 
