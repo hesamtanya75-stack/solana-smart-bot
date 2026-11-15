@@ -492,3 +492,12 @@ Official references reviewed:
 - https://developers.jup.ag/docs/api-reference/swap/program-id-to-label
 
 No application execution path was enabled by this review. `semanticInstructionVerification` remains false for live evidence; the coordinator rejects reservations without an independently verified semantic attestation; `executeLiveOrder()` still throws; the Worker has no enabled end-to-end live-trading path. Do not treat this documentation update or green CI as Mainnet approval. Keep PR #27 Draft and unmerged. No deployment, signing, transaction submission, or live trading was performed.
+
+## Devnet RPC resilience update — 2026-11-15 (code commit `efa75d773a64687582de63043fcb8e29819474f1`; regression test commit `c4f99ad6e5caa63ce9187b9d31d8ae4e979075bc`)
+
+- The read-only Devnet preflight now retries transient fetch/network failures and timeouts, in addition to retryable HTTP statuses, with bounded attempts and backoff.
+- It validates the JSON-RPC 2.0 envelope, response ID, JSON shape, and presence of the result before consuming RPC data.
+- Error messages avoid printing the configured RPC URL, which may contain a provider API key.
+- Added a regression test asserting these retry, envelope-validation, and no-URL-logging guards.
+- These changes improve preflight resilience only. They do not provide the missing dedicated faucet-capable Devnet endpoint, and they do not establish a funded signed transaction lifecycle.
+- No Mainnet signing, transaction submission, live trading, production deployment, or merge was performed. PR #27 remains Draft and unmerged.
