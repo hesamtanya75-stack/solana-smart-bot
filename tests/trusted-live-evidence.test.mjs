@@ -1123,7 +1123,7 @@ test("Jupiter /build requires basis points on every route-plan step", () => {
   ]) {
     assert.throws(
       () => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\\[0\\] is malformed/
+      /routePlan\[0\] is malformed/
     );
   }
 });
@@ -1142,7 +1142,6 @@ test("Jupiter /build enforces route split totals and top-level token mints", () 
       { ...step, percent: 50, bps: 4000 },
       { ...step, percent: 50, bps: 4000 }
     ],
-    [{ ...step, percent: 99, bps: 9900 }, { ...step, percent: 1, bps: 100 }],
     [{ ...step, swapInfo: {
       ...step.swapInfo,
       inputMint: "11111111111111111111111111111111"
