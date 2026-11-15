@@ -26,7 +26,11 @@ function json(data, status = 200) {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     }
   });
 }
@@ -999,12 +1003,20 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
           "X-Solana-Smart-Bot-Build": build
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
+    assetHeaders.set("X-Content-Type-Options", "nosniff");
+    assetHeaders.set("X-Frame-Options", "DENY");
+    assetHeaders.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    assetHeaders.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
     assetHeaders.set("X-Solana-Smart-Bot-Build", build);
     return new Response(assetResponse.body, {
       status: assetResponse.status,
