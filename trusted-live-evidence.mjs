@@ -786,6 +786,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     const lastExtendedStartIndex = data[20];
     const authorityOption = data[21];
     if (authorityOption > 1 || data[54] !== 0 || data[55] !== 0 ||
+        (authorityOption === 0 && data.subarray(22, 54).some(byte => byte !== 0)) ||
         lastExtendedStartIndex > (data.length - 56) / 32) {
       throw new Error("Address lookup table metadata is invalid");
     }
