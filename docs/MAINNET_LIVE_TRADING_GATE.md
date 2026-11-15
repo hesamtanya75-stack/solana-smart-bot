@@ -39,7 +39,7 @@ The current $3 per-buy and $5 per-day reservation accounting converts only the S
 
 ## Mandatory remaining release gates
 
-1. Complete independent semantic verification of Jupiter instruction programs/accounts, writable/signer roles, and all value-moving instructions. Exact outer-program deployment identity coverage is now checked, but v0 lookup-table contents and instruction semantics are still not trusted.
+1. Complete independent semantic verification of Jupiter instruction programs/accounts, writable/signer roles, and all value-moving instructions. Exact outer-program deployment identity coverage is now checked. A narrowly scoped decoder now recognizes only native System Program `Transfer` instructions and validates the source signer/writable role, destination writable role, distinct accounts, canonical data, and positive lamport amount; every other System Program instruction is rejected. This decoder is not wired as a whole-transaction approval gate. v0 lookup-table contents and all other instruction semantics remain untrusted.
 2. Establish quote freshness and validate all relevant amounts, fees, and token programs.
 3. Complete and independently test the existing Durable Object coordinator's durable idempotency and settlement state machine, including restart recovery and duplicate Cron/request behavior.
 4. Wire an authenticated emergency stop into the same strongly coordinated component and prove that it blocks new reservations immediately; define safe exit behavior.
