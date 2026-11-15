@@ -680,7 +680,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   if (!Array.isArray(lookups) || lookups.length === 0 || lookups.length > 64) {
     throw new Error("Jupiter address lookup descriptors are missing or invalid");
   }
-  const keys = lookups.map(item => item?.accountKey);
+  const keys = Array.from(lookups, item => item?.accountKey);
   if (keys.some(key => typeof key !== "string" || decodeBase58(key).length !== 32) ||
       new Set(keys).size !== keys.length) {
     throw new Error("Jupiter address lookup table keys are invalid or duplicated");
