@@ -1012,9 +1012,16 @@ async function decodeUpgradeableProgramData(data) {
     throw new Error("ProgramData upgrade authority option is malformed");
   }
   const elfBytes = data.subarray(elfOffset);
-  if (elfBytes.length < 4 || elfBytes[0] !== 0x7f ||
-      elfBytes[1] !== 0x45 || elfBytes[2] !== 0x4c || elfBytes[3] !== 0x46) {
-    throw new Error("ProgramData deployed code is not a valid ELF payload");
+  // Solana SBF deployments use ELF64, little-endian, EM_BPF (247).
+  // Validate the fixed ELF identification/header fields before hashing.
+  if (elfBytes.length < 64 ||
+      elfBytes[0] !== 0x7f || elfBytes[1] !== 0x45 ||
+      elfBytes[2] !== 0x4c || elfBytes[3] !== 0x46 ||
+      elfBytes[4] !== 2 || elfBytes[5] !== 1 || elfBytes[6] !== 1 ||
+      elfBytes[18] !== 247 || elfBytes[19] !== 0 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint32(20, true) !== 1 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint16(52, true) !== 64) {
+    throw new Error("ProgramData deployed code is not a valid Solana SBF ELF64 payload");
   }
   const digest = await crypto.subtle.digest("SHA-256", elfBytes);
   const codeHash = [...new Uint8Array(digest)]
