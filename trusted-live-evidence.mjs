@@ -169,6 +169,19 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const otherInstructions = validateList(build.otherInstructions, "other");
   const tipInstruction = build.tipInstruction === null
     ? null : validateBuildInstruction(build.tipInstruction, "tip");
+  const allInstructions = [
+    ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
+    ...(cleanupInstruction ? [cleanupInstruction] : []),
+    ...otherInstructions, ...(tipInstruction ? [tipInstruction] : [])
+  ];
+  const totalAccountMetas = allInstructions.reduce((sum, instruction) =>
+    sum + instruction.accounts.length, 0);
+  const totalInstructionDataChars = allInstructions.reduce((sum, instruction) =>
+    sum + instruction.data.length, 0);
+  if (allInstructions.length > 256 || totalAccountMetas > 4096 ||
+      totalInstructionDataChars > 262144) {
+    throw new Error("Jupiter build instruction bundle exceeds aggregate resource limits");
+  }
   const rawAlts = build.addressesByLookupTableAddress;
   if (rawAlts !== null && (typeof rawAlts !== "object" || Array.isArray(rawAlts))) {
     throw new Error("Jupiter build lookup-table map is malformed");
