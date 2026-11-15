@@ -172,3 +172,16 @@ A further source review confirms the release blockers remain intentional and fai
 - The funded signed Devnet lifecycle remains untested, and deployed Cloudflare production secrets, bindings, migrations, and cron settings have not been independently inspected.
 
 **Release decision unchanged:** PR #27 remains Draft and unmerged. These successful checks validate the CI gates listed above; they do not authorize merge, production deployment, Mainnet signing, transaction submission, or live trading. Keep the application paper-trading only until the blocking items receive a separately reviewed implementation and explicit approval.
+
+
+## Emergency-stop control-plane review — 2026-11-15 (source commit 8404bac17fe587a5557cd7618d9d203eb109cdab)
+
+A focused re-review of `LiveTradeCoordinator`, its tests, the Worker route dispatcher, and Wrangler bindings confirms:
+
+- The coordinator starts with `killSwitch: true`; reservations check it before external evidence retrieval and again inside the atomic reservation transaction. The regression test confirms activating the stop blocks subsequent reservations.
+- The `/kill-switch` endpoint is protected by the coordinator's internal Bearer token and rejects malformed or missing credentials. There is no browser-facing Worker route or call site for the coordinator; the Worker only exports the Durable Object class. This keeps the current feature isolated.
+- **Control-plane gap for any future integration:** the same internal Bearer credential authorizes both `enabled: true` and `enabled: false`. There is no separate operator/MFA authorization for re-arming, no role distinction, and no append-only audit trail for stop/re-arm events. This is not a currently reachable public exploit because the Worker does not expose or invoke the coordinator. Before a future live-trading integration, keep emergency activation available to trusted automation, but require a distinct, strongly authenticated operator approval to disable the stop; record actor, timestamp, reason, and previous/new state in durable audit evidence. Do not add a public route or weaken the current fail-closed default.
+- Settlement remains deliberately blocked: the transition method rejects every confirm/fail/close request until independent chain proof or cryptographic proof of non-submission exists. Existing regression tests confirm caller-supplied booleans and explanations cannot release a pending reservation.
+- The tests cover stop activation and credential rejection, but do not constitute an operator control-plane or settlement implementation.
+
+**Decision unchanged:** this review found no safe reason to enable the live path. PR #27 remains Draft and unmerged; paper-trading only. No production deployment, signing, submission, or Mainnet activity was performed.
