@@ -735,6 +735,11 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
         account.data[1] !== "base64") {
       throw new Error("Address lookup table is missing, malformed, or owned by an unexpected program");
     }
+    // Bound encoded account data before base64 decoding to cap RPC-controlled memory use.
+    const maxLookupTableBase64Length = 4 * Math.ceil((56 + 256 * 32) / 3);
+    if (account.data[0].length > maxLookupTableBase64Length) {
+      throw new Error("Address lookup table account data exceeds the maximum encoded size");
+    }
     const data = Uint8Array.from(atob(account.data[0]), char => char.charCodeAt(0));
     if (data.length < 56 || (data.length - 56) % 32 !== 0 ||
         data.length > 56 + 256 * 32) {
