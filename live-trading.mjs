@@ -4,7 +4,7 @@
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
-const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;\nimport { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
 
 function finitePositive(value, name) {
   const n = Number(value);
