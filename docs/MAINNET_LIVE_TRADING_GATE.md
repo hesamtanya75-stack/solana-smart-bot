@@ -6,6 +6,10 @@ This repository currently implements paper trading only. The scheduled Worker up
 
 This branch is preparation and policy enforcement only. It does not enable live trading and must not be deployed as a live trader.
 
+## Latest automated Devnet result (2026-11-15)
+
+The CI run for head `a230c5a577ada3c274dadec92bf7f3c360a8d179` successfully verified the Devnet cluster genesis hash, RPC health, confirmed slot, reference mint, token program, and supply availability. Holder enumeration was rate-limited, so holder concentration was not validated. The ephemeral signing script verified an offline signature, but its funded on-chain transfer was blocked because the public Devnet faucet returned HTTP 410. The run confirms `transactionsSubmitted: 0`, `mainnetTouched: false`, and `swapExecuted: false`. This is not a successful on-chain lifecycle test. A dedicated funded Devnet RPC/faucet path is still required before the Phantom signing/submission gate can pass.
+
 ## Required architecture
 
 1. Keep the existing paper-trading engine unchanged.
@@ -44,7 +48,7 @@ The isolated coordinator now has a fail-closed all-in cost-evidence validator: i
 3. Complete and independently test the existing Durable Object coordinator's durable idempotency and settlement state machine, including restart recovery and duplicate Cron/request behavior.
 4. Wire an authenticated emergency stop into the same strongly coordinated component and prove that it blocks new reservations immediately; define safe exit behavior.
 5. Test RPC outages, provider errors, ambiguous submissions, partial confirmations, and restart recovery.
-6. Refactor order construction and settlement binding to the connected Phantom public key, then complete a Devnet-only Phantom signing/submission test using a disposable wallet and tiny test amount.
+6. Refactor order construction and settlement binding to the connected Phantom public key, then complete a Devnet-only Phantom signing/submission test using a disposable wallet and tiny test amount. The current public faucet failure is an environment blocker, not a successful lifecycle test.
 7. Obtain independent review of signing and transaction-decoding code.
 8. Have the user review final limits and explicitly approve before any Mainnet enablement.
 
