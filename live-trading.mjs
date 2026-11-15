@@ -98,9 +98,13 @@ async function getJupiterOrder({
   if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
   if (inputMint === outputMint) throw new Error("Input and output mints must differ");
 
+  // Restrict the Meta-Aggregator to Metis: receiver disables Dflow/OKX,
+  // while excludeRouters removes JupiterZ. The response router is checked below.
   const params = new URLSearchParams({
     inputMint, outputMint, amount: String(amountLamports),
-    taker: policy.wallet, slippageBps: String(policy.maxSlippageBps)
+    taker: policy.wallet, receiver: policy.wallet,
+    excludeRouters: "jupiterz",
+    slippageBps: String(policy.maxSlippageBps)
   });
   const response = await fetchImpl("https://api.jup.ag/swap/v2/order?" + params.toString(), {
     method: "GET",
@@ -117,10 +121,11 @@ async function getJupiterOrder({
       !/^[0-9]+$/.test(String(order.inAmount || "")) ||
       String(order.inAmount) !== String(amountLamports) ||
       order.inputMint !== inputMint || order.outputMint !== outputMint ||
+      order.router !== "metis" ||
       !/^[0-9]+$/.test(String(order.outAmount || "")) ||
       BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0) {
-    throw new Error("Jupiter returned an incomplete or non-executable order");
+    throw new Error("Jupiter returned an incomplete, non-Metis, or non-executable order");
   }
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
     order.transaction, policy.wallet, fetchImpl
