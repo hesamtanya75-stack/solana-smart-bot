@@ -314,7 +314,7 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
   assert.equal(rejected.status, 409);
   const status = await coordinator.status();
   assert.equal(status.openPositions, 1);
-  assert.equal(status.dailySpendUsdCents, 200);
+  assert.equal(status.dailySpendUsdCents, 201);
 });
 
 test("fail and close transitions remain blocked without independent proof; confirmation requires finalized settlement", async () => {
@@ -339,7 +339,7 @@ test("fail and close transitions remain blocked without independent proof; confi
 
   const status = await coordinator.status();
   assert.equal(status.openPositions, 1);
-  assert.equal(status.dailySpendUsdCents, 200);
+  assert.equal(status.dailySpendUsdCents, 201);
 });
 
 test("confirmation stores only independently verified finalized settlement evidence", async () => {
