@@ -147,7 +147,9 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       !Array.isArray(build.otherInstructions) || build.otherInstructions.length > 64 ||
       !Object.prototype.hasOwnProperty.call(build, "cleanupInstruction") ||
       !Object.prototype.hasOwnProperty.call(build, "tipInstruction") ||
-      !build.blockhashWithMetadata || !Array.isArray(build.blockhashWithMetadata.blockhash) ||
+      !build.blockhashWithMetadata || typeof build.blockhashWithMetadata !== "object" ||
+      Array.isArray(build.blockhashWithMetadata) ||
+      !Array.isArray(build.blockhashWithMetadata.blockhash) ||
       build.blockhashWithMetadata.blockhash.length !== 32 ||
       !Array.from(build.blockhashWithMetadata.blockhash).every(byte =>
         Number.isInteger(byte) && byte >= 0 && byte <= 255) ||
