@@ -56,10 +56,10 @@ function validateBuildRoutePlan(routePlan) {
         !isCanonicalPublicKey(info.ammKey) ||
         !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
         info.inputMint === info.outputMint ||
-        amountFields.some(field => !/^\\d+$/.test(String(info[field] ?? "")) ||
+        amountFields.some(field => !/^\d+$/.test(String(info[field] ?? "")) ||
           String(info[field]).length > 20 || BigInt(info[field]) <= 0n ||
           BigInt(info[field]) > 18446744073709551615n) ||
-        (info.feeAmount != null && (!/^\\d+$/.test(String(info.feeAmount)) ||
+        (info.feeAmount != null && (!/^\d+$/.test(String(info.feeAmount)) ||
           String(info.feeAmount).length > 20 || BigInt(info.feeAmount) > 18446744073709551615n)) ||
         (info.feeMint != null && !isCanonicalPublicKey(info.feeMint)) ||
         ((info.feeAmount == null) !== (info.feeMint == null))) {
