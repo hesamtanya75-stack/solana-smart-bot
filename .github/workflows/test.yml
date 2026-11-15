@@ -19,9 +19,11 @@ jobs:
           node-version: 20
       - name: Install isolated Durable Objects test runtime
         run: npm install --no-save --ignore-scripts --package-lock=true miniflare@3
+      - name: Generate a temporary dependency lockfile for audit
+        run: npm install --package-lock-only --ignore-scripts --package-lock=true miniflare@3
       - name: Report dependency audit details for the isolated test runtime
         run: |
           npm audit --json > npm-audit.json || true
-          node --input-type=commonjs -e 'const a=require("./npm-audit.json"); for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,via:v.via,fixAvailable:v.fixAvailable}));'
+          node --input-type=commonjs -e 'const fs=require("node:fs"); const raw=fs.readFileSync("npm-audit.json","utf8"); let a; try { a=JSON.parse(raw); } catch { console.log("npm audit did not return JSON; see npm output above"); process.exit(0); } for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,via:v.via,fixAvailable:v.fixAvailable})); if (!Object.keys(a.vulnerabilities||{}).length) console.log("No dependency vulnerabilities reported by npm audit.");'
       - name: Run safety and Durable Objects runtime tests
         run: npm test
