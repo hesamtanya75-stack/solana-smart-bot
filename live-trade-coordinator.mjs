@@ -45,7 +45,7 @@ async function readBoundedJson(request, maxBytes = 16384) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  const value = JSON.parse(new TextDecoder().decode(bytes));
+  const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("JSON object required");
   }
