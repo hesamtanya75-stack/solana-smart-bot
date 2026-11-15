@@ -1034,6 +1034,43 @@ test("program identity evidence resolves upgrade authority and hashes finalized 
   );
 });
 
+test("upgradeable ProgramData evidence marks a no-authority deployment immutable", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(37));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(79));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const programState = Buffer.alloc(36);
+  programState.writeUInt32LE(2, 0);
+  Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
+  const programDataState = Buffer.alloc(17);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1199n, 4);
+  programDataState[12] = 0;
+  programDataState.set([0x7f, 0x45, 0x4c, 0x46], 13);
+  let calls = 0;
+  const evidence = await fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const program = {
+        owner: loaderOwner, executable: true, space: 36,
+        data: [programState.toString("base64"), "base64"]
+      };
+      const programData = {
+        owner: loaderOwner, executable: false, space: programDataState.length,
+        data: [programDataState.toString("base64"), "base64"]
+      };
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1500 + calls },
+        value: calls === 1 ? [program] : [program, programData]
+      } });
+    }
+  );
+  assert.equal(evidence.programs[0].upgradeAuthority, null);
+  assert.equal(evidence.programs[0].immutable, true);
+  assert.equal(evidence.programs[0].deploymentSlot, "1199");
+});
+
 test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or changed pointer", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(35));
   const programDataAddress = encodeBase58(new Uint8Array(32).fill(75));
