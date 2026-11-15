@@ -876,10 +876,16 @@ function buildOuterInstructionEvidence(parsed, writableLoaded = [], readonlyLoad
     return index < parsed.staticAccountCount + writableLoaded.length;
   };
   return Object.freeze(parsed.compiledInstructions.map((instruction, instructionIndex) => {
-    const programId = keys[instruction.programIdIndex];
+    const programIndex = instruction.programIdIndex;
+    const programId = keys[programIndex];
     if (!programId || !Array.isArray(instruction.accountIndexes) ||
         instruction.accountIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= keys.length)) {
       throw new Error("Compiled instruction references an invalid resolved account");
+    }
+    // Executable program accounts are never transaction signers or writable
+    // instruction accounts. Reject malformed layouts before exposing evidence.
+    if (programIndex < parsed.requiredSignatures || isWritable(programIndex)) {
+      throw new Error("Compiled instruction program account must be readonly and non-signer");
     }
     return Object.freeze({
       instructionIndex,
