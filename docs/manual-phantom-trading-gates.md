@@ -65,25 +65,35 @@ The current official Jupiter V2 documentation establishes these integration cons
 - The /execute response's aggregate input/output fields include applicable swap fees; route-result fields do not necessarily equal the wallet's final token deltas. Final settlement must still be checked independently against finalized chain state and the Phantom owner's balances.
 - Jupiter's managed landing and requestId matching do not replace our independent pre-sign semantic verification, all-in outflow ceiling, or owner-scoped settlement proof.
 
-## CI evidence snapshot (2026-11-15)
 
-Commit `f097be88dadac47eedc7a41970aad9d2ae54e55a` completed these GitHub Actions checks:
+## CPI and transaction-introspection boundary (reviewed 2026-11-15)
+
+Solana's official transaction model confirms that a compiled instruction contains a program ID, ordered account metas, and opaque instruction data. A transaction decoder can recover those outer instructions, but the bytes alone do not reveal every downstream program invocation: CPI targets are selected during program execution.
+
+- The official Solana transaction-introspection guide explains that versioned messages use static keys plus loaded ALT addresses, while CPI instructions are supplied separately in transaction metadata as `innerInstructions`. The helper's `walkInstructions` combines outer instructions and recorded inner instructions.
+- The official RPC JSON-structures guide documents `meta.innerInstructions` as execution metadata. It is not part of the unsigned message the wallet is asked to sign.
+- Therefore, resolving every static key and ALT is necessary but not sufficient for pre-sign approval. A local decoder must not claim it has proven CPI behavior merely because all top-level program IDs are known.
+- A simulation can provide useful execution evidence for the current state, but it is not a durable proof that a state-dependent program will invoke only the same CPIs when the signed transaction lands. Treat simulation as an additional rejection gate, never as a replacement for reviewed program semantics and deployment identity.
+- Any supported router/program must have a reviewed, versioned policy describing its possible CPI targets, argument constraints, writable-account effects, signer privilege propagation, and upgrade authority/deployment identity. If that cannot be established, reject that route and keep semantic verification false.
+- Add fixtures with nested CPI traces, missing or incomplete inner-instruction metadata, unexpected CPI programs, altered account privileges, and state-dependent route changes. Missing trace evidence must never be interpreted as an empty CPI list.
+
+Official references:
+- https://solana.com/docs/core/transactions
+- https://solana.com/docs/core/instructions/instruction-structure
+- https://solana.com/docs/rpc/json-structures
+- https://solana.com/docs/core/cpi
+- https://solana.com/docs/core/transactions/versioned-transactions
+- https://solana.com/docs/core/transaction-introspection
+
+## CI evidence snapshot (2026-11-15, refreshed)
+
+Latest reviewed PR head: `db91e27a30c0049c23d54d5552087e97103309ed`.
 
 - Node tests: success.
-- Cloudflare Worker build validation: success. This is a build-only check; it does not deploy.
+- Cloudflare Worker build validation: success (build-only; no deployment).
 - Devnet read-only cluster/RPC validation: success.
 - Faucet-funded Devnet signing and transfer step: skipped because a dedicated funded Devnet RPC was not available.
+- The Devnet workflow reports success because its explicit skip-report step succeeds; this does not prove a signed transfer or settlement.
+- The combined status still includes the legacy Deno Deploy context failure; this is separate from the Cloudflare Worker build and is not a Worker deployment result.
 
-The Devnet workflow's overall success therefore proves read-only connectivity and unit/runtime tests only. It does not prove Phantom signing, transaction submission, confirmation, or finalized settlement. Do not treat the skipped step as a successful signed lifecycle test.
-
-The combined commit status also reports a failure for the legacy Deno Deploy status context `deploy/hesamtanya75-stack/solana-smart-bot-17`; that legacy status is separate from the successful Cloudflare build validation and is not evidence of a Cloudflare deployment.
-
-## Next implementation slice — blocked until evidence is available
-
-1. Build a wallet-bound transaction-intent model from the requested mints, exact input amount, expected minimum output, taker, allowed router, and fee limits.
-2. Establish a versioned, reviewed instruction allowlist for every supported top-level program and every possible CPI route. Pin source/IDL provenance and program deployment identity; invalidate approval when any trusted program or lookup-table state changes.
-3. Decode all compiled instructions and loaded lookup-table addresses and compare the resulting effects against the immutable intent. Unknown or ambiguous effects must reject the order.
-4. Add adversarial fixtures and property tests before wiring any signable transaction to the browser.
-5. Only after independent review, connect Phantom `signTransaction` to the exact verified bytes and Jupiter `/execute`; then prove finalized settlement on Devnet with a disposable wallet.
-
-No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this design update.
+No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this documentation update.
