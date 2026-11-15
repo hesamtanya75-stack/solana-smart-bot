@@ -6,7 +6,7 @@ test("PaperTradingState uses real Durable Object transactions and imports KV onc
   const mf = new Miniflare({
     modules: true,
     scriptPath: "./tests/fixtures/paper-trading-state-runtime.mjs",
-    compatibilityDate: "2026-11-06",
+    compatibilityDate: "2026-05-03",
     durableObjects: { PAPER_TRADING_STATE: "PaperTradingState" },
     kvNamespaces: ["BOT_STATE"]
   });
