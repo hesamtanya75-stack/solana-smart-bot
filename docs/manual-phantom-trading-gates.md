@@ -72,7 +72,7 @@ Solana's official transaction model confirms that a compiled instruction contain
 
 - The official Solana transaction-introspection guide explains that versioned messages use static keys plus loaded ALT addresses, while CPI instructions are supplied separately in transaction metadata as `innerInstructions`. The helper's `walkInstructions` combines outer instructions and recorded inner instructions.
 - The official RPC JSON-structures guide documents `meta.innerInstructions` as execution metadata. It is not part of the unsigned message the wallet is asked to sign.
-- Therefore, resolving every static key and ALT is necessary but not sufficient for pre-sign approval. A local decoder must not claim it has proven CPI behavior merely because all top-level program IDs are known.
+- Therefore, resolving every static key and ALT is necessary but not sufficient for pre-sign approval. The current evidence builder also does not independently fetch each program account to verify its on-chain executable state or pin its loader/upgrade authority. A local decoder must not claim it has proven CPI behavior merely because all top-level program IDs are known.
 - A simulation can provide useful execution evidence for the current state, but it is not a durable proof that a state-dependent program will invoke only the same CPIs when the signed transaction lands. Treat simulation as an additional rejection gate, never as a replacement for reviewed program semantics and deployment identity.
 - Any supported router/program must have a reviewed, versioned policy describing its possible CPI targets, argument constraints, writable-account effects, signer privilege propagation, and upgrade authority/deployment identity. If that cannot be established, reject that route and keep semantic verification false.
 - Add fixtures with nested CPI traces, missing or incomplete inner-instruction metadata, unexpected CPI programs, altered account privileges, and state-dependent route changes. Missing trace evidence must never be interpreted as an empty CPI list.
@@ -87,13 +87,13 @@ Official references:
 
 ## CI evidence snapshot (2026-11-15, refreshed)
 
-Latest reviewed PR head: `db91e27a30c0049c23d54d5552087e97103309ed`.
+Latest reviewed PR head: `4577312be10e473528881e22bd2b86752c7af6a4`.
 
-- Node tests: success.
+- Node tests and isolated Durable Objects runtime: 226 passed, 0 failed.
 - Cloudflare Worker build validation: success (build-only; no deployment).
-- Devnet read-only cluster/RPC validation: success.
-- Faucet-funded Devnet signing and transfer step: skipped because a dedicated funded Devnet RPC was not available.
-- The Devnet workflow reports success because its explicit skip-report step succeeds; this does not prove a signed transfer or settlement.
-- The combined status still includes the legacy Deno Deploy context failure; this is separate from the Cloudflare Worker build and is not a Worker deployment result.
+- Devnet cluster identity and read-only RPC validation: success.
+- Faucet-funded Devnet signing and transfer step: skipped because `DEVNET_RPC_URL` is not configured.
+- The Devnet workflow reports success because its explicit skip-report step succeeds; this does not prove a signed transfer or settlement. No signing or transaction submission was attempted.
+- The combined status may still include the legacy Deno Deploy context failure; this is separate from the Cloudflare Worker build and is not a Worker deployment result.
 
 No signing prompt, execute route, automatic trading, Mainnet transaction, merge, or production deployment is authorized by this documentation update.
