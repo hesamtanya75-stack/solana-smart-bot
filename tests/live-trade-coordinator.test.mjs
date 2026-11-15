@@ -114,18 +114,27 @@ test("daily spend cap is enforced atomically and pending reservations remain cou
   assert.match(third.body.error, /Daily USD spend limit/);
 });
 
-test("idempotency retries succeed after quote expiry and kill switch activation", async () => {
+test("idempotency retries bypass quote expiry but never the emergency stop", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation());
   assert.equal(first.status, 200);
-  await post(coordinator, "/kill-switch", { enabled: true });
+
+  // A duplicate retry does not need a fresh quote while reservations remain enabled.
   const retry = await post(coordinator, "/reserve", validReservation({
     quoteTimestamp: Date.now() - 60_000
   }));
   assert.equal(retry.status, 200);
   assert.equal(retry.body.duplicate, true);
   assert.equal(retry.body.reservation.idempotencyKey, "order-key-0001");
+
+  // But the emergency stop must take precedence over the idempotent fast path.
+  await post(coordinator, "/kill-switch", { enabled: true });
+  const stoppedRetry = await post(coordinator, "/reserve", validReservation({
+    quoteTimestamp: Date.now() - 60_000
+  }));
+  assert.equal(stoppedRetry.status, 409);
+  assert.match(stoppedRetry.body.error, /emergency kill switch is active/i);
 });
 
 test("idempotency key rejects any changed immutable order intent", async () => {
