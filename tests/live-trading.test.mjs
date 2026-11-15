@@ -7,7 +7,6 @@ import {
 
 const goodEnv = {
   LIVE_TRADING_ENABLED: "true", LIVE_TRADING_KILL_SWITCH: "false",
-  BOT_WALLET_PUBLIC_KEY: EXPECTED_BOT_WALLET,
   LIVE_MAX_TRADE_LAMPORTS: "10000000", LIVE_MAX_DAILY_LAMPORTS: "50000000",
   LIVE_MAX_SLIPPAGE_BPS: "50", LIVE_MIN_LIQUIDITY_USD: "10000",
   LIVE_MIN_VOLUME_24H_USD: "1000", LIVE_MAX_OPEN_POSITIONS: "10",
@@ -37,11 +36,10 @@ test("live trading fails closed unless both feature flag and kill switch are exp
   assert.equal(readLivePolicy({}).enabled, false);
 });
 
-test("enabled policy requires pinned wallet and explicit bounded risk configuration", () => {
-  assert.equal(readLivePolicy(goodEnv).wallet, EXPECTED_BOT_WALLET);
+test("enabled policy requires explicit bounded risk configuration without pinning a server wallet", () => {
+  assert.equal(readLivePolicy(goodEnv).enabled, true);
   assert.throws(() => readLivePolicy({ ...goodEnv, LIVE_MAX_SLIPPAGE_BPS: "500" }));
   assert.throws(() => readLivePolicy({ ...goodEnv, LIVE_MAX_DAILY_LAMPORTS: "1" }));
-  assert.throws(() => readLivePolicy({ ...goodEnv, BOT_WALLET_PUBLIC_KEY: "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9" }), /does not match/);
 });
 
 test("eligibility gate enforces daily spend, open positions, liquidity, volume and token safety", () => {
@@ -111,6 +109,7 @@ test("eligibility gate rejects missing or invalid server-side state", () => {
 
 test("order request is blocked while live trading is disabled", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: { ...goodEnv, LIVE_TRADING_ENABLED: "false" },
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
@@ -121,6 +120,7 @@ test("order request is blocked while live trading is disabled", async () => {
 test("order request enforces eligibility before network access", async () => {
   let called = false;
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000,
     eligibility: { ...goodEligibility, dailySpentLamports: 49500000 },
@@ -183,6 +183,7 @@ function mockLookupTableAccount(owner = "AddressLookupTab1e111111111111111111111
 test("Jupiter v0 order resolves finalized ALT addresses before returning route evidence", async () => {
   let rpcRequest;
   const result = await getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url, options = {}) => {
@@ -215,6 +216,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
 
 test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table program", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url) => {
@@ -237,6 +239,7 @@ test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table p
 test("valid Jupiter order is parsed but never executed", async () => {
   let request;
   const result = await getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url, options) => {
@@ -269,6 +272,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
 
 test("missing Jupiter feeBps remains unknown instead of being reported as zero", async () => {
   const result = await getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -285,6 +289,7 @@ test("missing Jupiter feeBps remains unknown instead of being reported as zero",
 
 test("Jupiter v1 order reports the parsed message version, not provider metadata", async () => {
   const result = await getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async (url) => {
@@ -307,6 +312,7 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
 
 test("Jupiter order rejects every router except a returned Metis route", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -321,6 +327,7 @@ test("Jupiter order rejects every router except a returned Metis route", async (
 
 test("malformed Jupiter order fails closed", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -331,6 +338,7 @@ test("malformed Jupiter order fails closed", async () => {
 
 test("Jupiter cannot silently change the requested input amount or mint", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -344,6 +352,7 @@ test("Jupiter cannot silently change the requested input amount or mint", async 
 
 test("empty or malformed unsigned transaction is rejected", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -372,6 +381,7 @@ test("Jupiter order bounds request identifiers and serialized transaction size",
     { transaction: "A".repeat(1648) }
   ]) {
     await assert.rejects(() => getJupiterOrder({
+      takerWallet: EXPECTED_BOT_WALLET,
       env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       amountLamports: 1000000, eligibility: goodEligibility,
       fetchImpl: async () => new Response(JSON.stringify({ ...base, ...overrides }), { status: 200 })
@@ -387,6 +397,7 @@ test("Jupiter order rejects output amounts outside canonical u64 bounds", async 
     "0"
   ]) {
     await assert.rejects(() => getJupiterOrder({
+      takerWallet: EXPECTED_BOT_WALLET,
       env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       amountLamports: 1000000, eligibility: goodEligibility,
       fetchImpl: async () => new Response(JSON.stringify({
@@ -402,6 +413,7 @@ test("Jupiter order rejects output amounts outside canonical u64 bounds", async 
 test("Jupiter order rejects invalid fee basis points", async () => {
   for (const feeBps of [-1, 10001, 1.5, "10"]) {
     await assert.rejects(() => getJupiterOrder({
+      takerWallet: EXPECTED_BOT_WALLET,
       env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       amountLamports: 1000000, eligibility: goodEligibility,
       fetchImpl: async () => new Response(JSON.stringify({
@@ -418,6 +430,7 @@ test("Jupiter order rejects invalid fee basis points", async () => {
 
 test("Jupiter order rejects route plans exceeding the bounded entry count", async () => {
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => new Response(JSON.stringify({
@@ -446,6 +459,7 @@ test("Jupiter order response is rejected before reading an oversized provider bo
     }
   };
   await assert.rejects(() => getJupiterOrder({
+    takerWallet: EXPECTED_BOT_WALLET,
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
     fetchImpl: async () => ({
