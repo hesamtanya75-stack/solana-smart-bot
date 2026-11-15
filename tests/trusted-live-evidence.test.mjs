@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, decodeReviewedSystemTransfers, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, decodeReviewedSystemTransfers, decodeReviewedSplTokenTransfers, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1325,6 +1325,72 @@ test("System Program decoder accepts only correctly authorized native SOL transf
       transfer.accounts[0], { ...transfer.accounts[1], pubkey: BOT_WALLET }
     ]
   }]), /account roles are invalid/);
+});
+
+test("classic SPL Token decoder accepts only Transfer and TransferChecked with strict roles", () => {
+  const source = encodeBase58(new Uint8Array(32).fill(21));
+  const mint = encodeBase58(new Uint8Array(32).fill(22));
+  const destination = encodeBase58(new Uint8Array(32).fill(23));
+  const authority = encodeBase58(new Uint8Array(32).fill(24));
+  const transferData = Buffer.alloc(9);
+  transferData[0] = 3;
+  transferData.writeBigUInt64LE(987654321n, 1);
+  const transfer = {
+    instructionIndex: 4,
+    programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    accounts: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false }
+    ],
+    dataBase64: transferData.toString("base64")
+  };
+  assert.deepEqual(decodeReviewedSplTokenTransfers([transfer]), [{
+    instructionIndex: 4, transferType: "transfer", source, destination,
+    authority, amount: "987654321",
+    verificationScope: "classic-spl-token-transfer-instruction-only"
+  }]);
+
+  const checkedData = Buffer.alloc(10);
+  checkedData[0] = 12;
+  checkedData.writeBigUInt64LE(42n, 1);
+  checkedData[9] = 6;
+  const checked = {
+    ...transfer, instructionIndex: 5,
+    accounts: [
+      transfer.accounts[0],
+      { pubkey: mint, isSigner: false, isWritable: false },
+      transfer.accounts[1],
+      transfer.accounts[2]
+    ],
+    dataBase64: checkedData.toString("base64")
+  };
+  assert.deepEqual(decodeReviewedSplTokenTransfers([checked]), [{
+    instructionIndex: 5, transferType: "transfer-checked", source, mint,
+    decimals: 6, destination, authority, amount: "42",
+    verificationScope: "classic-spl-token-transfer-instruction-only"
+  }]);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, dataBase64: Buffer.from([9, ...transferData.subarray(1)]).toString("base64")
+  }]), /only Transfer and TransferChecked are reviewed/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, accounts: [
+      { ...transfer.accounts[0], isWritable: false },
+      transfer.accounts[1], transfer.accounts[2]
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], transfer.accounts[1],
+      { ...transfer.accounts[2], isSigner: false }
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, dataBase64: Buffer.from([3, 0, 0, 0, 0, 0, 0, 0, 0]).toString("base64")
+  }]), /amount must be positive/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...checked, accounts: checked.accounts.slice(0, 3)
+  }]), /invalid data or account length/);
 });
 
 test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
