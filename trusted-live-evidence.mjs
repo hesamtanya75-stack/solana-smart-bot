@@ -74,7 +74,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  if (requiredSignatures !== signatureCount || requiredSignatures < 1 ||
+  // The coordinator pins exactly one signer: the dedicated bot wallet.
+  // Additional required signers are outside the reviewed authorization model.
+  if (requiredSignatures !== 1 || requiredSignatures !== signatureCount ||
       readonlySigned > requiredSignatures) {
     throw new Error("Jupiter transaction signer header is inconsistent");
   }
