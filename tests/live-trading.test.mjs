@@ -342,3 +342,18 @@ test("Jupiter order rejects invalid fee basis points", async () => {
     }), /incomplete or non-executable/);
   }
 });
+
+
+test("Jupiter order rejects route plans exceeding the bounded entry count", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-too-many-routes", transaction: validUnsignedLegacyTransaction(),
+      inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: Array.from({ length: 65 }, () => ({ swapInfo: { label: "test" } })),
+      router: "metis", feeBps: 0
+    }), { status: 200 })
+  }), /incomplete or non-executable/);
+});
