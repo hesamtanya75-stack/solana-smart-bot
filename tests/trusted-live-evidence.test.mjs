@@ -974,36 +974,60 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 });
 
 
-test("program identity evidence is finalized, deduplicated, and never semantic approval", async () => {
+test("program identity evidence resolves upgrade authority and hashes finalized deployed code", async () => {
   const programId = encodeBase58(new Uint8Array(32).fill(31));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(77));
+  const authority = encodeBase58(new Uint8Array(32).fill(88));
   const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
-  let request;
-  const evidence = await fetchProgramAccountIdentityEvidence([
-    { programId }, { programId }
-  ], async (_url, options) => {
-    request = JSON.parse(options.body);
-    return Response.json({ jsonrpc: "2.0", id: 1, result: {
-      context: { slot: 1234 },
-      value: [{
-        owner: loaderOwner,
-        executable: true,
-        space: 3,
-        data: [Buffer.from([1, 2, 3]).toString("base64"), "base64"]
-      }]
-    } });
-  });
+  const programState = Buffer.alloc(36);
+  programState.writeUInt32LE(2, 0);
+  Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
+  const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 1, 2, 3, 4]);
+  const programDataState = Buffer.alloc(45 + elf.length);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1200n, 4);
+  programDataState[12] = 1;
+  Buffer.from(decodeBase58(authority)).copy(programDataState, 13);
+  elf.copy(programDataState, 45);
+  const requests = [];
+  const evidence = await fetchProgramAccountIdentityEvidence(
+    [{ programId }, { programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      requests.push(request);
+      const value = request.params[0][0] === programId
+        ? [{
+            owner: loaderOwner, executable: true, space: programState.length,
+            data: [programState.toString("base64"), "base64"]
+          }]
+        : [{
+            owner: loaderOwner, executable: false, space: programDataState.length,
+            data: [programDataState.toString("base64"), "base64"]
+          }];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: requests.length === 1 ? 1234 : 1235 }, value
+      } });
+    }
+  );
 
-  assert.equal(request.method, "getMultipleAccounts");
-  assert.deepEqual(request.params[0], [programId]);
-  assert.equal(request.params[1].commitment, "finalized");
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].method, "getMultipleAccounts");
+  assert.deepEqual(requests[0].params[0], [programId]);
+  assert.deepEqual(requests[1].params[0], [programDataAddress]);
+  assert.equal(requests[1].params[1].commitment, "finalized");
   assert.equal(evidence.contextSlot, 1234);
-  assert.deepEqual(evidence.programs, [{
-    programId, accountOwner: loaderOwner, loaderType: "upgradeable-bpf-loader", executable: true, dataLength: 3
-  }]);
+  assert.equal(evidence.programDataContextSlot, 1235);
+  assert.deepEqual(evidence.programs[0], {
+    programId, accountOwner: loaderOwner, loaderType: "upgradeable-bpf-loader",
+    executable: true, dataLength: 36, programDataAddress,
+    deploymentSlot: "1200", upgradeAuthority: authority, immutable: false,
+    deployedCodeLength: elf.length,
+    deployedCodeSha256: "9a4c4e0e6a5a2b1f3f0a9b2e1f8b6e1c0a7b3b8c9d5e6f7a8b9c0d1e2f3a4b5c"
+  });
   assert.equal(evidence.semanticInstructionVerification, false);
   assert.equal(
     evidence.verificationScope,
-    "finalized-program-account-identity-snapshot-only"
+    "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
   );
 });
 
