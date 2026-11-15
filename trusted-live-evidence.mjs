@@ -1046,9 +1046,12 @@ export async function fetchProgramAccountIdentityEvidence(
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
     decodeBase58(value).length === 32;
-  if (programIds.length === 0 || programIds.length > 64 ||
+  // The upgradeable-loader path re-reads program accounts alongside
+  // ProgramData accounts. Keep the combined getMultipleAccounts request
+  // within the RPC 100-account ceiling (at most 50 of each).
+  if (programIds.length === 0 || programIds.length > 50 ||
       programIds.some(programId => !validAddress(programId))) {
-    throw new Error("Outer instruction program identities are invalid or exceed the lookup limit");
+    throw new Error("Outer instruction program identities are invalid or exceed the 50-program RPC snapshot limit");
   }
 
   const result = await rpc(fetchImpl, "getMultipleAccounts", [
