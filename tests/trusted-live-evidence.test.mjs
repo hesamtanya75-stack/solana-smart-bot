@@ -287,6 +287,20 @@ test("ALT resolver rejects duplicate addresses across loaded writable and readon
   } })), /duplicate account addresses/);
 });
 
+test("resolved ALT addresses cannot duplicate a static transaction account key", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const account = mockLookupTableAccount();
+  const data = Buffer.from(account.data[0], "base64");
+  data.fill(17, 56, 88); // Duplicate the second inline static account key.
+  account.data = [data.toString("base64"), "base64"];
+  await assert.rejects(validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(), BOT_WALLET,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [account]
+    } })
+  ), /duplicate a static transaction account key/);
+});
+
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   await assert.rejects(resolveJupiterAddressLookupTables([{
