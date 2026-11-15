@@ -8,7 +8,6 @@ const MAX_RESERVATIONS = 1000;
 const MAX_KILL_SWITCH_AUDIT_EVENTS = 1000;
 const MAX_QUOTE_AGE_MS = 30_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const EXPECTED_TOKEN_CHECKS = [
   "mintAuthoritySafe", "freezeAuthoritySafe", "token2022ExtensionsSafe",
   "holderConcentrationSafe", "sellRouteAvailable", "marketLiquiditySafe",
