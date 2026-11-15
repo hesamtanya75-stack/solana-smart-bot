@@ -976,11 +976,60 @@ async function rpc(fetchImpl, method, params) {
 }
 
 /**
- * Fetches a finalized, read-only snapshot of the on-chain identity fields for
- * every program referenced by decoded outer instructions. This records the
- * account owner, executable bit and data size only; it does not verify loader
- * upgrade authority, deployed code hashes, instruction semantics or CPI scope.
- * The result must never be used as a semantic-verification attestation.
+ * Decodes the upgradeable BPF loader's Program account state.
+ * Bincode enum tag 2 is Program; the following 32 bytes are ProgramData.
+ */
+function decodeUpgradeableProgramAccount(data) {
+  if (!(data instanceof Uint8Array) || data.length !== 36 ||
+      new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0, true) !== 2) {
+    throw new Error("Upgradeable program account has an invalid Program state layout");
+  }
+  return encodeBase58(data.subarray(4, 36));
+}
+
+/**
+ * Decodes ProgramData state (enum tag 3, deployment slot, Option<Pubkey>,
+ * followed by the deployed ELF bytes) and hashes only the ELF payload.
+ */
+async function decodeUpgradeableProgramData(data) {
+  if (!(data instanceof Uint8Array) || data.length < 14 ||
+      data.length > 10 * 1024 * 1024) {
+    throw new Error("ProgramData account size is outside the supported bounds");
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(0, true) !== 3) {
+    throw new Error("ProgramData account has an invalid state tag");
+  }
+  const deploymentSlot = view.getBigUint64(4, true);
+  const authorityOption = data[12];
+  let upgradeAuthority = null;
+  let elfOffset = 13;
+  if (authorityOption === 1) {
+    if (data.length < 46) throw new Error("ProgramData upgrade authority is truncated");
+    upgradeAuthority = encodeBase58(data.subarray(13, 45));
+    elfOffset = 45;
+  } else if (authorityOption !== 0) {
+    throw new Error("ProgramData upgrade authority option is malformed");
+  }
+  const elfBytes = data.subarray(elfOffset);
+  if (elfBytes.length === 0) throw new Error("ProgramData deployed code is empty");
+  const digest = await crypto.subtle.digest("SHA-256", elfBytes);
+  const codeHash = [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, "0")).join("");
+  return Object.freeze({
+    deploymentSlot: deploymentSlot.toString(),
+    upgradeAuthority,
+    immutable: upgradeAuthority === null,
+    deployedCodeLength: elfBytes.length,
+    deployedCodeSha256: codeHash
+  });
+}
+
+/**
+ * Fetches finalized identity evidence for every outer-instruction program.
+ * Upgradeable-loader programs additionally resolve ProgramData, extracting
+ * the upgrade authority and a SHA-256 hash of deployed code. This remains
+ * provenance evidence only, not instruction-semantic or CPI verification.
  */
 export async function fetchProgramAccountIdentityEvidence(
   outerInstructionEvidence, fetchImpl = fetch
@@ -1043,11 +1092,64 @@ export async function fetchProgramAccountIdentityEvidence(
       dataLength: account.space
     });
   });
+  const upgradeablePrograms = programs.filter(program =>
+    program.loaderType === "upgradeable-bpf-loader"
+  );
+  if (upgradeablePrograms.length > 0) {
+    const programDataAddresses = upgradeablePrograms.map(program => {
+      const account = accounts[programIds.indexOf(program.programId)];
+      const encoded = account.data[0];
+      const binary = atob(encoded);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      return decodeUpgradeableProgramAccount(bytes);
+    });
+    const uniqueProgramDataAddresses = [...new Set(programDataAddresses)];
+    const programDataResult = await rpc(fetchImpl, "getMultipleAccounts", [
+      uniqueProgramDataAddresses, { commitment: "finalized", encoding: "base64" }
+    ]);
+    const programDataSlot = programDataResult?.context?.slot;
+    const programDataAccounts = programDataResult?.value;
+    if (!Number.isSafeInteger(programDataSlot) || programDataSlot < contextSlot ||
+        !Array.isArray(programDataAccounts) ||
+        programDataAccounts.length !== uniqueProgramDataAddresses.length) {
+      throw new Error("ProgramData RPC context or account count is invalid");
+    }
+    const decodedProgramData = await Promise.all(programDataAccounts.map(async account => {
+      if (!account || account.executable !== false ||
+          account.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
+          !Number.isSafeInteger(account.space) || account.space < 14 ||
+          account.space > 10 * 1024 * 1024 ||
+          !Array.isArray(account.data) || typeof account.data[0] !== "string" ||
+          account.data[1] !== "base64" ||
+          account.data[0].length > 4 * Math.ceil((10 * 1024 * 1024) / 3) ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+        throw new Error("ProgramData account is missing or has invalid owner or encoding");
+      }
+      const binary = atob(account.data[0]);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== account.data[0] || bytes.length !== account.space) {
+        throw new Error("ProgramData bytes do not match canonical base64 or RPC size");
+      }
+      return decodeUpgradeableProgramData(bytes);
+    }));
+    for (const program of programs) {
+      if (program.loaderType !== "upgradeable-bpf-loader") continue;
+      const originalIndex = programIds.indexOf(program.programId);
+      const programDataAddress = programDataAddresses[upgradeablePrograms.indexOf(program)];
+      const dataIndex = uniqueProgramDataAddresses.indexOf(programDataAddress);
+      programs[originalIndex] = Object.freeze({
+        ...program,
+        programDataAddress,
+        ...decodedProgramData[dataIndex]
+      });
+    }
+  }
   return Object.freeze({
     contextSlot,
+    programDataContextSlot: upgradeablePrograms.length ? programDataResult.context.slot : null,
     programs: Object.freeze(programs),
     semanticInstructionVerification: false,
-    verificationScope: "finalized-program-account-identity-snapshot-only"
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
   });
 }
 
