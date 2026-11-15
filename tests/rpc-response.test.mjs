@@ -45,13 +45,17 @@ test("bounded provider JSON reader rejects oversized declared content before rea
   let read = false;
   const response = {
     headers: { get: name => name === "Content-Length" ? "100" : null },
-    body: new ReadableStream({
-      pull(controller) {
-        read = true;
-        controller.enqueue(new TextEncoder().encode("{}"));
-        controller.close();
+    body: {
+      getReader() {
+        return {
+          read: async () => {
+            read = true;
+            return { done: true };
+          },
+          releaseLock() {}
+        };
       }
-    })
+    }
   };
   await assert.rejects(readBoundedJsonResponse(response, 16), /exceeds the 16-byte limit/);
   assert.equal(read, false);
