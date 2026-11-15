@@ -26,7 +26,7 @@ jobs:
       - name: Report and enforce dependency audit for the isolated test runtime
         run: |
           npm audit --json > npm-audit.json || audit_exit=$?
-          node --input-type=commonjs <<'NODE'
+          AUDIT_EXIT="${audit_exit:-0}" node --input-type=commonjs <<'NODE'
           const fs = require("node:fs");
           let audit;
           try {
@@ -49,7 +49,7 @@ jobs:
             console.error(`Dependency audit failed: ${vulnerabilities.length} vulnerable package(s) found.`);
             process.exit(1);
           }
-          if (audit_exit) {
+          if (process.env.AUDIT_EXIT !== "0") {
             console.error("npm audit exited unsuccessfully despite reporting no package vulnerabilities.");
             process.exit(1);
           }
