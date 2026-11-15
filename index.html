@@ -1907,10 +1907,23 @@ if (serverToken) {
   const walletSol = document.getElementById("walletSol");
   const walletStatus = document.getElementById("walletStatus");
   let connectedPhantomProvider = null;
+  const observedPhantomProviders = new WeakSet();
 
   function getPhantomProvider() {
     const provider = window.phantom?.solana;
     return provider?.isPhantom === true ? provider : null;
+  }
+
+  function observePhantomProvider(provider) {
+    if (!provider || observedPhantomProviders.has(provider)) return;
+    observedPhantomProviders.add(provider);
+    provider.on?.("accountChanged", publicKey => {
+      if (publicKey) showWalletConnected(provider, publicKey);
+      else showWalletDisconnected("هەژماری Phantom گۆڕا یان پەیوەندی پچڕا؛ دووبارە پەیوەست ببە.");
+    });
+    provider.on?.("disconnect", () => {
+      showWalletDisconnected("Phantom پەیوەندییەکەی پچڕاند.");
+    });
   }
 
   function showWalletDisconnected(message) {
@@ -1948,6 +1961,7 @@ if (serverToken) {
     walletStatus.textContent = "داوای پەیوەندی لە Phantom کراوە؛ تکایە لە Wallet پەسەندی بکە.";
     try {
       const response = await provider.connect();
+      observePhantomProvider(provider);
       showWalletConnected(provider, response?.publicKey || provider.publicKey);
     } catch (error) {
       showWalletDisconnected(error?.code === 4001
@@ -1967,16 +1981,7 @@ if (serverToken) {
     showWalletDisconnected("پەیوەندیی Phantom لەم ماڵپەڕەدا داخرا.");
   });
 
-  const initialPhantomProvider = getPhantomProvider();
-  if (initialPhantomProvider) {
-    initialPhantomProvider.on?.("accountChanged", publicKey => {
-      if (publicKey) showWalletConnected(initialPhantomProvider, publicKey);
-      else showWalletDisconnected("هەژماری Phantom گۆڕا یان پەیوەندی پچڕا؛ دووبارە پەیوەست ببە.");
-    });
-    initialPhantomProvider.on?.("disconnect", () => {
-      showWalletDisconnected("Phantom پەیوەندییەکەی پچڕاند.");
-    });
-  }
+  observePhantomProvider(getPhantomProvider());
 
 })();
 </script>
