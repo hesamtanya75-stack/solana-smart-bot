@@ -278,6 +278,24 @@ test("Worker API responses include baseline browser security headers", async () 
   );
 });
 
+test("Worker dashboard HTML responses include baseline browser security headers", async () => {
+  const { env } = makeEnvironment();
+  env.ASSETS = {
+    fetch: async () => new Response("<!doctype html><title>test</title>", {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    })
+  };
+  const response = await worker.fetch(new Request("https://bot.example/"), env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.equal(
+    response.headers.get("permissions-policy"),
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  );
+});
+
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
   const { env } = makeEnvironment();
   for (const token of [
