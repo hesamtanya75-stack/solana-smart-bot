@@ -1033,6 +1033,22 @@ test("program identity evidence rejects non-executable or malformed program acco
   ), /data size does not match RPC metadata/);
 });
 
+test("program identity evidence rejects non-canonical base64 even when decoded size matches", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(51));
+  const loaderOwner = encodeBase58(new Uint8Array(32).fill(52));
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1236 },
+      value: [{
+        owner: loaderOwner, executable: true, space: 1,
+        // AB== decodes permissively to one byte, but its padding bits are non-canonical.
+        data: ["AB==", "base64"]
+      }]
+    } })
+  ), /not valid canonical base64/);
+});
+
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
