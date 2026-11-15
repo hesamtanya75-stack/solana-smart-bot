@@ -1298,3 +1298,24 @@ test("trusted evidence rejects oversized streamed external responses", async () 
     /exceeds the maximum allowed size/
   );
 });
+
+
+test("trusted evidence rejects malformed Content-Length instead of parsing provider JSON", async () => {
+  await assert.rejects(
+    fetchTrustedSolUsdQuote(async () => new Response(
+      JSON.stringify({ data: { base: "SOL", currency: "USD", amount: "150" } }),
+      { status: 200, headers: { "content-length": "unknown" } }
+    )),
+    /exceeds the .*byte limit/
+  );
+});
+
+test("trusted evidence rejects malformed UTF-8 provider responses", async () => {
+  await assert.rejects(
+    fetchTrustedSolUsdQuote(async () => new Response(
+      new Uint8Array([0x7b, 0x22, 0x64, 0x61, 0x74, 0x61, 0x22, 0x3a, 0xff, 0x7d]),
+      { status: 200 }
+    )),
+    /not valid UTF-8/
+  );
+});
