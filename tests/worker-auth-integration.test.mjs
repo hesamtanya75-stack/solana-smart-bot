@@ -278,10 +278,10 @@ test("Worker API responses include baseline browser security headers", async () 
   );
 });
 
-test("Worker dashboard HTML responses include baseline browser security headers", async () => {
+test("Worker dashboard HTML responses use a fresh nonce-based CSP", async () => {
   const { env } = makeEnvironment();
   env.ASSETS = {
-    fetch: async () => new Response("<!doctype html><title>test</title>", {
+    fetch: async () => new Response("<!doctype html><script>window.first=1</script><script id='app'>window.second=2</script>", {
       headers: { "Content-Type": "text/html; charset=utf-8" }
     })
   };
@@ -294,6 +294,16 @@ test("Worker dashboard HTML responses include baseline browser security headers"
     response.headers.get("permissions-policy"),
     "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
   );
+  const policy = response.headers.get("content-security-policy");
+  assert.match(policy, /script-src 'nonce-([^']+)' 'strict-dynamic' 'self'/);
+  assert.match(policy, /object-src 'none'/);
+  assert.match(policy, /base-uri 'self'/);
+  assert.match(policy, /frame-ancestors 'none'/);
+  const nonce = policy.match(/script-src 'nonce-([^']+)'/)[1];
+  const html = await response.text();
+  assert.equal((html.match(/<script\\b/gi) || []).length, 2);
+  assert.equal((html.match(new RegExp(`<script nonce="${nonce}"`, "g")) || []).length, 2);
+  assert.notEqual(nonce, "static-nonce");
 });
 
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
