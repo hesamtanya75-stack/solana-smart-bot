@@ -1,4 +1,4 @@
-import { parseRpcResponse, parseRpcBatchResponse } from "./rpc-response.mjs";
+import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "./rpc-response.mjs";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -219,7 +219,7 @@ async function rpc(method, params, env, diagnostics = null) {
         signal: AbortSignal.timeout(7000)
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
+      const data = await readBoundedJsonResponse(response);
       const result = parseRpcResponse(data, 1);
       if (diagnostics) diagnostics.successes.push(endpoint.label);
       return result;
@@ -296,7 +296,7 @@ async function getJson(url) {
       }
       throw lastError;
     }
-    if (response.ok) return response.json();
+    if (response.ok) return readBoundedJsonResponse(response);
     const status = response.status;
     lastError = new Error(host + " HTTP " + status);
     if (status !== 429 && status < 500) throw lastError;
@@ -369,7 +369,7 @@ async function getDexJson(url, env, ttlSeconds = 30) {
     throw new Error("api.dexscreener.com HTTP 429; cooldown " + Math.ceil(cooldownMs / 1000) + "s");
   }
   if (!response.ok) throw new Error("api.dexscreener.com HTTP " + response.status);
-  const data = await response.json();
+  const data = await readBoundedJsonResponse(response);
   if (cacheKey) {
     try {
       await env.BOT_STATE.put(cacheKey, JSON.stringify({ savedAt: Date.now(), data }), {
