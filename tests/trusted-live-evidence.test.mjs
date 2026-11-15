@@ -256,3 +256,26 @@ test("v0 transaction with address lookup tables remains structurally parsed but 
   assert.equal(parsed.instructionCount, 1);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
+
+
+test("truncated v0 address lookup readonly indexes are rejected", () => {
+  const signer = decodeBase58(BOT_WALLET);
+  const message = Uint8Array.from([
+    0x80, 1, 0, 1,
+    2, ...signer, ...new Array(32).fill(17),
+    ...new Array(32).fill(0),
+    1, 1, 1, 0, 0,
+    1, ...new Array(32).fill(42),
+    1, 3,
+    1, 4
+  ]);
+  const transaction = Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
+  const truncated = Buffer.from(transaction, "base64").subarray(0, -1).toString("base64");
+
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(truncated, BOT_WALLET),
+    /Jupiter readonly lookup indexes are truncated/
+  );
+});
