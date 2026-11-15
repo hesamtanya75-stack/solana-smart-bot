@@ -105,6 +105,21 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   if (cursor + configBytes > bytes.length) {
     throw new Error("V1 Jupiter transaction config values are truncated");
   }
+  // Heap size is the final optional config value (bit 4), encoded as u32 LE.
+  // Solana requires a 1 KiB multiple in the inclusive 32–256 KiB range.
+  if ((configMask & 0x10) !== 0) {
+    const heapOffset = cursor +
+      ((configMask & 0x3) ? 8 : 0) +
+      ((configMask & 0x4) ? 4 : 0) +
+      ((configMask & 0x8) ? 4 : 0);
+    const heapSize = (bytes[heapOffset] |
+      (bytes[heapOffset + 1] << 8) |
+      (bytes[heapOffset + 2] << 16) |
+      (bytes[heapOffset + 3] << 24)) >>> 0;
+    if (heapSize < 32768 || heapSize > 262144 || heapSize % 1024 !== 0) {
+      throw new Error("V1 Jupiter transaction heap size is outside the valid range");
+    }
+  }
   cursor += configBytes;
   const headers = [];
   for (let i = 0; i < instructionCount; i++) {
