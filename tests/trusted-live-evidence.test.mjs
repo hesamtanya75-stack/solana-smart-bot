@@ -272,10 +272,14 @@ test("truncated v0 address lookup readonly indexes are rejected", () => {
   const transaction = Buffer.from(Uint8Array.from([
     1, ...new Array(64).fill(0), ...message
   ])).toString("base64");
-  const truncated = Buffer.from(transaction, "base64").subarray(0, -1).toString("base64");
+  const malformedBytes = Buffer.from(transaction, "base64");
+  // The penultimate byte is the readonly lookup index count; claim two indexes
+  // while supplying only one so the base64 encoding remains canonical.
+  malformedBytes[malformedBytes.length - 2] = 2;
+  const malformed = malformedBytes.toString("base64");
 
   assert.throws(
-    () => validateUnsignedJupiterTransaction(truncated, BOT_WALLET),
+    () => validateUnsignedJupiterTransaction(malformed, BOT_WALLET),
     /Jupiter readonly lookup indexes are truncated/
   );
 });
