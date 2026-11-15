@@ -156,7 +156,7 @@ test("v1 transaction rejects a readonly sole signer fee payer", () => {
 
 test("v1 transaction rejects program id index zero", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
-  bytes[106] = 0;
+  bytes[114] = 0;
   assert.throws(
     () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
     /instruction header is invalid/
