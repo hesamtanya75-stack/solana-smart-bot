@@ -267,6 +267,22 @@ test("valid Jupiter order is parsed but never executed", async () => {
 });
 
 
+test("missing Jupiter feeBps remains unknown instead of being reported as zero", async () => {
+  const result = await getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-missing-fee", transaction: validUnsignedLegacyTransaction(),
+      inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }], router: "metis"
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  });
+  assert.equal(result.feeBps, null);
+  assert.equal(result.semanticInstructionVerification, false);
+  await assert.rejects(() => executeLiveOrder(), /not implemented/);
+});
+
 test("Jupiter v1 order reports the parsed message version, not provider metadata", async () => {
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
