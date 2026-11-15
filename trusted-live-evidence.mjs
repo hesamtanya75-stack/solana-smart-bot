@@ -1751,6 +1751,11 @@ export async function verifyFinalizedJupiterSettlement({
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
+  if (meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.fee > meta.preBalances[0]) {
+    throw new Error("Finalized transaction contains malformed native lamport balance metadata");
+  }
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
   if (keyStrings.some(key => !isCanonicalPublicKey(key)) ||
       new Set(keyStrings).size !== keyStrings.length) {
