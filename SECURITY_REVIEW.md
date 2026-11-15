@@ -404,3 +404,21 @@ The request now omits `receiver` to preserve the single-wallet model and pinned 
 Regression tests now assert that `taker` is the pinned bot wallet, `receiver` is absent, JupiterZ is excluded, and non-Metis responses are rejected. Node tests: 142 passed, 0 failed, 0 skipped; frontend validation, Cloudflare Worker build-only validation, and Devnet read-only validation completed successfully on code commit `43bceacd631472929659c60e0703ca219e0cbffc`. Funded signed Devnet lifecycle remained skipped because `DEVNET_RPC_URL` is empty; no signing or transaction submission occurred.
 
 Semantic instruction verification remains false. The coordinator remains fail-closed. PR #27 remains Draft and unmerged. No production deployment, merge, Mainnet signing, transaction submission, or live trading was performed.
+
+
+## Semantic-verification source audit — 2026-11-15
+
+A source audit was performed before attempting to add a Jupiter instruction decoder.
+
+- Jupiter's current developer documentation states that the legacy Metis Swap API V1 is superseded by Swap API V2 and links the Jupiter Swap Program IDL through its own documentation to the on-chain Jupiter v6 program account: `https://developers.jup.ag/docs/swap/v1/common-errors`.
+- The checked-in `jup-ag/instruction-parser/src/idl/jupiter.ts` snapshot contains the older route instruction family and does not define the newer `routeV2`, `sharedAccountsRouteV2`, `exactOutRouteV2`, or `sharedAccountsExactOutRouteV2` instructions. It is therefore not sufficient as the sole schema for a current V2 order verifier.
+- A third-party IDL mirror contains the v2 discriminators and a large `Swap` enum, but a mirror is not accepted as the sole authority for a security-critical allowlist. The exact on-chain IDL/version must be pinned and independently reconciled before code is written.
+- Jupiter's own documentation also notes that DEX programs invoked by a route may return errors and that some DEXes do not publish an IDL or open-source code. A complete verifier must therefore validate each supported route variant and its actual downstream program/account semantics, not merely the Jupiter top-level discriminator or the API `routePlan`.
+
+No semantic decoder was added from incomplete or mirrored data. `semanticInstructionVerification` remains false and the coordinator remains fail-closed. This source audit changes documentation only; it does not authorize signing, submission, deployment, or live trading.
+
+References:
+- Jupiter Swap V2 overview: `https://developers.jup.ag/docs/swap/index`
+- Jupiter Swap Program IDL pointer and DEX-IDL limitations: `https://developers.jup.ag/docs/swap/v1/common-errors`
+- Jupiter instruction parser IDL snapshot: `https://github.com/jup-ag/instruction-parser/blob/main/src/idl/jupiter.ts`
+- Third-party current IDL mirror used only for comparison: `https://github.com/solana-foundation/surfpool/blob/main/crates/core/src/scenarios/protocols/jupiter/v6/idl.json`
