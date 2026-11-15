@@ -101,3 +101,19 @@ This update supersedes the earlier dependency-audit warning for the exact commit
 ### Current release decision
 
 The successful tests and clean npm audit resolve the specific CI test-runtime audit warning for this commit. They do **not** resolve the live-trading blockers documented above. Keep PR #27 in Draft. No merge, production deployment, Mainnet signing, transaction submission, or live trading is approved. The funded Devnet lifecycle and independent review of live transaction decoding and settlement remain outstanding.
+
+
+## CI review update — 2026-11-15 (documentation commit deada9618c20590c859dbed4292610fc327f9be3)
+
+The security-review documentation was refreshed after the CI results for application-code commit `67b0e6f0ffb86a1db5342fc363e058d09c397dd6` had been recorded. The documentation-only commit `deada9618c20590c859dbed4292610fc327f9be3` was then independently checked by GitHub Actions:
+
+- Node tests: **103 passed, 0 failed**.
+- npm audit for the isolated Miniflare test dependency installation: **0 vulnerabilities reported**.
+- Cloudflare Worker build validation: **success** (Wrangler dry-run; no deployment).
+- Frontend validation: **success**.
+- Devnet read-only validation: **success**.
+- Funded signed Devnet transfer: **skipped** because `DEVNET_RPC_URL` is not configured.
+
+This documentation-only commit does not change application behavior and does not resolve the previously recorded live-trading blockers. A source review of the current branch confirms the coordinator remains uncalled by the public Worker, its internal secret is not configured in checked-in Wrangler configuration, semantic Jupiter instruction/address-lookup verification is explicitly false, and settlement transitions remain disabled. The funded Devnet lifecycle and independent verification of deployed Cloudflare secrets, bindings, migrations, and cron remain outstanding.
+
+**Release decision unchanged:** PR #27 remains Draft. No merge, production deployment, Mainnet signing, transaction submission, or live trading is approved.
