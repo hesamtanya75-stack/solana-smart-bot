@@ -364,7 +364,7 @@ export class AuthGuard {
         return { ok: false, reason: "expired" };
       }
       if (!Number.isSafeInteger(challenge.attempts) ||
-          challenge.attempts < 0 || challenge.attempts >= 5) {
+          challenge.attempts < 0 || challenge.attempts > 5) {
         delete state.challenges[challengeId];
         return { ok: false, reason: "invalid-state" };
       }
