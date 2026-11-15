@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Miniflare } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
 const INTERNAL_TOKEN = "runtime-test-token-that-is-longer-than-thirty-two-characters";
 
 test("AuthGuard runs on the Miniflare Durable Objects runtime with transactional storage", async () => {
-  const mf = new Miniflare({
+  const mf = new Miniflare(convertV4MiniflareOptions({
     modules: true,
     scriptPath: "./tests/fixtures/auth-guard-runtime.mjs",
     compatibilityDate: "2026-05-03",
@@ -15,7 +15,7 @@ test("AuthGuard runs on the Miniflare Durable Objects runtime with transactional
     bindings: {
       AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN
     }
-  });
+  }));
 
   try {
     const namespace = await mf.getDurableObjectNamespace("AUTH_GUARD");
