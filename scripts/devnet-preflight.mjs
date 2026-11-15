@@ -7,6 +7,20 @@ const TOKEN_PROGRAMS = new Set([
   "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 ]);
 
+function retryDelayMs(response, attempt) {
+  const retryAfter = response?.headers?.get?.("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const dateDelay = Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(retryAfter) - Date.now();
+    if (Number.isFinite(dateDelay) && dateDelay >= 0) {
+      return Math.min(dateDelay, 10_000);
+    }
+  }
+  return 1000 * (attempt + 1);
+}
+
 async function rpc(method, params = []) {
   let response;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -31,7 +45,10 @@ async function rpc(method, params = []) {
     if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
       throw new Error(method + " returned HTTP " + response.status);
     }
-    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    // Release the retryable response before waiting, and respect a bounded
+    // Retry-After hint so public Devnet RPC rate limits are not amplified.
+    try { await response.body?.cancel(); } catch {}
+    await new Promise(resolve => setTimeout(resolve, retryDelayMs(response, attempt)));
   }
   let payload;
   try {
