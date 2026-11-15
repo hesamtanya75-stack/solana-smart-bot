@@ -204,6 +204,16 @@ test("unknown instruction program is parsed structurally but never semantically 
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("unsigned transaction parser accepts the explicitly approved Phantom wallet as fee payer", () => {
+  const phantomWallet = encodeBase58(new Uint8Array(32).fill(9));
+  const parsed = validateUnsignedJupiterTransaction(
+    validUnsignedTransaction(undefined, 0, phantomWallet),
+    phantomWallet
+  );
+  assert.equal(parsed.staticAccountKeys[0], phantomWallet);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("transaction pinned to a different wallet is rejected", () => {
   const differentWallet = "11111111111111111111111111111111";
   assert.throws(
