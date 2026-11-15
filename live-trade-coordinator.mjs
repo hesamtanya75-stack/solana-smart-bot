@@ -172,6 +172,10 @@ export class LiveTradeCoordinator {
     // Fast idempotent retry path: do not require a still-fresh quote for an
     // order that has already been reserved with exactly the same immutable intent.
     const previous = await this.withState(state => {
+      // The emergency stop takes precedence over every retry, including an
+      // already-reserved idempotent request. A duplicate response must never
+      // be mistaken for permission to continue toward signing or submission.
+      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
       const existing = state.reservations[key];
       if (!existing) return null;
       if (existing.intentFingerprint !== intentFingerprint) {
