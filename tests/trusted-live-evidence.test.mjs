@@ -305,7 +305,7 @@ test("v0 outer instruction evidence resolves ALT-loaded writable and readonly ac
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
-test("v0 rejects a writable ALT-loaded address used as an instruction program", async () => {
+test("v0 rejects an ALT-loaded address used as an instruction program", async () => {
   const bytes = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
   // The compiled instruction program index follows the message header, keys,
   // blockhash, and instruction count; index 2 is the writable ALT-loaded key.
@@ -317,7 +317,7 @@ test("v0 rejects a writable ALT-loaded address used as an instruction program", 
         context: { slot: 100 }, value: [mockLookupTableAccount()]
       } })
     ),
-    /program account must be readonly and non-signer/
+    /program index is invalid/
   );
 });
 
