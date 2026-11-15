@@ -157,6 +157,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
   assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx"]);
   assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf"]);
   assert.equal(rpcRequest.method, "getMultipleAccounts");
+  assert.deepEqual(rpcRequest.params[0], ["3qbR1eZRqXUWroWKKYhbDmR3FfqTHfqSU8zZSxtANzYh"]);
   assert.equal(rpcRequest.params[1].commitment, "finalized");
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
