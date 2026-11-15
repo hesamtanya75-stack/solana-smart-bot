@@ -222,3 +222,18 @@ This is CI validation, not release approval. The code still reports `semanticIns
 **Decision unchanged:** keep PR #27 Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is authorized by this review.
 
 - Documentation addendum commit: `025834ee3f83a561354f422ea8a5978045941c81`. No application code changed in that commit. The workflow lookup for this documentation-only commit returned no PR-triggered runs; the four run results above apply to the reviewed code head `8cfded...`.
+
+
+## Authentication rate-limit capacity fail-open fix — 2026-11-15
+
+A source review found that AuthGuard.isRateLimited() checked only whether the requested scope had its own failure record. When all 1,000 bounded failure buckets were occupied, recordFailure() correctly reported a new scope as limited, but the pre-authentication isRateLimited() check returned false for that unrecorded scope. This meant rotating source scopes could bypass the intended pre-check while the table was full.
+
+The guard now prunes expired buckets and fails closed for an unknown scope whenever the bounded table is full. Existing recorded scopes continue to use their own counters; after buckets expire, new scopes are evaluated normally. The capacity regression test now checks both the unknown-scope denial and recovery after expiry.
+
+Validation for the code head before this documentation addendum, commit 3e41b68d2b87793ecf894e76168010c49c595e7e:
+- Node tests: **111 passed, 0 failed**.
+- Frontend syntax validation: **success**.
+- Cloudflare Worker dry-run build: **success**.
+- Devnet workflow: **success**; read-only checks passed, but the funded signed transfer step was **skipped** because DEVNET_RPC_URL is not configured.
+
+The Devnet result does not establish a signed transaction lifecycle. This fix does not resolve semantic Jupiter instruction/ALT verification, settlement proof, emergency-stop operator separation, or the absence of a trusted production caller. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is approved.
