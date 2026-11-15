@@ -48,7 +48,7 @@ export async function readBoundedJsonResponse(response, maxBytes = MAX_PROVIDER_
   }
   const declaredLength = response.headers?.get?.("Content-Length");
   if (declaredLength != null) {
-    if (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes) {
+    if (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes) {
       throw new Error("Provider response exceeds the " + maxBytes + "-byte limit");
     }
   }
