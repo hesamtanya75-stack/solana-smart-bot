@@ -76,6 +76,7 @@ test("funded Devnet lifecycle verifies the finalized transaction's recipient bal
   assert.match(script, /transactionInfo\.transaction\?\.message/);
   assert.match(script, /transactionInfo\.meta\?\.preBalances/);
   assert.match(script, /transactionInfo\.meta\?\.postBalances/);
-  assert.match(script, /transactionSignatures\.includes\(signature\)/);
+  assert.match(script, /transactionSignatures\[0\] !== signature/);
+  assert.match(script, /payer\.publicKey\.toBase58\(\)/);
   assert.match(script, /postBalances\[recipientIndex\] - preBalances\[recipientIndex\] < TRANSFER_LAMPORTS/);
 });
