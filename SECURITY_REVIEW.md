@@ -370,3 +370,13 @@ GitHub Actions completed successfully for this exact documentation commit:
 - Funded signed Devnet lifecycle: **skipped** because `DEVNET_RPC_URL` was empty. The job log explicitly reports `signing: not performed` and `transactionsSubmitted: 0`.
 
 These results verify repository tests and build checks only. They do not complete the funded Devnet lifecycle, semantic Jupiter instruction verification, or independent verification of production Cloudflare configuration. The Jupiter semantic gate remains false; the coordinator remains fail-closed. PR #27 remains Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is authorized.
+
+## Narrowing Jupiter V2 order routing to Metis — 2026-11-15
+
+The transaction-bearing `/order` request now explicitly sets `receiver` to the pinned taker wallet and `excludeRouters=jupiterz`, then rejects any response whose `router` is not exactly `metis`. This is based on Jupiter's documented routing-impact matrix: `receiver` disables Dflow and OKX, and `excludeRouters=jupiterz` disables JupiterZ, leaving Metis as the only eligible router. The same wallet is used for taker and receiver; no alternate destination is accepted.
+
+A focused unit test asserts both query parameters and rejects a syntactically valid transaction response labeled `dflow`. This narrows the semantic-decoder scope, but does **not** establish semantic safety: Metis instructions, all downstream AMM CPI programs, account roles, token mints, amounts, fees, and destination effects still require decoding and verification. `semanticInstructionVerification` therefore remains `false`, and no route is marked semantically verified. Unknown or unexpected router responses fail closed.
+
+Official Jupiter routing matrix: https://developers.jup.ag/docs/swap/order-and-execute#routing-impact-matrix
+
+The code commits are `23a85a9bb1585683fa1931f1587f3872d49814b0`, `723771ce503da8076dbb1c311ef2e265955c7b59`, and `49f53e6ebffb6404e2e74fe77f5c76842a9b0aa6`. CI for the latest code commit has not yet reported. No signing, transaction submission, merge, or production deployment was performed; PR #27 remains Draft and unmerged.
