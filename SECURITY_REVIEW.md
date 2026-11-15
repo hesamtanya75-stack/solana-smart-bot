@@ -622,3 +622,10 @@ References:
 - https://developers.jup.ag/changelog/2026-10
 
 Next safe work: design and test an all-in cost reservation model that includes every fee and outflow, without enabling signing or submission; continue the independent program/instruction provenance review. PR #27 remains Draft, Open, and unmerged. No Mainnet access, signing, deployment, or real-money transaction was performed.
+
+
+## Explicit priority-fee ceiling enforcement — 2026-11-15
+
+The coordinator now requires an explicitly configured `LIVE_MAX_PRIORITY_FEE_LAMPORTS` value before it can reserve a live order. The value must be a non-negative safe integer; missing, malformed, or exceeded ceilings fail closed. This prevents the compute-unit price from being accepted solely because the aggregate trade amount happens to remain below the per-trade USD cap. Regression tests cover a missing ceiling and an order exceeding the configured ceiling.
+
+No production ceiling has been selected or configured in this change. The test fixture uses a test-only value and is not a recommended operational limit. The production Worker therefore remains unable to reserve a live order until an operator reviews and explicitly configures a suitable ceiling. In addition, production `fetchTrustedLiveEvidence` does not yet provide verified all-in fee evidence, and Jupiter instruction semantics remain unverified; those independent gates continue to block reservations. No signing, submission, deployment, or Mainnet activity is enabled.
