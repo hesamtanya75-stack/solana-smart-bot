@@ -38,3 +38,54 @@ export function parseRpcBatchResponse(payload, count) {
     return byId.get(id);
   });
 }
+
+
+export const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+export async function readBoundedJsonResponse(response, maxBytes = MAX_PROVIDER_RESPONSE_BYTES) {
+  if (!response || !response.body || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("Provider response is missing a readable body or valid size limit");
+  }
+  const declaredLength = response.headers?.get?.("Content-Length");
+  if (declaredLength != null) {
+    if (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes) {
+      throw new Error("Provider response exceeds the " + maxBytes + "-byte limit");
+    }
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel("Provider response size limit exceeded"); } catch {}
+        throw new Error("Provider response exceeds the " + maxBytes + "-byte limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let source;
+  try {
+    source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("Provider response is not valid UTF-8");
+  }
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw new Error("Provider response contains invalid JSON");
+  }
+}
