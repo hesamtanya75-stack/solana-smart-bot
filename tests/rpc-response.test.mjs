@@ -4,7 +4,7 @@ import { parseRpcResponse, parseRpcBatchResponse } from "../rpc-response.mjs";
 
 test("single RPC response requires matching id and an explicit result", () => {
   assert.equal(parseRpcResponse({ jsonrpc: "2.0", id: 1, result: null }, 1), null);
-  assert.throws(() => parseRpcResponse({ jsonrpc: "2.0", id: 1 }, 1), /valid id or result/);
+  assert.throws(() => parseRpcResponse({ jsonrpc: "2.0", id: 1 }, 1), /missing a result/);
   assert.throws(() => parseRpcResponse({ jsonrpc: "2.0", id: 2, result: true }, 1), /valid id or result/);
   assert.throws(() => parseRpcResponse({ id: 1, error: { message: "rate limited" } }, 1), /rate limited/);
 });
