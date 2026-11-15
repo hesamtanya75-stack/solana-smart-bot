@@ -254,7 +254,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       requestId: "missing-transaction-field",
       inputMint: mint,
       outputMint: "So11111111111111111111111111111111111111112",
-      inAmount: "3000000",
+      inAmount: "3",
       outAmount: "1000000",
       routePlan: [{ swapInfo: { label: "test-route" } }]
     };
@@ -266,7 +266,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       transaction: null,
       inputMint: mint,
       outputMint: "So11111111111111111111111111111111111111112",
-      inAmount: "3000000",
+      inAmount: "3",
       outAmount: "1000000",
       routePlan: [{ swapInfo: { label: "test-route" } }]
     };
