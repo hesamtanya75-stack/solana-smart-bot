@@ -82,3 +82,14 @@ test("bounded provider JSON reader rejects malformed JSON and invalid UTF-8", as
     /valid UTF-8/
   );
 });
+
+
+test("bounded provider JSON reader accepts a valid numeric Content-Length", async () => {
+  const { readBoundedJsonResponse } = await import("../rpc-response.mjs");
+  const payload = JSON.stringify({ ok: true });
+  const response = {
+    headers: { get: name => name === "Content-Length" ? String(new TextEncoder().encode(payload).byteLength) : null },
+    body: new Response(payload).body
+  };
+  assert.deepEqual(await readBoundedJsonResponse(response, 64), { ok: true });
+});
