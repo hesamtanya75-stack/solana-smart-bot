@@ -448,3 +448,26 @@ References:
 - To complete this test, configure a dedicated Devnet RPC endpoint with working faucet/airdrop support as the GitHub Actions repository secret `DEVNET_RPC_URL`. Never put the endpoint or API key in source code or chat.
 - Semantic instruction verification is still **not implemented**. The transaction parser and ALT resolver prove wire structure and lookup-table resolution only. Jupiter's current V2 `/order` path is a multi-router endpoint; accepting a response labelled `metis` is not a substitute for decoding the Jupiter instruction, every downstream AMM CPI, and all account/mint/amount roles against pinned, versioned schemas. The coordinator therefore continues to reject reservations unless `semanticInstructionVerification === true` and `routeVerification === "semantically-verified"`.
 - No Mainnet signing, submission, live trading, merge, or production deployment was performed. Keep PR #27 Draft and unmerged.
+
+
+## CI follow-up — 2026-11-15 (Devnet workflow correction; verified head 54b6f187ce9c03611697ddf93fe5ac23811903bb)
+
+The preceding attempt on commit `928494c59fa545b1ae26678ba41bb92259ee8bc7` ran the funded lifecycle against the public Devnet RPC because `DEVNET_RPC_URL` was empty. The faucet returned HTTP 410, so the funded lifecycle failed; this was an unavailable external faucet, not a failed unit test or a Mainnet interaction.
+
+The workflow was corrected on branch `security/pr26-clean-main`:
+- The funded signing/transfer step now runs only when the dedicated `DEVNET_RPC_URL` secret is present.
+- When the secret is absent, GitHub Actions marks the funded step **skipped** and emits an explicit summary with `signing: not performed` and `transactionsSubmitted: 0`.
+- A regression test in `tests/devnet-lifecycle-gate.test.mjs` verifies the conditional gate and the explicit skipped result.
+- A follow-up shell-quoting issue in the summary text was corrected and covered by an assertion; the final job log contains no shell command-substitution error.
+
+Verified GitHub Actions for head `54b6f187ce9c03611697ddf93fe5ac23811903bb`:
+- Node tests: **153 passed, 0 failed, 0 skipped**.
+- Frontend JavaScript syntax validation: success.
+- Cloudflare Worker build: success (dry-run only; no deployment).
+- Devnet read-only cluster/RPC validation: success.
+- Funded signed Devnet lifecycle: **skipped**, because `DEVNET_RPC_URL` is not configured. No signing or transaction submission occurred.
+- The read-only Devnet output still warns that public RPC rate-limited holder enumeration; holder concentration was not validated.
+
+The combined commit status still includes the legacy `deploy/hesamtanya75-stack/solana-smart-bot-17` Deno Deploy failure. This is separate from the four current GitHub Actions workflows above and is not evidence of a Cloudflare Worker build failure.
+
+The release decision is unchanged: semantic Jupiter instruction verification remains false, settlement transitions remain disabled, and the Worker still does not provide an enabled end-to-end live-trading path. Production Cloudflare secrets/bindings/migrations have not been independently verified. Keep PR #27 Draft and unmerged; paper-trading only. No production deployment, Mainnet signing, transaction submission, or live trading was performed.
