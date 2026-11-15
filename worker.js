@@ -1013,7 +1013,7 @@ export default {
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "strict-origin-when-cross-origin",
           "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-          "Content-Security-Policy": `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic' 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:`,
+          "Content-Security-Policy": `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic' 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://solana.drpc.org https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://api.dexscreener.com https://api.rugcheck.xyz; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:`,
           "X-Solana-Smart-Bot-Build": build
         }
       });
