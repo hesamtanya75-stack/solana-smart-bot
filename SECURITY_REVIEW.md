@@ -422,3 +422,20 @@ References:
 - Jupiter Swap Program IDL pointer and DEX-IDL limitations: `https://developers.jup.ag/docs/swap/v1/common-errors`
 - Jupiter instruction parser IDL snapshot: `https://github.com/jup-ag/instruction-parser/blob/main/src/idl/jupiter.ts`
 - Third-party current IDL mirror used only for comparison: `https://github.com/solana-foundation/surfpool/blob/main/crates/core/src/scenarios/protocols/jupiter/v6/idl.json`
+
+## Jupiter Router / transaction-version follow-up — 2026-11-15
+
+The current official Jupiter Build and Transaction Versions documentation was checked against the repository's transaction parser and the existing V2 /order integration.
+
+- /swap/v2/build is the Metis Router path and returns raw instruction objects (programId, account metas, and base64 instruction data), routePlan, otherAmountThreshold, and address-lookup-table address lists for v0. It does not return the serialized transaction used by the current /order parser, and /build transactions cannot use /execute.
+- /build supports the case-sensitive dexes filter. This can narrow routing to explicitly selected DEX labels, but the label and API routePlan are not proof of on-chain program identity or safe account semantics. A verifier must decode the actual returned instructions and validate all relevant account addresses, pool state, mints, amounts, fees, and downstream program behavior.
+- For v0 /build, the API supplies lookup-table address lists; these must not be trusted as finalized on-chain ALT state. The existing resolver's owner, activation, deactivation, warm-up, and index checks remain relevant only after the exact lookup-table accounts and compiled indexes are independently tied together.
+- Jupiter's October 2026 documentation defines Solana transaction v1 as a distinct 4,096-byte format with up to 64 inline accounts and no ALTs. /build forces it with transactionVersion=1; /order only requests it as a ceiling with maxSupportedTransactionVersion=1, and may still return v0. The current code does not request that ceiling, so the existing /order path remains on the default v0 unless its request is deliberately changed. The parser's v1 structural branch is not semantic verification.
+- A future /build-based verifier would need a separate raw-instruction evidence path; passing a /build response into validateAndResolveUnsignedJupiterTransaction is not valid because that helper accepts a serialized unsigned transaction, not the raw instruction response.
+
+No application code was changed in this follow-up. No API endpoint was switched, no DEX allowlist was enabled, and no new transaction path was created. semanticInstructionVerification remains false; reservations/signing/submission remain blocked. PR #27 remains Draft and unmerged.
+
+References:
+- Jupiter Build: https://developers.jup.ag/docs/swap/build
+- Jupiter Transaction Versions: https://developers.jup.ag/docs/swap/advanced/transaction-versions
+- Jupiter October 2026 changelog: https://developers.jup.ag/changelog/2026-10
