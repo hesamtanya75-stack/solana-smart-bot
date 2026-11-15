@@ -1596,7 +1596,7 @@ jupiterQuoteButton.addEventListener("click", async () => {
     jupiterQuoteStatus.textContent = "تکایە ناونیشانی Mint ـی دروست بنووسە.";
     return;
   }
-  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,9})?$/.test(amountText)) {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,9})?$/.test(amountText)) {
     jupiterQuoteStatus.textContent = "بڕی SOL دروست نییە.";
     return;
   }
@@ -1619,10 +1619,10 @@ jupiterQuoteButton.addEventListener("click", async () => {
     const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact);
     const fee = quote.feeBps == null ? "بەردەست نییە" : String(quote.feeBps) + " bps";
     jupiterQuoteResult.textContent =
-      "بڕی نێردراو: " + amountText + " SOL\\n" +
-      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\\n" +
-      "کاریگەری نرخ: " + impact + "\\n" +
-      "کرێی ڕێڕەو: " + fee + "\\n" +
+      "بڕی نێردراو: " + amountText + " SOL\n" +
+      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\n" +
+      "کاریگەری نرخ: " + impact + "\n" +
+      "کرێی ڕێڕەو: " + fee + "\n" +
       "ژمارەی هەنگاوەکانی ڕێڕەو: " + quote.routePlanCount;
     jupiterQuoteStatus.textContent = "Quote ـی تەنها خوێندنەوە وەرگیرا. ئەمە نرخێکی پێشبینیکراوە، نەک بەڵێنی جێبەجێبوون.";
   } catch (error) {
