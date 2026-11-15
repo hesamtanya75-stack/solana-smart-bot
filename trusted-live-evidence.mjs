@@ -370,16 +370,28 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     headers.push({ programIdIndex, accountCount, dataLength });
   }
+  const compiledInstructions = [];
   for (const header of headers) {
     if (cursor + header.accountCount + header.dataLength > bytes.length) {
       throw new Error("V1 Jupiter instruction payload is truncated");
     }
-    for (let i = 0; i < header.accountCount; i++) {
-      if (bytes[cursor++] >= addressCount) {
-        throw new Error("V1 Jupiter instruction account index is invalid");
-      }
+    const accountIndexes = Array.from(bytes.slice(cursor, cursor + header.accountCount));
+    if (accountIndexes.some(index => index >= addressCount)) {
+      throw new Error("V1 Jupiter instruction account index is invalid");
     }
+    cursor += header.accountCount;
+    const data = bytes.slice(cursor, cursor + header.dataLength);
     cursor += header.dataLength;
+    compiledInstructions.push(Object.freeze({
+      programIdIndex: header.programIdIndex,
+      accountIndexes: Object.freeze(accountIndexes),
+      dataBase64: btoa(String.fromCharCode(...data))
+    }));
+  }
+  const staticAccountKeys = [];
+  for (let i = 0; i < addressCount; i++) {
+    const start = addressesStart + i * 32;
+    staticAccountKeys.push(encodeBase58(bytes.slice(start, start + 32)));
   }
   const signaturesLength = requiredSignatures * 64;
   if (cursor + signaturesLength !== bytes.length) {
@@ -390,7 +402,12 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   }
   return {
     signatureCount: requiredSignatures,
+    requiredSignatures,
+    readonlySigned,
+    readonlyUnsigned,
     staticAccountCount: addressCount,
+    staticAccountKeys: Object.freeze(staticAccountKeys),
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount: 0,
     messageVersion: 1,
@@ -550,6 +567,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
   return {
     signatureCount,
+    requiredSignatures,
+    readonlySigned,
+    readonlyUnsigned,
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
     // Preserve every compiled instruction byte and account index so a later
@@ -824,6 +844,62 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
 }
 
 /**
+ * Expands compiled top-level instructions into their resolved message keys
+ * and signer/writable roles. This is structural evidence only: it does not
+ * decode program data, prove CPI behavior, or authorize signing.
+ */
+function buildOuterInstructionEvidence(parsed, writableLoaded = [], readonlyLoaded = []) {
+  if (!Array.isArray(parsed.staticAccountKeys) ||
+      !Array.isArray(parsed.compiledInstructions) ||
+      !Number.isInteger(parsed.requiredSignatures) ||
+      !Number.isInteger(parsed.readonlySigned) ||
+      !Number.isInteger(parsed.readonlyUnsigned)) {
+    throw new Error("Compiled instruction evidence is incomplete");
+  }
+  const keys = [
+    ...parsed.staticAccountKeys,
+    ...writableLoaded,
+    ...readonlyLoaded
+  ];
+  if (keys.length !== parsed.staticAccountCount + writableLoaded.length + readonlyLoaded.length ||
+      keys.length > 256) {
+    throw new Error("Resolved instruction account key space is invalid");
+  }
+  const isWritable = index => {
+    if (index < 0 || index >= keys.length) throw new Error("Instruction account index is outside the resolved key space");
+    if (index < parsed.requiredSignatures) {
+      return index < parsed.requiredSignatures - parsed.readonlySigned;
+    }
+    if (index < parsed.staticAccountCount) {
+      return index < parsed.staticAccountCount - parsed.readonlyUnsigned;
+    }
+    return index < parsed.staticAccountCount + writableLoaded.length;
+  };
+  return Object.freeze(parsed.compiledInstructions.map((instruction, instructionIndex) => {
+    const programId = keys[instruction.programIdIndex];
+    if (!programId || !Array.isArray(instruction.accountIndexes) ||
+        instruction.accountIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= keys.length)) {
+      throw new Error("Compiled instruction references an invalid resolved account");
+    }
+    return Object.freeze({
+      instructionIndex,
+      programIdIndex: instruction.programIdIndex,
+      programId,
+      accounts: Object.freeze(instruction.accountIndexes.map((index, accountIndex) =>
+        Object.freeze({
+          accountIndex,
+          messageKeyIndex: index,
+          pubkey: keys[index],
+          isSigner: index < parsed.requiredSignatures,
+          isWritable: isWritable(index)
+        })
+      )),
+      dataBase64: instruction.dataBase64
+    });
+  }));
+}
+
+/**
  * Validates the unsigned message and resolves every v0 ALT against finalized
  * RPC state. The result remains structurally trusted only; instruction
  * semantics are deliberately never promoted by address resolution alone.
@@ -833,11 +909,16 @@ export async function validateAndResolveUnsignedJupiterTransaction(
 ) {
   const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
   if (parsed.addressLookupCount === 0) {
+    const resolvedWritableAddresses = Object.freeze([]);
+    const resolvedReadonlyAddresses = Object.freeze([]);
+    const outerInstructionEvidence = buildOuterInstructionEvidence(parsed);
     return Object.freeze({
       ...parsed,
       lookupTableResolution: "not-required",
-      resolvedWritableAddresses: Object.freeze([]),
-      resolvedReadonlyAddresses: Object.freeze([])
+      resolvedWritableAddresses,
+      resolvedReadonlyAddresses,
+      outerInstructionEvidence,
+      semanticInstructionVerification: false
     });
   }
   if (!Array.isArray(parsed.addressLookups) ||
@@ -854,12 +935,16 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (new Set(allMessageKeys).size !== allMessageKeys.length) {
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
+  const outerInstructionEvidence = buildOuterInstructionEvidence(
+    parsed, resolution.writableAddresses, resolution.readonlyAddresses
+  );
   return Object.freeze({
     ...parsed,
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
     resolvedReadonlyAddresses: resolution.readonlyAddresses,
+    outerInstructionEvidence,
     semanticInstructionVerification: false
   });
 }
