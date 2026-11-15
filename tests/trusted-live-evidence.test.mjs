@@ -140,6 +140,8 @@ test("ALT resolver fetches finalized tables and resolves writable/readonly addre
   assert.equal(result.contextSlot, 100);
   assert.equal(result.tables[0].writable[0], encodeBase58(new Uint8Array(32).fill(7)));
   assert.equal(result.tables[0].readonly[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.deepEqual(result.writableAddresses, [encodeBase58(new Uint8Array(32).fill(7))]);
+  assert.deepEqual(result.readonlyAddresses, [encodeBase58(new Uint8Array(32).fill(8))]);
 });
 
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
