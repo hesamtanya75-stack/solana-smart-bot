@@ -1,6 +1,6 @@
 # Security review — PR #27
 
-Review target: `security/pr26-clean-main` at commit `6a2e0eaa8a99b936b22aeaa3df03c025763b9697`.
+Review target: `security/pr26-clean-main` at commit `c8112879530ddfc0117ef064e5f19964f9f29f0e`.
 
 ## Decision
 
