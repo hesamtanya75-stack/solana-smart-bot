@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, decodeReviewedSystemTransfers, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1275,6 +1275,56 @@ test("complete outer-program identity requires an exact reviewed set and never a
       ...compute, loaderType: "legacy-bpf-loader"
     }] }
   }), /unsupported or unreviewed loader type/);
+});
+
+test("System Program decoder accepts only correctly authorized native SOL transfers", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(9));
+  const encodeTransfer = (lamports = 12345n) => {
+    const data = Buffer.alloc(12);
+    data.writeUInt32LE(2, 0);
+    data.writeBigUInt64LE(lamports, 4);
+    return data.toString("base64");
+  };
+  const transfer = {
+    instructionIndex: 2,
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    dataBase64: encodeTransfer()
+  };
+  const decoded = decodeReviewedSystemTransfers([transfer]);
+  assert.deepEqual(decoded, [{
+    instructionIndex: 2, source: BOT_WALLET, destination,
+    lamports: "12345",
+    verificationScope: "system-program-transfer-instruction-only"
+  }]);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [transfer.accounts[0]]
+  }]), /accounts or data are malformed/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      { ...transfer.accounts[0], isSigner: false },
+      transfer.accounts[1]
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], { ...transfer.accounts[1], isWritable: false }
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, dataBase64: Buffer.from([3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]).toString("base64")
+  }]), /only Transfer is reviewed/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, dataBase64: encodeTransfer(0n)
+  }]), /amount must be positive/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], { ...transfer.accounts[1], pubkey: BOT_WALLET }
+    ]
+  }]), /account roles are invalid/);
 });
 
 test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
