@@ -53,7 +53,7 @@ function isU64DecimalString(value, allowZero = false) {
 }
 
 function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
-  const validated = routePlan.map((step, index) => {
+  const validated = Array.from(routePlan, (step, index) => {
     const info = step?.swapInfo;
     if (!step || typeof step !== "object" || Array.isArray(step) ||
         !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
@@ -109,7 +109,7 @@ function validateBuildInstruction(instruction, name) {
   if (btoa(String.fromCharCode(...data)) !== instruction.data) {
     throw new Error("Jupiter build " + name + " instruction data is non-canonical");
   }
-  const accounts = instruction.accounts.map((account) => {
+  const accounts = Array.from(instruction.accounts, (account) => {
     if (!account || typeof account !== "object" ||
         !isCanonicalPublicKey(account.pubkey) ||
         typeof account.isSigner !== "boolean" ||
@@ -160,7 +160,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     throw new Error("Jupiter build transaction version is unsupported");
   }
   const routePlan = validateBuildRoutePlan(build.routePlan, build.inputMint, build.outputMint);
-  const validateList = (items, name) => Object.freeze(items.map((item, index) =>
+  const validateList = (items, name) => Object.freeze(Array.from(items, (item, index) =>
     validateBuildInstruction(item, name + "[" + index + "]")));
   const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
   const setupInstructions = validateList(build.setupInstructions, "setup");
