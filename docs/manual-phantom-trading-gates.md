@@ -159,3 +159,10 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 - The supplied priority-fee ceiling must be an explicit canonical u64 decimal value. The helper rejects fees above it.
 - Official formula and encoding references checked on 2026-11-15: https://solana.com/docs/core/fees/fee-structure and https://solana.com/docs/core/fees/compute-budget
 - This is only the priority-fee component. It is not yet wired to the coordinator and does not include base signature fees, precompile signature fees, System Program transfers, rent/account creation, tips, token outflows, or unknown instructions. Those must be decoded and bounded before all-in spend accounting or any signing request. The helper does not set `semanticInstructionVerification` to true.
+
+## Explicit priority-fee decoder (2026-11-15)
+
+- Added `verifyComputeBudgetPriorityFee` for legacy/v0 transactions: it decodes the Compute Budget instruction variants, rejects malformed or duplicate variants and unsupported variants, requires an explicit bounded compute-unit limit, and computes the rounded-up priority fee from micro-lamports per compute unit.
+- For v1 transactions, the helper validates the message-config compute-unit limit and absolute priority-fee field and rejects legacy Compute Budget instructions.
+- The helper enforces a caller-supplied maximum and returns a narrowly scoped attestation: `explicit-compute-budget-and-priority-fee-only`.
+- This is not a complete transaction-cost verifier. It does not establish base fee, rent, token transfer amounts, tips, other lamport outflows, Jupiter instruction semantics, CPI behavior, or final settlement; it does not enable signing.
