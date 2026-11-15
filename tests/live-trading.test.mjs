@@ -107,6 +107,15 @@ test("eligibility gate rejects missing or invalid server-side state", () => {
   }), /liquidity/);
 });
 
+test("Jupiter order rejects non-canonical Phantom public keys before network access", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, takerWallet: "11111111111111111111111111111111111111111111",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => { throw new Error("fetch must not run"); }
+  }), /connected Phantom public key/);
+});
+
 test("Jupiter order requires an explicit connected Phantom public key", async () => {
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
