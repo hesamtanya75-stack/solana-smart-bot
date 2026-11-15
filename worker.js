@@ -980,6 +980,10 @@ export default {
     }
     const assetUrl = new URL(request.url);
     const isDashboardHtml = assetUrl.pathname === "/" || assetUrl.pathname === "/index.html";
+    // The assets directory currently points at the repository root. Never let
+    // the static-assets fallback publish source modules, tests, docs, or config.
+    // The dashboard is self-contained, so only its two navigation paths are public.
+    if (!isDashboardHtml) return json({ error: "Not found" }, 404);
     if (assetUrl.pathname === "/") assetUrl.pathname = "/index.html";
 
     // Fetch the dashboard as a clean GET and rebuild its HTML response.
