@@ -301,6 +301,23 @@ test("resolved ALT addresses cannot duplicate a static transaction account key",
   ), /duplicate a static transaction account key/);
 });
 
+test("ALT resolver rejects sparse lookup descriptor arrays before RPC", async () => {
+  let called = false;
+  const sparseLookups = new Array(2);
+  sparseLookups[0] = {
+    accountKey: encodeBase58(new Uint8Array(32).fill(42)),
+    writableIndexes: [], readonlyIndexes: []
+  };
+  await assert.rejects(
+    resolveJupiterAddressLookupTables(sparseLookups, async () => {
+      called = true;
+      throw new Error("RPC should not be called");
+    }),
+    /lookup table keys are invalid or duplicated/
+  );
+  assert.equal(called, false);
+});
+
 test("ALT resolver rejects duplicate indexes before making an RPC request", async () => {
   let called = false;
   await assert.rejects(resolveJupiterAddressLookupTables([{
