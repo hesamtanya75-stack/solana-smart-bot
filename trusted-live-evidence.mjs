@@ -241,7 +241,7 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     throw new Error("Token decimals are unavailable for sell-route verification");
   }
   const priceText = String(priceUsd);
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(priceText);
+  const match = /^(\\d+)(?:\\.(\\d+))?$/.exec(priceText);
   if (!match) throw new Error("Token USD price format is unsupported for sell-route verification");
   const priceScale = 24;
   const priceScaled = BigInt(match[1] + (match[2] || "").padEnd(priceScale, "0").slice(0, priceScale));
@@ -249,63 +249,42 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
   const amount = (3n * (10n ** BigInt(decimals)) * (10n ** BigInt(priceScale))) / priceScaled;
   const maxProbeAmount = supplyAmount / 100n;
   if (amount <= 0n || maxProbeAmount <= 0n || amount > maxProbeAmount) {
-    throw new Error("A $3 sell-route probe would exceed 1% of token supply or is below token precision");
+    throw new Error("A $3 sell-route quote would exceed 1% of token supply or is below token precision");
   }
-  const walletAccounts = await rpc(fetchImpl, "getTokenAccountsByOwner", [
-    EXPECTED_BOT_WALLET,
-    { mint },
-    { encoding: "jsonParsed", commitment: "finalized" }
-  ]);
-  if (!Array.isArray(walletAccounts?.value) || walletAccounts.value.length === 0) {
-    throw new Error("Expected bot wallet has no verified token accounts for this mint");
-  }
-  let walletTokenBalance = 0n;
-  for (const account of walletAccounts.value) {
-    const info = account?.account?.data?.parsed?.info;
-    if (!EXPECTED_TOKEN_PROGRAMS.has(account?.account?.owner) ||
-        info?.mint !== mint || info?.owner !== EXPECTED_BOT_WALLET ||
-        !/^\d+$/.test(String(info?.tokenAmount?.amount ?? ""))) {
-      throw new Error("Bot wallet token account ownership or balance data is invalid");
-    }
-    walletTokenBalance += BigInt(info.tokenAmount.amount);
-  }
-  if (amount > walletTokenBalance) {
-    throw new Error("Expected bot wallet does not own enough tokens for the sell-route probe");
-  }
+
+  // A quote-only request deliberately omits taker. It verifies that Jupiter
+  // currently sees a route without requiring the bot wallet to own tokens
+  // before its first purchase. It does not create an executable transaction.
   const params = new URLSearchParams({
     inputMint: mint,
     outputMint: SOL_MINT,
-    amount: amount.toString(),
-    taker: EXPECTED_BOT_WALLET,
-    slippageBps: "50"
+    amount: amount.toString()
   });
   const order = await fetchJson(fetchImpl, JUPITER_ORDER_URL + "?" + params.toString(), {
     headers: { "x-api-key": jupiterApiKey.trim(), Accept: "application/json" }
   });
   if (!order || typeof order !== "object" ||
-      typeof order.requestId !== "string" || !order.requestId ||
-      typeof order.transaction !== "string" ||
+      (order.requestId != null && (typeof order.requestId !== "string" || !order.requestId)) ||
+      order.transaction != null ||
       order.inputMint !== mint || order.outputMint !== SOL_MINT ||
       String(order.inAmount) !== amount.toString() ||
-      !/^\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
+      !/^\\d+$/.test(String(order.outAmount || "")) || BigInt(order.outAmount) <= 0n ||
       !Array.isArray(order.routePlan) || order.routePlan.length === 0 ||
       order.errorCode != null) {
-    throw new Error("Jupiter did not return a complete sell-order quote response");
+    throw new Error("Jupiter did not return a complete quote-only sell-route response");
   }
-  const decodedTransaction = validateUnsignedJupiterTransaction(order.transaction, EXPECTED_BOT_WALLET);
   return Object.freeze({
     provider: "Jupiter Swap API V2",
-    requestId: order.requestId,
+    requestId: order.requestId || null,
     inputAmount: amount.toString(),
     outputLamports: String(order.outAmount),
     router: String(order.router || "unknown"),
     routePlanCount: order.routePlan.length,
-    signatureCount: decodedTransaction.signatureCount,
-    staticAccountCount: decodedTransaction.staticAccountCount,
-    messageVersion: decodedTransaction.messageVersion,
-    walletTokenBalance: walletTokenBalance.toString(),
+    signatureCount: null,
+    staticAccountCount: null,
+    messageVersion: null,
     semanticInstructionVerification: false,
-    routeVerification: "unsigned-transaction-structure-only"
+    routeVerification: "quote-only-no-transaction"
   });
 }
 
