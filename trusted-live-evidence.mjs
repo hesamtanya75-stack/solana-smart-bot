@@ -100,7 +100,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const uniqueAddresses = new Set();
   for (let i = 0; i < addressCount; i++) {
     const start = addressesStart + i * 32;
-    const key = Buffer.from(bytes.subarray(start, start + 32)).toString("hex");
+    const key = Array.from(bytes.subarray(start, start + 32), byte => byte.toString(16).padStart(2, "0")).join("");
     if (uniqueAddresses.has(key)) {
       throw new Error("V1 Jupiter transaction contains duplicate account addresses");
     }
