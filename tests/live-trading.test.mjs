@@ -121,8 +121,25 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
   assert.equal(result.inputMint, SOL_MINT);
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
+  assert.match(request.url, /receiver=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
+  assert.match(request.url, /excludeRouters=jupiterz/);
+  assert.equal(new URL(request.url).searchParams.get("excludeRouters"), "jupiterz");
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
+});
+
+test("Jupiter order rejects every router except the explicitly constrained Metis route", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => new Response(JSON.stringify({
+      requestId: "req-dflow", transaction: validUnsignedLegacyTransaction(),
+      inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000", outAmount: "12345",
+      routePlan: [{ swapInfo: { label: "test" } }], router: "dflow",
+      transactionVersion: 0, feeBps: 0
+    }), { status: 200, headers: { "Content-Type": "application/json" } })
+  }), /incomplete or non-executable/);
 });
 
 test("malformed Jupiter order fails closed", async () => {
