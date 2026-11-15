@@ -96,6 +96,29 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   assert.equal(stale.status, 409);
 });
 
+test("coordinator rejects risk evidence that became stale during upstream collection", async () => {
+  const originalNow = Date.now;
+  let clock = 1_000_000;
+  Date.now = () => clock;
+  try {
+    const { coordinator } = makeCoordinator(async () => {
+      const evidence = trustedEvidence();
+      // Simulate slow holder pagination / upstream risk probes after evidence
+      // collection began. Its original timestamp must not be refreshed.
+      clock += 31_000;
+      return evidence;
+    });
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "order-key-slow-evidence"
+    }));
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /Trusted token risk evidence is stale/);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test("daily spend cap is enforced atomically and pending reservations remain counted", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
