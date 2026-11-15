@@ -67,3 +67,15 @@ test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release 
   assert.match(script, /response\.body\?\.cancel\(\)/);
   assert.match(script, /setTimeout\(resolve, retryDelayMs\(response, attempt\)\)/);
 });
+
+test("funded Devnet lifecycle verifies the finalized transaction's recipient balance delta", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /transactionInfo\.transaction\?\.message/);
+  assert.match(script, /transactionInfo\.meta\?\.preBalances/);
+  assert.match(script, /transactionInfo\.meta\?\.postBalances/);
+  assert.match(script, /transactionSignatures\.includes\(signature\)/);
+  assert.match(script, /postBalances\[recipientIndex\] - preBalances\[recipientIndex\] < TRANSFER_LAMPORTS/);
+});
