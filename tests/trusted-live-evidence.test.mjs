@@ -318,7 +318,7 @@ test("v0 transaction with address lookup tables remains structurally parsed but 
     ...new Array(32).fill(0), // recent blockhash
     1, // one compiled instruction
     1, // program id index (static key 1)
-    1, 0, // one account index (static key 0)
+    1, 2, // one account index (first ALT-loaded writable key)
     0, // empty instruction data
     1, // one address lookup table
     ...new Array(32).fill(42), // lookup table account address
@@ -336,6 +336,26 @@ test("v0 transaction with address lookup tables remains structurally parsed but 
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+
+test("v0 instruction account indexes may reference loaded ALT keys", () => {
+  const signer = decodeBase58(BOT_WALLET);
+  const message = Uint8Array.from([
+    0x80, 1, 0, 1,
+    2, ...signer, ...new Array(32).fill(17),
+    ...new Array(32).fill(0),
+    1, 1, 1, 2, 0,
+    1, ...new Array(32).fill(42),
+    1, 3,
+    1, 4
+  ]);
+  const transaction = Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
+  const parsed = validateUnsignedJupiterTransaction(transaction, BOT_WALLET);
+  assert.equal(parsed.messageVersion, 0);
+  assert.equal(parsed.addressLookupCount, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
 
 test("truncated v0 address lookup readonly indexes are rejected", () => {
   const signer = decodeBase58(BOT_WALLET);
