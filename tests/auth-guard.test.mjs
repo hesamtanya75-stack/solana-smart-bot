@@ -334,3 +334,20 @@ test("legacy rate-limit counters migrate once without overwriting active guard s
   assert.equal(await guard.isRateLimited("login:legacy-ip", 1003), true);
   assert.equal(await guard.importLegacyFailure("login:other-ip", 0, 1000).catch(() => false), false);
 });
+
+
+test("malformed persisted MFA attempt counters fail closed and invalidate the challenge", async () => {
+  const { guard, storage } = makeGuard();
+  const id = "123e4567-e89b-12d3-a456-426614174099";
+  assert.equal(await guard.createMfaChallenge(id, 5000), true);
+  const state = storage.values.get("auth_guard_state");
+  state.challenges[id].attempts = "not-a-counter";
+  storage.values.set("auth_guard_state", state);
+
+  assert.deepEqual(await guard.completeMfaChallenge({
+    challengeId: id,
+    now: 5001,
+    failureScope: "totp:corrupt-state"
+  }), { ok: false, reason: "invalid-state" });
+  assert.equal(storage.values.get("auth_guard_state").challenges[id], undefined);
+});
