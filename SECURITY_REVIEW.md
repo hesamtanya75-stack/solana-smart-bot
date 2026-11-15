@@ -562,3 +562,23 @@ GitHub Actions for the current branch head completed successfully:
 The test log specifically confirms the V1 compute-unit and loaded-data upper-bound test and the inclusive 256 KiB heap-size boundary test passed. The parser continues to reject values outside its configured supported ranges. These are structural resource checks only; they do not validate instruction semantics or economic intent.
 
 The PR remains Draft, Open, and unmerged. `semanticInstructionVerification` remains false; live reservations/signing/submission remain blocked. No production deployment, Mainnet activity, or real transaction was performed.
+
+
+## External provider response-size hardening — 2026-11-15 (verified code head `c4d80ba996a62dd99c47a2e4909706105085d402`)
+
+A final Worker-path review found that the scanner's external Solana RPC and DexScreener calls still parsed provider bodies with unbounded `response.json()`, even though the trusted-live-evidence module already enforced a response-size ceiling. This gap is now closed:
+
+- Added a shared bounded JSON response reader in `rpc-response.mjs` with a 2 MiB maximum.
+- The reader rejects an oversized declared Content-Length before consuming the body, counts streamed bytes and cancels once the limit is exceeded, rejects invalid UTF-8 and malformed JSON, and releases the stream reader lock.
+- Worker single RPC, batched RPC, generic provider JSON, and DexScreener response parsing now use the bounded reader. The remaining direct `response.json()` calls in `worker.js` are only for internal Durable Object responses, not external provider bodies.
+- Added regression tests for valid bounded JSON, declared-size rejection before body reads, streamed-size rejection, malformed JSON, and invalid UTF-8. Updated the Worker VM integration harness to inject the shared reader.
+
+Verified GitHub Actions on code head `c4d80ba996a62dd99c47a2e4909706105085d402`:
+- Node safety and Durable Objects runtime tests: **196 passed, 0 failed**.
+- Dependency audit: **0 vulnerabilities reported**.
+- Frontend JavaScript validation: success.
+- Cloudflare Worker build validation: success (dry-run only; no deployment).
+- Devnet cluster identity and read-only RPC validation: success.
+- Funded signed Devnet transfer: **skipped**, because `DEVNET_RPC_URL` is not configured. No signing or transaction submission occurred.
+
+The change hardens provider response handling; it does not alter the paper-trading rules or enable live trading. `semanticInstructionVerification` remains false, the coordinator remains fail-closed, and the Worker still has no enabled end-to-end live-trading path. PR #27 remains Draft, Open, and unmerged. No production deployment, merge, Mainnet signing, transaction submission, or live trading was performed.
