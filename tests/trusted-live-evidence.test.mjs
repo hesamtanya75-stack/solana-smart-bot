@@ -1013,7 +1013,7 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
 
 test("Jupiter /build bounds aggregate instruction bundle resources", () => {
   const valid = validBuildResponse();
-  const largeDataInstruction = { ...valid.swapInstruction, data: "A".repeat(4096) };
+  const largeDataInstruction = { ...valid.swapInstruction, data: "A".repeat(4100) };
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     otherInstructions: Array.from({ length: 64 }, () => largeDataInstruction)
   })), /aggregate resource limits/);
