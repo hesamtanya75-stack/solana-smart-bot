@@ -93,6 +93,15 @@ test("v1 transaction rejects duplicate inline account addresses", () => {
   );
 });
 
+test("v1 transaction rejects a readonly sole signer fee payer", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[2] = 1;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /signer header is inconsistent/
+  );
+});
+
 test("v1 transaction rejects program id index zero", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes[106] = 0;
