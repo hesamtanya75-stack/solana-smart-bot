@@ -198,10 +198,12 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
     }] });
     if (value.includes("rugcheck.xyz")) return Response.json({ score: 100 });
     if (value.includes("api.jup.ag/swap/v2/order")) {
-      const amount = new URL(value).searchParams.get("amount");
+      const params = new URL(value).searchParams;
+      assert.equal(params.has("taker"), false, "quote-only sell check must not require a funded taker");
+      const amount = params.get("amount");
       return Response.json({
-        requestId: "test-sell-order",
-        transaction: validUnsignedTransaction(),
+        requestId: "test-sell-quote",
+        transaction: null,
         inputMint: mint,
         outputMint: "So11111111111111111111111111111111111111112",
         inAmount: amount,
@@ -220,14 +222,6 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         }],
         errors: []
       } });
-    }
-    if (request.method === "getTokenAccountsByOwner") {
-      assert.equal(request.params[2].commitment, "finalized");
-      return Response.json({ jsonrpc: "2.0", id: 1, result: { value: [{
-        account: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: { parsed: { info: {
-          mint, owner: BOT_WALLET, tokenAmount: { amount: "10" }
-        } } } }
-      }] } });
     }
     if (request.method === "getAccountInfo") {
       assert.equal(request.params[1].commitment, "finalized");
@@ -269,9 +263,11 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   assert.equal(risk.checks.holderConcentrationSafe, false);
   assert.equal(risk.checks.sellRouteAvailable, false);
   assert.equal(risk.sellRoute.provider, "Jupiter Swap API V2");
-  assert.equal(risk.sellRoute.requestId, "test-sell-order");
+  assert.equal(risk.sellRoute.requestId, "test-sell-quote");
   assert.equal(risk.sellRoute.semanticInstructionVerification, false);
-  assert.equal(risk.sellRoute.routeVerification, "unsigned-transaction-structure-only");
+  assert.equal(risk.sellRoute.signatureCount, null);
+  assert.equal(risk.sellRoute.walletTokenBalance, undefined);
+  assert.equal(risk.sellRoute.routeVerification, "quote-only-no-transaction");
   assert.equal(risk.passed, false);
 });
 
