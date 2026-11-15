@@ -1,4 +1,4 @@
-import { fetchTrustedLiveEvidence, verifyFinalizedJupiterSettlement } from "./trusted-live-evidence.mjs";
+import { fetchTrustedLiveEvidence, isCanonicalPublicKey, verifyFinalizedJupiterSettlement } from "./trusted-live-evidence.mjs";
 
 const MAX_TRADE_USD_CENTS = 300;
 const MAX_DAILY_SPEND_USD_CENTS = 500;
@@ -160,13 +160,12 @@ function constantTimeEqual(left, right) {
 }
 
 function orderIntentFingerprint(body, amountLamports) {
-  const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   const inputMint = String(body?.inputMint || "");
   const outputMint = String(body?.outputMint || "");
   const destination = String(body?.destination || "");
   const slippageBps = Number(body?.slippageBps);
-  if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
-      !base58.test(destination) ||
+  if (!isCanonicalPublicKey(inputMint) || !isCanonicalPublicKey(outputMint) ||
+      inputMint === outputMint || !isCanonicalPublicKey(destination) ||
       !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
       inputMint !== "So11111111111111111111111111111111111111112") {
     throw new Error("Complete immutable order intent is required");
