@@ -65,6 +65,14 @@ function validUnsignedV1Transaction() {
   ]);
   return Buffer.from(message).toString("base64");
 }
+function unsignedV1TransactionWithHeap(heapSize) {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // Set config-mask bit 4 (heap size) and insert its u32 LE value after inline addresses.
+  bytes[4] = 0x10;
+  const heap = Buffer.alloc(4);
+  heap.writeUInt32LE(heapSize, 0);
+  return Buffer.concat([bytes.subarray(0, 106), heap, bytes.subarray(106)]).toString("base64");
+}
 function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
   const systemProgram = new Array(32).fill(0);
@@ -75,6 +83,21 @@ function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signat
   ]);
   return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(signatureByte), ...message])).toString("base64");
 }
+
+test("v1 heap-size config accepts a valid 32 KiB multiple", () => {
+  const parsed = validateUnsignedJupiterTransaction(unsignedV1TransactionWithHeap(32768), BOT_WALLET);
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 heap-size config rejects values outside the protocol bounds or alignment", () => {
+  for (const heapSize of [0, 32767, 32769, 262145, 300000]) {
+    assert.throws(
+      () => validateUnsignedJupiterTransaction(unsignedV1TransactionWithHeap(heapSize), BOT_WALLET),
+      /heap size is outside the valid range/
+    );
+  }
+});
 
 test("unknown instruction program is parsed structurally but never semantically trusted", () => {
   const unknownProgram = new Array(32).fill(17);
