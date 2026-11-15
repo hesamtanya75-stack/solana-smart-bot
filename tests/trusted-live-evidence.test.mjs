@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -973,6 +973,65 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
   );
 });
 
+
+test("program identity evidence is finalized, deduplicated, and never semantic approval", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(31));
+  const loaderOwner = encodeBase58(new Uint8Array(32).fill(32));
+  let request;
+  const evidence = await fetchProgramAccountIdentityEvidence([
+    { programId }, { programId }
+  ], async (_url, options) => {
+    request = JSON.parse(options.body);
+    return Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1234 },
+      value: [{
+        owner: loaderOwner,
+        executable: true,
+        space: 3,
+        data: [Buffer.from([1, 2, 3]).toString("base64"), "base64"]
+      }]
+    } });
+  });
+
+  assert.equal(request.method, "getMultipleAccounts");
+  assert.deepEqual(request.params[0], [programId]);
+  assert.equal(request.params[1].commitment, "finalized");
+  assert.equal(evidence.contextSlot, 1234);
+  assert.deepEqual(evidence.programs, [{
+    programId, accountOwner: loaderOwner, executable: true, dataLength: 3
+  }]);
+  assert.equal(evidence.semanticInstructionVerification, false);
+  assert.equal(
+    evidence.verificationScope,
+    "finalized-program-account-identity-snapshot-only"
+  );
+});
+
+test("program identity evidence rejects non-executable or malformed program accounts", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(41));
+  const loaderOwner = encodeBase58(new Uint8Array(32).fill(42));
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1235 },
+      value: [{
+        owner: loaderOwner, executable: false, space: 0,
+        data: ["", "base64"]
+      }]
+    } })
+  ), /missing, non-executable, or has malformed identity data/);
+
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1235 },
+      value: [{
+        owner: loaderOwner, executable: true, space: 2,
+        data: [Buffer.from([1]).toString("base64"), "base64"]
+      }]
+    } })
+  ), /data size does not match RPC metadata/);
+});
 
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
