@@ -538,3 +538,12 @@ References:
 - SIMD-0385 transaction v1 proposal: https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md
 
 CI must pass on the final branch head before this change is considered validated. PR #27 remains Draft and unmerged. No production deployment, signing, transaction submission, or Mainnet activity is authorized.
+
+
+## Solana v1 optional priority-fee config regression coverage — 2026-11-15
+
+The official v1 wire-format documentation specifies that config bits 0 and 1 must be set together for the optional u64 total-priority-fee field, and that config values follow ascending bit order. Added regression fixtures that include the optional priority fee, verify that a single priority-fee mask bit is rejected, and verify the combined priority-fee + compute-limit + loaded-data-limit + heap-size layout. This protects the parser's offset calculation from silently shifting the instruction section.
+
+The priority-fee field is only structurally consumed; no fee policy or economic approval is inferred. Semantic instruction verification remains false and live execution remains blocked.
+
+Reference: https://solana.com/docs/core/transactions/versioned-transactions
