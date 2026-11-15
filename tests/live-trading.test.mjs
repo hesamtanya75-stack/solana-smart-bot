@@ -202,6 +202,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
   });
   assert.equal(result.requestId, "req-test");
   assert.equal(result.transactionEvidence.messageVersion, "legacy");
+  assert.equal(result.transactionVersion, result.transactionEvidence.messageVersion);
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
