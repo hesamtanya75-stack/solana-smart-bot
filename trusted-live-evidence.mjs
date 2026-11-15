@@ -22,6 +22,19 @@ function decodeBase58(value) {
   return Uint8Array.from(bytes);
 }
 
+function encodeBase58(bytes) {
+  let number = 0n;
+  for (const byte of bytes) number = number * 256n + BigInt(byte);
+  let encoded = "";
+  while (number > 0n) {
+    const remainder = Number(number % 58n);
+    encoded = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"[remainder] + encoded;
+    number /= 58n;
+  }
+  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) encoded = "1" + encoded;
+  return encoded || "1";
+}
+
 function readShortVector(bytes, offset) {
   let value = 0, shift = 0, cursor = offset;
   for (let i = 0; i < 3; i++) {
@@ -225,6 +238,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   }
   let addressLookupCount = 0;
   let loadedAddressCount = 0;
+  const addressLookups = [];
   if (messageVersion === 0) {
     const lookupHeader = readShortVector(bytes, cursor);
     addressLookupCount = lookupHeader.value;
@@ -232,17 +246,25 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (lookupHeader.value > 64) throw new Error("Jupiter address lookup count is invalid");
     for (let i = 0; i < lookupHeader.value; i++) {
       if (cursor + 32 > bytes.length) throw new Error("Jupiter address lookup is truncated");
+      const tableAddress = encodeBase58(bytes.slice(cursor, cursor + 32));
       cursor += 32;
       const writable = readShortVector(bytes, cursor);
       cursor = writable.offset;
-      if (cursor + writable.value > bytes.length) throw new Error("Jupiter writable lookup indexes are truncated");
+      if (writable.value > 256 || cursor + writable.value > bytes.length) {
+        throw new Error("Jupiter writable lookup indexes are truncated or invalid");
+      }
+      const writableIndexes = Array.from(bytes.slice(cursor, cursor + writable.value));
       loadedAddressCount += writable.value;
       cursor += writable.value;
       const readonly = readShortVector(bytes, cursor);
       cursor = readonly.offset;
-      if (cursor + readonly.value > bytes.length) throw new Error("Jupiter readonly lookup indexes are truncated");
+      if (readonly.value > 256 || cursor + readonly.value > bytes.length) {
+        throw new Error("Jupiter readonly lookup indexes are truncated or invalid");
+      }
+      const readonlyIndexes = Array.from(bytes.slice(cursor, cursor + readonly.value));
       loadedAddressCount += readonly.value;
       cursor += readonly.value;
+      addressLookups.push({ accountKey: tableAddress, writableIndexes, readonlyIndexes });
     }
   }
   // Compiled instruction account indexes address static keys followed by
@@ -256,8 +278,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     staticAccountCount: keyCount,
     instructionCount,
     addressLookupCount,
+    addressLookups,
     messageVersion,
-    // Wire structure is validated, but lookup tables and instruction semantics are not.
+    // Lookup descriptors are retained for independent RPC resolution; semantics stay untrusted.
     semanticInstructionVerification: false
   };
 }
@@ -395,6 +418,95 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     messageVersion: null,
     semanticInstructionVerification: false,
     routeVerification: "quote-only-no-transaction"
+  });
+}
+
+const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = "AddressLookupTab1e1111111111111111111111111";
+const ALT_DEACTIVATION_SLOT_NEVER = 18446744073709551615n;
+
+/**
+ * Resolves v0 lookup descriptors against finalized mainnet account state.
+ * Any missing, malformed, foreign-owned, deactivated, or not-yet-warmed table
+ * fails closed. This establishes address resolution only, not instruction safety.
+ */
+export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fetch) {
+  if (!Array.isArray(lookups) || lookups.length === 0 || lookups.length > 64) {
+    throw new Error("Jupiter address lookup descriptors are missing or invalid");
+  }
+  const keys = lookups.map(item => item?.accountKey);
+  if (keys.some(key => typeof key !== "string" || decodeBase58(key).length !== 32) ||
+      new Set(keys).size !== keys.length) {
+    throw new Error("Jupiter address lookup table keys are invalid or duplicated");
+  }
+  const result = await rpc(fetchImpl, "getMultipleAccounts", [
+    keys, { commitment: "finalized", encoding: "base64" }
+  ]);
+  const contextSlot = result?.context?.slot;
+  const accounts = result?.value;
+  if (!Number.isSafeInteger(contextSlot) || contextSlot < 1 ||
+      !Array.isArray(accounts) || accounts.length !== lookups.length) {
+    throw new Error("Address lookup RPC response context or account count is invalid");
+  }
+  const resolved = [];
+  for (let i = 0; i < lookups.length; i++) {
+    const account = accounts[i];
+    if (!account || account.owner !== ADDRESS_LOOKUP_TABLE_PROGRAM_ID ||
+        !Array.isArray(account.data) || typeof account.data[0] !== "string" ||
+        account.data[1] !== "base64") {
+      throw new Error("Address lookup table is missing, malformed, or owned by an unexpected program");
+    }
+    const data = Uint8Array.from(atob(account.data[0]), char => char.charCodeAt(0));
+    if (data.length < 56 || (data.length - 56) % 32 !== 0 ||
+        data.length > 56 + 256 * 32) {
+      throw new Error("Address lookup table account data length is invalid");
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (view.getUint32(0, true) !== 1) {
+      throw new Error("Address lookup table account state is not initialized");
+    }
+    const deactivationSlot = view.getBigUint64(4, true);
+    const lastExtendedSlot = view.getBigUint64(12, true);
+    const lastExtendedStartIndex = data[20];
+    const authorityOption = data[21];
+    if (authorityOption > 1 || data[54] !== 0 || data[55] !== 0 ||
+        lastExtendedStartIndex > (data.length - 56) / 32) {
+      throw new Error("Address lookup table metadata is invalid");
+    }
+    if (deactivationSlot !== ALT_DEACTIVATION_SLOT_NEVER) {
+      throw new Error("Deactivated address lookup tables are not trusted");
+    }
+    if (lastExtendedSlot > BigInt(contextSlot)) {
+      throw new Error("Address lookup table extension slot is ahead of RPC context");
+    }
+    const addresses = [];
+    for (let offset = 56; offset < data.length; offset += 32) {
+      addresses.push(encodeBase58(data.slice(offset, offset + 32)));
+    }
+    const table = lookups[i];
+    const allIndexes = [...table.writableIndexes, ...table.readonlyIndexes];
+    if (!Array.isArray(table.writableIndexes) || !Array.isArray(table.readonlyIndexes) ||
+        allIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= addresses.length)) {
+      throw new Error("Address lookup table index is outside the resolved address range");
+    }
+    const usableCount = lastExtendedSlot === BigInt(contextSlot)
+      ? lastExtendedStartIndex
+      : addresses.length;
+    if (allIndexes.some(index => index >= usableCount)) {
+      throw new Error("Address lookup table contains an address that is not warmed up");
+    }
+    resolved.push({
+      accountKey: table.accountKey,
+      writable: table.writableIndexes.map(index => addresses[index]),
+      readonly: table.readonlyIndexes.map(index => addresses[index])
+    });
+  }
+  return Object.freeze({
+    contextSlot,
+    tables: Object.freeze(resolved.map(table => Object.freeze({
+      ...table,
+      writable: Object.freeze(table.writable),
+      readonly: Object.freeze(table.readonly)
+    })))
   });
 }
 
