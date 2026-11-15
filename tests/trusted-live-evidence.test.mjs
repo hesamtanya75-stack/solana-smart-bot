@@ -301,6 +301,16 @@ test("resolved ALT addresses cannot duplicate a static transaction account key",
   ), /duplicate a static transaction account key/);
 });
 
+test("ALT resolver rejects duplicate indexes before making an RPC request", async () => {
+  let called = false;
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: encodeBase58(new Uint8Array(32).fill(42)),
+    writableIndexes: [0], readonlyIndexes: [0]
+  }], async () => { called = true; throw new Error("RPC should not be called"); }),
+  /indexes are invalid or duplicated/);
+  assert.equal(called, false);
+});
+
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   await assert.rejects(resolveJupiterAddressLookupTables([{
