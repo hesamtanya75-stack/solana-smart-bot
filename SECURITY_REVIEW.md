@@ -82,3 +82,22 @@ The earlier review target above is historical. The current code review was refre
 ### Refreshed decision
 
 **Still NOT APPROVED for Mainnet, signing, transaction submission, or live trading.** Keep PR #27 in Draft. Do not merge or deploy to production. Paper-trading and the successful CI test suite do not establish live-trading readiness. The blocking findings above, the missing funded Devnet lifecycle test, and the outstanding dependency audit must be addressed in a separately reviewed change before any release decision.
+
+
+## CI review update — 2026-11-15 (commit 67b0e6f0ffb86a1db5342fc363e058d09c397dd6)
+
+This update supersedes the earlier dependency-audit warning for the exact commit named above; it does not erase the historical findings recorded above.
+
+### Verified GitHub Actions results for this commit
+
+- Node tests: **103 tests, 103 passed, 0 failed**.
+- npm audit for the isolated Miniflare test dependency installation: **0 vulnerabilities reported**.
+- Cloudflare Worker build validation: **success** (Wrangler dry-run validation; not a production deployment).
+- Frontend syntax validation: **success**.
+- Devnet read-only cluster/RPC validation: **success**.
+- Funded signed Devnet transfer: **skipped**, because `DEVNET_RPC_URL` was not configured. No signed Devnet transaction lifecycle is claimed.
+- The workflow job completed successfully; this does not prove production Cloudflare secrets, bindings, migrations, or runtime behavior.
+
+### Current release decision
+
+The successful tests and clean npm audit resolve the specific CI test-runtime audit warning for this commit. They do **not** resolve the live-trading blockers documented above. Keep PR #27 in Draft. No merge, production deployment, Mainnet signing, transaction submission, or live trading is approved. The funded Devnet lifecycle and independent review of live transaction decoding and settlement remain outstanding.
