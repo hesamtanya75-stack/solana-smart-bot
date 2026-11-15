@@ -167,7 +167,7 @@ function orderIntentFingerprint(body, amountLamports) {
   const destination = String(body?.destination || "");
   const slippageBps = Number(body?.slippageBps);
   if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
-      !base58.test(destination) || destination !== EXPECTED_BOT_WALLET ||
+      !base58.test(destination) ||
       !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
       inputMint !== "So11111111111111111111111111111111111111112") {
     throw new Error("Complete immutable order intent is required");
@@ -431,7 +431,7 @@ export class LiveTradeCoordinator {
       outputMint: reservation.item.outputMint,
       inputAmount: String(reservation.item.amountLamports),
       outputAmount,
-      expectedOwner: EXPECTED_BOT_WALLET
+      expectedOwner: reservation.item.destination
     }, this.env?.FETCH_IMPL || fetch);
     if (!proof || proof.verified !== true ||
         proof.signature !== signature ||
@@ -439,7 +439,7 @@ export class LiveTradeCoordinator {
         proof.inputAmount !== String(reservation.item.amountLamports) ||
         proof.outputMint !== reservation.item.outputMint ||
         proof.outputAmount !== outputAmount ||
-        proof.owner !== EXPECTED_BOT_WALLET ||
+        proof.owner !== reservation.item.destination ||
         proof.confirmationStatus !== "finalized") {
       throw new Error("Independent finalized settlement proof is incomplete or mismatched");
     }
