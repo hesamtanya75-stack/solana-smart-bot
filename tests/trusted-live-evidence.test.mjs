@@ -12,6 +12,22 @@ function decodeBase58(value) {
   for (let i = 0; i < value.length && value[i] === "1"; i++) bytes.unshift(0);
   return Uint8Array.from(bytes);
 }
+function validUnsignedV1Transaction() {
+  const signer = decodeBase58(BOT_WALLET);
+  const message = Uint8Array.from([
+    0x81, // v1 version prefix
+    1, 0, 1, // one required signer, writable signer, one readonly unsigned address
+    0, 0, 0, 0, // no transaction config fields
+    ...new Array(32).fill(0), // recent blockhash
+    1, 2, // one instruction, two inline addresses
+    ...signer,
+    ...new Array(32).fill(17), // instruction program
+    1, 1, 1, 0, // program index, account count, u16 data length
+    0, 0, // account index, one-byte instruction data
+    ...new Array(64).fill(0) // signatures are at the tail in v1
+  ]);
+  return Buffer.from(message).toString("base64");
+}
 function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
   const systemProgram = new Array(32).fill(0);
@@ -83,13 +99,40 @@ test("malformed Jupiter instruction program index is rejected", () => {
 });
 
 
-test("unsupported versioned Jupiter message is rejected", () => {
-  const bytes = Buffer.from(validUnsignedTransaction(), "base64");
-  // Signature-count prefix + 64 signature bytes = message start.
-  bytes[65] = 0x81;
+test("v1 transaction is structurally parsed but never semantically trusted", () => {
+  const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.signatureCount, 1);
+  assert.equal(parsed.staticAccountCount, 2);
+  assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.addressLookupCount, 0);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 transaction with unknown config bits is rejected", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[4] = 0x20; // config mask bit 5 is not defined
   assert.throws(
     () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
-    /Unsupported Jupiter transaction message version/
+    /config mask is unsupported/
+  );
+});
+
+test("v1 transaction with a nonzero signature is rejected", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[bytes.length - 1] = 1;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /must be unsigned/
+  );
+});
+
+test("v1 transaction exceeding its protocol size limit is rejected", () => {
+  const bytes = Buffer.alloc(4097);
+  bytes[0] = 0x81;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /exceeds the 4,096-byte size limit/
   );
 });
 
