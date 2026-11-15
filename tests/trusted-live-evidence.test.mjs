@@ -84,6 +84,24 @@ function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signat
   return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(signatureByte), ...message])).toString("base64");
 }
 
+test("v1 transaction rejects duplicate inline account addresses", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes.copy(bytes, 74, 42, 74);
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /duplicate account addresses/
+  );
+});
+
+test("v1 transaction rejects program id index zero", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[106] = 0;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /instruction header is invalid/
+  );
+});
+
 test("v1 heap-size config accepts a valid 32 KiB multiple", () => {
   const parsed = validateUnsignedJupiterTransaction(unsignedV1TransactionWithHeap(32768), BOT_WALLET);
   assert.equal(parsed.messageVersion, 1);
