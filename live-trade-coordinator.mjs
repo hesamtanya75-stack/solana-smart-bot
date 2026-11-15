@@ -98,6 +98,51 @@ function usdCentsFromLamports(amountLamports, solUsd) {
   return Math.ceil((amountLamports / LAMPORTS_PER_SOL) * solUsd * 100);
 }
 
+function validateAllInCostEvidence(costs, amountLamports) {
+  const fields = [
+    "computeUnitPriceMicroLamports", "computeUnitLimit",
+    "maxPriorityFeeLamports", "baseFeeLamports", "tipLamports",
+    "rentLamports", "otherOutflowLamports"
+  ];
+  if (!costs || typeof costs !== "object" || Array.isArray(costs) ||
+      fields.some(field => !Object.prototype.hasOwnProperty.call(costs, field))) {
+    throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
+  }
+  const priceText = String(costs.computeUnitPriceMicroLamports);
+  if (!/^\\d{1,20}$/.test(priceText) ||
+      !Number.isSafeInteger(costs.computeUnitLimit) || costs.computeUnitLimit < 1 ||
+      costs.computeUnitLimit > 1_400_000) {
+    throw new Error("Trusted compute budget evidence is invalid");
+  }
+  for (const field of ["maxPriorityFeeLamports", "baseFeeLamports", "tipLamports", "rentLamports", "otherOutflowLamports"]) {
+    if (!Number.isSafeInteger(costs[field]) || costs[field] < 0) {
+      throw new Error("Trusted all-in transaction cost evidence is invalid");
+    }
+  }
+  const calculatedPriority = (BigInt(priceText) * BigInt(costs.computeUnitLimit) + 999_999n) / 1_000_000n;
+  if (calculatedPriority > BigInt(Number.MAX_SAFE_INTEGER) ||
+      Number(calculatedPriority) !== costs.maxPriorityFeeLamports) {
+    throw new Error("Priority fee does not match the verified compute budget");
+  }
+  const fees = BigInt(costs.maxPriorityFeeLamports) + BigInt(costs.baseFeeLamports) +
+    BigInt(costs.tipLamports) + BigInt(costs.rentLamports) + BigInt(costs.otherOutflowLamports);
+  const total = BigInt(amountLamports) + fees;
+  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("All-in transaction cost exceeds safe accounting limits");
+  }
+  return Object.freeze({
+    computeUnitPriceMicroLamports: priceText,
+    computeUnitLimit: costs.computeUnitLimit,
+    maxPriorityFeeLamports: costs.maxPriorityFeeLamports,
+    baseFeeLamports: costs.baseFeeLamports,
+    tipLamports: costs.tipLamports,
+    rentLamports: costs.rentLamports,
+    otherOutflowLamports: costs.otherOutflowLamports,
+    totalFeeLamports: Number(fees),
+    totalLamports: Number(total)
+  });
+}
+
 function currentUtcDay(now) {
   return new Date(now).toISOString().slice(0, 10);
 }
@@ -278,8 +323,11 @@ export class LiveTradeCoordinator {
         now - quoteTimestamp > MAX_QUOTE_AGE_MS) {
       throw new Error("Trusted SOL/USD quote is stale");
     }
-    const amountCents = usdCentsFromLamports(amountLamports, quote.price);
-    if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade USD limit exceeded");
+    // Cost evidence must come from trusted server-side route/build analysis.
+    // Never accept fee estimates supplied by the browser.
+    const allInCosts = validateAllInCostEvidence(evidence.costs, amountLamports);
+    const amountCents = usdCentsFromLamports(allInCosts.totalLamports, quote.price);
+    if (amountCents > MAX_TRADE_USD_CENTS) throw new Error("Per-trade all-in USD limit exceeded");
 
     return this.withState(state => {
       // Recheck after network calls to protect against concurrent reservations
@@ -315,6 +363,7 @@ export class LiveTradeCoordinator {
       const reservation = {
         idempotencyKey: key,
         amountLamports,
+        allInCosts,
         inputMint: body.inputMint,
         outputMint: body.outputMint,
         destination: body.destination,
