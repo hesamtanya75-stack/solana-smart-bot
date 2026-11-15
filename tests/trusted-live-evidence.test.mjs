@@ -980,7 +980,7 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     [{ ...valid.routePlan[0], swapInfo: { ...valid.routePlan[0].swapInfo, inAmount: "18446744073709551616" } }]
   ]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\\[0\\] is malformed/);
+      /routePlan\[0\] is malformed/);
   }
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ swapMode: "Unknown" })),
     /response envelope/);
