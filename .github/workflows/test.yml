@@ -19,5 +19,9 @@ jobs:
           node-version: 20
       - name: Install isolated Durable Objects test runtime
         run: npm install --no-save --ignore-scripts --package-lock=false miniflare@3
+      - name: Report dependency audit details for the isolated test runtime
+        run: |
+          npm audit --json > npm-audit.json || true
+          node --input-type=commonjs -e 'const a=require("./npm-audit.json"); for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,via:v.via,fixAvailable:v.fixAvailable}));'
       - name: Run safety and Durable Objects runtime tests
         run: npm test
