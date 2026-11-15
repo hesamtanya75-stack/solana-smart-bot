@@ -34,8 +34,8 @@ function mockLookupTableAccount({ owner = "AddressLookupTab1e1111111111111111111
   for (let i = 0; i < addressCount; i++) data.fill(i + 7, 56 + i * 32, 56 + (i + 1) * 32);
   return { owner, data: [data.toString("base64"), "base64"], executable: false, lamports: 1 };
 }
-function validUnsignedV0TransactionWithLookup() {
-  const signer = decodeBase58(BOT_WALLET);
+function validUnsignedV0TransactionWithLookup(signerAddress = BOT_WALLET) {
+  const signer = decodeBase58(signerAddress);
   const message = Uint8Array.from([
     0x80, 1, 0, 1,
     2, ...signer, ...new Array(32).fill(17),
@@ -49,8 +49,8 @@ function validUnsignedV0TransactionWithLookup() {
     1, ...new Array(64).fill(0), ...message
   ])).toString("base64");
 }
-function validUnsignedV1Transaction() {
-  const signer = decodeBase58(BOT_WALLET);
+function validUnsignedV1Transaction(signerAddress = BOT_WALLET) {
+  const signer = decodeBase58(signerAddress);
   const message = Uint8Array.from([
     0x81, // v1 version prefix
     1, 0, 1, // one required signer, writable signer, one readonly unsigned address
@@ -91,8 +91,8 @@ function unsignedV1TransactionWithPriorityFeeAndHeap(priorityFeeLamports, heapSi
   heap.writeUInt32LE(heapSize, 0);
   return Buffer.concat([bytes.subarray(0, 122), heap, bytes.subarray(122)]).toString("base64");
 }
-function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
-  const key = decodeBase58(BOT_WALLET);
+function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0, signerAddress = BOT_WALLET) {
+  const key = decodeBase58(signerAddress);
   const systemProgram = new Array(32).fill(0);
   const message = Uint8Array.from([
     1, 0, 1, 2, ...key, ...programIdBytes,
@@ -1318,4 +1318,30 @@ test("trusted evidence rejects malformed UTF-8 provider responses", async () => 
     )),
     /not valid UTF-8/
   );
+});
+
+
+test("legacy, v0 and v1 structural validators bind to a caller-supplied Phantom public key without claiming semantic approval", async () => {
+  const phantomPublicKey = encodeBase58(new Uint8Array(32).fill(99));
+  const legacy = validateUnsignedJupiterTransaction(
+    validUnsignedTransaction(undefined, 0, phantomPublicKey), phantomPublicKey
+  );
+  assert.equal(legacy.messageVersion, "legacy");
+  assert.equal(legacy.semanticInstructionVerification, false);
+
+  const v0 = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(phantomPublicKey), phantomPublicKey,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  assert.equal(v0.messageVersion, 0);
+  assert.equal(v0.lookupTableResolution, "finalized-resolved");
+  assert.equal(v0.semanticInstructionVerification, false);
+
+  const v1 = validateUnsignedJupiterTransaction(
+    validUnsignedV1Transaction(phantomPublicKey), phantomPublicKey
+  );
+  assert.equal(v1.messageVersion, 1);
+  assert.equal(v1.semanticInstructionVerification, false);
 });
