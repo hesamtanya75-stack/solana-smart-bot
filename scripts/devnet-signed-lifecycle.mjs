@@ -7,8 +7,14 @@ import {
 } from "@solana/web3.js";
 
 // A dedicated Devnet RPC may be supplied through GitHub Actions secrets.
-// The genesis-hash guard below still refuses to sign against any other cluster.
-const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
+// On a network failure only, retry the official public Devnet endpoint. Every
+// candidate must pass the exact Devnet genesis-hash guard before key creation.
+const configuredDevnetRpc = process.env.DEVNET_RPC_URL?.trim();
+const DEVNET_RPCS = [...new Set([
+  configuredDevnetRpc,
+  "https://api.devnet.solana.com"
+].filter(Boolean))];
+const EXPECTED_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const TRANSFER_LAMPORTS = 1_000_000; // 0.001 SOL; Devnet only
 const AIRDROP_LAMPORTS = LAMPORTS_PER_SOL / 2;
 
@@ -50,13 +56,34 @@ async function requestDevnetAirdrop(connection, publicKey) {
 }
 
 async function main() {
-  const connection = new Connection(DEVNET_RPC, {
-    commitment: "confirmed",
-    confirmTransactionInitialTimeout: 60_000
-  });
-  const genesis = await connection.getGenesisHash();
-  const expectedGenesis = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
-  if (genesis !== expectedGenesis) throw new Error("Refusing to sign: RPC is not official Solana Devnet");
+  let connection;
+  let genesis;
+  const endpointFailures = [];
+  for (let endpointIndex = 0; endpointIndex < DEVNET_RPCS.length; endpointIndex++) {
+    const candidate = new Connection(DEVNET_RPCS[endpointIndex], {
+      commitment: "confirmed",
+      confirmTransactionInitialTimeout: 60_000
+    });
+    try {
+      const candidateGenesis = await candidate.getGenesisHash();
+      if (candidateGenesis !== EXPECTED_DEVNET_GENESIS) {
+        throw new Error("Refusing to sign: RPC is not official Solana Devnet");
+      }
+      connection = candidate;
+      genesis = candidateGenesis;
+      break;
+    } catch (error) {
+      // A responding endpoint on the wrong cluster is a hard failure. Only a
+      // transport failure may fall through to the official public Devnet RPC.
+      if (String(error?.message || error).includes("Refusing to sign")) throw error;
+      if (error?.name !== "TypeError" || endpointIndex === DEVNET_RPCS.length - 1) throw error;
+      endpointFailures.push("endpoint " + (endpointIndex + 1) + ": network failure");
+    }
+  }
+  if (!connection || genesis !== EXPECTED_DEVNET_GENESIS) {
+    throw new Error("No RPC endpoint passed the official Solana Devnet identity check: " +
+      endpointFailures.join("; "));
+  }
 
   // Fresh ephemeral keys exist only in this CI process; no user wallet or secret is used.
   const payer = Keypair.generate();
