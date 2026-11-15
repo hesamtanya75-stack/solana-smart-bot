@@ -633,19 +633,13 @@ export async function verifyFinalizedJupiterSettlement({
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
 
-  if (inputMint === SOL_MINT) {
-    const pre = meta.preBalances[ownerIndex];
-    const post = meta.postBalances[ownerIndex];
-    if (!Number.isSafeInteger(pre) || !Number.isSafeInteger(post) ||
-        BigInt(pre) - BigInt(post) - BigInt(meta.fee) !== BigInt(inputAmount)) {
-      throw new Error("Finalized SOL balance delta does not match input amount plus network fee");
-    }
-  } else {
-    const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-    const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
-    if (preInput - postInput !== BigInt(inputAmount)) {
-      throw new Error("Finalized input token balance delta does not match the reserved amount");
-    }
+  // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
+  // native lamport balance. Verify the exact token-account delta for every
+  // input mint; native lamport deltas also include fees and account rent.
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  if (preInput - postInput !== BigInt(inputAmount)) {
+    throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
 
   return Object.freeze({
