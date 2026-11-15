@@ -56,3 +56,14 @@ test("Devnet airdrop confirmation uses its signature and never repeats a submitt
   assert.match(helper, /Retry only the faucet request itself/);
   assert.match(helper, /if \(!signature\)/);
 });
+
+test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release the body", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-preflight.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /function retryDelayMs\(response, attempt\)/);
+  assert.match(script, /Math\.min\(dateDelay, 10_000\)/);
+  assert.match(script, /response\.body\?\.cancel\(\)/);
+  assert.match(script, /setTimeout\(resolve, retryDelayMs\(response, attempt\)\)/);
+});
