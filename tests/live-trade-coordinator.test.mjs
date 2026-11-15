@@ -575,6 +575,16 @@ test("coordinator requires a well-formed Bearer authorization header", async () 
   }
 });
 
+test("coordinator rejects malformed non-canonical Phantom destination keys", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const malformed = await post(coordinator, "/reserve", validReservation({
+    destination: "11111111111111111111111111111111111111111111"
+  }));
+  assert.equal(malformed.status, 400);
+  assert.match(malformed.body.error, /complete immutable order intent/i);
+});
+
 test("idempotency binds mint, destination, slippage and quote identity", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
