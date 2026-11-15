@@ -1256,16 +1256,21 @@ export async function fetchProgramAccountIdentityEvidence(
     for (const program of upgradeablePrograms) {
       const refreshedProgram = combinedAccounts[programIds.indexOf(program.programId)];
       if (!refreshedProgram || refreshedProgram.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
-          refreshedProgram.executable !== true || !Array.isArray(refreshedProgram.data) ||
-          typeof refreshedProgram.data[0] !== "string" || refreshedProgram.data[1] !== "base64") {
+          refreshedProgram.executable !== true || !Number.isSafeInteger(refreshedProgram.space) ||
+          refreshedProgram.space < 36 || refreshedProgram.space > 1024 * 1024 ||
+          !Array.isArray(refreshedProgram.data) ||
+          typeof refreshedProgram.data[0] !== "string" ||
+          refreshedProgram.data[0].length > 4 * Math.ceil((1024 * 1024) / 3) ||
+          refreshedProgram.data[1] !== "base64") {
         throw new Error("Upgradeable program identity changed during ProgramData resolution");
       }
       const refreshedBinary = atob(refreshedProgram.data[0]);
       const refreshedBytes = Uint8Array.from(refreshedBinary, character => character.charCodeAt(0));
       if (btoa(refreshedBinary) !== refreshedProgram.data[0] ||
+          refreshedBytes.length !== refreshedProgram.space ||
           decodeUpgradeableProgramAccount(refreshedBytes) !==
             programDataAddresses[upgradeablePrograms.indexOf(program)]) {
-        throw new Error("Upgradeable program ProgramData pointer changed during resolution");
+        throw new Error("Upgradeable program ProgramData pointer or account size changed during resolution");
       }
     }
     const programDataAccounts = combinedAccounts.slice(programIds.length);
