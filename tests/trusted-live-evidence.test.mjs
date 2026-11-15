@@ -240,11 +240,13 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
         } } }
       }
     } });
+    }
     if (request.method === "getTokenSupply") {
       assert.equal(request.params[1].commitment, "finalized");
       return Response.json({ jsonrpc: "2.0", id: 1, result: {
       value: { amount: "1001", decimals: 0 }
     } });
+    }
     }
     throw new Error("Unexpected RPC method " + request.method);
   };
