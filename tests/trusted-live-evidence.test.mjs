@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
@@ -1181,6 +1181,111 @@ test("reviewed deployment allowlist rejects duplicate and malformed policy entri
     () => verifyUpgradeableProgramDeploymentAllowlist(identity, [{ ...policy, instructionPolicySha256: "not-a-hash" }]),
     /malformed or duplicated/
   );
+});
+
+test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
+  const programId = "ComputeBudget111111111111111111111111111111";
+  const instruction = (variant, value, width = 4) => {
+    const payload = Buffer.alloc(1 + width);
+    payload[0] = variant;
+    if (width === 4) payload.writeUInt32LE(value, 1);
+    else payload.writeBigUInt64LE(BigInt(value), 1);
+    return { programId, accounts: [], dataBase64: payload.toString("base64") };
+  };
+  const evidence = [
+    instruction(2, 200000),
+    instruction(3, 6, 8),
+    instruction(1, 65536),
+    instruction(4, 1048576)
+  ];
+  const result = verifyComputeBudgetPriorityFee({
+    messageVersion: 0,
+    outerInstructionEvidence: evidence,
+    maxPriorityFeeLamports: "2"
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.computeUnitLimit, 200000);
+  assert.equal(result.computeUnitPriceMicroLamports, "6");
+  assert.equal(result.priorityFeeLamports, "2");
+  assert.equal(result.requestedHeapFrameBytes, 65536);
+  assert.equal(result.loadedAccountsDataSizeLimit, 1048576);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: 0,
+    outerInstructionEvidence: evidence,
+    maxPriorityFeeLamports: "1"
+  }), /exceeds the configured maximum/);
+});
+
+test("compute-budget verifier rejects duplicate, malformed, unknown, and unbounded instructions", () => {
+  const programId = "ComputeBudget111111111111111111111111111111";
+  const make = (variant, value, width = 4, accounts = []) => {
+    const bytes = Buffer.alloc(1 + width);
+    bytes[0] = variant;
+    if (width === 4) bytes.writeUInt32LE(value, 1);
+    else bytes.writeBigUInt64LE(BigInt(value), 1);
+    return { programId, accounts, dataBase64: bytes.toString("base64") };
+  };
+  const limit = make(2, 200000);
+  const price = make(3, 10, 8);
+  const cap = { messageVersion: "legacy", maxPriorityFeeLamports: "10" };
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit, limit, price]
+  }), /Duplicate Compute Budget/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [price]
+  }), /must explicitly set/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit, make(9, 0)]
+  }), /Unsupported Compute Budget/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [make(1, 1000), limit]
+  }), /RequestHeapFrame value/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [{ ...limit, accounts: [{ pubkey: BOT_WALLET }] }]
+  }), /accounts or data are malformed/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit], maxPriorityFeeLamports: "not-a-number"
+  }), /Priority fee cap/);
+});
+
+test("v1 priority fee is read as absolute lamports from message config and bounded", () => {
+  const original = Buffer.from(validUnsignedV1Transaction(), "base64");
+  const fee = Buffer.alloc(8);
+  fee.writeBigUInt64LE(12n, 0);
+  const withFee = Buffer.concat([
+    original.subarray(0, 106),
+    fee,
+    original.subarray(106)
+  ]);
+  withFee[4] |= 0x03; // both priority-fee config bits
+  const parsed = validateUnsignedJupiterTransaction(withFee.toString("base64"), BOT_WALLET);
+  assert.equal(parsed.priorityFeeLamports, "12");
+  assert.equal(parsed.computeUnitLimit, 20000);
+  const result = verifyComputeBudgetPriorityFee({
+    messageVersion: parsed.messageVersion,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [],
+    maxPriorityFeeLamports: "12"
+  });
+  assert.equal(result.priorityFeeLamports, "12");
+  assert.equal(result.computeUnitPriceMicroLamports, "0");
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: parsed.messageVersion,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [],
+    maxPriorityFeeLamports: "11"
+  }), /exceeds the configured maximum/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: 1,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [{
+      programId: "ComputeBudget111111111111111111111111111111"
+    }],
+    maxPriorityFeeLamports: "12"
+  }), /must use message config/);
 });
 
 test("upgradeable ProgramData evidence marks a no-authority deployment immutable", async () => {
