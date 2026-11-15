@@ -89,13 +89,14 @@ test("funded Devnet lifecycle verifies cluster identity before creating signers"
   const mainStart = script.indexOf("async function main()");
   assert.notEqual(mainStart, -1);
   const main = script.slice(mainStart);
-  const genesisCheck = main.indexOf('if (genesis !== expectedGenesis)');
+  const genesisCheck = main.indexOf("candidateGenesis !== EXPECTED_DEVNET_GENESIS");
   const payerCreation = main.indexOf("const payer = Keypair.generate()");
   const recipientCreation = main.indexOf("const recipient = Keypair.generate()");
   assert.notEqual(genesisCheck, -1);
   assert.ok(payerCreation > genesisCheck, "payer must not be created before Devnet identity is checked");
   assert.ok(recipientCreation > genesisCheck, "recipient must not be created before Devnet identity is checked");
   assert.match(main, /Refusing to sign: RPC is not official Solana Devnet/);
+  assert.match(main, /error\?\.name !== "TypeError"/);
 });
 
 
@@ -109,5 +110,17 @@ test("Devnet preflight falls back only to the official Devnet RPC after network 
   assert.match(script, /new Set\(\[/);
   assert.match(script, /if \(endpointFailed\) continue/);
   assert.match(script, /EXPECTED_DEVNET_GENESIS/);
+  assert.doesNotMatch(script, /api\.mainnet-beta\.solana\.com/);
+});
+
+
+test("signed Devnet lifecycle uses only a configured endpoint or official Devnet fallback", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /"https:\/\/api\.devnet\.solana\.com"/);
+  assert.match(script, /new Set\(\[/);
+  assert.match(script, /candidateGenesis !== EXPECTED_DEVNET_GENESIS/);
   assert.doesNotMatch(script, /api\.mainnet-beta\.solana\.com/);
 });
