@@ -1955,3 +1955,52 @@ test("legacy, v0 and v1 structural validators bind to a caller-supplied Phantom 
   assert.equal(v1.messageVersion, 1);
   assert.equal(v1.semanticInstructionVerification, false);
 });
+
+
+test("upgradeable ProgramData resolution rejects refreshed Program account size mismatches", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(37));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(79));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const makeProgram = (spaceDelta = 0) => {
+    const data = Buffer.alloc(36);
+    data.writeUInt32LE(2, 0);
+    Buffer.from(decodeBase58(programDataAddress)).copy(data, 4);
+    return {
+      owner: loaderOwner,
+      executable: true,
+      space: data.length + spaceDelta,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  const elf = Buffer.alloc(64, 0);
+  elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  elf.writeUInt16LE(3, 16);
+  elf[18] = 247;
+  elf.writeUInt32LE(1, 20);
+  elf.writeUInt16LE(64, 52);
+  const programDataState = Buffer.alloc(13 + elf.length);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1200n, 4);
+  programDataState[12] = 0;
+  elf.copy(programDataState, 13);
+  const programData = {
+    owner: loaderOwner,
+    executable: false,
+    space: programDataState.length,
+    data: [programDataState.toString("base64"), "base64"]
+  };
+  let calls = 0;
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const value = calls === 1
+        ? [makeProgram()]
+        : [makeProgram(1), programData];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1500 + calls }, value
+      } });
+    }
+  ), /ProgramData pointer or account size changed during resolution/);
+});
