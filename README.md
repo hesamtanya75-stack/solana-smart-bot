@@ -4,7 +4,7 @@ A Solana token scanner with server-authoritative **paper trading**. The current 
 
 ## Security and deployment checklist
 
-The security changes in PR #26 are not a production deployment approval. Keep the PR unmerged until the required Cloudflare configuration and operational checks below have been completed.
+The security changes in PR #27 are not a production deployment approval. Keep the PR unmerged until the required Cloudflare configuration and operational checks below have been completed.
 
 ### Required Cloudflare Worker secrets
 
@@ -39,7 +39,7 @@ The Durable Object migrations in `wrangler.jsonc` must be applied in order. A lo
 1. Confirm the production Worker name, route/domain, KV namespace ID, and all Durable Object bindings in the Cloudflare dashboard.
 2. Confirm both required secrets are present without revealing their values.
 3. Run the repository test suite: `npm test`.
-4. Confirm the Cloudflare Worker build validation and Devnet signed lifecycle CI checks pass for the exact commit being considered.
+4. Confirm the Cloudflare Worker build validation and Devnet read-only checks pass for the exact commit being considered. The funded signed Devnet transfer step is skipped unless a dedicated DEVNET_RPC_URL is configured; a successful workflow does not prove that a signed transfer was tested.
 5. Verify login, MFA enrollment and recovery, logout/revocation, paper buy, paper sell thresholds, and one-time legacy-state migration in a non-production environment.
 6. Review Cloudflare logs for errors without logging credentials, session tokens, MFA secrets, backup codes, or API keys.
 
