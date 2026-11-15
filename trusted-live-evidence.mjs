@@ -52,8 +52,8 @@ function isU64DecimalString(value, allowZero = false) {
   return (allowZero || amount > 0n) && amount <= 18446744073709551615n;
 }
 
-function validateBuildRoutePlan(routePlan) {
-  return Object.freeze(routePlan.map((step, index) => {
+function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
+  const validated = routePlan.map((step, index) => {
     const info = step?.swapInfo;
     if (!step || typeof step !== "object" || Array.isArray(step) ||
         !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
@@ -83,7 +83,17 @@ function validateBuildRoutePlan(routePlan) {
         })
       })
     });
-  }));
+  const percentTotal = validated.reduce((sum, step) => sum + step.percent, 0);
+  const bpsValues = validated.map(step => step.bps);
+  const hasBps = bpsValues.some(value => value != null);
+  if (percentTotal !== 100 ||
+      (hasBps && (bpsValues.some(value => value == null) ||
+        bpsValues.reduce((sum, value) => sum + value, 0) !== 10000)) ||
+      validated.some(step =>
+        step.swapInfo.inputMint !== inputMint || step.swapInfo.outputMint !== outputMint)) {
+    throw new Error("Jupiter build routePlan totals or token mints are inconsistent");
+  }
+  return Object.freeze(validated);
 }
 
 function validateBuildInstruction(instruction, name) {
@@ -147,7 +157,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   if (version !== "0" && version !== "1") {
     throw new Error("Jupiter build transaction version is unsupported");
   }
-  const routePlan = validateBuildRoutePlan(build.routePlan);
+  const routePlan = validateBuildRoutePlan(build.routePlan, build.inputMint, build.outputMint);
   const validateList = (items, name) => Object.freeze(items.map((item, index) =>
     validateBuildInstruction(item, name + "[" + index + "]")));
   const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
