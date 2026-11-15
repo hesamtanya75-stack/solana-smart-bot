@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 20
       - name: Install isolated Durable Objects test runtime
-        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@3
+        run: npm install --no-save --ignore-scripts --package-lock=true miniflare@3
       - name: Report dependency audit details for the isolated test runtime
         run: |
           npm audit --json > npm-audit.json || true
