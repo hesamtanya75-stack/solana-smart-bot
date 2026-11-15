@@ -298,6 +298,16 @@ main>.panel{
     <button id="walletDisconnectButton" type="button" disabled>دەرچوون لە وۆڵێت</button>
   </div>
   <div id="walletStatus" role="status" aria-live="polite" class="small">تەنها ناونیشانی گشتیی وۆڵێت پیشان دەدرێت؛ ئەم پەیوەندییە هێشتا بە ڕێڕەوی داواکاریی کڕینەوە نەبەستراوە. هیچ مامەڵەیەک واژۆ ناکات و هیچ پارەیەک نانێرێت. Seed Phrase و Private Key مەنووسە.</div>
+  <div class="section" id="jupiterQuotePanel">
+    <h3>📈 پێشبینینی کڕین لە Jupiter (تەنها Quote)</h3>
+    <label for="quoteAmountSol">بڕی SOL بۆ پێشبینین</label>
+    <input id="quoteAmountSol" type="number" min="0.000001" max="1" step="0.000001" value="0.01" inputmode="decimal">
+    <label for="quoteOutputMint">ناونیشانی کۆینی مەبەست</label>
+    <input id="quoteOutputMint" type="text" placeholder="Mint address" autocomplete="off" spellcheck="false">
+    <button id="jupiterQuoteButton" type="button">پشکنینی Quote لە Jupiter</button>
+    <div id="jupiterQuoteStatus" class="small" role="status" aria-live="polite">ئەم بەشە تەنها نرخی پێشبینیکراو دەهێنێت؛ هیچ Transaction دروست ناکات و هیچ پارەیەک ناگوازێتەوە.</div>
+    <div id="jupiterQuoteResult" class="small"></div>
+  </div>
 </section>
 
 
@@ -1566,6 +1576,61 @@ async function serverRequest(path, options = {}) {
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
   return data;
 }
+
+const jupiterQuoteButton = document.getElementById("jupiterQuoteButton");
+const jupiterQuoteStatus = document.getElementById("jupiterQuoteStatus");
+const jupiterQuoteResult = document.getElementById("jupiterQuoteResult");
+const quoteOutputMint = document.getElementById("quoteOutputMint");
+const quoteAmountSol = document.getElementById("quoteAmountSol");
+
+jupiterQuoteButton.addEventListener("click", async () => {
+  jupiterQuoteResult.textContent = "";
+  if (!serverModeReady || !serverToken) {
+    jupiterQuoteStatus.textContent = "سەرەتا بچۆ ژوورەوە بۆ بەکارهێنانی Quote Preview.";
+    return;
+  }
+  const outputMint = quoteOutputMint.value.trim() || document.getElementById("mint")?.value.trim() || "";
+  const amountText = quoteAmountSol.value.trim();
+  const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  if (!base58.test(outputMint)) {
+    jupiterQuoteStatus.textContent = "تکایە ناونیشانی Mint ـی دروست بنووسە.";
+    return;
+  }
+  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,9})?$/.test(amountText)) {
+    jupiterQuoteStatus.textContent = "بڕی SOL دروست نییە.";
+    return;
+  }
+  const [whole, fraction = ""] = amountText.split(".");
+  const lamports = BigInt(whole) * 1000000000n + BigInt((fraction + "000000000").slice(0, 9));
+  if (lamports < 1000n || lamports > 1000000000n) {
+    jupiterQuoteStatus.textContent = "بڕی Quote دەبێت لە 0.000001 تا 1 SOL بێت.";
+    return;
+  }
+  jupiterQuoteButton.disabled = true;
+  jupiterQuoteStatus.textContent = "داواکاریی پێشبینین بۆ Jupiter دەنێردرێت...";
+  try {
+    const quote = await serverRequest("/api/live/quote-preview", {
+      method: "POST",
+      body: JSON.stringify({ outputMint, amountLamports: lamports.toString() })
+    });
+    if (quote.quoteOnly !== true || quote.transactionAvailable !== false) {
+      throw new Error("وەڵامی Quote تەنها پشتڕاست نەکرایەوە.");
+    }
+    const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact);
+    const fee = quote.feeBps == null ? "بەردەست نییە" : String(quote.feeBps) + " bps";
+    jupiterQuoteResult.textContent =
+      "بڕی نێردراو: " + amountText + " SOL\\n" +
+      "بڕی دەرچوون (raw token units): " + quote.outAmount + "\\n" +
+      "کاریگەری نرخ: " + impact + "\\n" +
+      "کرێی ڕێڕەو: " + fee + "\\n" +
+      "ژمارەی هەنگاوەکانی ڕێڕەو: " + quote.routePlanCount;
+    jupiterQuoteStatus.textContent = "Quote ـی تەنها خوێندنەوە وەرگیرا. ئەمە نرخێکی پێشبینیکراوە، نەک بەڵێنی جێبەجێبوون.";
+  } catch (error) {
+    jupiterQuoteStatus.textContent = "پێشبینین سەرکەوتوو نەبوو: " + error.message;
+  } finally {
+    jupiterQuoteButton.disabled = false;
+  }
+});
 function renderServerControls(state) {
   autoDemoBuyEnabled = state.autoEnabled === true;
   autoDemoBuyPaused = state.paused === true;
