@@ -26,7 +26,7 @@ The Worker does not call `LiveTradeCoordinator`. There is no production route th
 
 ### High — sell-route verification makes reservations fail closed
 
-`fetchTrustedSellRoute()` requires the expected bot wallet to already own enough of the output token to run a $3 sell probe. That condition normally cannot hold before the first purchase of a new token. In addition, `validateUnsignedJupiterTransaction()` validates transaction wire structure only and explicitly returns `semanticInstructionVerification: false`. The risk evidence consequently cannot satisfy the coordinator's requirement for semantic instruction verification. **Reservations are currently blocked by design.** Do not weaken these checks. A future implementation needs a safe, independently verified exit-route simulation and full instruction/account/program and address-lookup-table decoding.
+`fetchTrustedSellRoute()` now uses a Jupiter Swap API V2 quote-only request (no `taker`) to check whether a route is quoted without requiring the bot wallet to own the token before its first purchase. This is only a route quote: it returns no transaction and does not prove executable sellability. `validateUnsignedJupiterTransaction()` validates transaction wire structure only and explicitly returns `semanticInstructionVerification: false`; address lookup tables are not resolved or semantically verified. The risk evidence therefore cannot satisfy the coordinator's requirement for semantic instruction verification. **Reservations remain blocked by design.** Do not weaken these checks. A future implementation needs independently verified instruction/account/program decoding and address-lookup-table resolution, plus a safe exit-route verification design.
 
 ### High — settlement transitions are disabled
 
