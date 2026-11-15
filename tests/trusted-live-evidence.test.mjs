@@ -1011,6 +1011,27 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     /response envelope/);
 });
 
+test("Jupiter /build bounds aggregate instruction bundle resources", () => {
+  const valid = validBuildResponse();
+  const repeated = Array.from({ length: 64 }, () => valid.swapInstruction);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    computeBudgetInstructions: repeated,
+    setupInstructions: repeated,
+    otherInstructions: repeated,
+    swapInstruction: valid.swapInstruction
+  })), /aggregate resource limits/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    otherInstructions: Array.from({ length: 64 }, () => ({
+      ...valid.swapInstruction,
+      accounts: Array.from({ length: 65 }, () => ({
+        pubkey: "11111111111111111111111111111111",
+        isSigner: false,
+        isWritable: false
+      }))
+    }))
+  })), /aggregate resource limits/);
+});
+
 test("Jupiter /build enforces route split totals and top-level token mints", () => {
   const step = validBuildResponse().routePlan[0];
   const split = [
