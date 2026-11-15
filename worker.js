@@ -267,7 +267,7 @@ async function rpcBatch(calls, env, diagnostics = null) {
         signal: AbortSignal.timeout(7000)
       });
       if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
+      const data = await readBoundedJsonResponse(response);
       const results = parseRpcBatchResponse(data, calls.length);
       if (diagnostics) diagnostics.successes.push(endpoint.label);
       return results;
