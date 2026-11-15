@@ -285,6 +285,11 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
       ((configMask & 0x3) !== 0 && (configMask & 0x3) !== 0x3)) {
     throw new Error("V1 Jupiter transaction config mask is unsupported");
   }
+  // V1 transactions must explicitly request non-zero compute and loaded-data
+  // budgets. Missing fields default to zero and cannot execute successfully.
+  if ((configMask & 0x0c) !== 0x0c) {
+    throw new Error("V1 transaction must explicitly set compute and loaded-data limits");
+  }
   cursor += 32; // recent blockhash
   const instructionCount = bytes[cursor++];
   const addressCount = bytes[cursor++];
@@ -319,17 +324,32 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   if (cursor + configBytes > bytes.length) {
     throw new Error("V1 Jupiter transaction config values are truncated");
   }
-  // Heap size is the final optional config value (bit 4), encoded as u32 LE.
+  // Config values are encoded in ascending bit order: priority fee (u64),
+  // compute-unit limit (u32), loaded-account data limit (u32), heap size (u32).
+  let configOffset = cursor;
+  if ((configMask & 0x3) !== 0) configOffset += 8;
+  const computeUnitLimit = (configMask & 0x4) !== 0
+    ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
+      (bytes[configOffset + 2] << 16) | (bytes[configOffset + 3] << 24)) >>> 0
+    : null;
+  if (computeUnitLimit !== null) configOffset += 4;
+  const loadedAccountsDataSizeLimit = (configMask & 0x8) !== 0
+    ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
+      (bytes[configOffset + 2] << 16) | (bytes[configOffset + 3] << 24)) >>> 0
+    : null;
+  if (loadedAccountsDataSizeLimit !== null) configOffset += 4;
+  if (computeUnitLimit < 1 || computeUnitLimit > 1400000) {
+    throw new Error("V1 transaction compute-unit limit is outside the supported range");
+  }
+  if (loadedAccountsDataSizeLimit < 1 || loadedAccountsDataSizeLimit > 64 * 1024 * 1024) {
+    throw new Error("V1 transaction loaded-data limit is outside the supported range");
+  }
   // Solana requires a 1 KiB multiple in the inclusive 32–256 KiB range.
   if ((configMask & 0x10) !== 0) {
-    const heapOffset = cursor +
-      ((configMask & 0x3) ? 8 : 0) +
-      ((configMask & 0x4) ? 4 : 0) +
-      ((configMask & 0x8) ? 4 : 0);
-    const heapSize = (bytes[heapOffset] |
-      (bytes[heapOffset + 1] << 8) |
-      (bytes[heapOffset + 2] << 16) |
-      (bytes[heapOffset + 3] << 24)) >>> 0;
+    const heapSize = (bytes[configOffset] |
+      (bytes[configOffset + 1] << 8) |
+      (bytes[configOffset + 2] << 16) |
+      (bytes[configOffset + 3] << 24)) >>> 0;
     if (heapSize < 32768 || heapSize > 262144 || heapSize % 1024 !== 0) {
       throw new Error("V1 Jupiter transaction heap size is outside the valid range");
     }
