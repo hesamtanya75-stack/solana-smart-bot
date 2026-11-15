@@ -1122,6 +1122,29 @@ export function verifyComputeBudgetPriorityFee({
       outerInstructionEvidence.length > 256) {
     throw new Error("Priority fee cap or instruction evidence is invalid");
   }
+  // Validate the complete outer evidence envelope before inspecting only the
+  // Compute Budget subset. A fee sub-check must not report verified when the
+  // transaction evidence contains null, malformed, or unbound instructions.
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !isCanonicalPublicKey(instruction.programId) ||
+        !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+        typeof instruction.dataBase64 !== "string" || instruction.dataBase64.length > 16384 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("Outer instruction evidence is malformed for priority-fee verification");
+    }
+    const binary = atob(instruction.dataBase64);
+    if (btoa(binary) !== instruction.dataBase64) {
+      throw new Error("Outer instruction data is non-canonical for priority-fee verification");
+    }
+    for (const account of instruction.accounts) {
+      if (!account || typeof account !== "object" || Array.isArray(account) ||
+          !isCanonicalPublicKey(account.pubkey) ||
+          typeof account.isSigner !== "boolean" || typeof account.isWritable !== "boolean") {
+        throw new Error("Outer instruction account evidence is malformed for priority-fee verification");
+      }
+    }
+  }
   const maximumPriorityFee = BigInt(maxPriorityFeeLamports);
   let computeUnitLimit = null;
   let computeUnitPriceMicroLamports = 0n;
