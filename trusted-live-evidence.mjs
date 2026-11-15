@@ -608,6 +608,17 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
       new Set(keys).size !== keys.length) {
     throw new Error("Jupiter address lookup table keys are invalid or duplicated");
   }
+  for (const table of lookups) {
+    if (!Array.isArray(table?.writableIndexes) || !Array.isArray(table?.readonlyIndexes)) {
+      throw new Error("Jupiter address lookup indexes are malformed");
+    }
+    const indexes = [...table.writableIndexes, ...table.readonlyIndexes];
+    if (indexes.length > 256 ||
+        indexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
+        new Set(indexes).size !== indexes.length) {
+      throw new Error("Jupiter address lookup indexes are invalid or duplicated");
+    }
+  }
   const result = await rpc(fetchImpl, "getMultipleAccounts", [
     keys, { commitment: "finalized", encoding: "base64" }
   ]);
@@ -654,8 +665,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     }
     const table = lookups[i];
     const allIndexes = [...table.writableIndexes, ...table.readonlyIndexes];
-    if (!Array.isArray(table.writableIndexes) || !Array.isArray(table.readonlyIndexes) ||
-        allIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= addresses.length)) {
+    if (allIndexes.some(index => index >= addresses.length)) {
       throw new Error("Address lookup table index is outside the resolved address range");
     }
     const usableCount = lastExtendedSlot === BigInt(contextSlot)
