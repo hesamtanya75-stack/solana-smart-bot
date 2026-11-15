@@ -456,7 +456,7 @@ test("concurrent reservations cannot exceed the $5 daily cap", async () => {
   await post(coordinator, "/kill-switch", { enabled: false });
   const requests = [0, 1, 2].map(i => post(coordinator, "/reserve", validReservation({
     idempotencyKey: "parallel-key-" + String(i).padStart(4, "0"),
-    amountLamports: 12_500_000,
+    amountLamports: 12_400_000,
     solUsd: 200
   })));
   const results = await Promise.all(requests);
