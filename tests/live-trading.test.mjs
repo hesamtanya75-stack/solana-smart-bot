@@ -107,6 +107,14 @@ test("eligibility gate rejects missing or invalid server-side state", () => {
   }), /liquidity/);
 });
 
+test("Jupiter order requires an explicit connected Phantom public key", async () => {
+  await assert.rejects(() => getJupiterOrder({
+    env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountLamports: 1000000, eligibility: goodEligibility,
+    fetchImpl: async () => { throw new Error("fetch must not run"); }
+  }), /connected Phantom public key/);
+});
+
 test("order request is blocked while live trading is disabled", async () => {
   await assert.rejects(() => getJupiterOrder({
     takerWallet: EXPECTED_BOT_WALLET,
