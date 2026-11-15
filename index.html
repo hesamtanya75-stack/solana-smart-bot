@@ -292,8 +292,12 @@ main>.panel{
 <section class="section" id="walletPanel" aria-label="دۆخی وۆڵێتی تایبەتی بۆت">
   <h2>👛 وۆڵێتی تایبەتی بۆت</h2>
   <div class="item"><span>دۆخی پەیوەندی</span><b class="value warn" id="walletAddress">هێشتا پەیوەست نەکراوە</b></div>
-  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">پشکنین نەکراوە</b></div>
-  <div id="walletStatus" role="status" aria-live="polite" class="small">هیچ وۆڵێتێک پەیوەست نییە. دوای دروستکردنی وۆڵێتی نوێی Phantom، تەنها ناونیشانی گشتییەکەی لێرە زیاد دەکرێت. Seed Phrase و Private Key مەنووسە.</div>
+  <div class="item"><span>باڵانسی SOL</span><b class="value" id="walletSol">هێشتا پشکنین نەکراوە</b></div>
+  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+    <button id="walletConnectButton" type="button">🔗 پەیوەستکردنی Phantom</button>
+    <button id="walletDisconnectButton" type="button" disabled>دەرچوون لە وۆڵێت</button>
+  </div>
+  <div id="walletStatus" role="status" aria-live="polite" class="small">تەنها ناونیشانی گشتیی وۆڵێت پیشان دەدرێت. ئەم قۆناغە هیچ مامەڵەیەک واژۆ ناکات و هیچ پارەیەک نانێرێت. Seed Phrase و Private Key مەنووسە.</div>
 </section>
 
 
@@ -1048,7 +1052,7 @@ if (liveNotice) {
 }
 const walletNotice = document.createElement("p");
 walletNotice.className = "bot-warning";
-walletNotice.textContent = "Phantom: پەیوەندیی وۆڵێت لەم وێبسایتەدا چالاک نییە؛ ناونیشانی گشتیی دانراوی کۆن وەک وۆڵێتی تۆ پیشان نادرێت. هیچ Seed Phrase یان Private Key مەنووسە.";
+walletNotice.textContent = "پاراستن: پەیوەندی تەنها بۆ خوێندنەوەی ناونیشانی گشتییە؛ واژۆکردن و ناردنی مامەڵە لەم قۆناغەدا ناچالاکە.";
 demoPanel.appendChild(walletNotice);
 document.getElementById("demoBalance").innerText =
   "$" + demoBalance.toFixed(2);
@@ -1894,6 +1898,86 @@ if (serverToken) {
       status().textContent=p.message;
     }catch(e){status().textContent=e.message;}
   };
+
+  // Read-only Phantom connection. This intentionally exposes no signing or
+  // transaction-submission path; the wallet remains in full control.
+  const walletConnectButton = document.getElementById("walletConnectButton");
+  const walletDisconnectButton = document.getElementById("walletDisconnectButton");
+  const walletAddress = document.getElementById("walletAddress");
+  const walletSol = document.getElementById("walletSol");
+  const walletStatus = document.getElementById("walletStatus");
+  let connectedPhantomProvider = null;
+
+  function getPhantomProvider() {
+    const provider = window.phantom?.solana;
+    return provider?.isPhantom === true ? provider : null;
+  }
+
+  function showWalletDisconnected(message) {
+    connectedPhantomProvider = null;
+    walletAddress.textContent = "هێشتا پەیوەست نەکراوە";
+    walletAddress.className = "value warn";
+    walletSol.textContent = "هێشتا پشکنین نەکراوە";
+    walletDisconnectButton.disabled = true;
+    walletConnectButton.disabled = false;
+    walletStatus.textContent = message;
+  }
+
+  function showWalletConnected(provider, publicKey) {
+    const address = publicKey?.toString?.() || "";
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
+      showWalletDisconnected("ناونیشانی وۆڵێت دروست نییە؛ پەیوەندی نوێ بکەوە.");
+      return;
+    }
+    connectedPhantomProvider = provider;
+    walletAddress.textContent = address;
+    walletAddress.className = "value good";
+    walletSol.textContent = "پشکنین نەکراوە";
+    walletDisconnectButton.disabled = false;
+    walletConnectButton.disabled = true;
+    walletStatus.textContent = "Phantom پەیوەستە. تەنها ناونیشانی گشتی خوێندراوەتەوە؛ هیچ واژۆکردن یان ناردنی مامەڵەیەک نەکراوە.";
+  }
+
+  walletConnectButton.addEventListener("click", async () => {
+    const provider = getPhantomProvider();
+    if (!provider) {
+      walletStatus.textContent = "Phantom نەدۆزرایەوە. لە مۆبایلدا ئەم ماڵپەڕە لە ناو وێبگەڕی ناوخۆی Phantom بکەرەوە و دووبارە هەوڵ بدەوە.";
+      return;
+    }
+    walletConnectButton.disabled = true;
+    walletStatus.textContent = "داوای پەیوەندی لە Phantom کراوە؛ تکایە لە Wallet پەسەندی بکە.";
+    try {
+      const response = await provider.connect();
+      showWalletConnected(provider, response?.publicKey || provider.publicKey);
+    } catch (error) {
+      showWalletDisconnected(error?.code === 4001
+        ? "داواکاریی پەیوەندی لەلایەن تۆوە ڕەتکرایەوە."
+        : "پەیوەندی سەرکەوتوو نەبوو. تکایە دووبارە هەوڵ بدەوە.");
+    }
+  });
+
+  walletDisconnectButton.addEventListener("click", async () => {
+    const provider = connectedPhantomProvider;
+    walletDisconnectButton.disabled = true;
+    try {
+      await provider?.disconnect?.();
+    } catch {
+      // Clear the local connection display even if the provider is already closed.
+    }
+    showWalletDisconnected("پەیوەندیی Phantom لەم ماڵپەڕەدا داخرا.");
+  });
+
+  const initialPhantomProvider = getPhantomProvider();
+  if (initialPhantomProvider) {
+    initialPhantomProvider.on?.("accountChanged", publicKey => {
+      if (publicKey) showWalletConnected(initialPhantomProvider, publicKey);
+      else showWalletDisconnected("هەژماری Phantom گۆڕا یان پەیوەندی پچڕا؛ دووبارە پەیوەست ببە.");
+    });
+    initialPhantomProvider.on?.("disconnect", () => {
+      showWalletDisconnected("Phantom پەیوەندییەکەی پچڕاند.");
+    });
+  }
+
 })();
 </script>
 </body>
