@@ -213,7 +213,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
     if (value.includes("solana-mainnet.g.alchemy.com")) {
       assert.equal(request.method, "getTokenAccounts");
       holderPages++;
-      return Response.json({ result: {
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
         token_accounts: request.params.page === 1 ? firstPage : [{
           address: "TokenAccountAddress" + "100".padStart(20, "0"),
           mint, owner: "11111111111111111111111111111112", amount: "1"
