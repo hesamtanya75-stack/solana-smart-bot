@@ -559,13 +559,45 @@ function positive(value, label) {
   return number;
 }
 
+const MAX_EXTERNAL_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+async function readBoundedJsonResponse(response) {
+  const contentLength = response.headers?.get?.("content-length");
+  if (contentLength && /^\d+$/.test(contentLength) &&
+      Number(contentLength) > MAX_EXTERNAL_RESPONSE_BYTES) {
+    await response.body?.cancel?.();
+    throw new Error("External response exceeds the maximum allowed size");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("External response body is missing");
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_EXTERNAL_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error("External response exceeds the maximum allowed size");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
 async function fetchJson(fetchImpl, url, options = {}) {
   const response = await fetchImpl(url, {
     ...options,
     signal: options.signal || AbortSignal.timeout(10000)
   });
   if (!response.ok) throw new Error(new URL(url).hostname + " returned HTTP " + response.status);
-  return response.json();
+  return readBoundedJsonResponse(response);
 }
 
 /** Fetches and timestamps the quote on the trusted server; caller timestamps are never used. */
