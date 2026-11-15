@@ -1011,6 +1011,18 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     /response envelope/);
 });
 
+test("Jupiter /build bounds aggregate lookup-table address resources", () => {
+  const addresses = Array.from({ length: 256 }, (_, index) =>
+    encodeBase58(new Uint8Array(32).fill(index + 1)));
+  const tables = Object.fromEntries(Array.from({ length: 17 }, (_, index) => [
+    encodeBase58(new Uint8Array(32).fill(index + 100)),
+    addresses
+  ]));
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: tables
+  })), /lookup-table address bundle exceeds aggregate resource limits/);
+});
+
 test("Jupiter /build bounds aggregate instruction bundle resources", () => {
   const valid = validBuildResponse();
   const largeDataInstruction = { ...valid.swapInstruction, data: "A".repeat(4100) };
