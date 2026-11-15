@@ -1724,6 +1724,26 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+
+  for (const corrupt of [
+    result => result.meta.postTokenBalances.push({ ...result.meta.postTokenBalances[0] }),
+    result => { result.meta.postTokenBalances[0].accountIndex = 99; }
+  ]) {
+    const malformedFetch = async (url, options) => {
+      const response = await fetchImpl(url, options);
+      const body = await response.json();
+      if (JSON.parse(options.body).method === "getTransaction") corrupt(body.result);
+      return Response.json(body);
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature,
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint,
+      inputAmount: "10000000",
+      outputAmount: "12345",
+      expectedOwner: BOT_WALLET
+    }, malformedFetch), /malformed or duplicate token balance metadata/);
+  }
 });
 
 test("settlement proof requires the connected Phantom owner explicitly", async () => {
