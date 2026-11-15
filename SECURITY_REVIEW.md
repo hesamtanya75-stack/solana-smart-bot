@@ -253,3 +253,19 @@ Reviewed the current AuthGuard and Worker authentication routes after the MFA ch
 The authentication hardening does not resolve the independent live-trading blockers: Jupiter instruction/account semantics and Address Lookup Table resolution remain unverified; settlement/recovery transitions remain disabled; the emergency stop is not integrated into the production Worker; and the coordinator remains isolated from the Worker. Production Cloudflare secrets, bindings, migrations, and cron settings have not been independently inspected.
 
 **Decision unchanged: NOT APPROVED for Mainnet, signing, transaction submission, or live trading. PR #27 remains Draft and unmerged. No production deployment or Mainnet action is authorized.**
+
+
+## Jupiter signer-set restriction — 2026-11-15
+
+The unsigned Jupiter transaction structural parser now requires exactly one required signer, matching the dedicated expected bot wallet. Transactions that declare additional required signers are rejected rather than being treated as within the reviewed authorization model. A regression test covers the extra-signer case.
+
+Validation for code commit `c3230a694f5aca5625270a6045263249c5ef5fea`:
+- Node tests: **success**.
+- JavaScript syntax: **success**.
+- Cloudflare Worker build validation (dry-run; no deploy): **success**.
+- Devnet read-only checks and Durable Objects runtime tests: **success**.
+- Funded signed Devnet transfer step: **skipped** because `DEVNET_RPC_URL` is not configured.
+
+This narrows the accepted transaction structure; it does **not** semantically decode or approve Jupiter instructions, resolve and verify Address Lookup Tables, or establish settlement/recovery proof. The coordinator continues to require semantic verification and remains fail-closed. The live coordinator remains isolated from the public Worker, and the emergency stop is not integrated into a production live-trading path.
+
+**Decision unchanged: NOT APPROVED for Mainnet, signing, transaction submission, or live trading. PR #27 remains Draft and unmerged. No production deployment or Mainnet action is authorized.**
