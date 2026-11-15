@@ -15,6 +15,7 @@ Review target: `security/pr26-clean-main` at commit `6a2e0eaa8a99b936b22aeaa3df0
 - The live coordinator obtains SOL/USD and token-risk evidence through trusted server-side code. Browser-supplied quote timestamps, quote IDs, SOL/USD prices, and risk booleans are ignored.
 - The latest paper scanner change selects only Solana DexScreener pairs whose `baseToken.address` exactly matches the requested mint.
 - RPC response parsing now rejects mismatched IDs, missing results, malformed batch items, and duplicate or missing batch IDs.
+- Follow-up hardening in commits `98d1c0f` and `b727605` restricts the root-directory static-assets fallback to `/` and `/index.html`, preventing repository source modules, tests, documentation, and configuration files from being served as static assets; a regression assertion covers this allowlist.
 - CI on this commit passed Node tests, frontend syntax validation, and Cloudflare Worker dry-run build validation. Devnet read-only checks passed. The funded signed Devnet transfer step was skipped because `DEVNET_RPC_URL` was not configured.
 
 ## Findings blocking any live-trading use
