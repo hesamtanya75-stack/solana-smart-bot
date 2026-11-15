@@ -321,6 +321,29 @@ test("v0 rejects an ALT-loaded address used as an instruction program", async ()
   );
 });
 
+test("legacy and v1 reject writable program accounts before exposing instruction evidence", async () => {
+  const legacy = Buffer.from(validUnsignedTransaction(), "base64");
+  // Message header starts after the one-byte signature count and 64-byte signature.
+  // The second static key is the instruction program; mark it writable.
+  legacy[67] = 0;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      legacy.toString("base64"), BOT_WALLET
+    ),
+    /program account must be readonly and non-signer/
+  );
+
+  const v1 = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // V1's three-byte signer header begins immediately after the version prefix.
+  v1[3] = 0;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      v1.toString("base64"), BOT_WALLET
+    ),
+    /program account must be readonly and non-signer/
+  );
+});
+
 test("v1 outer instruction evidence preserves inline accounts and opaque instruction data", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV1Transaction(), BOT_WALLET
