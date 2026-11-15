@@ -595,11 +595,20 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
             fee: 5000,
             preBalances: [100_000_000],
             postBalances: [89_995_000],
-            preTokenBalances: [],
-            postTokenBalances: [{
-              mint: outputMint, owner: BOT_WALLET,
-              uiTokenAmount: { amount: "12345", decimals: 6 }
-            }]
+            preTokenBalances: [{
+              mint: "So11111111111111111111111111111111111111112",
+              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              {
+                mint: "So11111111111111111111111111111111111111112",
+                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+              },
+              {
+                mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "12345", decimals: 6 }
+              }
+            ]
           }
         };
     return new Response(JSON.stringify({
@@ -630,11 +639,20 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
           transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
           meta: {
             err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
-            preTokenBalances: [],
-            postTokenBalances: [{
-              mint: outputMint, owner: BOT_WALLET,
-              uiTokenAmount: { amount: "12344", decimals: 6 }
-            }]
+            preTokenBalances: [{
+              mint: "So11111111111111111111111111111111111111112",
+              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              {
+                mint: "So11111111111111111111111111111111111111112",
+                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+              },
+              {
+                mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "12344", decimals: 6 }
+              }
+            ]
           }
         };
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
