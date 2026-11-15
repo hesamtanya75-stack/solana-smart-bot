@@ -1727,7 +1727,9 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
 
   for (const corrupt of [
     result => result.meta.postTokenBalances.push({ ...result.meta.postTokenBalances[0] }),
-    result => { result.meta.postTokenBalances[0].accountIndex = 99; }
+    result => { result.meta.postTokenBalances[0].accountIndex = 99; },
+    // Token-balance rows must refer to a token account, never the wallet fee-payer key.
+    result => { result.meta.postTokenBalances[1].accountIndex = 0; }
   ]) {
     const malformedFetch = async (url, options) => {
       const response = await fetchImpl(url, options);
