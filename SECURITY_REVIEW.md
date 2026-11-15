@@ -135,3 +135,17 @@ The current source was also rechecked. The Worker still does not call the Durabl
 The earlier dependency-audit warning was superseded for commit `67b0e6f0ffb86a1db5342fc363e058d09c397dd6` by a clean isolated audit, and the current branch-head audit-enforcement step passed again. Historical warnings above are retained as history, not current claims of an unresolved audit finding.
 
 **Current release decision: unchanged.** PR #27 remains Draft and unmerged. Do not merge, deploy to production, sign or submit Mainnet transactions, or enable live trading. Remaining gates include full semantic Jupiter instruction/account and address-lookup-table verification, independent settlement/recovery design, an authenticated emergency-stop integration, bounded reservation retention, a funded signed Devnet lifecycle test using a disposable wallet, and independent review of any future signing/submission implementation. Production Cloudflare secrets, bindings, migrations, and cron settings have not been independently inspected.
+
+
+## CI completion update — 2026-11-15 (documentation commit b76ef1c5d287a364770b644977e31d17d03295a8)
+
+GitHub checks for the documentation commit completed:
+
+- JavaScript syntax: success.
+- Node test job: success, including isolated dependency audit enforcement and safety/Durable Objects runtime tests.
+- Devnet read-only job: success, including cluster identity and read-only RPC validation.
+- Cloudflare Worker validation: success; Wrangler build ran without deployment.
+- Cloudflare Workers Preview Build: success.
+- Funded signed Devnet transfer: **skipped** because `DEVNET_RPC_URL` was not configured. The successful read-only job is not a signed transaction lifecycle test.
+
+This commit changes documentation only. It does not remove the transaction semantic-decoding, lookup-table, settlement, emergency-stop, reservation-retention, funded Devnet lifecycle, or production-configuration verification gates. PR #27 remains open, Draft, and unmerged. No production deployment or Mainnet activity is approved.
