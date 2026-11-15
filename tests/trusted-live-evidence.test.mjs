@@ -386,6 +386,20 @@ test("ALT resolver rejects oversized encoded account data before decoding", asyn
   } })), /exceeds the maximum encoded size/);
 });
 
+
+test("ALT resolver rejects nonzero reserved authority bytes when authority is absent", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const malformed = mockLookupTableAccount();
+  const bytes = Buffer.from(malformed.data[0], "base64");
+  bytes[22] = 1;
+  malformed.data = [bytes.toString("base64"), "base64"];
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [malformed]
+  } })), /metadata is invalid/);
+});
+
 test("ALT resolver rejects deactivated lookup tables", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   await assert.rejects(resolveJupiterAddressLookupTables([{
