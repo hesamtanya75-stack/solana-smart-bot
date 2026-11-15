@@ -209,7 +209,7 @@ This is a freshness hardening change only. It does not implement semantic Jupite
 
 ## 2026-11-15 branch-head verification
 
-Verified against PR #27 branch head `8cfded179336148f31925b0ddcceca7789409d02` (base `main`; PR remains open and Draft). This head adds a coordinator regression test that advances the clock by 31 seconds while trusted evidence is collected and verifies reservation rejection with HTTP 409 for stale risk evidence.
+Code head reviewed before this documentation-only addendum: `8cfded179336148f31925b0ddcceca7789409d02` (base `main`; PR was open and Draft). The addendum itself is a documentation-only change; it does not alter application code. This head adds a coordinator regression test that advances the clock by 31 seconds while trusted evidence is collected and verifies reservation rejection with HTTP 409 for stale risk evidence.
 
 GitHub Actions for this exact head completed successfully:
 - Validate frontend — run `43664419266`: success.
@@ -220,3 +220,5 @@ GitHub Actions for this exact head completed successfully:
 This is CI validation, not release approval. The code still reports `semanticInstructionVerification: false`; the coordinator requires semantic verification and therefore fails closed. Independent settlement proof remains unimplemented and coordinator state transitions remain disabled. The public Worker does not expose or invoke the live coordinator, and `executeLiveOrder()` still refuses to sign or submit transactions. Full Jupiter instruction and address-lookup-table verification, settlement/recovery proof, emergency-stop operator separation/integration, and a funded signed Devnet lifecycle remain release blockers.
 
 **Decision unchanged:** keep PR #27 Draft and unmerged. No production deployment, Mainnet signing, transaction submission, or live trading is authorized by this review.
+
+- Documentation addendum commit: `025834ee3f83a561354f422ea8a5978045941c81`. No application code changed in that commit. The workflow lookup for this documentation-only commit returned no PR-triggered runs; the four run results above apply to the reviewed code head `8cfded...`.
