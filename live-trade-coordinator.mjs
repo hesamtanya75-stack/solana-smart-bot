@@ -3,6 +3,8 @@ import { fetchTrustedLiveEvidence } from "./trusted-live-evidence.mjs";
 const MAX_TRADE_USD_CENTS = 300;
 const MAX_DAILY_SPEND_USD_CENTS = 500;
 const MAX_OPEN_POSITIONS = 10;
+// Preserve idempotency history without allowing unbounded Durable Object state growth.
+const MAX_RESERVATIONS = 1000;
 const MAX_QUOTE_AGE_MS = 30_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -236,8 +238,11 @@ export class LiveTradeCoordinator {
       }
       if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
 
-      const day = currentUtcDay(now);
       const records = Object.values(state.reservations);
+      if (records.length >= MAX_RESERVATIONS) {
+        throw new Error("Coordinator reservation history capacity reached; operator review required");
+      }
+      const day = currentUtcDay(now);
       const dailySpend = records
         .filter(item => item.day === day && item.status !== "failed")
         .reduce((sum, item) => sum + item.amountCents, 0);
@@ -303,6 +308,7 @@ export class LiveTradeCoordinator {
           maxTradeUsdCents: MAX_TRADE_USD_CENTS,
           maxDailySpendUsdCents: MAX_DAILY_SPEND_USD_CENTS,
           maxOpenPositions: MAX_OPEN_POSITIONS,
+          maxReservations: MAX_RESERVATIONS,
           maxQuoteAgeMs: MAX_QUOTE_AGE_MS
         }
       };
