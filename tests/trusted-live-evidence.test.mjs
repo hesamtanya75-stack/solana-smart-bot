@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -11,6 +11,28 @@ function decodeBase58(value) {
   while (number > 0n) { bytes.unshift(Number(number & 255n)); number >>= 8n; }
   for (let i = 0; i < value.length && value[i] === "1"; i++) bytes.unshift(0);
   return Uint8Array.from(bytes);
+}
+function encodeBase58(bytes) {
+  let number = 0n;
+  for (const byte of bytes) number = number * 256n + BigInt(byte);
+  let encoded = "";
+  while (number > 0n) {
+    const remainder = Number(number % 58n);
+    encoded = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"[remainder] + encoded;
+    number /= 58n;
+  }
+  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) encoded = "1" + encoded;
+  return encoded || "1";
+}
+function mockLookupTableAccount({ owner = "AddressLookupTab1e1111111111111111111111111", deactivationSlot = 0xffffffffffffffffn, lastExtendedSlot = 90n, startIndex = 2, addressCount = 2 } = {}) {
+  const data = Buffer.alloc(56 + addressCount * 32);
+  data.writeUInt32LE(1, 0);
+  data.writeBigUInt64LE(deactivationSlot, 4);
+  data.writeBigUInt64LE(lastExtendedSlot, 12);
+  data[20] = startIndex;
+  data[21] = 0; // no authority
+  for (let i = 0; i < addressCount; i++) data.fill(i + 7, 56 + i * 32, 56 + (i + 1) * 32);
+  return { owner, data: [data.toString("base64"), "base64"], executable: false, lamports: 1 };
 }
 function validUnsignedV1Transaction() {
   const signer = decodeBase58(BOT_WALLET);
@@ -98,6 +120,63 @@ test("malformed Jupiter instruction program index is rejected", () => {
   );
 });
 
+
+test("ALT resolver fetches finalized tables and resolves writable/readonly addresses", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const account = mockLookupTableAccount();
+  const result = await resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: [1]
+  }], async (url, options) => {
+    assert.match(String(url), /api\.mainnet-beta\.solana\.com/);
+    const request = JSON.parse(options.body);
+    assert.equal(request.method, "getMultipleAccounts");
+    assert.deepEqual(request.params[0], [tableKey]);
+    assert.equal(request.params[1].commitment, "finalized");
+    assert.equal(request.params[1].encoding, "base64");
+    return Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [account]
+    } });
+  });
+  assert.equal(result.contextSlot, 100);
+  assert.equal(result.tables[0].writable[0], encodeBase58(new Uint8Array(32).fill(7)));
+  assert.equal(result.tables[0].readonly[0], encodeBase58(new Uint8Array(32).fill(8)));
+});
+
+test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [mockLookupTableAccount({ owner: TOKEN_PROGRAM_ID })]
+  } })), /unexpected program/);
+});
+
+test("ALT resolver rejects deactivated lookup tables", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [mockLookupTableAccount({ deactivationSlot: 99n })]
+  } })), /Deactivated/);
+});
+
+test("ALT resolver rejects addresses still in the same-slot warmup window", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [1], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [mockLookupTableAccount({ lastExtendedSlot: 100n, startIndex: 1 })]
+  } })), /not warmed up/);
+});
+
+test("ALT resolver rejects out-of-range lookup indexes", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [2], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [mockLookupTableAccount()]
+  } })), /outside the resolved address range/);
+});
 
 test("v1 transaction is structurally parsed but never semantically trusted", () => {
   const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
