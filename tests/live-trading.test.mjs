@@ -107,9 +107,11 @@ function validUnsignedV1Transaction() {
   while (n > 0n) { signer.unshift(Number(n & 255n)); n >>= 8n; }
   for (let i = 0; i < EXPECTED_BOT_WALLET.length && EXPECTED_BOT_WALLET[i] === "1"; i++) signer.unshift(0);
   const message = Uint8Array.from([
-    0x81, 1, 0, 1, 0, 0, 0, 0,
+    0x81, 1, 0, 1, 0x0c, 0, 0, 0,
     ...new Array(32).fill(0), 1, 2, ...signer,
-    ...new Array(32).fill(17), 1, 1, 1, 0, 0, 0,
+    ...new Array(32).fill(17),
+    0x20, 0x4e, 0, 0, 0, 0, 0x40, 0,
+    1, 1, 1, 0, 0, 0,
     ...new Array(64).fill(0)
   ]);
   return Buffer.from(message).toString("base64");
