@@ -1011,6 +1011,27 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     /response envelope/);
 });
 
+test("Jupiter /build rejects sparse route and instruction collections", () => {
+  const sparseRoute = new Array(2);
+  sparseRoute[0] = validBuildResponse().routePlan[0];
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: sparseRoute
+  })), /routePlan\[1\] is malformed/);
+
+  const sparseAccounts = new Array(1);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      ...validBuildResponse().swapInstruction,
+      accounts: sparseAccounts
+    }
+  })), /instruction account is malformed/);
+
+  const sparseInstructionList = new Array(1);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    otherInstructions: sparseInstructionList
+  })), /instruction is malformed/);
+});
+
 test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
   const sparseBlockhash = new Array(32).fill(1);
   delete sparseBlockhash[7];
