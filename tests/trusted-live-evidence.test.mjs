@@ -201,6 +201,11 @@ test("unknown instruction program is parsed structurally but never semantically 
     BOT_WALLET
   );
   assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.compiledInstructions.length, 1);
+  assert.equal(parsed.staticAccountKeys[parsed.compiledInstructions[0].programIdIndex],
+    encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.compiledInstructions[0].accountIndexes, [0]);
+  assert.equal(parsed.compiledInstructions[0].dataBase64, "");
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
