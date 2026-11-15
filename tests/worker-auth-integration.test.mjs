@@ -5,13 +5,13 @@ import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
 import { PaperTradingState } from "../paper-trading-state.mjs";
-import { parseRpcResponse, parseRpcBatchResponse } from "../rpc-response.mjs";
+import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "../rpc-response.mjs";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const executableWorkerSource = workerSource
   .replace(/^export default \{/m, "const worker = {")
   .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "")
-  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse \} from ["'][^"']+["'];?\s*$/m, "");
+  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "");
 const workerContext = vm.createContext({
   crypto: webcrypto,
   Request,
@@ -28,7 +28,8 @@ const workerContext = vm.createContext({
   btoa,
   structuredClone,
   parseRpcResponse,
-  parseRpcBatchResponse
+  parseRpcBatchResponse,
+  readBoundedJsonResponse
 });
 vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
 const worker = workerContext.__worker;
