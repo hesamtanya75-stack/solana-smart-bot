@@ -36,7 +36,7 @@ test("Phantom SOL balance is read-only and ignores stale wallet responses", () =
   const source = html.slice(start, html.indexOf("\n})();", start));
   assert.match(source, /rpcRequest\("getBalance"/);
   assert.match(source, /commitment: "confirmed"/);
-  assert.match(source, /walletBalanceRequestId !== requestId/);
+  assert.match(source, /requestId !== walletBalanceRequestId/);
   assert.match(source, /connectedPhantomProvider !== provider/);
   assert.match(source, /lamports \/ 1_000_000_000/);
   assert.doesNotMatch(source, /signTransaction|signAndSendTransaction|sendTransaction/);
