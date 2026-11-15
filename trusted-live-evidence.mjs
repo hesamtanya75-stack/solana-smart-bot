@@ -2,7 +2,6 @@ import { readBoundedJsonResponse } from "./rpc-response.mjs";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const JUPITER_ORDER_URL = "https://api.jup.ag/swap/v2/order";
 const COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/SOL-USD/spot";
 const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
@@ -901,7 +900,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
  */
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
-  expectedOwner = EXPECTED_BOT_WALLET
+  expectedOwner
 }, fetchImpl = fetch) {
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
