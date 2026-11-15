@@ -189,10 +189,15 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const lookupTables = {};
   const altEntries = Object.entries(rawAlts || {});
   if (altEntries.length > 64) throw new Error("Jupiter build contains too many lookup tables");
+  let totalLookupAddresses = 0;
   for (const [table, addresses] of altEntries) {
     if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) || addresses.length > 256 ||
         !addresses.every(isCanonicalPublicKey) || new Set(addresses).size !== addresses.length) {
       throw new Error("Jupiter build lookup-table addresses are malformed");
+    }
+    totalLookupAddresses += addresses.length;
+    if (totalLookupAddresses > 4096) {
+      throw new Error("Jupiter build lookup-table address bundle exceeds aggregate resource limits");
     }
     lookupTables[table] = Object.freeze([...addresses]);
   }
