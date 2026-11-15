@@ -884,6 +884,37 @@ test("Jupiter /build v1 requires inline-account response shape and compute unit 
   })), /v1 build response has invalid/);
 });
 
+test("Jupiter /build rejects oversized route, instruction, account, and lookup-table collections", () => {
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: new Array(65).fill(validBuildResponse().routePlan[0])
+  })), /response envelope/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    otherInstructions: new Array(65).fill(validBuildResponse().swapInstruction)
+  })), /response envelope/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      ...validBuildResponse().swapInstruction,
+      accounts: new Array(257).fill({
+        pubkey: "11111111111111111111111111111111",
+        isSigner: false, isWritable: false
+      })
+    }
+  })), /instruction is malformed/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: Object.fromEntries(
+      new Array(65).fill(0).map((_, index) => [
+        encodeBase58(new Uint8Array(32).fill(index + 1)),
+        []
+      ])
+    )
+  })), /too many lookup tables/);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: {
+      "11111111111111111111111111111111": new Array(257).fill("11111111111111111111111111111111")
+    }
+  })), /lookup-table addresses are malformed/);
+});
+
 test("Jupiter /build rejects malformed account metadata and unexpected requested amount", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: { programId: "11111111111111111111111111111111", accounts: [{
