@@ -5,7 +5,7 @@
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-import { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
+import { isCanonicalPublicKey, validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
 
 function finitePositive(value, name) {
@@ -91,7 +91,7 @@ async function getJupiterOrder({
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
   evaluateLiveTradeEligibility({ ...(eligibility || {}), policy, amountLamports });
 
-  if (!BASE58.test(String(takerWallet || ""))) throw new Error("A valid connected Phantom public key is required");
+  if (!isCanonicalPublicKey(takerWallet)) throw new Error("A valid connected Phantom public key is required");
   if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
   if (inputMint === outputMint) throw new Error("Input and output mints must differ");
 
