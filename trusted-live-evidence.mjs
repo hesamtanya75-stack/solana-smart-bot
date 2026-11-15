@@ -1047,6 +1047,9 @@ export function decodeReviewedSplTokenTransfers(outerInstructionEvidence) {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
       throw new Error("Outer instruction evidence contains a malformed entry");
     }
+    if (instruction.programId === TOKEN_2022_PROGRAM_ID) {
+      throw new Error("Token-2022 instructions are unsupported by the classic SPL Token decoder");
+    }
     if (instruction.programId !== TOKEN_PROGRAM_ID) continue;
     if (!Array.isArray(instruction.accounts) ||
         typeof instruction.dataBase64 !== "string" ||
