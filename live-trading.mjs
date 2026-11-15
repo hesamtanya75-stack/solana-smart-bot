@@ -98,11 +98,13 @@ async function getJupiterOrder({
   if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
   if (inputMint === outputMint) throw new Error("Input and output mints must differ");
 
-  // Restrict the Meta-Aggregator to Metis: receiver disables Dflow/OKX,
-  // while excludeRouters removes JupiterZ. The response router is checked below.
+  // Do not set receiver: Jupiter requires it to differ from taker, while this
+  // single-wallet flow pins both signing and settlement to the bot wallet.
+  // Exclude JupiterZ and accept only an explicitly returned Metis order below;
+  // every other router remains fail-closed.
   const params = new URLSearchParams({
     inputMint, outputMint, amount: String(amountLamports),
-    taker: policy.wallet, receiver: policy.wallet,
+    taker: policy.wallet,
     excludeRouters: "jupiterz",
     slippageBps: String(policy.maxSlippageBps)
   });
