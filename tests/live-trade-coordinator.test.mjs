@@ -18,6 +18,15 @@ function trustedEvidence(overrides = {}) {
   const fetchedAt = Date.now();
   return {
     quote: { provider: "Coinbase", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "test-quote-" + fetchedAt },
+    costs: {
+      computeUnitPriceMicroLamports: "10000",
+      computeUnitLimit: 200000,
+      maxPriorityFeeLamports: 2000,
+      baseFeeLamports: 5000,
+      tipLamports: 0,
+      rentLamports: 0,
+      otherOutflowLamports: 0
+    },
     risk: { provider: "test-fixture", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", fetchedAt,
       checks: {
         mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
@@ -185,6 +194,40 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   assert.equal(stale.status, 409);
 });
 
+test("reservation requires trusted all-in fee evidence and validates priority-fee arithmetic", async () => {
+  const missing = makeCoordinator(async () => trustedEvidence({ costs: undefined })).coordinator;
+  await post(missing, "/kill-switch", { enabled: false });
+  const blocked = await post(missing, "/reserve", validReservation());
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.body.error, /all-in transaction cost evidence is missing/);
+
+  const mismatch = makeCoordinator(async () => trustedEvidence({
+    costs: { ...trustedEvidence().costs, maxPriorityFeeLamports: 1 }
+  })).coordinator;
+  await post(mismatch, "/kill-switch", { enabled: false });
+  const invalid = await post(mismatch, "/reserve", validReservation());
+  assert.equal(invalid.status, 409);
+  assert.match(invalid.body.error, /Priority fee does not match/);
+});
+
+test("reservation stores the complete all-in lamport cost breakdown", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation());
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.reservation.allInCosts, {
+    computeUnitPriceMicroLamports: "10000",
+    computeUnitLimit: 200000,
+    maxPriorityFeeLamports: 2000,
+    baseFeeLamports: 5000,
+    tipLamports: 0,
+    rentLamports: 0,
+    otherOutflowLamports: 0,
+    totalFeeLamports: 7000,
+    totalLamports: 10_007_000
+  });
+});
+
 test("coordinator rejects risk evidence that became stale during upstream collection", async () => {
   const originalNow = Date.now;
   let clock = 1_000_000;
@@ -212,7 +255,7 @@ test("daily spend cap is enforced atomically and pending reservations remain cou
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({
-    idempotencyKey: "order-key-0001", amountLamports: 12_500_000, solUsd: 200
+    idempotencyKey: "order-key-0001", amountLamports: 12_400_000, solUsd: 200
   }));
   const second = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "order-key-0002", amountLamports: 12_500_000, solUsd: 200
