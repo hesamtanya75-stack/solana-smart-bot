@@ -233,6 +233,10 @@ export class LiveTradeCoordinator {
     return this.withState(state => {
       // Recheck after network calls to protect against concurrent reservations
       // and a kill-switch activation while external evidence was being fetched.
+      // The stop must also precede the duplicate check here: an in-flight
+      // request may reach this transaction after another request reserved the
+      // same key and the operator activated the stop.
+      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
       const existing = state.reservations[key];
       if (existing) {
         if (existing.intentFingerprint !== intentFingerprint) {
@@ -240,7 +244,6 @@ export class LiveTradeCoordinator {
         }
         return { ok: true, duplicate: true, reservation: existing };
       }
-      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
 
       const records = Object.values(state.reservations);
       if (records.length >= MAX_RESERVATIONS) {
