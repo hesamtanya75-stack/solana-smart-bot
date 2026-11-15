@@ -1454,7 +1454,7 @@ test("compute-budget verifier rejects duplicate, malformed, unknown, and unbound
     ...cap, outerInstructionEvidence: [make(1, 1000), limit]
   }), /RequestHeapFrame value/);
   assert.throws(() => verifyComputeBudgetPriorityFee({
-    ...cap, outerInstructionEvidence: [{ ...limit, accounts: [{ pubkey: BOT_WALLET }] }]
+    ...cap, outerInstructionEvidence: [{ ...limit, accounts: [{ pubkey: BOT_WALLET, isSigner: false, isWritable: false }] }]
   }), /accounts or data are malformed/);
   assert.throws(() => verifyComputeBudgetPriorityFee({
     ...cap, outerInstructionEvidence: [limit], maxPriorityFeeLamports: "not-a-number"
@@ -1495,7 +1495,8 @@ test("v1 priority fee is read as absolute lamports from message config and bound
     computeUnitLimit: parsed.computeUnitLimit,
     priorityFeeLamports: parsed.priorityFeeLamports,
     outerInstructionEvidence: [{
-      programId: "ComputeBudget111111111111111111111111111111"
+      programId: "ComputeBudget111111111111111111111111111111",
+      accounts: [], dataBase64: "AA=="
     }],
     maxPriorityFeeLamports: "12"
   }), /must use message config/);
