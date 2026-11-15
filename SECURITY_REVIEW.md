@@ -582,3 +582,18 @@ Verified GitHub Actions on code head `c4d80ba996a62dd99c47a2e4909706105085d402`:
 - Funded signed Devnet transfer: **skipped**, because `DEVNET_RPC_URL` is not configured. No signing or transaction submission occurred.
 
 The change hardens provider response handling; it does not alter the paper-trading rules or enable live trading. `semanticInstructionVerification` remains false, the coordinator remains fail-closed, and the Worker still has no enabled end-to-end live-trading path. PR #27 remains Draft, Open, and unmerged. No production deployment, merge, Mainnet signing, transaction submission, or live trading was performed.
+
+
+## Jupiter bounded-response regression and latest CI — 2026-11-15 (code head `fb1caeba228e8dcf2ddd12eb3ee48209dc5cb928`)
+
+The Jupiter `/order` response now uses the shared 2 MiB bounded JSON reader. A regression test initially used a native `Response` whose stream implementation precluded asserting that an oversized declared Content-Length is rejected before body consumption. The test fixture was corrected to expose a minimal readable-body interface and headers, preserving the intended pre-read assertion without changing production behavior.
+
+GitHub Actions on this exact head completed successfully:
+- Node test suite: **198 passed, 0 failed, 0 skipped**.
+- Dependency audit: no dependency vulnerabilities reported.
+- Frontend JavaScript validation: passed.
+- Cloudflare Worker build validation: passed (Wrangler dry-run only; no deployment).
+- Devnet read-only cluster/RPC preflight: passed.
+- Funded signed Devnet lifecycle: **skipped**, because `DEVNET_RPC_URL` is not configured. No signer was created, no signing occurred, and no transaction was submitted.
+
+These results validate the current automated checks and response-size regression. They do not establish Jupiter instruction semantics, wallet signing safety, a funded Devnet transaction lifecycle, or Mainnet readiness. `semanticInstructionVerification` remains false; live coordinator and Worker execution remain fail-closed. PR #27 remains Draft, Open, and unmerged. No deployment, merge, Mainnet access, signing, or real-money transaction occurred.
