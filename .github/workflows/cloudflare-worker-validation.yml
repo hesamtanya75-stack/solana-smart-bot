@@ -42,6 +42,9 @@ jobs:
           if (config.main !== "worker.js") {
             throw new Error(`Unexpected Worker entry point: ${config.main}`);
           }
+          if (config.assets?.run_worker_first !== true) {
+            throw new Error("Static assets must pass through the Worker allowlist before serving");
+          }
           if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) {
             throw new Error("BOT_STATE KV binding is missing");
           }
@@ -67,7 +70,7 @@ jobs:
               throw new Error(`${tag} migration is missing or incomplete`);
             }
           }
-          console.log("Validated Worker target, entry point, KV, Durable Object bindings, and migrations.");
+          console.log("Validated Worker target, entry point, static asset routing, KV, Durable Object bindings, and migrations.");
           NODE
 
       - name: Build Worker without deploying
