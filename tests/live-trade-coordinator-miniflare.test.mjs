@@ -10,7 +10,8 @@ test("LiveTradeCoordinator persists emergency-stop state in Durable Objects stor
     modules: [
       { type: "ESModule", path: "tests/fixtures/live-trade-coordinator-runtime.mjs" },
       { type: "ESModule", path: "live-trade-coordinator.mjs" },
-      { type: "ESModule", path: "trusted-live-evidence.mjs" }
+      { type: "ESModule", path: "trusted-live-evidence.mjs" },
+      { type: "ESModule", path: "rpc-response.mjs" }
     ],
     modulesRoot: process.cwd(),
     compatibilityDate: "2026-11-06",
