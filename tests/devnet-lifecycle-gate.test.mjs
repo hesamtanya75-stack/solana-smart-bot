@@ -22,9 +22,12 @@ test("funded Devnet lifecycle is isolated to an explicit manual job and never re
 
   assert.doesNotMatch(readOnlyJob, /secrets\.DEVNET_RPC_URL/);
   assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\/\/api\.devnet\.solana\.com/);
-  assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
-  assert.match(fundedJob, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
-  assert.match(fundedJob, /node scripts\/devnet-signed-lifecycle\.mjs/);
+  assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*github\.ref\s*==\s*'refs\/heads\/security\/pr33-safety-transplant-4678a20'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
+  assert.match(fundedJob, /environment:\s*devnet-funded/);
+  assert.doesNotMatch(fundedJob, /^\s{4}env:\s*\n\s{6}DEVNET_RPC_URL:/m);
+  const fundedTransferStep = getStep("Verify dedicated RPC and submit faucet-funded Devnet test transfer");
+  assert.match(fundedTransferStep, /env:\s*\n\s{10}DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
+  assert.match(fundedTransferStep, /node scripts\/devnet-signed-lifecycle\.mjs/);
 
   const skippedStep = getStep("Report funded Devnet lifecycle as skipped without explicit opt-in");
   assert.match(skippedStep, /status: "skipped"/);
