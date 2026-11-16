@@ -100,3 +100,18 @@ The semantic verifier must operate on the exact unsigned message bytes that will
 ### Acceptance criteria
 
 The verifier may report `semantically-verified` only when every instruction and referenced account is decoded, classified, bound to intent, and cost-accounted. The current unsigned parser and ALT resolver do not meet this contract. Until implementation and independent review are complete, the coordinator must continue rejecting reservations and `executeLiveOrder()` must remain unimplemented.
+
+
+### Settlement proof scope: token deltas are not all-in cost proof
+
+The current `verifyFinalizedJupiterSettlement()` checks that the exact signature is successfully finalized, the pinned bot wallet is the fee payer, and the owner-scoped input and output token balance deltas match the reserved amounts. It returns a settlement proof containing those swap facts only.
+
+This verifier does **not** independently reconcile the bot wallet's native SOL lamport balance delta, prove the actual priority fee, identify every rent payment or tip, or establish the complete transaction outflow. In particular, wrapped SOL token-account deltas are not the same as the wallet's native SOL balance delta. The RPC transaction metadata exposes a fee field, but merely checking that the field is a non-negative integer does not make it a complete, policy-bound cost attestation.
+
+Therefore:
+- A successful settlement proof must never be interpreted as all-in spend verification.
+- Do not release, replenish, or close daily spend reservations using token deltas alone.
+- Keep actual fee, rent, tip, and every other native/token outflow accounting as a separate required verifier, bound to the same finalized transaction and immutable order intent.
+- Reject settlement reconciliation as incomplete for budget/accounting purposes whenever the complete outflow evidence is missing, inconsistent, or exceeds the reserved all-in ceiling.
+
+This is a documentation clarification of the current verifier's scope; it does not add a live transaction path or claim that native SOL cost reconciliation is implemented.
