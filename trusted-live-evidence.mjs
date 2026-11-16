@@ -533,7 +533,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
         index,
         address: staticAccountKeys[index] ?? null,
         isSigner: index < requiredSignatures,
-        isWritable: index < requiredSignatures
+        isWritable: index >= keyCount ? null : index < requiredSignatures
           ? index < requiredSignatures - readonlySigned
           : index < keyCount - readonlyUnsigned
       })),
