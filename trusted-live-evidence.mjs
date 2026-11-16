@@ -429,6 +429,60 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   };
 }
 
+const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+
+function decodeLegacyV0ComputeBudget(instructions) {
+  const seen = new Set();
+  const evidence = {
+    requestHeapFrameBytes: null,
+    computeUnitLimit: null,
+    computeUnitPriceMicroLamports: null,
+    loadedAccountsDataSizeLimitBytes: null
+  };
+  for (const instruction of instructions) {
+    if (instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID) continue;
+    if (instruction.accountIndexes.length !== 0) {
+      throw new Error("Compute Budget instruction unexpectedly references accounts");
+    }
+    const data = Uint8Array.from(atob(instruction.dataBase64), char => char.charCodeAt(0));
+    if (data.length === 0) throw new Error("Compute Budget instruction data is empty");
+    const discriminator = data[0];
+    const expectedLength = discriminator === 3 ? 9 :
+      [1, 2, 4].includes(discriminator) ? 5 : 0;
+    if (expectedLength === 0 || data.length !== expectedLength) {
+      throw new Error("Compute Budget instruction discriminator or data length is unsupported");
+    }
+    if (seen.has(discriminator)) {
+      throw new Error("Duplicate Compute Budget instruction variant");
+    }
+    seen.add(discriminator);
+    const readU32 = () => (data[1] | (data[2] << 8) |
+      (data[3] << 16) | (data[4] << 24)) >>> 0;
+    if (discriminator === 1) {
+      const value = readU32();
+      if (value < 32768 || value > 262144 || value % 1024 !== 0) {
+        throw new Error("Compute Budget heap frame is outside the valid range");
+      }
+      evidence.requestHeapFrameBytes = value;
+    } else if (discriminator === 2) {
+      evidence.computeUnitLimit = readU32();
+    } else if (discriminator === 3) {
+      let value = 0n;
+      for (let i = 0; i < 8; i++) {
+        value |= BigInt(data[i + 1]) << BigInt(i * 8);
+      }
+      evidence.computeUnitPriceMicroLamports = value.toString();
+    } else {
+      const value = readU32();
+      if (value === 0) {
+        throw new Error("Compute Budget loaded-account-data limit must be non-zero");
+      }
+      evidence.loadedAccountsDataSizeLimitBytes = value;
+    }
+  }
+  return Object.freeze(evidence);
+}
+
 export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   // Reject oversized transport strings before regex scanning or base64 decoding.
   // A 4,096-byte transaction needs at most 5,464 base64 characters.
@@ -597,6 +651,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     addressLookupCount,
     addressLookups,
     messageVersion,
+    computeBudget: decodeLegacyV0ComputeBudget(instructions),
     // Lookup descriptors are retained for independent RPC resolution; semantics stay untrusted.
     semanticInstructionVerification: false
   };
