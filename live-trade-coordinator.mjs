@@ -409,8 +409,10 @@ export class LiveTradeCoordinator {
     const key = validateIdempotencyKey(body?.idempotencyKey);
     const signature = body?.signature;
     const outputAmount = body?.outputAmount;
+    // The emergency stop blocks new reservations, not reconciliation of a
+    // transaction that may already have been submitted. Confirmation below
+    // still requires independent finalized on-chain settlement proof.
     const reservation = await this.withState(state => {
-      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
       const item = state.reservations[key];
       if (!item) throw new Error("Reservation does not exist");
       if (item.status === "confirmed") {
@@ -444,7 +446,6 @@ export class LiveTradeCoordinator {
       throw new Error("Independent finalized settlement proof is incomplete or mismatched");
     }
     return this.withState(state => {
-      if (state.killSwitch !== false) throw new Error("Emergency kill switch is active");
       const item = state.reservations[key];
       if (!item || item.status !== "pending") {
         throw new Error("Reservation state changed while settlement proof was being verified");
