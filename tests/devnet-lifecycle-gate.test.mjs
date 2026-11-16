@@ -43,7 +43,9 @@ test("Devnet preflight retries transient network failures without exposing the R
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /catch \(error\)[\s\S]*network request failed after 4 attempts/);
+  assert.match(script, /network request failed after 4 attempts \(" \+ safeCode \+ "\)/);
+  assert.match(script, /error\?\.cause\?\.code/);
+  assert.match(script, /replace\(\/\[\^A-Za-z0-9_-\]\/g, ""\)/);
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
   assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
