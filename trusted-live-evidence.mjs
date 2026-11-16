@@ -880,8 +880,29 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (new Set(allMessageKeys).size !== allMessageKeys.length) {
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
+  // Resolve every compiled instruction account index against Solana's canonical
+  // static + writable-ALT + readonly-ALT key ordering. This enriches structure
+  // only; it does not decode or approve any instruction semantics.
+  const resolvedInstructions = parsed.instructions.map(instruction => Object.freeze({
+    ...instruction,
+    accounts: Object.freeze(instruction.accountIndexes.map(index => {
+      if (!Number.isInteger(index) || index < 0 || index >= allMessageKeys.length) {
+        throw new Error("Jupiter instruction account index is outside the resolved message key space");
+      }
+      const isStatic = index < parsed.staticAccountCount;
+      return Object.freeze({
+        index,
+        address: allMessageKeys[index],
+        isSigner: isStatic && index < 1,
+        isWritable: isStatic
+          ? instruction.accounts.find(account => account.index === index)?.isWritable ?? null
+          : index < parsed.staticAccountCount + resolution.writableAddresses.length
+      });
+    }))
+  }));
   return Object.freeze({
     ...parsed,
+    instructions: Object.freeze(resolvedInstructions),
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
