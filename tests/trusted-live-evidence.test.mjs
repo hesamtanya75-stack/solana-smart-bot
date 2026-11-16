@@ -915,6 +915,13 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+  // The fixture's native SOL balance delta differs from the wrapped-SOL
+  // token input. This verifier proves token settlement only.
+  // It must not be mistaken for native SOL fee/rent/tip or all-in cost proof.
+  assert.equal(Object.hasOwn(proof, "costs"), false);
+  assert.equal(Object.hasOwn(proof, "allInCosts"), false);
+  assert.equal(Object.hasOwn(proof, "nativeSolOutflowLamports"), false);
+  assert.equal(Object.hasOwn(proof, "totalLamports"), false);
 });
 
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
