@@ -1032,6 +1032,48 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(Object.hasOwn(proof, "totalLamports"), false);
 });
 
+test("settlement proof rejects CPI groups that reference a nonexistent outer instruction", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(6));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 126,
+          transaction: {
+            signatures: [signature],
+            message: {
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: [{
+              index: 1,
+              instructions: [{
+                programIdIndex: 0,
+                accounts: [0],
+                data: "2",
+                stackHeight: 2
+              }]
+            }]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid parent index or shape/);
+});
+
 test("settlement proof rejects incomplete loaded-address balance metadata", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
