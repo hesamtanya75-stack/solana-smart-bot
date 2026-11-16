@@ -194,6 +194,14 @@ test("v1 heap-size config rejects values outside the protocol bounds or alignmen
   }
 });
 
+test("v1 transaction with an unknown program remains structural-only and cannot attest a safe route", () => {
+  const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.semanticInstructionVerification, false);
+  assert.equal(parsed.routeVerification, undefined);
+});
+
 test("unknown instruction program is parsed structurally but never semantically trusted", () => {
   const unknownProgram = new Array(32).fill(17);
   const parsed = validateUnsignedJupiterTransaction(
