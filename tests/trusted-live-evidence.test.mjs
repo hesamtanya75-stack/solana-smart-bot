@@ -958,6 +958,59 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(Object.hasOwn(proof, "totalLamports"), false);
 });
 
+test("settlement proof rejects incomplete loaded-address balance metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 123,
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: [BOT_WALLET] }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            loadedAddresses: {
+              writable: [encodeBase58(new Uint8Array(32).fill(11))],
+              readonly: [encodeBase58(new Uint8Array(32).fill(12))]
+            },
+            preBalances: [100_000_000, 1, 2],
+            postBalances: [89_995_000, 1],
+            preTokenBalances: [{
+              mint: "So11111111111111111111111111111111111111112",
+              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              {
+                mint: "So11111111111111111111111111111111111111112",
+                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+              },
+              {
+                mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "12345", decimals: 6 }
+              }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0", id: 1, result
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  await assert.rejects(
+    verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+    }, fetchImpl),
+    /loaded-address balance metadata is inconsistent/
+  );});
+
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
   const inputMint = "So11111111111111111111111111111111111111112";
