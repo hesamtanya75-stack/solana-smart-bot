@@ -37,6 +37,12 @@ Eligibility values must come from trusted, fresh server-side scanner and persist
 
 The current $3 per-buy and $5 per-day reservation accounting converts only the SOL input amount to USD cents. It does not yet include verified maximum priority fees, base transaction fees, Jupiter submission tips, account rent/creation, or other possible SOL/token outflows. Therefore these figures are not yet an all-in spend or maximum-loss ceiling. Before any live reservation can be approved, independently decode every value-moving instruction, calculate a conservative maximum for all fees/outflows, and atomically reserve the complete all-in amount against the same daily budget. For v1, validate Jupiter's `computeUnitPrice` against an explicitly reviewed ceiling before converting it to priorityFeeLamports. Do not invent or silently default a fee ceiling.
 
+### Verified production-evidence gap (do not confuse fixtures with live evidence)
+
+The current `fetchTrustedLiveEvidence()` production provider returns only `quote`, `risk`, and `passed`. It does not return a `costs` object. Its Jupiter sell-route result is quote/build-envelope and transaction-structure evidence only; it does not set `semanticInstructionVerification: true` or `routeVerification: "semantically-verified"`. Consequently, the production provider cannot satisfy the coordinator's semantic-verification and all-in-cost reservation gates. Unit-test fixtures that include these fields are synthetic test inputs, not evidence that production analysis has implemented either capability. Keep reservations blocked until independently validated production evidence is implemented and tested end to end.
+
+The current PR adds regression coverage that removes either semantic route attestation or all-in cost evidence from otherwise passing synthetic evidence and asserts that reservation is rejected without changing open-position or daily-spend state. These tests prove the coordinator's fail-closed behavior only; they do not prove the production provider can generate trusted semantic or cost evidence.
+
 ## Mandatory remaining release gates
 
 1. Complete independent semantic verification of Jupiter instruction programs/accounts and resolve every address lookup table; the current parser validates wire structure only.
