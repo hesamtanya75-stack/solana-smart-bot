@@ -966,7 +966,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { accountKeys: [encodeBase58(new Uint8Array(32).fill(1)), BOT_WALLET, encodeBase58(new Uint8Array(32).fill(2)), encodeBase58(new Uint8Array(32).fill(3))] }
           },
           meta: {
             err: null, fee: 5000,
