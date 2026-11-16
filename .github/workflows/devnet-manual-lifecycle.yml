@@ -94,6 +94,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation != 'DEVNET_ONLY' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Stop without running the funded lifecycle
+      - name: Fail closed when explicit confirmation is missing
         run: |
-          echo "Confirmation must equal DEVNET_ONLY. No signing or transaction submission was attempted."
+          echo "::error::Confirmation must equal DEVNET_ONLY. No signing or transaction submission was attempted."
+          exit 1
