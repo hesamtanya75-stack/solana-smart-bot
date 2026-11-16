@@ -1,6 +1,13 @@
 name: Manual funded Devnet lifecycle
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/devnet-manual-lifecycle.yml"
+      - "scripts/devnet-preflight.mjs"
+      - "scripts/devnet-signed-lifecycle.mjs"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
     inputs:
       confirmation:
@@ -12,8 +19,34 @@ permissions:
   contents: read
 
 jobs:
+  validate-workflow:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install isolated test dependencies
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@5.20261113.0-beta @solana/web3.js@1.98.4
+
+      - name: Run unit and Durable Objects runtime tests
+        run: npm test
+
+      - name: Check Devnet lifecycle scripts parse
+        run: |
+          node --check scripts/devnet-preflight.mjs
+          node --check scripts/devnet-signed-lifecycle.mjs
+
   funded-devnet-lifecycle:
-    if: ${{ inputs.confirmation == 'DEVNET_ONLY' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'DEVNET_ONLY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -57,7 +90,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   require-explicit-confirmation:
-    if: ${{ inputs.confirmation != 'DEVNET_ONLY' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation != 'DEVNET_ONLY' }}
     runs-on: ubuntu-latest
     steps:
       - name: Stop without running the funded lifecycle
