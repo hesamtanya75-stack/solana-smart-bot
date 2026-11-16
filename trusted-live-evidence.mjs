@@ -1002,6 +1002,44 @@ export async function verifyFinalizedJupiterSettlement({
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
+  // Preserve finalized inner-CPI evidence for a future semantic verifier.
+  // A null/missing RPC field is explicitly marked unavailable; it is never
+  // interpreted as proof that no CPI occurred.
+  const innerInstructionsRecorded = Array.isArray(meta.innerInstructions);
+  const innerInstructionEvidence = innerInstructionsRecorded
+    ? Object.freeze(meta.innerInstructions.map(group => {
+        if (!group || !Number.isInteger(group.index) || group.index < 0 ||
+            !Array.isArray(group.instructions)) {
+          throw new Error("Finalized inner-instruction metadata is malformed");
+        }
+        return Object.freeze({
+          index: group.index,
+          instructions: Object.freeze(group.instructions.map(instruction => {
+            if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+                instruction.programIdIndex < 0 || instruction.programIdIndex >= keyStrings.length + loadedKeyStrings.length ||
+                !Array.isArray(instruction.accounts) ||
+                instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
+                  index >= keyStrings.length + loadedKeyStrings.length) ||
+                typeof instruction.data !== "string") {
+              throw new Error("Finalized inner instruction contains invalid compiled account indexes or data");
+            }
+            const allKeys = [...keyStrings, ...loadedKeyStrings];
+            return Object.freeze({
+              programIdIndex: instruction.programIdIndex,
+              programId: allKeys[instruction.programIdIndex],
+              accountIndexes: Object.freeze([...instruction.accounts]),
+              accounts: Object.freeze(instruction.accounts.map(index => Object.freeze({
+                index,
+                address: allKeys[index]
+              }))),
+              dataBase58: instruction.data,
+              stackHeight: Number.isSafeInteger(instruction.stackHeight) ? instruction.stackHeight : null
+            });
+          }))
+        });
+      }))
+    : null;
+
   const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
   const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
@@ -1026,7 +1064,10 @@ export async function verifyFinalizedJupiterSettlement({
     inputAmount,
     outputMint,
     outputAmount,
-    owner: expectedOwner
+    owner: expectedOwner,
+    innerInstructionsRecorded,
+    innerInstructionEvidence,
+    semanticInstructionVerification: false
   });
 }
 
