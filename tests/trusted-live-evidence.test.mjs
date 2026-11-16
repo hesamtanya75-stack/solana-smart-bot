@@ -194,6 +194,18 @@ test("v1 heap-size config rejects values outside the protocol bounds or alignmen
   }
 });
 
+test("v1 transaction enforces the currently active 64-address limit", () => {
+  for (const addressCount of [65, 96]) {
+    const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+    // SIMD-0596 is still a draft without a feature gate; 96 is not active.
+    bytes[41] = addressCount;
+    assert.throws(
+      () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+      /instruction or address count is invalid/
+    );
+  }
+});
+
 test("v1 transaction rejects instruction account indexes outside the inline address table", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   // The fixture has two inline addresses (indexes 0 and 1); index 2 is invalid.
