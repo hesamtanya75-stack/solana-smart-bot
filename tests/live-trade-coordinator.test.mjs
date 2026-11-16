@@ -385,6 +385,36 @@ test("fail and close transitions remain blocked without independent proof; confi
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+test("confirmed positions cannot be closed or release daily spend without independent exit proof", async () => {
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized"
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const confirmed = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "6".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(confirmed.status, 200);
+
+  const forgedClose = await post(coordinator, "/close", {
+    idempotencyKey: "order-key-0001",
+    signature: "7".repeat(64),
+    outputAmount: "123456",
+    exitProof: { verified: true, confirmationStatus: "finalized" }
+  });
+  assert.equal(forgedClose.status, 409);
+  assert.match(forgedClose.body.error, /Independent failure and close proofs are not implemented/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
 test("confirmation stores only independently verified finalized settlement evidence", async () => {
   let verifiedArgs;
   const verifier = async args => {
