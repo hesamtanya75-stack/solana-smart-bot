@@ -317,6 +317,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     uniqueAddresses.add(key);
   }
+  const inlineAccountKeys = Array.from({ length: addressCount }, (_, i) =>
+    encodeBase58(bytes.subarray(addressesStart + i * 32, addressesStart + (i + 1) * 32))
+  );
   cursor += addressCount * 32;
   const configBytes = ((configMask & 0x3) ? 8 : 0) +
     ((configMask & 0x4) ? 4 : 0) +
@@ -371,16 +374,30 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     headers.push({ programIdIndex, accountCount, dataLength });
   }
+  const instructions = [];
   for (const header of headers) {
     if (cursor + header.accountCount + header.dataLength > bytes.length) {
       throw new Error("V1 Jupiter instruction payload is truncated");
     }
-    for (let i = 0; i < header.accountCount; i++) {
-      if (bytes[cursor++] >= addressCount) {
-        throw new Error("V1 Jupiter instruction account index is invalid");
-      }
+    const accountIndexes = Array.from(bytes.subarray(cursor, cursor + header.accountCount));
+    cursor += header.accountCount;
+    if (accountIndexes.some(index => index >= addressCount)) {
+      throw new Error("V1 Jupiter instruction account index is invalid");
     }
+    const data = bytes.slice(cursor, cursor + header.dataLength);
     cursor += header.dataLength;
+    instructions.push({
+      programIdIndex: header.programIdIndex,
+      programId: inlineAccountKeys[header.programIdIndex],
+      accountIndexes,
+      accounts: accountIndexes.map(index => ({
+        index,
+        address: inlineAccountKeys[index],
+        isSigner: index === 0,
+        isWritable: index === 0 || index < addressCount - readonlyUnsigned
+      })),
+      dataBase64: btoa(String.fromCharCode(...data))
+    });
   }
   const signaturesLength = requiredSignatures * 64;
   if (cursor + signaturesLength !== bytes.length) {
@@ -392,7 +409,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   return {
     signatureCount: requiredSignatures,
     staticAccountCount: addressCount,
+    staticAccountKeys: inlineAccountKeys,
     instructionCount,
+    instructions,
     addressLookupCount: 0,
     messageVersion: 1,
     semanticInstructionVerification: false
@@ -480,6 +499,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
   const instructionAccountIndexes = [];
+  const instructions = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -495,15 +515,30 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
       throw new Error("Jupiter instruction account list is invalid");
     }
-    for (let j = 0; j < accountHeader.value; j++) {
-      instructionAccountIndexes.push(bytes[cursor++]);
-    }
+    const accountIndexes = Array.from(bytes.subarray(cursor, cursor + accountHeader.value));
+    for (const index of accountIndexes) instructionAccountIndexes.push(index);
+    cursor += accountHeader.value;
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
     if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
       throw new Error("Jupiter instruction data is invalid");
     }
+    const data = bytes.slice(cursor, cursor + dataHeader.value);
     cursor += dataHeader.value;
+    instructions.push({
+      programIdIndex,
+      programId: staticAccountKeys[programIdIndex],
+      accountIndexes,
+      accounts: accountIndexes.map(index => ({
+        index,
+        address: staticAccountKeys[index] ?? null,
+        isSigner: index < requiredSignatures,
+        isWritable: index < requiredSignatures
+          ? index < requiredSignatures - readonlySigned
+          : index < keyCount - readonlyUnsigned
+      })),
+      dataBase64: btoa(String.fromCharCode(...data))
+    });
   }
   let addressLookupCount = 0;
   let loadedAddressCount = 0;
@@ -547,6 +582,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
     instructionCount,
+    instructions,
     addressLookupCount,
     addressLookups,
     messageVersion,
