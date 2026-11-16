@@ -931,7 +931,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
   for (const row of rows) {
     if (row?.mint !== mint || row?.owner !== owner) continue;
     const amount = row?.uiTokenAmount?.amount;
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
+    if (!isU64DecimalString(amount, true)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
     total += BigInt(amount);
