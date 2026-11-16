@@ -518,6 +518,19 @@ test("v1 priority fee and heap config values are parsed in wire order", () => {
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("v1 priority fee parser preserves zero and full u64 precision", () => {
+  const zero = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFee(0), BOT_WALLET
+  );
+  assert.equal(zero.priorityFeeLamports, "0");
+  const maximum = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFee("18446744073709551615"), BOT_WALLET
+  );
+  assert.equal(maximum.priorityFeeLamports, "18446744073709551615");
+  const omitted = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
+  assert.equal(omitted.priorityFeeLamports, null);
+});
+
 test("v1 compute and loaded-data limits accept their supported upper boundaries", () => {
   const computeMax = Buffer.from(validUnsignedV1Transaction(), "base64");
   computeMax.writeUInt32LE(1_400_000, 106);
