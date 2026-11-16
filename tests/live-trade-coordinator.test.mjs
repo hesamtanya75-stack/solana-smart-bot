@@ -987,3 +987,34 @@ test("confirmation fails closed when finalized settlement has no independently v
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+test("confirmation rejects finalized all-in cost evidence that differs from the reserved cost breakdown", async () => {
+  const verifier = async args => {
+    const costs = trustedEvidence().costs;
+    const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+      costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+    return {
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized",
+      costs: { ...costs, baseFeeLamports: costs.baseFeeLamports + 1,
+        totalFeeLamports: totalFeeLamports + 1,
+        totalLamports: Number(args.inputAmount) + totalFeeLamports + 1 }
+    };
+  };
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "8".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /matching independently verified all-in cost evidence/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
