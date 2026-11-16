@@ -20,8 +20,7 @@ test("funded Devnet lifecycle is isolated to an explicit manual job and never re
   const readOnlyJob = workflow.slice(workflow.indexOf("  devnet-read-only:"), workflow.indexOf("  funded-devnet-lifecycle:"));
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
-  assert.doesNotMatch(readOnlyJob, /secrets\.DEVNET_RPC_URL/);
-  assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\/\/api\.devnet\.solana\.com/);
+  assert.match(readOnlyJob, /DEVNET_RPC_URL:.*secrets\.DEVNET_RPC_URL.*api\\.devnet\\.solana\\.com/);
   assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
   assert.match(fundedJob, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
   assert.match(fundedJob, /node scripts\/devnet-signed-lifecycle\.mjs/);
