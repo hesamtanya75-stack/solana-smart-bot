@@ -8,22 +8,22 @@ const workflow = readFileSync(
 );
 
 function getStep(name) {
-  const marker = `      - name: ${name}\\n`;
+  const marker = `      - name: ${name}\n`;
   const start = workflow.indexOf(marker);
   assert.notEqual(start, -1, `workflow step not found: ${name}`);
-  const next = workflow.indexOf("\\n      - name:", start + marker.length);
+  const next = workflow.indexOf("\n      - name:", start + marker.length);
   return workflow.slice(start, next === -1 ? undefined : next);
 }
 
 test("funded Devnet lifecycle requires explicit manual opt-in and is skipped otherwise", () => {
-  assert.match(workflow, /workflow_dispatch:[\\s\\S]*run_funded_devnet_lifecycle:[\\s\\S]*default: false/);
+  assert.match(workflow, /workflow_dispatch:[\s\S]*run_funded_devnet_lifecycle:[\s\S]*default: false/);
   const fundedStep = getStep("Verify ephemeral signing and submit a faucet-funded Devnet test transfer");
-  assert.match(fundedStep, /if:\\s*\\$\\{\\{\\s*github\\.event_name\\s*==\\s*'workflow_dispatch'\\s*&&\\s*inputs\\.run_funded_devnet_lifecycle\\s*==\\s*true\\s*&&\\s*env\\.DEVNET_RPC_URL\\s*!=\\s*''\\s*\\}\\}/);
-  assert.match(fundedStep, /DEVNET_RPC_URL:\\s*\\$\\{\\{\\s*secrets\\.DEVNET_RPC_URL\\s*\\}\\}/);
-  assert.match(fundedStep, /node scripts\\/devnet-signed-lifecycle\\.mjs/);
+  assert.match(fundedStep, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*&&\s*env\.DEVNET_RPC_URL\s*!=\s*''\s*\}\}/);
+  assert.match(fundedStep, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
+  assert.match(fundedStep, /node scripts\/devnet-signed-lifecycle\.mjs/);
 
   const skippedStep = getStep("Report funded Devnet lifecycle as skipped without a dedicated RPC");
-  assert.match(skippedStep, /if:\\s*\\$\\{\\{\\s*!\\(github\\.event_name\\s*==\\s*'workflow_dispatch'\\s*&&\\s*inputs\\.run_funded_devnet_lifecycle\\s*==\\s*true\\s*&&\\s*env\\.DEVNET_RPC_URL\\s*!=\\s*''\\)\\s*\\}\\}/);
+  assert.match(skippedStep, /if:\s*\$\{\{\s*!\(github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*&&\s*env\.DEVNET_RPC_URL\s*!=\s*''\)\s*\}\}/);
   assert.match(skippedStep, /status: "skipped"/);
   assert.match(skippedStep, /signing: "not performed"/);
   assert.match(skippedStep, /transactionsSubmitted: 0/);
@@ -35,11 +35,11 @@ test("Devnet preflight retries transient network failures without exposing the R
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /catch \\(error\\)[\\s\\S]*network request failed after 4 attempts/);
-  assert.match(script, /AbortSignal\\.timeout\\(15000\\)/);
+  assert.match(script, /catch \(error\)[\s\S]*network request failed after 4 attempts/);
+  assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
-  assert.match(script, /payload\\.jsonrpc !== "2\\.0" \\|\\| payload\\.id !== 1/);
-  assert.doesNotMatch(script, /console\\.(?:log|error)\\([^\\n]*DEVNET_RPC/);
+  assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
+  assert.doesNotMatch(script, /console\.(?:log|error)\([^\n]*DEVNET_RPC/);
 });
 
 test("Devnet airdrop confirmation uses its signature and never repeats a submitted request", () => {
@@ -48,15 +48,15 @@ test("Devnet airdrop confirmation uses its signature and never repeats a submitt
     "utf8"
   );
   const helperStart = script.indexOf("async function requestDevnetAirdrop");
-  const helperEnd = script.indexOf("\\nasync function main()", helperStart);
+  const helperEnd = script.indexOf("\nasync function main()", helperStart);
   assert.notEqual(helperStart, -1);
   assert.notEqual(helperEnd, -1);
   const helper = script.slice(helperStart, helperEnd);
-  assert.match(helper, /signature = await connection\\.requestAirdrop/);
-  assert.match(helper, /connection\\.confirmTransaction\\(signature, "confirmed"\\)/);
+  assert.match(helper, /signature = await connection\.requestAirdrop/);
+  assert.match(helper, /connection\.confirmTransaction\(signature, "confirmed"\)/);
   assert.doesNotMatch(helper, /getLatestBlockhash/);
   assert.match(helper, /Retry only the faucet request itself/);
-  assert.match(helper, /if \\(!signature\\)/);
+  assert.match(helper, /if \(!signature\)/);
 });
 
 test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release the body", () => {
@@ -64,10 +64,10 @@ test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release 
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /function retryDelayMs\\(response, attempt\\)/);
-  assert.match(script, /Math\\.min\\(dateDelay, 10_000\\)/);
-  assert.match(script, /response\\.body\\?\\.cancel\\(\\)/);
-  assert.match(script, /setTimeout\\(resolve, retryDelayMs\\(response, attempt\\)\\)/);
+  assert.match(script, /function retryDelayMs\(response, attempt\)/);
+  assert.match(script, /Math\.min\(dateDelay, 10_000\)/);
+  assert.match(script, /response\.body\?\.cancel\(\)/);
+  assert.match(script, /setTimeout\(resolve, retryDelayMs\(response, attempt\)\)/);
 });
 
 test("funded Devnet lifecycle verifies the finalized transaction's recipient balance delta", () => {
@@ -75,12 +75,12 @@ test("funded Devnet lifecycle verifies the finalized transaction's recipient bal
     new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /transactionInfo\\.transaction\\?\\.message/);
-  assert.match(script, /transactionInfo\\.meta\\?\\.preBalances/);
-  assert.match(script, /transactionInfo\\.meta\\?\\.postBalances/);
-  assert.match(script, /transactionSignatures\\[0\\] !== signature/);
-  assert.match(script, /payer\\.publicKey\\.toBase58\\(\\)/);
-  assert.match(script, /postBalances\\[recipientIndex\\] - preBalances\\[recipientIndex\\] < TRANSFER_LAMPORTS/);
+  assert.match(script, /transactionInfo\.transaction\?\.message/);
+  assert.match(script, /transactionInfo\.meta\?\.preBalances/);
+  assert.match(script, /transactionInfo\.meta\?\.postBalances/);
+  assert.match(script, /transactionSignatures\[0\] !== signature/);
+  assert.match(script, /payer\.publicKey\.toBase58\(\)/);
+  assert.match(script, /postBalances\[recipientIndex\] - preBalances\[recipientIndex\] < TRANSFER_LAMPORTS/);
 });
 
 test("funded Devnet lifecycle verifies cluster identity before creating signers", () => {
