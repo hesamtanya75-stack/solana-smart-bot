@@ -696,3 +696,51 @@ test("kill switch activated during evidence retrieval blocks the in-flight reser
   assert.equal(status.openPositions, 0);
   assert.equal(status.dailySpendUsdCents, 0);
 });
+
+
+test("active emergency stop blocks new reservations but permits finalized settlement reconciliation", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  await post(coordinator, "/kill-switch", { enabled: true });
+
+  const confirmation = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "6".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(confirmation.status, 200);
+  assert.equal(confirmation.body.reservation.status, "confirmed");
+  assert.equal((await coordinator.status()).killSwitch, true);
+
+  const blocked = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-after-stop"
+  }));
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.body.error, /emergency kill switch is active/i);
+});
+
+test("kill switch activated during settlement verification does not strand a submitted pending reservation", async () => {
+  let coordinator;
+  const verifier = async args => {
+    await post(coordinator, "/kill-switch", { enabled: true });
+    return {
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized"
+    };
+  };
+  ({ coordinator } = makeCoordinator(undefined, verifier));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "7".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.reservation.status, "confirmed");
+  assert.equal((await coordinator.status()).killSwitch, true);
+});
