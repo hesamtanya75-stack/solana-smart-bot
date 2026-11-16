@@ -17,24 +17,25 @@ function getStep(name) {
 
 test("funded Devnet lifecycle is manual-dispatch only and exposes no ephemeral secret", () => {
   const fundedStep = getStep("Verify ephemeral signing and submit a faucet-funded Devnet test transfer");
-  assert.match(fundedStep, /if:\\s*\\$\\{\\{\\s*github\\.event_name\\s*==\\s*'workflow_dispatch'\\s*&&\\s*env\\.DEVNET_RPC_URL\\s*!=\\s*''\\s*\\}\\}/);
-  assert.match(fundedStep, /node scripts\\/devnet-signed-lifecycle\\.mjs/);
+  assert.ok(fundedStep.includes("github.event_name == 'workflow_dispatch'"));
+  assert.ok(fundedStep.includes("env.DEVNET_RPC_URL != ''"));
+  assert.ok(fundedStep.includes("node scripts/devnet-signed-lifecycle.mjs"));
 
   const prSkipStep = getStep("Report funded Devnet lifecycle as skipped on pull requests");
-  assert.match(prSkipStep, /github\\.event_name\\s*!=\\s*'workflow_dispatch'/);
+  assert.ok(prSkipStep.includes("github.event_name != 'workflow_dispatch'"));
   const missingRpcStep = getStep("Report funded Devnet lifecycle as skipped without a dedicated RPC");
-  assert.match(missingRpcStep, /github\\.event_name\\s*==\\s*'workflow_dispatch'/);
-  assert.match(missingRpcStep, /env\\.DEVNET_RPC_URL\\s*==\\s*''/);
+  assert.ok(missingRpcStep.includes("github.event_name == 'workflow_dispatch'"));
+  assert.ok(missingRpcStep.includes("env.DEVNET_RPC_URL == ''"));
 
   const script = readFileSync(
     new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /DEVNET_MANUAL_FUNDING_ADDRESS=/);
-  assert.match(script, /Date\\.now\\(\\) \\+ 8 \\* 60 \\* 1000/);
-  assert.match(script, /connection\\.getBalance\\(payer\\.publicKey, "confirmed"\\)/);
-  assert.match(script, /userPrivateKeysUsed: false/);
-  assert.doesNotMatch(script, /console\\.log\\([^\\n]*(?:secretKey|secret key|private key)/i);
+  assert.ok(script.includes("DEVNET_MANUAL_FUNDING_ADDRESS="));
+  assert.ok(script.includes("Date.now() + 8 * 60 * 1000"));
+  assert.ok(script.includes('connection.getBalance(payer.publicKey, "confirmed")'));
+  assert.ok(script.includes("userPrivateKeysUsed: false"));
+  assert.doesNotMatch(script, /console\.log\([^\n]*(?:secretKey|secret key|private key)/i);
 });
 
 test("Devnet preflight retries transient network failures without exposing the RPC URL", async () => {
