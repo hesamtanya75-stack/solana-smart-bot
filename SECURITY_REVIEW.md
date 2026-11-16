@@ -644,3 +644,20 @@ The latest GitHub Actions runs for this exact code head report:
 - Devnet workflow: overall success for read-only/runtime checks. Its ephemeral signing and faucet-funded transfer step was **skipped** because `DEVNET_RPC_URL` is not configured. No signed Devnet lifecycle is claimed.
 
 Other release blockers remain unchanged: production all-in fee evidence and a reviewed production priority-fee ceiling are absent; the coordinator is not called by the Worker and settlement transitions remain disabled; no secure signer implementation exists; deployed Cloudflare production configuration has not been independently verified. PR #27 remains Draft, Open, and unmerged. No merge, production deployment, signing, transaction submission, or Mainnet activity was performed or authorized.
+
+
+## Exact PR #27 head verification — 2026-11-16 (head `e6810893d0148e96b5458f9f949691e404a512d7`)
+
+GitHub Actions and the Cloudflare preview were checked against the exact current PR head:
+- Node safety and Durable Objects runtime suite: **220 passed, 0 failed, 0 skipped**.
+- Isolated test-runtime dependency audit: no vulnerabilities reported.
+- Frontend JavaScript validation: success.
+- Cloudflare Worker validation: success using Wrangler `--dry-run`; this is not a production deployment.
+- Devnet read-only preflight: official Devnet genesis hash, RPC health, confirmed slot, reference mint, and supply checks passed.
+- Devnet public RPC rate-limited the largest-account owner lookup (HTTP 429); holder concentration was therefore **not validated** in this run. The preflight emitted an explicit warning and left holder metrics null.
+- Funded signed Devnet lifecycle: **skipped** because the workflow requires explicit manual opt-in and a dedicated `DEVNET_RPC_URL` secret. No signer was created, no faucet airdrop was requested, and no transaction was submitted. The manual funded-lifecycle workflow's transfer job was also skipped; its overall workflow success must not be interpreted as an on-chain lifecycle pass.
+- Cloudflare PR preview build and deployment: success for the preview environment only.
+
+The latest source review confirms the live path remains deliberately blocked: production `fetchTrustedLiveEvidence()` returns quote and risk evidence but no verified `costs` object; the coordinator requires complete trusted all-in cost evidence and rejects a reservation when it is absent. Jupiter transaction/build parsing still sets `semanticInstructionVerification: false`; `executeLiveOrder()` still throws; the Worker does not invoke the live coordinator; and settlement transitions remain fail-closed. Do not synthesize fee values or weaken these gates to make tests pass.
+
+PR #27 remains **Open, Draft, and unmerged**. No production deployment, merge, Mainnet access, wallet signing, transaction submission, or live trading was performed or authorized. The next safe engineering work is independent, authoritative Jupiter instruction/program decoding and a complete trusted all-in cost model, followed by regression tests; the Devnet funded lifecycle remains a separate operator-authorized prerequisite.
