@@ -925,11 +925,17 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
-function sumOwnedTokenBalance(rows, mint, owner) {
+function sumOwnedTokenBalance(rows, mint, owner, accountCount) {
   if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
   let total = 0n;
+  const seenAccountIndexes = new Set();
   for (const row of rows) {
     if (row?.mint !== mint || row?.owner !== owner) continue;
+    if (!Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
+        row.accountIndex >= accountCount || seenAccountIndexes.has(row.accountIndex)) {
+      throw new Error("Finalized transaction contains invalid or duplicate owned token account indexes");
+    }
+    seenAccountIndexes.add(row.accountIndex);
     const amount = row?.uiTokenAmount?.amount;
     if (!isU64DecimalString(amount, true)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
@@ -1059,8 +1065,8 @@ export async function verifyFinalizedJupiterSettlement({
       }))
     : null;
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, allKeys.length);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, allKeys.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -1068,8 +1074,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, allKeys.length);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, allKeys.length);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
