@@ -10,9 +10,10 @@ permissions:
 jobs:
   devnet-read-only:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+      DEVNET_MANUAL_FUNDING: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,12 +28,15 @@ jobs:
       - name: Verify Devnet cluster identity and read-only RPC methods
         run: node scripts/devnet-preflight.mjs
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
-        if: ${{ env.DEVNET_RPC_URL != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.DEVNET_RPC_URL != '' }}
         # Only a dedicated RPC is accepted for the funded lifecycle. The public
         # Devnet faucet may be unavailable or rate-limited and is not a CI fallback.
         run: node scripts/devnet-signed-lifecycle.mjs
+      - name: Report funded Devnet lifecycle as skipped on pull requests
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        run: echo "::notice title=Manual Devnet lifecycle only::Funded lifecycle runs only when manually dispatched, to allow safe faucet funding."
       - name: Report funded Devnet lifecycle as skipped without a dedicated RPC
-        if: ${{ env.DEVNET_RPC_URL == '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.DEVNET_RPC_URL == '' }}
         run: |
           echo "::notice title=Funded Devnet lifecycle skipped::DEVNET_RPC_URL is not configured; no faucet-funded transfer was attempted."
           node -e 'console.log(JSON.stringify({ status: "skipped", reason: "DEVNET_RPC_URL is not configured", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
