@@ -41,7 +41,7 @@ The current $3 per-buy and $5 per-day reservation accounting converts only the S
 
 The current `fetchTrustedLiveEvidence()` production provider returns only `quote`, `risk`, and `passed`. It does not return a `costs` object. Its Jupiter sell-route result is quote/build-envelope and transaction-structure evidence only; it does not set `semanticInstructionVerification: true` or `routeVerification: "semantically-verified"`. Consequently, the production provider cannot satisfy the coordinator's semantic-verification and all-in-cost reservation gates. Unit-test fixtures that include these fields are synthetic test inputs, not evidence that production analysis has implemented either capability. Keep reservations blocked until independently validated production evidence is implemented and tested end to end.
 
-The current PR adds regression coverage that removes either semantic route attestation or all-in cost evidence from otherwise passing synthetic evidence and asserts that reservation is rejected without changing open-position or daily-spend state. These tests prove the coordinator's fail-closed behavior only; they do not prove the production provider can generate trusted semantic or cost evidence.
+The current PR adds regression coverage that removes either semantic route attestation or all-in cost evidence from otherwise passing synthetic evidence and asserts that reservation is rejected without changing open-position or daily-spend state. Settlement tests also reject missing or mismatched finalized all-in cost fields rather than confirming a position. These tests prove the coordinator's fail-closed behavior only; they do not prove the production provider can generate trusted semantic or cost evidence.
 
 ## Mandatory remaining release gates
 
