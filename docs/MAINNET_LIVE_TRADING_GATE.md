@@ -115,3 +115,13 @@ Therefore:
 - Reject settlement reconciliation as incomplete for budget/accounting purposes whenever the complete outflow evidence is missing, inconsistent, or exceeds the reserved all-in ceiling.
 
 This is a documentation clarification of the current verifier's scope; it does not add a live transaction path or claim that native SOL cost reconciliation is implemented.
+
+
+### Worker integration boundary
+
+The Wrangler configuration declares a `LIVE_TRADE_COORDINATOR` Durable Object binding, but the current public `worker.js` does not reference that binding, instantiate a coordinator stub, expose live-order routes, or call `executeLiveOrder()`. The coordinator module's existence and a Wrangler binding declaration are not an operational trading path.
+
+Keep this distinction explicit during review:
+- A declared Durable Object binding is deployment configuration, not proof of application integration.
+- Do not expose reservation or execution endpoints until authentication, immutable order-intent binding, semantic instruction verification, complete all-in cost verification, idempotent settlement, and independent review are all in place.
+- The production Worker must continue serving no live-trading route while any of those gates are incomplete.
