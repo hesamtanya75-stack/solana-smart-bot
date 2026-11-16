@@ -6,9 +6,8 @@ import {
   Transaction
 } from "@solana/web3.js";
 
-// A dedicated Devnet RPC may be supplied through GitHub Actions secrets.
-// The genesis-hash guard below still refuses to sign against any other cluster.
-const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
+// Funded lifecycle checks require a dedicated operator-configured Devnet RPC.
+// Never fall back to the public endpoint when a secret is missing.
 const TRANSFER_LAMPORTS = 1_000_000; // 0.001 SOL; Devnet only
 const AIRDROP_LAMPORTS = LAMPORTS_PER_SOL / 2;
 
@@ -50,6 +49,10 @@ async function requestDevnetAirdrop(connection, publicKey) {
 }
 
 async function main() {
+  const DEVNET_RPC = process.env.DEVNET_RPC_URL;
+  if (typeof DEVNET_RPC !== "string" || DEVNET_RPC.trim() === "") {
+    throw new Error("DEVNET_RPC_URL is required for funded Devnet lifecycle; refusing public-RPC fallback");
+  }
   const connection = new Connection(DEVNET_RPC, {
     commitment: "confirmed",
     confirmTransactionInitialTimeout: 60_000
