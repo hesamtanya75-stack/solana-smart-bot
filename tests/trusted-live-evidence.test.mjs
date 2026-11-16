@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -1318,4 +1318,84 @@ test("trusted evidence rejects malformed UTF-8 provider responses", async () => 
     )),
     /not valid UTF-8/
   );
+});
+
+
+test("production trusted evidence integration never claims semantic trust or all-in costs", async () => {
+  const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const solMint = "So11111111111111111111111111111111111111112";
+  const owner = "11111111111111111111111111111111";
+  const mockFetch = async (url, options = {}) => {
+    const value = String(url);
+    if (value.includes("coinbase.com/v2/prices/SOL-USD/spot")) {
+      return Response.json({ data: { base: "SOL", currency: "USD", amount: "150" } });
+    }
+    if (value.includes("dexscreener.com/latest/dex/tokens/")) {
+      return Response.json({ pairs: [{
+        chainId: "solana", baseToken: { address: mint },
+        liquidity: { usd: 50000 }, volume: { h24: 5000 },
+        priceUsd: "1", txns: { h24: { sells: 20 } }
+      }] });
+    }
+    if (value.includes("rugcheck.xyz/v1/tokens/")) {
+      return Response.json({ score: 100 });
+    }
+    if (value.includes("api.jup.ag/swap/v2/order")) {
+      const params = new URL(value).searchParams;
+      assert.equal(params.has("taker"), false);
+      assert.equal(params.get("inputMint"), mint);
+      assert.equal(params.get("outputMint"), solMint);
+      return Response.json({
+        requestId: "integration-quote-only",
+        transaction: null,
+        inputMint: mint,
+        outputMint: solMint,
+        inAmount: params.get("amount"),
+        outAmount: "1000000",
+        routePlan: [{ swapInfo: { label: "mock-route" } }]
+      });
+    }
+    const request = JSON.parse(options.body);
+    if (value.includes("solana-mainnet.g.alchemy.com")) {
+      assert.equal(request.method, "getTokenAccounts");
+      assert.equal(request.params.mintAddress, mint);
+      return Response.json({
+        jsonrpc: "2.0", id: request.id,
+        result: { token_accounts: [{
+          address: "TokenAccountAddress111111111111111111111",
+          mint, owner, amount: "1001"
+        }], errors: [] }
+      });
+    }
+    if (request.method === "getAccountInfo") {
+      return Response.json({
+        jsonrpc: "2.0", id: request.id,
+        result: { value: {
+          owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          data: { parsed: { info: { mintAuthority: null, freezeAuthority: null } } }
+        } }
+      });
+    }
+    if (request.method === "getTokenSupply") {
+      return Response.json({
+        jsonrpc: "2.0", id: request.id,
+        result: { value: { amount: "1001", decimals: 0 } }
+      });
+    }
+    throw new Error("Unexpected integration mock request: " + value);
+  };
+
+  const evidence = await fetchTrustedLiveEvidence(
+    mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"
+  );
+
+  assert.equal(evidence.quote.provider, "Coinbase");
+  assert.equal(evidence.quote.pair, "SOL/USD");
+  assert.equal(evidence.risk.mint, mint);
+  assert.equal(evidence.risk.sellRoute.semanticInstructionVerification, false);
+  assert.equal(evidence.risk.sellRoute.routeVerification, "quote-only-no-transaction");
+  assert.equal(evidence.risk.checks.sellRouteAvailable, false);
+  assert.equal(evidence.risk.passed, false);
+  assert.equal(evidence.passed, false);
+  assert.equal(Object.hasOwn(evidence, "costs"), false);
 });
