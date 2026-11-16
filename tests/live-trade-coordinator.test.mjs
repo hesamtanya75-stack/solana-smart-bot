@@ -48,7 +48,17 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
+    VERIFY_FINALIZED_SETTLEMENT: async args => {
+      const proof = await settlementVerifier(args);
+      if (proof && !Object.prototype.hasOwnProperty.call(proof, "costs")) {
+        const costs = trustedEvidence().costs;
+        const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+          costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+        return { ...proof, costs: { ...costs, totalFeeLamports,
+          totalLamports: Number(args.inputAmount) + totalFeeLamports } };
+      }
+      return proof;
+    }
   });
   return { coordinator, storage };
 }
