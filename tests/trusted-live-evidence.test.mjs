@@ -915,8 +915,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
-  // Deliberately make the native SOL balance delta much larger than the
-  // wrapped-SOL token input. This verifier proves token settlement only.
+  // The fixture's native SOL balance delta differs from the wrapped-SOL
+  // token input. This verifier proves token settlement only.
   // It must not be mistaken for native SOL fee/rent/tip or all-in cost proof.
   assert.equal(Object.hasOwn(proof, "costs"), false);
   assert.equal(Object.hasOwn(proof, "allInCosts"), false);
