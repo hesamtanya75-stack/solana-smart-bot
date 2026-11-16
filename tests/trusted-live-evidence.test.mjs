@@ -915,6 +915,16 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+  // The native SOL balance delta includes the 10,000,000-lamport wrapped-SOL
+  // input and 5,000-lamport base fee in this fixture. The verifier does not
+  // yet attest priority fees, rent, tips, or every other native outflow.
+  for (const field of [
+    "costs", "allInCosts", "nativeSolOutflowLamports",
+    "baseFeeLamports", "priorityFeeLamports", "rentLamports",
+    "tipLamports", "totalLamports"
+  ]) {
+    assert.equal(Object.hasOwn(proof, field), false, field);
+  }
 });
 
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
