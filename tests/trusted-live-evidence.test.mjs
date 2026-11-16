@@ -1328,6 +1328,44 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
   }, fetchImpl), /output token balance delta does not match/);
 });
 
+test("settlement proof rejects noncanonical or out-of-range owned token balances", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(10));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 130,
+          transaction: {
+            signatures: [signature],
+            message: { accountKeys: [BOT_WALLET] }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            preTokenBalances: [
+              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+            ],
+            postTokenBalances: [
+              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "1"
+  }, fetchImpl), /invalid owned token balance/);
+});
+
 test("settlement proof rejects confirmed but non-finalized signatures", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
   const fetchImpl = async (_url, options) => {
