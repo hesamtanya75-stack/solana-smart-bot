@@ -921,15 +921,25 @@ export async function verifyFinalizedJupiterSettlement({
   const message = transaction?.transaction?.message;
   const signatures = transaction?.transaction?.signatures;
   const accountKeys = message?.accountKeys;
+  const loadedAddresses = meta?.loadedAddresses ?? { writable: [], readonly: [] };
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
-      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
-      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
-      meta.postBalances.length !== accountKeys.length ||
+      !Array.isArray(accountKeys) ||
+      !loadedAddresses || !Array.isArray(loadedAddresses.writable) ||
+      !Array.isArray(loadedAddresses.readonly) ||
+      !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  const loadedKeyStrings = [...loadedAddresses.writable, ...loadedAddresses.readonly];
+  if (keyStrings.some(key => !validAddress(key)) ||
+      loadedKeyStrings.some(key => !validAddress(key)) ||
+      new Set([...keyStrings, ...loadedKeyStrings]).size !== keyStrings.length + loadedKeyStrings.length ||
+      meta.preBalances.length !== keyStrings.length + loadedKeyStrings.length ||
+      meta.postBalances.length !== keyStrings.length + loadedKeyStrings.length) {
+    throw new Error("Finalized transaction account keys or loaded-address balance metadata is inconsistent");
+  }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
   // Solana's first required signer is the fee payer. Require the pinned bot
   // wallet in that position so a third-party transaction cannot settle an order.
