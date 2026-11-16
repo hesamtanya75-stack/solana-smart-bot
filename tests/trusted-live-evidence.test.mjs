@@ -930,6 +930,34 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 });
 
 
+test("settlement proof rejects noncanonical signatures and noncanonical or out-of-range u64 amounts before RPC", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  let rpcCalls = 0;
+  const fetchImpl = async () => {
+    rpcCalls++;
+    throw new Error("RPC must not be called for invalid settlement input");
+  };
+  const invalidRequests = [
+    { signature: "1" + signature, inputAmount: "1", outputAmount: "1" },
+    { signature, inputAmount: "01", outputAmount: "1" },
+    { signature, inputAmount: "18446744073709551616", outputAmount: "1" },
+    { signature, inputAmount: "1", outputAmount: "00" }
+  ];
+  for (const request of invalidRequests) {
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature: request.signature,
+      inputMint,
+      outputMint,
+      inputAmount: request.inputAmount,
+      outputAmount: request.outputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+  assert.equal(rpcCalls, 0);
+});
+
+
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
