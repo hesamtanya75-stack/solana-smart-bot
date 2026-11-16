@@ -1,0 +1,65 @@
+name: Manual funded Devnet lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type DEVNET_ONLY to run the ephemeral-key Devnet transfer test"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  funded-devnet-lifecycle:
+    if: ${{ inputs.confirmation == 'DEVNET_ONLY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+      DEVNET_MANUAL_FUNDING: '1'
+    steps:
+      - name: Check out the live-trading preparation branch
+        uses: actions/checkout@v4
+        with:
+          ref: phantom-wallet-settlement-foundation
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install isolated Devnet test dependencies
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@5.20261113.0-beta @solana/web3.js@1.98.4
+
+      - name: Run unit and Durable Objects runtime tests
+        run: npm test
+
+      - name: Verify Devnet cluster identity and read-only RPC methods
+        run: node scripts/devnet-preflight.mjs
+
+      - name: Verify ephemeral signing and submit a manually funded Devnet test transfer
+        run: node scripts/devnet-signed-lifecycle.mjs
+
+      - name: Report safety boundary
+        if: always()
+        run: |
+          {
+            echo "### Manual Devnet lifecycle"
+            echo ""
+            echo "- Cluster: Devnet only (genesis hash is checked before signing)"
+            echo "- Wallet: ephemeral CI keypair; no Phantom secret or user private key"
+            echo "- Mainnet: not accessed"
+            echo "- Swap: not executed"
+            echo "- Transfer: 0.001 SOL on Devnet only, after manual funding is detected"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  require-explicit-confirmation:
+    if: ${{ inputs.confirmation != 'DEVNET_ONLY' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stop without running the funded lifecycle
+        run: |
+          echo "Confirmation must equal DEVNET_ONLY. No signing or transaction submission was attempted."
