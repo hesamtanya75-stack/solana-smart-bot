@@ -194,6 +194,16 @@ test("v1 heap-size config rejects values outside the protocol bounds or alignmen
   }
 });
 
+test("v1 transaction rejects instruction account indexes outside the inline address table", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // The fixture has two inline addresses (indexes 0 and 1); index 2 is invalid.
+  bytes[118] = 2;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /V1 Jupiter instruction account index is invalid/
+  );
+});
+
 test("v1 transaction with an unknown program remains structural-only and cannot attest a safe route", () => {
   const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
   assert.equal(parsed.messageVersion, 1);
