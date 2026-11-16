@@ -443,6 +443,39 @@ test("confirmation stores only independently verified finalized settlement evide
   assert.equal((await coordinator.status()).openPositions, 1);
 });
 
+test("confirmed reservation rejects replay with a different finalized signature", async () => {
+  let verificationCalls = 0;
+  const verifier = async args => {
+    verificationCalls += 1;
+    return {
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized"
+    };
+  };
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const first = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "8".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(first.status, 200);
+  const replay = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "9".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(replay.status, 409);
+  assert.match(replay.body.error, /cannot be replayed with another signature/);
+  assert.equal(verificationCalls, 1);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
 test("concurrent identical confirmations are idempotent after finalized settlement verification", async () => {
   let releaseVerifications;
   let signalVerification;
