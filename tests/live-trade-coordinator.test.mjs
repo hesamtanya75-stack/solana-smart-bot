@@ -413,6 +413,50 @@ test("confirmation stores only independently verified finalized settlement evide
   assert.equal((await coordinator.status()).openPositions, 1);
 });
 
+test("concurrent identical confirmations are idempotent after finalized settlement verification", async () => {
+  let releaseVerifications;
+  let signalVerification;
+  const bothVerificationsStarted = new Promise(resolve => { signalVerification = resolve; });
+  const verificationGate = new Promise(resolve => { releaseVerifications = resolve; });
+  let verificationCalls = 0;
+  const verifier = async args => {
+    verificationCalls += 1;
+    if (verificationCalls === 2) {
+      signalVerification();
+      await verificationGate;
+    } else {
+      await bothVerificationsStarted;
+    }
+    return {
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized"
+    };
+  };
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+
+  const confirmationBody = {
+    idempotencyKey: "order-key-0001",
+    signature: "8".repeat(64),
+    outputAmount: "987654"
+  };
+  const first = post(coordinator, "/confirm", confirmationBody);
+  const second = post(coordinator, "/confirm", confirmationBody);
+  await bothVerificationsStarted;
+  releaseVerifications();
+
+  const results = await Promise.all([first, second]);
+  assert.equal(verificationCalls, 2);
+  assert.equal(results.filter(result => result.status === 200).length, 2);
+  assert.equal(results.filter(result => result.body.duplicate === false).length, 1);
+  assert.equal(results.filter(result => result.body.duplicate === true).length, 1);
+  assert.equal(results.every(result => result.body.reservation.status === "confirmed"), true);
+  assert.equal((await coordinator.status()).openPositions, 1);
+});
+
 test("mismatched settlement proof cannot confirm a reservation", async () => {
   const verifier = async args => ({
     verified: true, signature: args.signature, inputMint: args.inputMint,
