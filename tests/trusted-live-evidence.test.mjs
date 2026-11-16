@@ -950,6 +950,15 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
               writable: [encodeBase58(new Uint8Array(32).fill(11))],
               readonly: [encodeBase58(new Uint8Array(32).fill(12))]
             },
+            innerInstructions: [{
+              index: 0,
+              instructions: [{
+                programIdIndex: 1,
+                accounts: [0, 2],
+                data: "2",
+                stackHeight: 2
+              }]
+            }],
             preBalances: [100_000_000, 1, 2],
             postBalances: [89_995_000, 1, 2],
             preTokenBalances: [{
@@ -982,6 +991,22 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+  assert.equal(proof.innerInstructionsRecorded, true);
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.deepEqual(proof.innerInstructionEvidence, [{
+    index: 0,
+    instructions: [{
+      programIdIndex: 1,
+      programId: encodeBase58(new Uint8Array(32).fill(11)),
+      accountIndexes: [0, 2],
+      accounts: [
+        { index: 0, address: BOT_WALLET },
+        { index: 2, address: encodeBase58(new Uint8Array(32).fill(12)) }
+      ],
+      dataBase58: "2",
+      stackHeight: 2
+    }]
+  }]);
   // The fixture's native SOL balance delta differs from the wrapped-SOL
   // token input. This verifier proves token settlement only.
   // It must not be mistaken for native SOL fee/rent/tip or all-in cost proof.
