@@ -121,3 +121,13 @@ test("static asset fallback exposes only the self-contained dashboard routes", (
   assert.ok(dashboardGate >= 0, "all non-dashboard paths must be denied before static asset lookup");
   assert.ok(assetFetch > dashboardGate, "the asset binding must only be reached after the dashboard allowlist");
 });
+
+test("live coordinator remains isolated until semantic verification and all-in cost gates are complete", () => {
+  // The Durable Object class may be exported and bound for isolated tests,
+  // but the public Worker must not expose a live-trading route or call it.
+  assert.ok(workerSource.includes('export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";'));
+  assert.equal(workerSource.includes("env.LIVE_TRADE_COORDINATOR"), false);
+  assert.equal(workerSource.includes('url.pathname.startsWith("/api/live/")'), false);
+  assert.equal(workerSource.includes('url.pathname === "/api/live"'), false);
+  assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
+});
