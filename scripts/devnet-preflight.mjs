@@ -35,8 +35,12 @@ async function rpc(method, params = []) {
       // Retry transient network failures/timeouts as well as retryable HTTP
       // responses; never print the RPC URL because it may contain a key.
       if (attempt === 3) {
-        throw new Error(method + " network request failed after 4 attempts: " +
-          String(error?.name || "network error"));
+        // Surface a sanitized transport code (for example ECONNRESET or
+        // ENOTFOUND) so CI can distinguish DNS/TLS/socket failures without
+        // exposing the configured RPC URL or any embedded credential.
+        const rawCode = error?.cause?.code || error?.cause?.name || error?.name || "network error";
+        const safeCode = String(rawCode).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "network error";
+        throw new Error(method + " network request failed after 4 attempts (" + safeCode + ")");
       }
       await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       continue;
