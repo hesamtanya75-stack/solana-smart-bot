@@ -216,12 +216,33 @@ test("v1 transaction rejects instruction account indexes outside the inline addr
   );
 });
 
-test("v1 transaction with an unknown program remains structural-only and cannot attest a safe route", () => {
+test("v1 parser retains instruction program, ordered accounts, privileges, and raw data", () => {
   const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
   assert.equal(parsed.messageVersion, 1);
   assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programIdIndex, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [0]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 0, address: BOT_WALLET, isSigner: true, isWritable: true
+  }]);
+  assert.equal(parsed.instructions[0].dataBase64, "AA==");
   assert.equal(parsed.semanticInstructionVerification, false);
   assert.equal(parsed.routeVerification, undefined);
+});
+
+test("legacy parser retains compiled instruction structure but never semantically trusts it", () => {
+  const parsed = validateUnsignedJupiterTransaction(validUnsignedTransaction(), BOT_WALLET);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programIdIndex, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [0]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 0, address: BOT_WALLET, isSigner: true, isWritable: true
+  }]);
+  assert.equal(parsed.instructions[0].dataBase64, "");
+  assert.equal(parsed.semanticInstructionVerification, false);
 });
 
 test("unknown instruction program is parsed structurally but never semantically trusted", () => {
