@@ -507,12 +507,7 @@ test("concurrent identical confirmations are idempotent after finalized settleme
     } else {
       await bothVerificationsStarted;
     }
-    return {
-      verified: true, signature: args.signature, inputMint: args.inputMint,
-      inputAmount: args.inputAmount, outputMint: args.outputMint,
-      outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
-    };
+    return mockFinalizedSettlement(args);
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -848,12 +843,7 @@ test("kill switch activated during settlement verification does not strand a sub
   let coordinator;
   const verifier = async args => {
     await post(coordinator, "/kill-switch", { enabled: true });
-    return {
-      verified: true, signature: args.signature, inputMint: args.inputMint,
-      inputAmount: args.inputAmount, outputMint: args.outputMint,
-      outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
-    };
+    return mockFinalizedSettlement(args);
   };
   ({ coordinator } = makeCoordinator(undefined, verifier));
   await post(coordinator, "/kill-switch", { enabled: false });
