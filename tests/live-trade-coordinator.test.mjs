@@ -778,3 +778,41 @@ test("coordinator reservation ledger survives object recreation and preserves id
   assert.equal(retry.body.duplicate, true);
   assert.equal((await restarted.status()).openPositions, 1);
 });
+
+test("coordinator fails closed when trusted evidence lacks semantic verification or all-in costs", async () => {
+  const cases = [
+    {
+      name: "semantic route verification",
+      evidence: () => trustedEvidence({
+        risk: {
+          ...trustedEvidence().risk,
+          sellRoute: {
+            semanticInstructionVerification: false,
+            routeVerification: "quote-only-no-transaction"
+          }
+        }
+      }),
+      expected: /Jupiter instruction semantics and lookup tables are not verified/
+    },
+    {
+      name: "all-in transaction cost evidence",
+      evidence: () => {
+        const evidence = trustedEvidence();
+        delete evidence.costs;
+        return evidence;
+      },
+      expected: /Trusted all-in transaction cost evidence is missing/
+    }
+  ];
+
+  for (const scenario of cases) {
+    const { coordinator } = makeCoordinator(async () => scenario.evidence());
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation());
+    assert.equal(result.status, 409, scenario.name);
+    assert.match(result.body.error, scenario.expected, scenario.name);
+    const status = await coordinator.status();
+    assert.equal(status.openPositions, 0, scenario.name);
+    assert.equal(status.dailySpendUsdCents, 0, scenario.name);
+  }
+});
