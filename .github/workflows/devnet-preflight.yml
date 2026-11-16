@@ -17,8 +17,6 @@ jobs:
   devnet-read-only:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -36,6 +34,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true && env.DEVNET_RPC_URL != '' }}
         # Only a dedicated RPC is accepted for the funded lifecycle. The public
         # Devnet faucet may be unavailable or rate-limited and is not a CI fallback.
+        env:
+          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
         run: node scripts/devnet-signed-lifecycle.mjs
       - name: Report funded Devnet lifecycle as skipped without a dedicated RPC
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true && env.DEVNET_RPC_URL != '') }}
