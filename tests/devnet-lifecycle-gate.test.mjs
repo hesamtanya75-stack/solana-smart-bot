@@ -17,15 +17,15 @@ function getStep(name) {
 
 test("funded Devnet lifecycle requires a dedicated RPC and is explicitly skipped otherwise", () => {
   const fundedStep = getStep("Verify ephemeral signing and submit a faucet-funded Devnet test transfer");
-  assert.match(fundedStep, /if:\s*\$\{\{\s*env\.DEVNET_RPC_URL\s*!=\s*''\s*\}\}/);
+  assert.match(fundedStep, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*&&\s*env\.DEVNET_RPC_URL\s*!=\s*''\s*\}\}/);
   assert.match(fundedStep, /node scripts\/devnet-signed-lifecycle\.mjs/);
 
   const skippedStep = getStep("Report funded Devnet lifecycle as skipped without a dedicated RPC");
-  assert.match(skippedStep, /if:\s*\$\{\{\s*env\.DEVNET_RPC_URL\s*==\s*''\s*\}\}/);
+  assert.match(skippedStep, /if:\s*\$\{\{\s*!\(github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*&&\s*env\.DEVNET_RPC_URL\s*!=\s*''\)\s*\}\}/);
   assert.match(skippedStep, /status: "skipped"/);
   assert.match(skippedStep, /signing: "not performed"/);
   assert.match(skippedStep, /transactionsSubmitted: 0/);
-  assert.doesNotMatch(skippedStep, /`DEVNET_RPC_URL`/);
+  assert.match(skippedStep, /explicit workflow_dispatch opt-in and configured DEVNET_RPC_URL are both required/);
 });
 
 test("Devnet preflight retries transient network failures without exposing the RPC URL", async () => {

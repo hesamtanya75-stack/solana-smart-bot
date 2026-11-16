@@ -56,3 +56,42 @@ No live signer, private-key handling, Jupiter/DEX swap execution, Mainnet transa
 ### Explicit priority-fee ceiling configuration
 
 The coordinator requires `LIVE_MAX_PRIORITY_FEE_LAMPORTS` to be explicitly configured as a non-negative safe integer and rejects any computed priority fee above it. There is intentionally no default value and no production ceiling is selected by this repository change. Until an operator reviews the fee policy and configures this value, reservation attempts fail closed. A test-only fixture value is used solely for unit tests and must not be copied as an operational recommendation. This setting alone does not make fee evidence trustworthy: instruction semantics and all-in outflow decoding remain mandatory blockers.
+
+
+## Semantic transaction verification implementation contract (design gate)
+
+The semantic verifier must operate on the exact unsigned message bytes that will later be signed. It must not infer safety from the Jupiter response envelope, route labels, quote metadata, or successful address-lookup-table resolution.
+
+### Required decoding sequence
+
+1. Parse the message format and reject unsupported versions or malformed/non-canonical encodings.
+2. Resolve every static and v0 lookup-table account to an address, preserving runtime account ordering and writable/read-only privileges. Reject missing, stale, deactivated, out-of-range, duplicated, or otherwise unverifiable lookup data.
+3. Resolve every compiled instruction's program ID and ordered account list against the complete key list. Validate signer and writable privileges from the message header and lookup metadata.
+4. Decode every instruction's program-specific data using a pinned, reviewed decoder/version. Unknown program IDs, discriminators, malformed data, and unrecognized instruction variants must reject the entire transaction.
+5. Enforce a narrow v1 allowlist. Explicitly classify Compute Budget, System Program, SPL Token, Token-2022, Associated Token Account, and the exact Jupiter router/programs intended for the supported route. Do not allow a program merely because Jupiter labels it as a swap.
+6. Bind the decoded swap to immutable intent: exact input mint, output mint, input amount, minimum output, destination/owner, slippage bound, and expected token program. Any mismatch rejects.
+7. Account for every possible value movement: SOL transfers, token transfers, wrapped-SOL operations, account creation/closure, rent deposits/refunds, tips, priority fees, and any other lamport/token movement. Compute conservative maximum outflow and reserve it atomically against per-trade and daily budgets.
+8. Inspect all instructions that can be proven before signing. After a Devnet execution, independently inspect transaction metadata including inner CPI instructions and final balance deltas; a pre-sign decoder alone cannot prove arbitrary downstream CPI behavior.
+
+### Fail-closed instruction policy
+
+- Compute Budget: accept only reviewed variants; calculate priority fee from decoded compute-unit price and limit, enforce the explicitly configured ceiling, and reject duplicate or conflicting settings.
+- System Program: reject arbitrary transfers, account assignments, nonce operations, and account creation unless each exact operation, destination, owner, size, and maximum lamport amount is explicitly required by immutable swap intent.
+- SPL Token / Token-2022: decode exact variants and account roles; reject authority changes, delegates, permanent delegates, unexpected mint/burn, freeze/thaw, close-account destinations, and unreviewed Token-2022 extensions.
+- Associated Token Account: allow only deterministic creation for the intended owner, mint, and token program; include rent in all-in cost.
+- Jupiter and downstream programs: pin program IDs and reviewed instruction layouts; validate every account role and writable/signer privilege. If the route uses an unsupported CPI path or opaque instruction, reject it.
+- Any other program or instruction: reject by default.
+
+### Required adversarial test matrix
+
+- Unknown program ID, unknown discriminator, malformed/truncated data, invalid account index, unexpected writable account, and unexpected signer.
+- Wrong input/output mint, altered input amount, insufficient minimum output, wrong token owner/destination, and slippage above policy.
+- Unexpected System Program transfer, rent payer/destination mismatch, account close to an attacker-controlled destination, token authority change, delegate approval, mint/burn, and Token-2022 extension bypass.
+- Priority fee above cap, duplicate Compute Budget instructions, conflicting compute-unit limits/prices, hidden tip, and unaccounted SOL/token outflow.
+- v0 lookup-table address substitution, wrong writable/read-only classification, missing lookup data, and an address resolved from an unfinalized or invalid table.
+- A route whose outer Jupiter instruction invokes an unexpected CPI program; missing or incomplete inner-instruction metadata after execution must not be treated as proof of safety.
+- Fuzz/property tests for binary decoders and mutation tests that alter one byte, account index, signer bit, writable bit, or amount at a time.
+
+### Acceptance criteria
+
+The verifier may report `semantically-verified` only when every instruction and referenced account is decoded, classified, bound to intent, and cost-accounted. The current unsigned parser and ALT resolver do not meet this contract. Until implementation and independent review are complete, the coordinator must continue rejecting reservations and `executeLiveOrder()` must remain unimplemented.
