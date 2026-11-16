@@ -1034,63 +1034,79 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
-      const rpcDiagnostics = { successes: [], errors: [] };
-      const state = await readState(env);
-      let sold = 0;
-      let refreshWarning = "";
-      let buyMessage = "";
-      let buyWarning = "";
+      // A dashboard write can advance the authoritative revision while this
+      // cycle is checking market data. Retry once from a fresh snapshot rather
+      // than overwriting that newer state or silently dropping the cycle.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rpcDiagnostics = { successes: [], errors: [] };
+        const state = await readState(env);
+        let sold = 0;
+        let refreshWarning = "";
+        let buyMessage = "";
+        let buyWarning = "";
 
-      // A temporary price-refresh failure must not prevent discovery and paper buys.
-      try {
-        sold = await refreshTrades(state, env);
-      } catch (error) {
-        refreshWarning = String(error?.message || error);
-        console.error("Trade refresh warning", {
-          error: refreshWarning,
-          durationMs: Date.now() - startedAt
+        // A temporary price-refresh failure must not prevent discovery and paper buys.
+        try {
+          sold = await refreshTrades(state, env);
+        } catch (error) {
+          refreshWarning = String(error?.message || error);
+          console.error("Trade refresh warning", {
+            error: refreshWarning,
+            durationMs: Date.now() - startedAt
+          });
+        }
+
+        // Run discovery independently so one subsystem cannot silently block the other.
+        try {
+          buyMessage = await autoBuy(state, env, rpcDiagnostics);
+        } catch (error) {
+          buyWarning = String(error?.message || error);
+          console.error("Auto-buy warning", {
+            error: buyWarning,
+            durationMs: Date.now() - startedAt
+          });
+        }
+
+        state.lastRunAt = new Date().toISOString();
+        const warnings = [
+          refreshWarning ? "Price refresh warning: " + refreshWarning : "",
+          buyWarning ? "Auto-buy warning: " + buyWarning : ""
+        ].filter(Boolean);
+        const rpcSummary = rpcDiagnostics.successes.length
+          ? " RPC responded: " + [...new Set(rpcDiagnostics.successes)].join(", ") + "."
+          : " No successful RPC response was confirmed in this cycle.";
+        const rpcErrors = rpcDiagnostics.errors.length
+          ? " RPC errors: " + [...new Set(rpcDiagnostics.errors)].join(" | ") + "."
+          : "";
+        state.lastMessage = (warnings.length
+          ? "Server cycle completed with warning. Sold: " + sold + ". " +
+            (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
+          : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
+
+        try {
+          await saveState(env, state);
+        } catch (error) {
+          if (error.status === 409 && attempt === 0) {
+            console.warn("Paper state changed during cron cycle; retrying from fresh revision.");
+            continue;
+          }
+          throw error;
+        }
+
+        // Safe operational log: never include secrets, wallet data, or API keys.
+        console.info("Server cycle finished", {
+          sold,
+          message: buyMessage,
+          warnings,
+          rpcResponded: [...new Set(rpcDiagnostics.successes)],
+          rpcErrors: [...new Set(rpcDiagnostics.errors)],
+          openTrades: state.trades.filter(t => !t.sold).length,
+          scannedMints: state.scannedMints.length,
+          durationMs: Date.now() - startedAt,
+          revisionRetry: attempt
         });
+        return;
       }
-
-      // Run discovery independently so one subsystem cannot silently block the other.
-      try {
-        buyMessage = await autoBuy(state, env, rpcDiagnostics);
-      } catch (error) {
-        buyWarning = String(error?.message || error);
-        console.error("Auto-buy warning", {
-          error: buyWarning,
-          durationMs: Date.now() - startedAt
-        });
-      }
-
-      state.lastRunAt = new Date().toISOString();
-      const warnings = [
-        refreshWarning ? "Price refresh warning: " + refreshWarning : "",
-        buyWarning ? "Auto-buy warning: " + buyWarning : ""
-      ].filter(Boolean);
-      const rpcSummary = rpcDiagnostics.successes.length
-        ? " RPC responded: " + [...new Set(rpcDiagnostics.successes)].join(", ") + "."
-        : " No successful RPC response was confirmed in this cycle.";
-      const rpcErrors = rpcDiagnostics.errors.length
-        ? " RPC errors: " + [...new Set(rpcDiagnostics.errors)].join(" | ") + "."
-        : "";
-      state.lastMessage = (warnings.length
-        ? "Server cycle completed with warning. Sold: " + sold + ". " +
-          (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
-        : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
-
-      // Safe operational log: never include secrets, wallet data, or API keys.
-      console.info("Server cycle finished", {
-        sold,
-        message: buyMessage,
-        warnings,
-        rpcResponded: [...new Set(rpcDiagnostics.successes)],
-        rpcErrors: [...new Set(rpcDiagnostics.errors)],
-        openTrades: state.trades.filter(t => !t.sold).length,
-        scannedMints: state.scannedMints.length,
-        durationMs: Date.now() - startedAt
-      });
     })());
   }
 };
