@@ -968,17 +968,14 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
             }],
             preBalances: [100_000_000, 1, 2],
             postBalances: [89_995_000, 1, 2],
-            preTokenBalances: [{
-              mint: "So11111111111111111111111111111111111111112",
+            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              {
-                mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              {
-                mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
               }
             ]
@@ -1097,12 +1094,12 @@ test("settlement proof marks missing inner-instruction metadata as unavailable, 
             preBalances: [100_000_000],
             postBalances: [99_995_000],
             preTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
             ],
             postTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
             ]
           }
         };
@@ -1180,12 +1177,12 @@ test("settlement proof rejects non-base58 compiled instruction data", async () =
             postBalances: [99_995_000],
             innerInstructions: [],
             preTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
             ],
             postTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
             ]
           }
         };
@@ -1220,17 +1217,14 @@ test("settlement proof rejects incomplete loaded-address balance metadata", asyn
             },
             preBalances: [100_000_000, 1, 2],
             postBalances: [89_995_000, 1],
-            preTokenBalances: [{
-              mint: "So11111111111111111111111111111111111111112",
+            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              {
-                mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              {
-                mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
               }
             ]
@@ -1301,17 +1295,14 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
           transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
           meta: {
             err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
-            preTokenBalances: [{
-              mint: "So11111111111111111111111111111111111111112",
+            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              {
-                mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              {
-                mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
             ]
@@ -1348,12 +1339,12 @@ test("settlement proof rejects noncanonical or out-of-range owned token balances
             preBalances: [100_000_000],
             postBalances: [99_995_000],
             preTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
             ],
             postTokenBalances: [
-              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
-              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
             ]
           }
         };
@@ -1364,6 +1355,54 @@ test("settlement proof rejects noncanonical or out-of-range owned token balances
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
     signature, inputMint, outputMint, inputAmount: "100", outputAmount: "1"
   }, fetchImpl), /invalid owned token balance/);
+});
+
+test("settlement proof rejects duplicate and out-of-range owned token account indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(13));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const inputAccount = encodeBase58(new Uint8Array(32).fill(21));
+  const outputAccount = encodeBase58(new Uint8Array(32).fill(22));
+  const base = {
+    slot: 131,
+    transaction: {
+      signatures: [signature],
+      message: { accountKeys: [BOT_WALLET, inputAccount, outputAccount] }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      preBalances: [100_000_000, 1, 1],
+      postBalances: [99_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+      ]
+    }
+  };
+  for (const [label, mutate] of [
+    ["duplicate", rows => rows.push({ ...rows[1], uiTokenAmount: { amount: "0", decimals: 0 } })],
+    ["out-of-range", rows => { rows[1].accountIndex = 3; }]
+  ]) {
+    const result = structuredClone(base);
+    mutate(result.meta.postTokenBalances);
+    const fetchImpl = async (_url, options) => {
+      const { method } = JSON.parse(options.body);
+      const payload = method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : result;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: payload }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+    }, fetchImpl), label === "duplicate" ? /duplicate owned token account indexes/ : /invalid or duplicate owned token account indexes/);
+  }
 });
 
 test("settlement proof rejects confirmed but non-finalized signatures", async () => {
