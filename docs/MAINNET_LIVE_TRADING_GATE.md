@@ -125,3 +125,17 @@ Keep this distinction explicit during review:
 - A declared Durable Object binding is deployment configuration, not proof of application integration.
 - Do not expose reservation or execution endpoints until authentication, immutable order-intent binding, semantic instruction verification, complete all-in cost verification, idempotent settlement, and independent review are all in place.
 - The production Worker must continue serving no live-trading route while any of those gates are incomplete.
+
+
+### Required binding for any future cost attestation
+
+A numeric `costs` object passing coordinator arithmetic checks is not, by itself, trusted transaction evidence. Before a production provider may supply it, the cost verifier must bind its result to all of the following:
+
+- The exact finalized transaction signature and slot, plus the resolved message/account-key set (including address-lookup-table loaded addresses).
+- The immutable reservation/order-intent fingerprint, fee payer, input/output mints, token programs, and destination wallet.
+- Decoded outer **and** inner instructions, including System Program transfers/account creation, token-account creation/closure, wrapped-SOL setup/cleanup, tips, and every supported CPI path.
+- Actual network fee from finalized transaction metadata, with the priority-fee component reconciled against the decoded Compute Budget settings and runtime-consistent calculation; do not count the same fee twice.
+- Gross outgoing lamports and token amounts attributable to the bot, with rent deposits and account-close refunds accounted for separately. A net wallet balance delta is only a reconciliation signal: refunds or incoming transfers can conceal gross outflows.
+- Explicit treatment of missing metadata, unsupported versioned-message details, unresolved lookup tables, unknown CPI, and ambiguous ownership. Any incomplete or inconsistent evidence must fail closed.
+
+The coordinator's current arithmetic validator checks the shape and internal consistency of supplied numbers; it does not establish any of these provenance or transaction-decoding facts. The production provider currently supplies no cost object, so this requirement remains an unimplemented release gate.
