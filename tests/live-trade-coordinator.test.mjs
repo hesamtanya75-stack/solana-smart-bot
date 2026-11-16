@@ -48,14 +48,22 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
     // Explicit test verifier fixture. Custom verifiers receive no synthetic cost evidence.
     costs: { ...costs, totalFeeLamports, totalLamports: Number(args.inputAmount) + totalFeeLamports }
   };
-}) {
+}, allowSyntheticTestCosts = false) {
   const storage = new MemoryStorage();
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
+    VERIFY_FINALIZED_SETTLEMENT: async args => {
+      const proof = await settlementVerifier(args);
+      if (!allowSyntheticTestCosts || !proof || Object.hasOwn(proof, "costs")) return proof;
+      const costs = trustedEvidence().costs;
+      const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+        costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+      return { ...proof, costs: { ...costs, totalFeeLamports,
+        totalLamports: Number(args.inputAmount) + totalFeeLamports } };
+    }
   });
   return { coordinator, storage };
 }
@@ -399,7 +407,7 @@ test("confirmed positions cannot be closed or release daily spend without indepe
     outputAmount: args.outputAmount, owner: args.expectedOwner,
     confirmationStatus: "finalized"
   });
-  const { coordinator } = makeCoordinator(undefined, verifier);
+  const { coordinator } = makeCoordinator(undefined, verifier, true);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   const confirmed = await post(coordinator, "/confirm", {
@@ -433,7 +441,7 @@ test("confirmation stores only independently verified finalized settlement evide
       confirmationStatus: "finalized"
     };
   };
-  const { coordinator } = makeCoordinator(undefined, verifier);
+  const { coordinator } = makeCoordinator(undefined, verifier, true);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   const result = await post(coordinator, "/confirm", {
@@ -461,7 +469,7 @@ test("confirmed reservation rejects replay with a different finalized signature"
       confirmationStatus: "finalized"
     };
   };
-  const { coordinator } = makeCoordinator(undefined, verifier);
+  const { coordinator } = makeCoordinator(undefined, verifier, true);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   const first = await post(coordinator, "/confirm", {
@@ -504,7 +512,7 @@ test("concurrent identical confirmations are idempotent after finalized settleme
       confirmationStatus: "finalized"
     };
   };
-  const { coordinator } = makeCoordinator(undefined, verifier);
+  const { coordinator } = makeCoordinator(undefined, verifier, true);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
 
@@ -533,7 +541,7 @@ test("mismatched settlement proof cannot confirm a reservation", async () => {
     inputAmount: args.inputAmount, outputMint: args.outputMint,
     outputAmount: "1", owner: args.expectedOwner, confirmationStatus: "finalized"
   });
-  const { coordinator } = makeCoordinator(undefined, verifier);
+  const { coordinator } = makeCoordinator(undefined, verifier, true);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   const result = await post(coordinator, "/confirm", {
@@ -845,7 +853,7 @@ test("kill switch activated during settlement verification does not strand a sub
       confirmationStatus: "finalized"
     };
   };
-  ({ coordinator } = makeCoordinator(undefined, verifier));
+  ({ coordinator } = makeCoordinator(undefined, verifier, true));
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
 
