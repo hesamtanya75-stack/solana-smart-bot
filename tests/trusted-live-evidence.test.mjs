@@ -317,6 +317,12 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
   assert.equal(parsed.lookupContextSlot, 100);
   assert.equal(parsed.resolvedWritableAddresses[0], encodeBase58(new Uint8Array(32).fill(7)));
   assert.equal(parsed.resolvedReadonlyAddresses[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 2,
+    address: encodeBase58(new Uint8Array(32).fill(7)),
+    isSigner: false,
+    isWritable: true
+  }]);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
