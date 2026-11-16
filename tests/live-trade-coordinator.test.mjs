@@ -779,6 +779,36 @@ test("coordinator reservation ledger survives object recreation and preserves id
   assert.equal((await restarted.status()).openPositions, 1);
 });
 
+test("coordinator rejects inconsistent or over-cap all-in fee evidence", async () => {
+  const scenarios = [
+    {
+      name: "priority fee does not match compute budget",
+      costs: { ...trustedEvidence().costs, maxPriorityFeeLamports: 1999 },
+      expected: /Priority fee does not match the verified compute budget/
+    },
+    {
+      name: "priority fee exceeds configured cap",
+      costs: {
+        ...trustedEvidence().costs,
+        computeUnitPriceMicroLamports: "20000",
+        maxPriorityFeeLamports: 4000
+      },
+      expected: /Priority fee exceeds the reviewed maximum/
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const { coordinator } = makeCoordinator(async () => trustedEvidence({ costs: scenario.costs }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation());
+    assert.equal(result.status, 409, scenario.name);
+    assert.match(result.body.error, scenario.expected, scenario.name);
+    const status = await coordinator.status();
+    assert.equal(status.openPositions, 0, scenario.name);
+    assert.equal(status.dailySpendUsdCents, 0, scenario.name);
+  }
+});
+
 test("coordinator fails closed when trusted evidence lacks semantic verification or all-in costs", async () => {
   const cases = [
     {
