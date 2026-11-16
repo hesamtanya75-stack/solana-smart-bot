@@ -955,13 +955,21 @@ export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner = EXPECTED_BOT_WALLET
 }, fetchImpl = fetch) {
-  const validAddress = value => typeof value === "string" &&
-    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
-  const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
-  if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
-      !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
-      !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
-      !validAmount(inputAmount) || !validAmount(outputAmount)) {
+  const validSignature = typeof signature === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature) &&
+    (() => {
+      try {
+        const decoded = decodeBase58(signature);
+        return decoded.length === 64 && encodeBase58(decoded) === signature;
+      } catch {
+        return false;
+      }
+    })();
+  if (!validSignature ||
+      !isCanonicalPublicKey(inputMint) || !isCanonicalPublicKey(outputMint) ||
+      inputMint === outputMint ||
+      !isCanonicalPublicKey(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
+      !isU64DecimalString(inputAmount) || !isU64DecimalString(outputAmount)) {
     throw new Error("Settlement proof request is incomplete or invalid");
   }
 
