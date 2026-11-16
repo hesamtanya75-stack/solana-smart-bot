@@ -37,28 +37,24 @@ function trustedEvidence(overrides = {}) {
     ...overrides
   };
 }
-function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settlementVerifier = async args => ({
+function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settlementVerifier = async args => {
+  const costs = trustedEvidence().costs;
+  const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+    costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+  return {
     verified: true, signature: args.signature, inputMint: args.inputMint, inputAmount: args.inputAmount,
     outputMint: args.outputMint, outputAmount: args.outputAmount, owner: args.expectedOwner,
-    confirmationStatus: "finalized"
-  })) {
+    confirmationStatus: "finalized",
+    costs: { ...costs, totalFeeLamports, totalLamports: Number(args.inputAmount) + totalFeeLamports }
+  };
+}) {
   const storage = new MemoryStorage();
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: async args => {
-      const proof = await settlementVerifier(args);
-      if (proof && !Object.prototype.hasOwnProperty.call(proof, "costs")) {
-        const costs = trustedEvidence().costs;
-        const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
-          costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
-        return { ...proof, costs: { ...costs, totalFeeLamports,
-          totalLamports: Number(args.inputAmount) + totalFeeLamports } };
-      }
-      return proof;
-    }
+    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
   return { coordinator, storage };
 }
