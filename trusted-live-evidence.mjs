@@ -331,7 +331,17 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   // Config values are encoded in ascending bit order: priority fee (u64),
   // compute-unit limit (u32), loaded-account data limit (u32), heap size (u32).
   let configOffset = cursor;
-  if ((configMask & 0x3) !== 0) configOffset += 8;
+  let priorityFeeLamports = null;
+  if ((configMask & 0x3) !== 0) {
+    // V1 stores the total priority fee in lamports as a little-endian u64;
+    // unlike legacy/v0, this is not a micro-lamports-per-CU price.
+    let value = 0n;
+    for (let i = 0; i < 8; i++) {
+      value |= BigInt(bytes[configOffset + i]) << BigInt(i * 8);
+    }
+    priorityFeeLamports = value.toString();
+    configOffset += 8;
+  }
   const computeUnitLimit = (configMask & 0x4) !== 0
     ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
       (bytes[configOffset + 2] << 16) | (bytes[configOffset + 3] << 24)) >>> 0
@@ -414,6 +424,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     instructions,
     addressLookupCount: 0,
     messageVersion: 1,
+    priorityFeeLamports,
     semanticInstructionVerification: false
   };
 }
