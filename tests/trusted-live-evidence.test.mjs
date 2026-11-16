@@ -499,6 +499,7 @@ test("v1 priority fee requires both mask bits and preserves config offsets", () 
     unsignedV1TransactionWithPriorityFee(5000), BOT_WALLET
   );
   assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.priorityFeeLamports, "5000");
   assert.equal(parsed.semanticInstructionVerification, false);
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes[4] = 0x0d; // only one of the two priority-fee mask bits
@@ -513,6 +514,7 @@ test("v1 priority fee and heap config values are parsed in wire order", () => {
     unsignedV1TransactionWithPriorityFeeAndHeap(5000, 32768), BOT_WALLET
   );
   assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.priorityFeeLamports, "5000");
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
