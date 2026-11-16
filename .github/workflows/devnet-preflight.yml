@@ -17,8 +17,6 @@ jobs:
   devnet-read-only:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -34,16 +32,30 @@ jobs:
         env:
           DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
-      - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true && env.DEVNET_RPC_URL != '' }}
-        # Only a dedicated RPC is accepted for the funded lifecycle. The public
-        # Devnet faucet may be unavailable or rate-limited and is not a CI fallback.
-        env:
-          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
-        run: node scripts/devnet-signed-lifecycle.mjs
-      - name: Report funded Devnet lifecycle as skipped without a dedicated RPC
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true && env.DEVNET_RPC_URL != '') }}
+      - name: Report funded Devnet lifecycle as skipped without explicit opt-in
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true) }}
         run: |
-          echo "::notice title=Funded Devnet lifecycle skipped::explicit workflow_dispatch opt-in and configured DEVNET_RPC_URL are both required; no faucet-funded transfer was attempted."
-          node -e 'console.log(JSON.stringify({ status: "skipped", reason: "explicit workflow_dispatch opt-in and configured DEVNET_RPC_URL are both required", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
-          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in and configured DEVNET_RPC_URL are both required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Funded Devnet lifecycle skipped::explicit workflow_dispatch opt-in is required; no faucet-funded transfer was attempted."
+          node -e 'console.log(JSON.stringify({ status: "skipped", reason: "explicit workflow_dispatch opt-in is required", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
+          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
+
+  funded-devnet-lifecycle:
+    # This isolated job is never part of pull_request runs. The secret is not
+    # exposed to checkout, dependency installation, or PR test steps.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true }}
+    needs: devnet-read-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install isolated Devnet lifecycle dependency
+        run: npm install --no-save --ignore-scripts --package-lock=false @solana/web3.js@1.98.4
+      - name: Verify dedicated RPC and submit faucet-funded Devnet test transfer
+        run: node scripts/devnet-signed-lifecycle.mjs
