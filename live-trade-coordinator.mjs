@@ -445,6 +445,22 @@ export class LiveTradeCoordinator {
         proof.confirmationStatus !== "finalized") {
       throw new Error("Independent finalized settlement proof is incomplete or mismatched");
     }
+    // A token-balance proof alone cannot settle the reserved all-in spend.
+    // Require the finalized-transaction verifier to independently attest the
+    // same fee/outflow breakdown that was reserved before submission.
+    const expectedCosts = reservation.item.allInCosts;
+    const settledCosts = proof.costs;
+    const costFields = [
+      "computeUnitPriceMicroLamports", "computeUnitLimit",
+      "maxPriorityFeeLamports", "baseFeeLamports", "tipLamports",
+      "rentLamports", "otherOutflowLamports", "totalFeeLamports", "totalLamports"
+    ];
+    if (!expectedCosts || !settledCosts || typeof settledCosts !== "object" ||
+        Array.isArray(settledCosts) ||
+        costFields.some(field => !Object.prototype.hasOwnProperty.call(settledCosts, field) ||
+          settledCosts[field] !== expectedCosts[field])) {
+      throw new Error("Finalized settlement lacks matching independently verified all-in cost evidence");
+    }
     return this.withState(state => {
       const item = state.reservations[key];
       if (!item) throw new Error("Reservation does not exist");
