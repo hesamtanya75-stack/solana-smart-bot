@@ -1002,40 +1002,51 @@ export async function verifyFinalizedJupiterSettlement({
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
-  // Preserve finalized inner-CPI evidence for a future semantic verifier.
-  // A null/missing RPC field is explicitly marked unavailable; it is never
-  // interpreted as proof that no CPI occurred.
+  // Preserve finalized outer and inner instruction evidence for a future
+  // semantic verifier. Missing CPI metadata is never treated as proof that
+  // no CPI occurred. Parent indexes must point at an actual outer instruction.
+  const allKeys = [...keyStrings, ...loadedKeyStrings];
+  const outerInstructionsRecorded = Array.isArray(message.instructions);
+  const compileInstructionEvidence = (instruction, label) => {
+    if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+        instruction.programIdIndex < 0 || instruction.programIdIndex >= allKeys.length ||
+        !Array.isArray(instruction.accounts) ||
+        instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
+          index >= allKeys.length) ||
+        typeof instruction.data !== "string") {
+      throw new Error(`Finalized ${label} contains invalid compiled account indexes or data`);
+    }
+    return Object.freeze({
+      programIdIndex: instruction.programIdIndex,
+      programId: allKeys[instruction.programIdIndex],
+      accountIndexes: Object.freeze([...instruction.accounts]),
+      accounts: Object.freeze(instruction.accounts.map(index => Object.freeze({
+        index,
+        address: allKeys[index]
+      }))),
+      dataBase58: instruction.data,
+      stackHeight: Number.isSafeInteger(instruction.stackHeight) ? instruction.stackHeight : null
+    });
+  };
+  const outerInstructionEvidence = outerInstructionsRecorded
+    ? Object.freeze(message.instructions.map(instruction =>
+        compileInstructionEvidence(instruction, "outer instruction")))
+    : null;
   const innerInstructionsRecorded = Array.isArray(meta.innerInstructions);
+  const innerGroups = innerInstructionsRecorded ? meta.innerInstructions : [];
+  const seenParentIndexes = new Set();
   const innerInstructionEvidence = innerInstructionsRecorded
-    ? Object.freeze(meta.innerInstructions.map(group => {
+    ? Object.freeze(innerGroups.map(group => {
         if (!group || !Number.isInteger(group.index) || group.index < 0 ||
-            !Array.isArray(group.instructions)) {
-          throw new Error("Finalized inner-instruction metadata is malformed");
+            !Array.isArray(group.instructions) || !outerInstructionsRecorded ||
+            group.index >= message.instructions.length || seenParentIndexes.has(group.index)) {
+          throw new Error("Finalized inner-instruction metadata has an invalid parent index or shape");
         }
+        seenParentIndexes.add(group.index);
         return Object.freeze({
           index: group.index,
-          instructions: Object.freeze(group.instructions.map(instruction => {
-            if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
-                instruction.programIdIndex < 0 || instruction.programIdIndex >= keyStrings.length + loadedKeyStrings.length ||
-                !Array.isArray(instruction.accounts) ||
-                instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
-                  index >= keyStrings.length + loadedKeyStrings.length) ||
-                typeof instruction.data !== "string") {
-              throw new Error("Finalized inner instruction contains invalid compiled account indexes or data");
-            }
-            const allKeys = [...keyStrings, ...loadedKeyStrings];
-            return Object.freeze({
-              programIdIndex: instruction.programIdIndex,
-              programId: allKeys[instruction.programIdIndex],
-              accountIndexes: Object.freeze([...instruction.accounts]),
-              accounts: Object.freeze(instruction.accounts.map(index => Object.freeze({
-                index,
-                address: allKeys[index]
-              }))),
-              dataBase58: instruction.data,
-              stackHeight: Number.isSafeInteger(instruction.stackHeight) ? instruction.stackHeight : null
-            });
-          }))
+          instructions: Object.freeze(group.instructions.map(instruction =>
+            compileInstructionEvidence(instruction, "inner instruction")))
         });
       }))
     : null;
@@ -1065,6 +1076,8 @@ export async function verifyFinalizedJupiterSettlement({
     outputMint,
     outputAmount,
     owner: expectedOwner,
+    outerInstructionsRecorded,
+    outerInstructionEvidence,
     innerInstructionsRecorded,
     innerInstructionEvidence,
     semanticInstructionVerification: false
