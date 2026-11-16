@@ -828,6 +828,12 @@ test("v0 transaction with address lookup tables remains structurally parsed but 
   assert.equal(parsed.messageVersion, 0);
   assert.equal(parsed.addressLookupCount, 1);
   assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [2]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 2, address: null, isSigner: false, isWritable: null
+  }]);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
