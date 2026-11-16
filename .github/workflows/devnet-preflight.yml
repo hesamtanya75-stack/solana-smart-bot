@@ -17,6 +17,8 @@ jobs:
   devnet-read-only:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -29,6 +31,8 @@ jobs:
       - name: Run unit and real Durable Objects runtime tests
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
+        env:
+          DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
       - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true && env.DEVNET_RPC_URL != '' }}
