@@ -24,9 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out pull request
+      - name: Check out the live-trading preparation branch for tests
         uses: actions/checkout@v4
         with:
+          ref: phantom-wallet-settlement-foundation
           persist-credentials: false
 
       - name: Set up Node.js
