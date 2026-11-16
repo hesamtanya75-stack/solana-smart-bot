@@ -1002,6 +1002,7 @@ export async function verifyFinalizedJupiterSettlement({
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
+  const validAddress = isCanonicalPublicKey;
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
   const loadedKeyStrings = [...loadedAddresses.writable, ...loadedAddresses.readonly];
   if (keyStrings.some(key => !validAddress(key)) ||
