@@ -661,3 +661,17 @@ GitHub Actions and the Cloudflare preview were checked against the exact current
 The latest source review confirms the live path remains deliberately blocked: production `fetchTrustedLiveEvidence()` returns quote and risk evidence but no verified `costs` object; the coordinator requires complete trusted all-in cost evidence and rejects a reservation when it is absent. Jupiter transaction/build parsing still sets `semanticInstructionVerification: false`; `executeLiveOrder()` still throws; the Worker does not invoke the live coordinator; and settlement transitions remain fail-closed. Do not synthesize fee values or weaken these gates to make tests pass.
 
 PR #27 remains **Open, Draft, and unmerged**. No production deployment, merge, Mainnet access, wallet signing, transaction submission, or live trading was performed or authorized. The next safe engineering work is independent, authoritative Jupiter instruction/program decoding and a complete trusted all-in cost model, followed by regression tests; the Devnet funded lifecycle remains a separate operator-authorized prerequisite.
+
+
+## Verification on documentation-only PR head — 2026-11-16 (head `7fc9ec753f65409419775a08fc45f68d7bcfcd60`)
+
+The documentation update was pushed to PR #27 and the workflows associated with this exact head were inspected:
+- Node safety and Durable Objects runtime tests: **220 passed, 0 failed, 0 skipped**.
+- Dependency audit: **0 vulnerabilities reported**.
+- Frontend validation: success.
+- Cloudflare Worker build validation: success (Wrangler build/dry-run only; no production deployment).
+- Devnet read-only workflow: 248 tests passed, 0 failed; official Devnet identity and basic read-only RPC checks passed. The largest-account owner enumeration was still rate-limited (HTTP 429), so holder concentration remains unvalidated and the output correctly reports a warning.
+- Funded Devnet lifecycle: **skipped** on the pull-request event; the manual opt-in was not supplied. No signer was created and no transaction was submitted.
+- Deno Deploy commit status: failure remains present for the `solana-smart-bot-17` deployment check. This is a separate deployment gate; the GitHub Actions and Cloudflare preview validations above passed. The Deno failure does not mean the Node tests or Cloudflare dry-run failed.
+
+The current PR head remains Draft, Open, and unmerged. The all-in cost evidence and semantic Jupiter instruction verification gaps described above remain unresolved. No merge, production deployment, Mainnet access, signing, transaction submission, or live trading was performed.
