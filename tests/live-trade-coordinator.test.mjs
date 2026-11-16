@@ -447,6 +447,24 @@ test("confirmation stores only independently verified finalized settlement evide
   assert.equal((await coordinator.status()).openPositions, 1);
 });
 
+test("confirmation fails closed when finalized settlement omits independently verified costs", async () => {
+  // The default verifier fixture proves token settlement only and deliberately
+  // supplies no cost attestation, matching the current production verifier.
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "9".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /matching independently verified all-in cost evidence/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
 test("confirmed reservation rejects replay with a different finalized signature", async () => {
   let verificationCalls = 0;
   const verifier = async args => {
