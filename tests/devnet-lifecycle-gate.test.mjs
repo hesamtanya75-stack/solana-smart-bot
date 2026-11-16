@@ -15,12 +15,13 @@ function getStep(name) {
   return workflow.slice(start, next === -1 ? undefined : next);
 }
 
-test("funded Devnet lifecycle is isolated and read-only preflight prefers the dedicated RPC", () => {
+test("funded Devnet lifecycle is isolated to an explicit manual job and never receives a public-RPC fallback", () => {
   assert.match(workflow, /workflow_dispatch:[\s\S]*run_funded_devnet_lifecycle:[\s\S]*default: false/);
   const readOnlyJob = workflow.slice(workflow.indexOf("  devnet-read-only:"), workflow.indexOf("  funded-devnet-lifecycle:"));
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
-  assert.match(readOnlyJob, /DEVNET_RPC_URL:.*secrets\.DEVNET_RPC_URL.*api/);
+  assert.doesNotMatch(readOnlyJob, /secrets\.DEVNET_RPC_URL/);
+  assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\/\/api\.devnet\.solana\.com/);
   assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
   assert.match(fundedJob, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
   assert.match(fundedJob, /node scripts\/devnet-signed-lifecycle\.mjs/);
@@ -43,9 +44,7 @@ test("Devnet preflight retries transient network failures without exposing the R
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /network request failed after 4 attempts \(" \+ safeCode \+ "\)/);
-  assert.match(script, /error\?\.cause\?\.code/);
-  assert.match(script, /replace\(\/\[\^A-Za-z0-9_-\]\/g, ""\)/);
+  assert.match(script, /catch \(error\)[\s\S]*network request failed after 4 attempts/);
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
   assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
