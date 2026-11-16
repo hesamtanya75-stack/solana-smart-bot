@@ -112,30 +112,27 @@ async function main() {
     throw new Error("Ephemeral Devnet transaction signature failed local verification");
   }
 
-  let airdropSignature;
-  try {
-    airdropSignature = await requestDevnetAirdrop(connection, payer.publicKey);
-  } catch (error) {
-    const message = String(error?.message || error);
-    if (message.includes("410 Gone") || message.includes("RPC faucet is closed")) {
-      console.log("::error::Devnet RPC faucet is closed; offline signature verification is NOT an on-chain lifecycle pass.");
-      console.log(JSON.stringify({
-        ok: false,
-        status: "blocked",
-        cluster: "devnet",
-        genesisHash: genesis,
-        offlineSignatureVerified: true,
-        onChainSubmission: "blocked: public Devnet RPC faucet returned HTTP 410",
-        userPrivateKeysUsed: false,
-        mainnetTouched: false,
-        swapExecuted: false
-      }, null, 2));
-      // Fail the required CI step so a faucet outage cannot be mistaken for
-      // a successful signed, submitted, finalized, and independently verified transaction.
+  let airdropSignature = "manual-funding";
+  if (process.env.DEVNET_MANUAL_FUNDING === "1") {
+    // Keep the ephemeral secret in this process; expose only the public address.
+    console.log("DEVNET_MANUAL_FUNDING_ADDRESS=" + payer.publicKey.toBase58());
+    console.log("Fund this address with Devnet SOL only. Waiting up to 8 minutes; never send Mainnet SOL.");
+    const deadline = Date.now() + 8 * 60 * 1000;
+    let balance = 0;
+    while (Date.now() < deadline) {
+      balance = await connection.getBalance(payer.publicKey, "confirmed");
+      if (balance >= TRANSFER_LAMPORTS + 10_000) break;
+      await wait(10_000);
+    }
+    if (balance < TRANSFER_LAMPORTS + 10_000) {
+      console.log("::error::Manual Devnet funding was not detected before timeout.");
+      console.log(JSON.stringify({ok:false,status:"blocked",cluster:"devnet",fundingAddress:payer.publicKey.toBase58(),fundingDetected:false,transactionsSubmitted:0,userPrivateKeysUsed:false,mainnetTouched:false,swapExecuted:false},null,2));
       process.exitCode = 2;
       return;
     }
-    throw error;
+    console.log("Manual Devnet funding detected: " + balance + " lamports.");
+  } else {
+    airdropSignature = await requestDevnetAirdrop(connection, payer.publicKey);
   }
 
   const payerBalance = await connection.getBalance(payer.publicKey, "confirmed");
