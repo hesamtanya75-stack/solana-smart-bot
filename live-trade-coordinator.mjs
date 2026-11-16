@@ -447,7 +447,17 @@ export class LiveTradeCoordinator {
     }
     return this.withState(state => {
       const item = state.reservations[key];
-      if (!item || item.status !== "pending") {
+      if (!item) throw new Error("Reservation does not exist");
+      // Another identical confirmation may finish while this request verifies
+      // the same finalized transaction. Treat that exact-signature replay as
+      // idempotent; never overwrite a different settlement proof.
+      if (item.status === "confirmed") {
+        if (item.settlementProof?.signature !== signature) {
+          throw new Error("Confirmed reservation cannot be replayed with another signature");
+        }
+        return { ok: true, duplicate: true, reservation: item };
+      }
+      if (item.status !== "pending") {
         throw new Error("Reservation state changed while settlement proof was being verified");
       }
       item.status = "confirmed";
