@@ -941,7 +941,14 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: {
+              accountKeys: [BOT_WALLET],
+              instructions: [{
+                programIdIndex: 0,
+                accounts: [0],
+                data: "1"
+              }]
+            }
           },
           meta: {
             err: null,
@@ -991,6 +998,15 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+  assert.equal(proof.outerInstructionsRecorded, true);
+  assert.deepEqual(proof.outerInstructionEvidence, [{
+    programIdIndex: 0,
+    programId: BOT_WALLET,
+    accountIndexes: [0],
+    accounts: [{ index: 0, address: BOT_WALLET }],
+    dataBase58: "1",
+    stackHeight: null
+  }]);
   assert.equal(proof.innerInstructionsRecorded, true);
   assert.equal(proof.semanticInstructionVerification, false);
   assert.deepEqual(proof.innerInstructionEvidence, [{
