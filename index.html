@@ -1664,6 +1664,7 @@ async function finishServerLogin(token) {
   setInterval(() => refreshServerPrices().catch(() => {}), 5000);
 }
 let serverMfaChallenge = "";
+let serverEmailChallenge = "";
 async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
@@ -1671,6 +1672,31 @@ async function submitServerLogin() {
   button.disabled = true;
   error.textContent = "چوونەژوورەوە...";
   try {
+    if (serverEmailChallenge) {
+      const codeInput = document.getElementById("serverEmailCode");
+      const verified = await serverRequest("/api/login/email", {
+        method: "POST",
+        body: JSON.stringify({ challengeId: serverEmailChallenge, code: codeInput.value.trim() })
+      });
+      serverEmailChallenge = "";
+      if (verified.totpRequired) {
+        serverMfaChallenge = verified.challengeId;
+        let otp = document.getElementById("serverTotpCode");
+        if (!otp) {
+          otp = document.createElement("input");
+          otp.id = "serverTotpCode";
+          otp.autocomplete = "one-time-code";
+          otp.maxLength = 16;
+          otp.placeholder = "کۆدی Google Authenticator یان کۆدی گەڕاندنەوە";
+          codeInput.insertAdjacentElement("afterend", otp);
+        }
+        otp.value = "";
+        error.textContent = "کۆدی Google Authenticator بنووسە و دووبارە دوگمەی پشتڕاستکردنەوە دابگرە.";
+        return;
+      }
+      await finishServerLogin(verified.token);
+      return;
+    }
     if (serverMfaChallenge) {
       const otp = document.getElementById("serverTotpCode");
       const verified = await serverRequest("/api/login/totp", {
@@ -1685,25 +1711,26 @@ async function submitServerLogin() {
       method: "POST",
       body: JSON.stringify({ password: input.value })
     });
-    if (result.mfaRequired) {
-      serverMfaChallenge = result.challengeId;
-      let otp = document.getElementById("serverTotpCode");
-      if (!otp) {
-        otp = document.createElement("input");
-        otp.id = "serverTotpCode";
-        otp.autocomplete = "one-time-code";
-        otp.maxLength = 16;
-        otp.placeholder = "کۆدی Authenticator یان کۆدی گەڕاندنەوە";
-        input.insertAdjacentElement("afterend", otp);
+    if (result.emailOtpRequired) {
+      serverEmailChallenge = result.challengeId;
+      let codeInput = document.getElementById("serverEmailCode");
+      if (!codeInput) {
+        codeInput = document.createElement("input");
+        codeInput.id = "serverEmailCode";
+        codeInput.inputMode = "numeric";
+        codeInput.autocomplete = "one-time-code";
+        codeInput.maxLength = 6;
+        codeInput.placeholder = "کۆدی ٦ ژمارەیی Gmail";
+        input.insertAdjacentElement("afterend", codeInput);
       }
-      otp.value = "";
-      error.textContent = "کۆدی Google Authenticator بنووسە و دووبارە دوگمەی چوونەژوورەوە دابگرە.";
+      codeInput.value = "";
+      error.textContent = "کۆدی پشتڕاستکردنەوە بۆ " + result.email + " نێردرا؛ کۆدەکە بنووسە.";
       button.textContent = "پشتڕاستکردنەوە";
       return;
     }
     await finishServerLogin(result.token);
   } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
+    error.textContent = e.message;
   } finally {
     button.disabled = false;
   }
@@ -1778,7 +1805,7 @@ if (serverToken) {
   modal.innerHTML=`
     <div class="profile-card">
       <h2>👤 پڕۆفایلی تایبەتی بەڕێوەبەر</h2>
-      <p class="profile-note">ئەم پڕۆفایلە تەنها بۆ هەژماری بەڕێوەبەرە. ئیمەیڵ و ژمارەی مۆبایل لێرە پاشەکەوت دەکرێن، بەڵام تا پەیوەستکردنی دابینکەری ناردنی کۆد پشتڕاستکراوە نین.</p>
+      <p class="profile-note">کۆدی چوونەژوورەوەی بەڕێوەبەر بۆ Gmail ـی تایبەت کە لە Cloudflare بە ADMIN_EMAIL دانراوە دەنێردرێت. خانەی ئیمەیڵی پڕۆفایل تەنها زانیاری پەیوەندییە.</p>
       <label for="profileEmail">Gmail / ئیمەیڵ</label>
       <input id="profileEmail" type="email" autocomplete="email" placeholder="name@gmail.com">
       <label for="profilePhone">ژمارەی مۆبایل (بە کۆدی وڵات)</label>
@@ -1800,7 +1827,7 @@ if (serverToken) {
         <p class="profile-note">ئەم کۆدە تەنها یەکجار پیشان دەدرێت. لە شوێنێکی پارێزراودا بیپارێزە:</p>
         <div class="profile-secret" id="totpBackupCode"></div>
       </div>
-      <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <p class="profile-note">تێبینی: چوونەژوورەوە بە وشەی نهێنی و کۆدی ٦ ژمارەیی Gmail پارێزراوە؛ Google Authenticator دەتوانێت وەک هەنگاوی زیادە چالاک بێت.</p>
       <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
     </div>`;
   document.body.appendChild(modal);
