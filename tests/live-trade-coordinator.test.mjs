@@ -459,13 +459,13 @@ test("confirmed reservation rejects replay with a different finalized signature"
   await post(coordinator, "/reserve", validReservation());
   const first = await post(coordinator, "/confirm", {
     idempotencyKey: "order-key-0001",
-    signature: "8".repeat(64),
+    signature: "AKAh9LUoWFG2sxAMotzmLNpKwPTCiG6Q4YTwAinZMnkvYKPAKVPwYSfoQDp8XLKWzpbCNx66XB1BrcD1ZUPqU39",
     outputAmount: "987654"
   });
   assert.equal(first.status, 200);
   const replay = await post(coordinator, "/confirm", {
     idempotencyKey: "order-key-0001",
-    signature: "9".repeat(64),
+    signature: "BUguQsv2ZuHus54HAFzjdJHzZBkygAjKhEeYwSG19tUfUyvvz3worsdQCdAXDNjakJHioSiyxhFiDJrm8XpSXRA",
     outputAmount: "987654"
   });
   assert.equal(replay.status, 409);
