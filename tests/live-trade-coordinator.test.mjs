@@ -48,19 +48,23 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: async args => {
-      const proof = await settlementVerifier(args);
-      if (proof && !Object.prototype.hasOwnProperty.call(proof, "costs")) {
-        const costs = trustedEvidence().costs;
-        const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
-          costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
-        return { ...proof, costs: { ...costs, totalFeeLamports,
-          totalLamports: Number(args.inputAmount) + totalFeeLamports } };
-      }
-      return proof;
-    }
+    // Never manufacture settlement costs in the harness. A verifier must
+    // explicitly return the complete evidence or confirmation must fail closed.
+    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
   return { coordinator, storage };
+}
+function mockFinalizedSettlement(args) {
+  const costs = trustedEvidence().costs;
+  const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+    costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+  return {
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized",
+    costs: { ...costs, totalFeeLamports, totalLamports: Number(args.inputAmount) + totalFeeLamports }
+  };
 }
 function validReservation(overrides = {}) {
   return {
@@ -396,12 +400,7 @@ test("fail and close transitions remain blocked without independent proof; confi
 });
 
 test("confirmed positions cannot be closed or release daily spend without independent exit proof", async () => {
-  const verifier = async args => ({
-    verified: true, signature: args.signature, inputMint: args.inputMint,
-    inputAmount: args.inputAmount, outputMint: args.outputMint,
-    outputAmount: args.outputAmount, owner: args.expectedOwner,
-    confirmationStatus: "finalized"
-  });
+  const verifier = async args => mockFinalizedSettlement(args);
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
@@ -429,12 +428,7 @@ test("confirmation stores only independently verified finalized settlement evide
   let verifiedArgs;
   const verifier = async args => {
     verifiedArgs = args;
-    return {
-      verified: true, signature: args.signature, inputMint: args.inputMint,
-      inputAmount: args.inputAmount, outputMint: args.outputMint,
-      outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
-    };
+    return mockFinalizedSettlement(args);
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
