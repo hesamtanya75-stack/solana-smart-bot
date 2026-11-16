@@ -1013,7 +1013,15 @@ export async function verifyFinalizedJupiterSettlement({
         !Array.isArray(instruction.accounts) ||
         instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
           index >= allKeys.length) ||
-        typeof instruction.data !== "string") {
+        typeof instruction.data !== "string" ||
+        (instruction.data !== "" && (() => {
+          try {
+            const decoded = decodeBase58(instruction.data);
+            return encodeBase58(decoded) !== instruction.data;
+          } catch {
+            return true;
+          }
+        })())) {
       throw new Error(`Finalized ${label} contains invalid compiled account indexes or data`);
     }
     return Object.freeze({
