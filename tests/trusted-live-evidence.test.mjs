@@ -913,8 +913,12 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [89_995_000],
+            loadedAddresses: {
+              writable: [encodeBase58(new Uint8Array(32).fill(11))],
+              readonly: [encodeBase58(new Uint8Array(32).fill(12))]
+            },
+            preBalances: [100_000_000, 1, 2],
+            postBalances: [89_995_000, 1, 2],
             preTokenBalances: [{
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
