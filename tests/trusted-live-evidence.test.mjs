@@ -102,6 +102,70 @@ function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signat
   return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(signatureByte), ...message])).toString("base64");
 }
 
+function unsignedTransactionWithComputeBudget(instructions) {
+  const signer = decodeBase58(BOT_WALLET);
+  const program = decodeBase58("ComputeBudget111111111111111111111111111111");
+  const payload = [
+    1, 0, 1, 2, ...signer, ...program,
+    ...new Array(32).fill(0),
+    instructions.length
+  ];
+  for (const instruction of instructions) {
+    const accounts = instruction.accounts ?? [];
+    payload.push(1, accounts.length, ...accounts, instruction.data.length, ...instruction.data);
+  }
+  const message = Uint8Array.from(payload);
+  return Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
+}
+function u32le(value) {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value, 0);
+  return [...bytes];
+}
+function u64le(value) {
+  const bytes = Buffer.alloc(8);
+  bytes.writeBigUInt64LE(BigInt(value), 0);
+  return [...bytes];
+}
+
+test("legacy/v0 parser decodes Compute Budget price and limit as exact wire values", () => {
+  const parsed = validateUnsignedJupiterTransaction(unsignedTransactionWithComputeBudget([
+    { data: [3, ...u64le("18446744073709551615")] },
+    { data: [2, ...u32le(300000)] },
+    { data: [4, ...u32le(4096)] },
+    { data: [1, ...u32le(32768)] }
+  ]), BOT_WALLET);
+  assert.equal(parsed.computeBudget.computeUnitPriceMicroLamports, "18446744073709551615");
+  assert.equal(parsed.computeBudget.computeUnitLimit, 300000);
+  assert.equal(parsed.computeBudget.loadedAccountsDataSizeLimitBytes, 4096);
+  assert.equal(parsed.computeBudget.requestHeapFrameBytes, 32768);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("legacy/v0 Compute Budget parser rejects duplicates, unknown tags, malformed lengths and accounts", () => {
+  const price = { data: [3, ...u64le(1000)] };
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([price, price]), BOT_WALLET
+  ), /Duplicate Compute Budget/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [9, 0, 0, 0, 0] }]), BOT_WALLET
+  ), /discriminator or data length/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [3, 1] }]), BOT_WALLET
+  ), /discriminator or data length/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [2, ...u32le(10)], accounts: [0] }]), BOT_WALLET
+  ), /unexpectedly references accounts/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [1, ...u32le(32769)] }]), BOT_WALLET
+  ), /heap frame is outside/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [4, ...u32le(0)] }]), BOT_WALLET
+  ), /loaded-account-data limit must be non-zero/);
+});
+
 test("v1 transaction rejects duplicate inline account addresses", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes.copy(bytes, 74, 42, 74);
