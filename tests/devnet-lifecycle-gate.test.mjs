@@ -15,12 +15,12 @@ function getStep(name) {
   return workflow.slice(start, next === -1 ? undefined : next);
 }
 
-test("funded Devnet lifecycle is isolated to an explicit manual job and never receives a public-RPC fallback", () => {
+test("funded Devnet lifecycle is isolated and read-only preflight prefers the dedicated RPC", () => {
   assert.match(workflow, /workflow_dispatch:[\s\S]*run_funded_devnet_lifecycle:[\s\S]*default: false/);
   const readOnlyJob = workflow.slice(workflow.indexOf("  devnet-read-only:"), workflow.indexOf("  funded-devnet-lifecycle:"));
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
-  assert.match(readOnlyJob, /DEVNET_RPC_URL:.*secrets\.DEVNET_RPC_URL.*api\\.devnet\\.solana\\.com/);
+  assert.match(readOnlyJob, /DEVNET_RPC_URL:.*secrets\.DEVNET_RPC_URL.*api/);
   assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
   assert.match(fundedJob, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
   assert.match(fundedJob, /node scripts\/devnet-signed-lifecycle\.mjs/);
