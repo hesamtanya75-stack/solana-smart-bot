@@ -16,15 +16,15 @@ function getStep(name) {
 }
 
 test("funded Devnet lifecycle is isolated to an explicit manual job and never receives a public-RPC fallback", () => {
-  assert.match(workflow, /workflow_dispatch:[\\s\\S]*run_funded_devnet_lifecycle:[\\s\\S]*default: false/);
+  assert.match(workflow, /workflow_dispatch:[\s\S]*run_funded_devnet_lifecycle:[\s\S]*default: false/);
   const readOnlyJob = workflow.slice(workflow.indexOf("  devnet-read-only:"), workflow.indexOf("  funded-devnet-lifecycle:"));
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
-  assert.doesNotMatch(readOnlyJob, /secrets\\.DEVNET_RPC_URL/);
-  assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\\/\\/api\\.devnet\\.solana\\.com/);
-  assert.match(fundedJob, /if:\\s*\\$\\{\\{\\s*github\\.event_name\\s*==\\s*'workflow_dispatch'\\s*&&\\s*inputs\\.run_funded_devnet_lifecycle\\s*==\\s*true\\s*\\}\\}/);
-  assert.match(fundedJob, /DEVNET_RPC_URL:\\s*\\$\\{\\{\\s*secrets\\.DEVNET_RPC_URL\\s*\\}\\}/);
-  assert.match(fundedJob, /node scripts\\/devnet-signed-lifecycle\\.mjs/);
+  assert.doesNotMatch(readOnlyJob, /secrets\.DEVNET_RPC_URL/);
+  assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\/\/api\.devnet\.solana\.com/);
+  assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
+  assert.match(fundedJob, /DEVNET_RPC_URL:\s*\$\{\{\s*secrets\.DEVNET_RPC_URL\s*\}\}/);
+  assert.match(fundedJob, /node scripts\/devnet-signed-lifecycle\.mjs/);
 
   const skippedStep = getStep("Report funded Devnet lifecycle as skipped without explicit opt-in");
   assert.match(skippedStep, /status: "skipped"/);
@@ -37,7 +37,7 @@ test("funded Devnet lifecycle is isolated to an explicit manual job and never re
     "utf8"
   );
   assert.match(script, /DEVNET_RPC_URL is required for funded Devnet lifecycle/);
-  assert.doesNotMatch(script, /process\\.env\\.DEVNET_RPC_URL\\s*\\|\\|\\s*["']https:\\/\\/api\\.devnet\\.solana\\.com/);
+  assert.doesNotMatch(script, /process\.env\.DEVNET_RPC_URL\s*\|\|\s*["']https:\/\/api\.devnet\.solana\.com/);
 });
 test("Devnet preflight retries transient network failures without exposing the RPC URL", async () => {
   const script = readFileSync(
