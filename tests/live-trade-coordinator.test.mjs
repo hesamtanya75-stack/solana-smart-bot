@@ -744,3 +744,37 @@ test("kill switch activated during settlement verification does not strand a sub
   assert.equal(result.body.reservation.status, "confirmed");
   assert.equal((await coordinator.status()).killSwitch, true);
 });
+
+test("coordinator reservation ledger survives object recreation and preserves idempotent retries", async () => {
+  const { coordinator, storage } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const first = await post(coordinator, "/reserve", validReservation());
+  assert.equal(first.status, 200);
+  assert.equal(first.body.duplicate, false);
+
+  // Simulate a Durable Object instance being reconstructed over the same
+  // persisted storage. This is a unit-level persistence check, not a substitute
+  // for a Cloudflare runtime restart/redeployment test.
+  const restarted = new LiveTradeCoordinator({ storage }, {
+    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
+    COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
+    LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
+    FETCH_TRUSTED_LIVE_EVIDENCE: async () => trustedEvidence(),
+    VERIFY_FINALIZED_SETTLEMENT: async args => ({
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized"
+    })
+  });
+
+  const recovered = await restarted.status();
+  assert.equal(recovered.killSwitch, false);
+  assert.equal(recovered.dailySpendUsdCents, first.body.reservation.amountCents);
+  assert.equal(recovered.openPositions, 1);
+
+  const retry = await post(restarted, "/reserve", validReservation());
+  assert.equal(retry.status, 200);
+  assert.equal(retry.body.duplicate, true);
+  assert.equal((await restarted.status()).openPositions, 1);
+});
