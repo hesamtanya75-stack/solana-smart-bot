@@ -469,12 +469,7 @@ test("confirmed reservation rejects replay with a different finalized signature"
   let verificationCalls = 0;
   const verifier = async args => {
     verificationCalls += 1;
-    return {
-      verified: true, signature: args.signature, inputMint: args.inputMint,
-      inputAmount: args.inputAmount, outputMint: args.outputMint,
-      outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
-    };
+    return mockFinalizedSettlement(args);
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -828,7 +823,7 @@ test("kill switch activated during evidence retrieval blocks the in-flight reser
 
 
 test("active emergency stop blocks new reservations but permits finalized settlement reconciliation", async () => {
-  const { coordinator } = makeCoordinator();
+  const { coordinator } = makeCoordinator(undefined, mockFinalizedSettlement);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   await post(coordinator, "/kill-switch", { enabled: true });
