@@ -1,4 +1,5 @@
 import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "./rpc-response.mjs";
+import { fetchCompleteMintTokenAccounts, parseMintAccount } from "./trusted-live-evidence.mjs";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -12,7 +13,6 @@ const DEFAULT_STATE = {
   lastScanReport: [],
   updatedAt: null
 };
-const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
   "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com",
@@ -376,108 +376,75 @@ async function getDexJson(url, env, ttlSeconds = 30) {
         expirationTtl: Math.max(60, ttlSeconds * 2)
       });
     } catch (error) {
-      console.warn("DexScreener cache write warning", String(error?.message || error));
-    }
-  }
-  return data;
-}
-
-function mintDetails(account) {
-  const value = account?.value;
-  if (!value) throw new Error("Mint account unavailable");
-  let mintAuthority = null, freezeAuthority = null, extensions = [];
-  const parsed = value.data?.parsed?.info;
-  if (parsed) {
-    mintAuthority = !!parsed.mintAuthority;
-    freezeAuthority = !!parsed.freezeAuthority;
-  }
-  const raw = value.data;
-  if (Array.isArray(raw) && typeof raw[0] === "string") {
-    const bytes = Uint8Array.from(atob(raw[0]), c => c.charCodeAt(0));
-    if (bytes.length >= 82) {
-      const u32 = i => (bytes[i] | (bytes[i+1] << 8) | (bytes[i+2] << 16) | (bytes[i+3] << 24)) >>> 0;
-      const ma = u32(0), fa = u32(46);
-      if (ma <= 1 && fa <= 1) {
-        mintAuthority = ma === 1;
-        freezeAuthority = fa === 1;
-      }
-    }
-    if (bytes.length >= 166) {
-      let offset = 166;
-      while (offset + 4 <= bytes.length) {
-        const type = bytes[offset] | (bytes[offset+1] << 8);
-        const length = bytes[offset+2] | (bytes[offset+3] << 8);
-        if (type === 0 && length === 0) break;
-        if (offset + 4 + length > bytes.length) break;
-        extensions.push(type);
-        offset += 4 + length;
-      }
-    }
-  }
-  return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
-}
-async function inspectMint(mint, env, diagnostics = null) {
-  // Check for a real Solana market first. New-token profile entries can exist
-  // before DexScreener has indexed a tradable pair; avoid spending RPC calls then.
+      console.warn("DexScreener cache write warning", String(error?.messagasync function inspectMint(mint, env, diagnostics = null) {
+  // The exact requested mint must be the base token in the selected Solana pair.
   const dex = await getDexJson(
     "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
   );
   const market = (dex.pairs || []).filter(p =>
     p.chainId === "solana" && p.baseToken?.address === mint
   ).sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-  if (!market) throw new Error("No Solana market pair");
+  if (!market) throw new Error("No verified Solana market pair for the requested mint");
 
-  const [rug, rpcResults] = await Promise.all([
+  // Parse the mint only after confirming its account owner is an official SPL
+  // Token or Token-2022 program. Use a complete Alchemy holder census and
+  // reconcile every positive-balance token account against finalized supply.
+  const [rug, rpcResults, holderAccounts] = await Promise.all([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpcBatch([
-      { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
-      { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
-      { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
-    ], env, diagnostics)
+      { method: "getAccountInfo", params: [mint, { encoding: "jsonParsed", commitment: "finalized" }] },
+      { method: "getTokenSupply", params: [mint, { commitment: "finalized" }] }
+    ], env, diagnostics),
+    fetchCompleteMintTokenAccounts(mint, fetch, env.ALCHEMY_API_KEY)
   ]);
-  const [account, largest, supply] = rpcResults;
-  const details = mintDetails(account);
-  const supplyAmount = Number(supply?.value?.amount || 0);
-  const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
-  // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
-  const accountDetails = await rpc(
-    "getMultipleAccounts",
-    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
-    env,
-    diagnostics
-  );
-  const ownerBalances = new Map();
-  for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
-    const info = account?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+  const [account, supply] = rpcResults;
+  const details = parseMintAccount(account);
+  const rawSupply = String(supply?.value?.amount ?? "");
+  if (!/^\d+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
+      !Array.isArray(holderAccounts) || holderAccounts.length === 0) {
+    throw new Error("Complete holder data or finalized token supply is unavailable");
   }
-  if (!ownerBalances.size) throw new Error("Token account owners unavailable");
-  const ownerPercentages = [...ownerBalances.values()]
-    .map(amount => amount / supplyAmount * 100)
-    .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
-  const liquidity = Number(market.liquidity?.usd || 0);
-  const volume = Number(market.volume?.h24 || 0);
-  const sells = Number(market.txns?.h24?.sells || 0);
+  const supplyAmount = BigInt(rawSupply);
+  const ownerBalances = new Map();
+  let totalAccountBalance = 0n;
+  for (const holder of holderAccounts) {
+    if (!holder || typeof holder.owner !== "string" || typeof holder.amount !== "bigint" || holder.amount <= 0n) {
+      throw new Error("Complete holder census contains invalid account data");
+    }
+    ownerBalances.set(holder.owner, (ownerBalances.get(holder.owner) || 0n) + holder.amount);
+    totalAccountBalance += holder.amount;
+  }
+  if (ownerBalances.size === 0 || totalAccountBalance !== supplyAmount) {
+    throw new Error("Complete holder census does not reconcile to finalized token supply");
+  }
+  const sortedOwnerBalances = [...ownerBalances.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+  const largestPct = Number((sortedOwnerBalances[0] * 1000000n) / supplyAmount) / 10000;
+  const topTenPct = Number((sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n) * 1000000n) / supplyAmount) / 10000;
+  const liquidity = Number(market.liquidity?.usd);
+  const volume = Number(market.volume?.h24);
+  const sells = Number(market.txns?.h24?.sells);
   const reasons = [];
-  if (liquidity < 10000) reasons.push("Liquidity below $10,000");
-  if (volume < 1000) reasons.push("24h volume below $1,000");
-  if (sells <= 0) reasons.push("No 24h sells");
-  if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
-  if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
-  if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
-  const price = Number(market.priceUsd || 0);
-  if (!(price > 0)) reasons.push("Price unavailable");
-  return { ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score, largestPct, topTenPct };
+  if (!Number.isFinite(liquidity) || liquidity < 10000) reasons.push("Liquidity unavailable or below $10,000");
+  if (!Number.isFinite(volume) || volume < 1000) reasons.push("24h volume unavailable or below $1,000");
+  if (!Number.isFinite(sells) || sells <= 0) reasons.push("24h sell-count data unavailable or no sells");
+  if (details.mintAuthoritySafe !== true || details.freezeAuthoritySafe !== true) {
+    reasons.push("Mint/Freeze authority not confirmed inactive");
+  }
+  if (details.token2022ExtensionsSafe !== true) {
+    reasons.push("Unsupported token program or Token-2022 extension detected");
+  }
+  if (largestPct > 30) reasons.push("Largest wallet holder above 30%");
+  if (topTenPct > 50) reasons.push("Top 10 wallet holders above 50%");
+  if (!rug || rug.score == null || !Number.isFinite(Number(rug.score)) || Number(rug.score) > 2500) {
+    reasons.push("RugCheck unavailable or score above 2500");
+  }
+  const price = Number(market.priceUsd);
+  if (!Number.isFinite(price) || price <= 0) reasons.push("Price unavailable");
+  return {
+    ok: reasons.length === 0, reasons, price, market, rugScore: Number(rug?.score),
+    largestPct, topTenPct, holderAccountCount: holderAccounts.length,
+    holderOwnerCount: ownerBalances.size, holderSampleOnly: false
+  };
 }
 async function refreshTrades(state, env) {
   const open = state.trades.filter(t => !t.sold);
