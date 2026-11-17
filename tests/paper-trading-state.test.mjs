@@ -46,6 +46,35 @@ async function call(instance, body) {
 const mintA = "So11111111111111111111111111111111111111112";
 const requestId = suffix => "paper-test-request-" + suffix;
 
+async function runScheduledWithDexPrice(t, initial, priceUsd) {
+  const { instance } = makeDO(initial);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    assert.match(String(url), /api\\.dexscreener\\.com\\/latest\\/dex\\/tokens\\//);
+    return new Response(JSON.stringify({ pairs: [{
+      chainId: "solana",
+      baseToken: { address: mintA },
+      liquidity: { usd: 50000 },
+      priceUsd
+    }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const namespace = {
+    idFromName: name => name,
+    get: id => {
+      assert.equal(id, "paper-trading");
+      return { fetch: (url, init) => instance.fetch(new Request(url, init)) };
+    }
+  };
+  const pending = [];
+  await Worker.scheduled({}, {
+    PAPER_TRADING_STATE: namespace,
+    BOT_STATE: new MemoryKV()
+  }, { waitUntil: promise => pending.push(promise) });
+  await Promise.all(pending);
+  return call(instance, { operation: "get" });
+}
+
 test("internal state endpoint rejects oversized request bodies before JSON parsing", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const response = await instance.fetch(new Request("https://paper-trading.internal/", {
@@ -377,4 +406,39 @@ test("scheduled cron retries a revision conflict without overwriting concurrent 
   assert.ok(Number.isFinite(Date.parse(current.body.state.lastRunAt)));
   assert.match(current.body.state.lastMessage, /Auto-buy inactive/);
   assert.equal(current.body.revision, 2);
+});
+
+\ntest("scheduled cron paper-sells at the +10% threshold and credits balance only once", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const first = await runScheduledWithDexPrice(t, initial, "2.2");
+  assert.equal(first.status, 200);
+  assert.equal(first.body.state.balance, 100.5);
+  assert.equal(first.body.state.trades[0].sold, true);
+  assert.equal(first.body.state.trades[0].sellPrice, 2.2);
+  assert.equal(first.body.state.trades[0].saleValue, 5.5);
+});
+
+test("scheduled cron paper-sells at the -5% threshold and credits the reduced value", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const result = await runScheduledWithDexPrice(t, initial, "1.9");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.balance, 99.75);
+  assert.equal(result.body.state.trades[0].sold, true);
+  assert.equal(result.body.state.trades[0].saleValue, 4.75);
+});
+
+test("scheduled cron ignores non-finite provider prices without corrupting paper state", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const result = await runScheduledWithDexPrice(t, initial, "Infinity");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.balance, 95);
+  assert.equal(result.body.state.trades[0].sold, false);
+  assert.equal(result.body.state.trades[0].currentPrice, 2);
+  assert.ok(Number.isFinite(Date.parse(result.body.state.lastRunAt)));
 });
