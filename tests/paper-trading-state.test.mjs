@@ -122,6 +122,49 @@ test("missing Durable Object storage never resurrects the stale KV snapshot", as
   assert.equal(result.body.error, "Paper trading state operation failed");
 });
 
+
+test("corrupted persisted balance fails closed without resetting or overwriting the ledger", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.state.balance = "not-a-number";
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, "Paper trading state operation failed");
+  const unchanged = await storage.get("paper_state_v1");
+  assert.equal(unchanged.state.balance, "not-a-number");
+  assert.equal(unchanged.revision, 0);
+});
+
+test("malformed trade records fail closed instead of being silently discarded", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.state.trades = [{ mint: mintA, amount: 5, buyPrice: "broken", tokens: 2.5 }];
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  const unchanged = await storage.get("paper_state_v1");
+  assert.equal(unchanged.state.trades.length, 1);
+  assert.equal(unchanged.state.trades[0].buyPrice, "broken");
+});
+
+test("compare-and-set refuses malformed balance and leaves the last valid state intact", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  const initial = await call(instance, { operation: "get" });
+  const rejected = await call(instance, {
+    operation: "compare-and-set", expectedRevision: initial.body.revision,
+    state: { ...initial.body.state, balance: "100" }
+  });
+  assert.equal(rejected.status, 503);
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.status, 200);
+  assert.equal(current.body.state.balance, 72);
+  assert.equal(current.body.revision, 0);
+  assert.equal((await storage.get("paper_state_v1")).state.balance, 72);
+});
+
 test("compare-and-set rejects stale snapshots without overwriting current state", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const first = await call(instance, { operation: "get" });
