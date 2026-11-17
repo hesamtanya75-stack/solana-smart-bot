@@ -85,6 +85,22 @@ test("TOTP replay protection is delegated to transactional AuthGuard state", () 
   assert.equal(workerSource.includes('await env.BOT_STATE.put("admin_profile", JSON.stringify(profile))'), false);
 });
 
+test("failed manual server-state initialization clears the received session and stays fail-closed", () => {
+  const handler = dashboardSource.indexOf("async function submitServerLogin()");
+  const handlerEnd = dashboardSource.indexOf('document.getElementById("serverLoginButton").addEventListener', handler);
+  const loginHandler = dashboardSource.slice(handler, handlerEnd);
+  assert.ok(handler >= 0 && handlerEnd > handler);
+  assert.ok(loginHandler.includes("let receivedSessionToken = false;"));
+  assert.ok(loginHandler.includes("if (receivedSessionToken)"));
+  assert.ok(loginHandler.includes("clearServerPolling();"));
+  assert.ok(loginHandler.includes("serverModeReady = false;"));
+  assert.ok(loginHandler.includes('serverToken = "";'));
+  assert.ok(loginHandler.includes('localStorage.setItem("solanaBotServerLogoutLocked", "1");'));
+  assert.ok(loginHandler.includes('localStorage.removeItem("solanaBotSession");'));
+  assert.ok(loginHandler.includes('serverLogin.style.display = "flex";'));
+  assert.ok(loginHandler.indexOf("receivedSessionToken = true;") < loginHandler.indexOf("await finishServerLogin("));
+});
+
 test("legacy paper-trading migration refuses to consume malformed local snapshots", () => {
   const login = dashboardSource.indexOf("async function finishServerLogin(token)");
   const read = dashboardSource.indexOf('const legacyRaw = localStorage.getItem("demoTradingData");', login);
