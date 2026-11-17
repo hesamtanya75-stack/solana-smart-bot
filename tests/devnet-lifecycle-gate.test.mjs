@@ -55,6 +55,22 @@ test("Devnet preflight retries transient network failures without exposing the R
   assert.doesNotMatch(script, /console\.(?:log|error)\([^\n]*DEVNET_RPC/);
 });
 
+test("read-only Devnet preflight falls back to official public RPC only on configured-provider DNS failure", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-preflight.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /error\?\.cause\?\.code === "ENOTFOUND"/);
+  assert.match(script, /activeDevnetRpc = PUBLIC_DEVNET_RPC/);
+  assert.match(script, /usedPublicRpcFallback/);
+  const funded = readFileSync(
+    new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(funded, /DEVNET_RPC_URL is required for funded Devnet lifecycle/);
+  assert.doesNotMatch(funded, /PUBLIC_DEVNET_RPC|api\.devnet\.solana\.com/);
+});
+
 test("Devnet airdrop confirmation uses its signature and never repeats a submitted request", () => {
   const script = readFileSync(
     new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
