@@ -241,6 +241,16 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await nextLogin.json()).mfaRequired, true);
 });
 
+
+test("Paper Buy rate limit is applied before expensive trusted token inspection", async () => {
+  const route = workerSource.slice(workerSource.indexOf('url.pathname === "/api/paper/buy"'));
+  const limiter = route.indexOf("consumeApiRateLimit(env, buyScope, 5, 60000)");
+  const inspection = route.indexOf("await inspectMint(mint, env)");
+  assert.ok(limiter >= 0, "Paper Buy must have a dedicated rate limiter");
+  assert.ok(inspection > limiter, "rate limiting must happen before RPC and market inspection");
+  assert.match(route, /"Retry-After": String\(retryAfterSeconds\)/);
+});
+
 test("Worker trusted scanner requires an authenticated session and rejects malformed mint requests", async () => {
   const { env } = makeEnvironment();
   const mint = "So11111111111111111111111111111111111111112";
