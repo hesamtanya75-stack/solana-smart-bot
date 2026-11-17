@@ -989,11 +989,19 @@ export function decodeReviewedSystemTransfers(outerInstructionEvidence) {
       outerInstructionEvidence.length > 256) {
     throw new Error("System transfer instruction evidence is missing or invalid");
   }
+  const seenInstructionIndexes = new Set();
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.instructionIndex) ||
+        instruction.instructionIndex < 0 || instruction.instructionIndex >= 256 ||
+        seenInstructionIndexes.has(instruction.instructionIndex) ||
+        !isCanonicalPublicKey(instruction.programId)) {
+      throw new Error("Outer instruction evidence has an invalid or duplicate index/program identity");
+    }
+    seenInstructionIndexes.add(instruction.instructionIndex);
+  }
   const transfers = [];
   for (const instruction of outerInstructionEvidence) {
-    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
-      throw new Error("Outer instruction evidence contains a malformed entry");
-    }
     if (instruction.programId !== SYSTEM_PROGRAM_ID) continue;
     if (!Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
         typeof instruction.dataBase64 !== "string" ||
@@ -1042,11 +1050,19 @@ export function decodeReviewedSplTokenTransfers(outerInstructionEvidence) {
       outerInstructionEvidence.length > 256) {
     throw new Error("SPL Token transfer instruction evidence is missing or invalid");
   }
+  const seenInstructionIndexes = new Set();
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.instructionIndex) ||
+        instruction.instructionIndex < 0 || instruction.instructionIndex >= 256 ||
+        seenInstructionIndexes.has(instruction.instructionIndex) ||
+        !isCanonicalPublicKey(instruction.programId)) {
+      throw new Error("Outer instruction evidence has an invalid or duplicate index/program identity");
+    }
+    seenInstructionIndexes.add(instruction.instructionIndex);
+  }
   const transfers = [];
   for (const instruction of outerInstructionEvidence) {
-    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
-      throw new Error("Outer instruction evidence contains a malformed entry");
-    }
     if (instruction.programId === TOKEN_2022_PROGRAM_ID) {
       throw new Error("Token-2022 instructions are unsupported by the classic SPL Token decoder");
     }
