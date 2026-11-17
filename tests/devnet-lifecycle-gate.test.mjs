@@ -20,14 +20,14 @@ test("funded Devnet lifecycle is manual-dispatch only and exposes no ephemeral s
     new URL("../.github/workflows/devnet-manual-lifecycle.yml", import.meta.url),
     "utf8"
   );
-  assert.match(manualWorkflow, /workflow_dispatch:/);
-  assert.match(manualWorkflow, /confirmation:/);
-  assert.match(manualWorkflow, /inputs\\.confirmation == 'DEVNET_ONLY'/);
-  assert.match(manualWorkflow, /name: Verify ephemeral signing and submit a manually funded Devnet test transfer/);
-  assert.match(manualWorkflow, /node scripts\\/devnet-signed-lifecycle\\.mjs/);
-  assert.match(manualWorkflow, /DEVNET_MANUAL_FUNDING: '1'/);
-  assert.match(manualWorkflow, /inputs\\.confirmation != 'DEVNET_ONLY'/);
-  assert.match(manualWorkflow, /No signing or transaction submission was attempted/);
+  assert.ok(manualWorkflow.includes("workflow_dispatch:"));
+  assert.ok(manualWorkflow.includes("confirmation:"));
+  assert.ok(manualWorkflow.includes("inputs.confirmation == 'DEVNET_ONLY'"));
+  assert.ok(manualWorkflow.includes("name: Verify ephemeral signing and submit a manually funded Devnet test transfer"));
+  assert.ok(manualWorkflow.includes("node scripts/devnet-signed-lifecycle.mjs"));
+  assert.ok(manualWorkflow.includes("DEVNET_MANUAL_FUNDING: '1'"));
+  assert.ok(manualWorkflow.includes("inputs.confirmation != 'DEVNET_ONLY'"));
+  assert.ok(manualWorkflow.includes("No signing or transaction submission was attempted"));
 
   const script = readFileSync(
     new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
@@ -37,7 +37,7 @@ test("funded Devnet lifecycle is manual-dispatch only and exposes no ephemeral s
   assert.ok(script.includes("Date.now() + 8 * 60 * 1000"));
   assert.ok(script.includes('connection.getBalance(payer.publicKey, "confirmed")'));
   assert.ok(script.includes("userPrivateKeysUsed: false"));
-  assert.doesNotMatch(script, /console\\.log\\([^\\n]*(?:secretKey|secret key|private key)/i);
+  assert.doesNotMatch(script, /console\.log\([^\n]*(?:secretKey|secret key|private key)/i);
 });
 test("Devnet preflight retries transient network failures without exposing the RPC URL", async () => {
   const script = readFileSync(
