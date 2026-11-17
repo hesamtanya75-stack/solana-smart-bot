@@ -1666,8 +1666,8 @@ saveDemoState = function() {
 };
 async function finishServerLogin(token) {
   clearServerPolling();
+  // Persist the token only after loading and migrating paper state succeeds.
   serverToken = token;
-  localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
   serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
   // Enable server persistence before migrating the browser's existing paper-trading
@@ -1706,6 +1706,7 @@ async function finishServerLogin(token) {
     autoEnabled: false, paused: false
   });
   await syncServerState();
+  localStorage.setItem("solanaBotSession", token);
   refreshServerPrices().catch(() => {});
   serverSyncTimer = setInterval(() => syncServerState().catch(() => {}), 15000);
   serverPriceTimer = setInterval(() => refreshServerPrices().catch(() => {}), 5000);
