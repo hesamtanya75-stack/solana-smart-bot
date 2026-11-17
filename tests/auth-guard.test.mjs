@@ -351,3 +351,32 @@ test("malformed persisted MFA attempt counters fail closed and invalidate the ch
   }), { ok: false, reason: "invalid-state" });
   assert.equal(storage.values.get("auth_guard_state").challenges[id], undefined);
 });
+
+
+test("authenticated API rate limits are atomic, bounded, and expire on schedule", async () => {
+  const { guard } = makeGuard();
+  const results = await Promise.all(Array.from({ length: 20 }, () =>
+    guard.consumeRateLimit("scan:session-test", 10, 60000, 1000)
+  ));
+  assert.equal(results.filter(result => result.allowed).length, 10);
+  assert.equal(results.filter(result => !result.allowed).length, 10);
+  const limited = await guard.consumeRateLimit("scan:session-test", 10, 60000, 2000);
+  assert.equal(limited.allowed, false);
+  assert.equal(limited.resetAt, 61000);
+  const afterWindow = await guard.consumeRateLimit("scan:session-test", 10, 60000, 61000);
+  assert.equal(afterWindow.allowed, true);
+  await assert.rejects(() => guard.consumeRateLimit("bad scope!", 10, 60000, 1000));
+  await assert.rejects(() => guard.consumeRateLimit("scan:session-test", 101, 60000, 1000));
+});
+
+test("API rate limiter fails closed when its bounded scope table is full", async () => {
+  const { guard, storage } = makeGuard();
+  const state = { rateLimits: {} };
+  for (let i = 0; i < 1000; i++) {
+    state.rateLimits["scope-" + i] = { count: 1, resetAt: 5000, windowMs: 60000, limit: 10 };
+  }
+  storage.values.set("auth_guard_state", state);
+  const result = await guard.consumeRateLimit("scan:new-scope", 10, 60000, 1000);
+  assert.equal(result.allowed, false);
+  assert.equal(result.capacityLimited, true);
+});
