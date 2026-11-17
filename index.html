@@ -1911,20 +1911,30 @@ if (serverToken) {
     const logoutButton=document.getElementById("profileLogout");
     logoutButton.disabled=true;
     status().textContent="هەڵوەشاندنەوەی Session...";
+    let serverRevoked=false;
+    let logoutError=null;
     try{
       await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      serverRevoked=true;
+    }catch(e){
+      logoutError=e;
+    }finally{
+      // Always close the local session, even when the server cannot be reached.
       clearServerPolling();
       serverToken="";
       serverModeReady=false;
       serverLogoutLocked=true;
-      localStorage.setItem("solanaBotServerLogoutLocked", "1");
-      localStorage.removeItem("solanaBotSession");
+      try{
+        localStorage.setItem("solanaBotServerLogoutLocked", "1");
+        localStorage.removeItem("solanaBotSession");
+      }catch(storageError){
+        console.warn("Unable to persist local logout lock", storageError);
+      }
       modal.style.display="none";
       serverLogin.style.display="flex";
-      status().textContent="چوونەژوورەوە هەڵوەشێندرایەوە.";
-    }catch(e){
-      status().textContent="هەڵە لە دەرچوون: "+e.message;
-    }finally{
+      status().textContent=serverRevoked
+        ? "چوونەژوورەوە هەڵوەشێندرایەوە."
+        : "دەرچوونی لۆکاڵ ئەنجام درا؛ بەڵام هەڵوەشاندنەوەی Session لە سێرڤەر پشتڕاست نەکراوەتەوە. "+(logoutError?.message||"");
       logoutButton.disabled=false;
     }
   };
