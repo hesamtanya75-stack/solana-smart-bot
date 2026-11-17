@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
+import { isShareAbovePercent } from "../worker.js";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const dashboardSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -143,4 +144,20 @@ test("live coordinator exposes only authenticated status and one-way emergency s
   }
   assert.equal(workerSource.includes("executeLiveOrder("), false);
   assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
+});
+
+
+test("holder concentration thresholds use exact integer arithmetic at the boundary", () => {
+  const supply = 10_000n;
+  assert.equal(isShareAbovePercent(3_000n, supply, 30n), false);
+  assert.equal(isShareAbovePercent(3_001n, supply, 30n), true);
+  assert.equal(isShareAbovePercent(5_000n, supply, 50n), false);
+  assert.equal(isShareAbovePercent(5_001n, supply, 50n), true);
+  assert.equal(isShareAbovePercent(3_000_000_000_000_000_001n, 10_000_000_000_000_000_000n, 30n), true);
+});
+
+test("missing Solana market pair uses the same marker for the five-minute defer path", () => {
+  assert.ok(workerSource.includes('throw new Error("No verified Solana market pair for the requested mint")'));
+  assert.ok(workerSource.includes('message.startsWith("No verified Solana market pair")'));
+  assert.ok(workerSource.includes("retryAt: Date.now() + 5 * 60 * 1000"));
 });
