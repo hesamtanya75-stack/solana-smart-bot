@@ -115,6 +115,46 @@ function cleanState(value) {
     updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
 }
+function validateMigrationFields(body) {
+  if (body.balance !== undefined &&
+      (typeof body.balance !== "number" || !Number.isFinite(body.balance) || body.balance < 0)) {
+    throw new Error("Invalid migration balance");
+  }
+  if (body.trades !== undefined) {
+    if (!Array.isArray(body.trades) || body.trades.length > 500) {
+      throw new Error("Invalid migration trades");
+    }
+    for (const trade of body.trades) {
+      if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
+          typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) {
+        throw new Error("Malformed migration trade");
+      }
+      const amount = trade.amount;
+      const buyPrice = trade.buyPrice;
+      const tokens = trade.tokens;
+      const currentPrice = trade.currentPrice === undefined ? buyPrice : trade.currentPrice;
+      const sellPrice = trade.sellPrice === undefined ? 0 : trade.sellPrice;
+      const saleValue = trade.saleValue === undefined ? 0 : trade.saleValue;
+      if (![amount, buyPrice, tokens, currentPrice, sellPrice, saleValue].every(
+        value => typeof value === "number" && Number.isFinite(value)
+      ) || amount <= 0 || buyPrice <= 0 || tokens <= 0 ||
+          currentPrice < 0 || sellPrice < 0 || saleValue < 0 ||
+          (trade.sold !== undefined && typeof trade.sold !== "boolean")) {
+        throw new Error("Invalid migration trade values");
+      }
+    }
+  }
+  for (const field of ["autoEnabled", "paused"]) {
+    if (body[field] !== undefined && typeof body[field] !== "boolean") {
+      throw new Error("Invalid migration automation setting");
+    }
+  }
+  if (body.scannedMints !== undefined &&
+      (!Array.isArray(body.scannedMints) || body.scannedMints.length > 1000 ||
+       body.scannedMints.some(mint => typeof mint !== "string" || mint.length > 64))) {
+    throw new Error("Invalid migration scanned mints");
+  }
+}
 async function paperStateCall(env, body) {
   const namespace = env.PAPER_TRADING_STATE;
   if (!namespace) throw new Error("PaperTradingState binding is not configured");
@@ -1013,7 +1053,10 @@ export default {
             if (body.expectedRevision !== current.__revision) {
               return json({ error: "State revision changed; refresh before migrating" }, 409);
             }
-            const state = cleanState({ ...current, ...body });
+            validateMigrationFields(body);
+            const migrationFields = { ...body };
+            delete migrationFields.expectedRevision;
+            const state = { ...current, ...migrationFields };
             try {
               return json(await paperStateCall(env, {
                 operation: "migrate-legacy",
