@@ -91,11 +91,15 @@ test("legacy paper-trading migration refuses to consume malformed local snapshot
   const parseGuard = dashboardSource.indexOf("catch (_) { throw new Error(", read);
   const shapeGuard = dashboardSource.indexOf("!Array.isArray(old.trades)", read);
   const balanceGuard = dashboardSource.indexOf("typeof old.balance !== \"number\"", read);
+  const tradeLimitGuard = dashboardSource.indexOf("old.trades.length > 500", read);
+  const tradeValidation = dashboardSource.indexOf("const invalidTrade = old.trades.some", read);
+  const tradeValueGuard = dashboardSource.indexOf("trade.sold !== undefined && typeof trade.sold !== \"boolean\"", read);
   const enableServerMode = dashboardSource.indexOf("serverModeReady = true;", login);
   const migrateWrite = dashboardSource.indexOf("await saveServerState();", login);
   assert.ok(login >= 0 && read > login);
   assert.ok(parseGuard > read && shapeGuard > parseGuard && balanceGuard > shapeGuard);
-  assert.ok(enableServerMode > balanceGuard, "server mode must not start before local snapshot validation");
+  assert.ok(tradeLimitGuard > balanceGuard && tradeValidation > tradeLimitGuard && tradeValueGuard > tradeValidation);
+  assert.ok(enableServerMode > tradeValueGuard, "server mode must not start before every legacy trade is validated");
   assert.ok(migrateWrite > enableServerMode);
   const stateSync = dashboardSource.indexOf("await syncServerState();", login);
   const persistSession = dashboardSource.indexOf('localStorage.setItem("solanaBotSession", token);', login);
