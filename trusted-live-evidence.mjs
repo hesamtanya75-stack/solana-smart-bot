@@ -1803,18 +1803,30 @@ export async function verifyFinalizedJupiterSettlement({
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
       !Array.isArray(accountKeys) || !Array.isArray(message?.instructions) ||
-      !Array.isArray(meta.preBalances) ||
-      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
-      meta.postBalances.length !== accountKeys.length ||
+      !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
+  }
+  const loadedAddresses = meta.loadedAddresses;
+  const loadedWritable = loadedAddresses == null ? [] : loadedAddresses.writable;
+  const loadedReadonly = loadedAddresses == null ? [] : loadedAddresses.readonly;
+  if (!Array.isArray(loadedWritable) || !Array.isArray(loadedReadonly)) {
+    throw new Error("Finalized transaction loaded-address metadata is malformed");
   }
   if (meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
       meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
       meta.fee > meta.preBalances[0]) {
     throw new Error("Finalized transaction contains malformed native lamport balance metadata");
   }
-  const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  const keyStrings = [
+    ...accountKeys.map(key => typeof key === "string" ? key : key?.pubkey),
+    ...loadedWritable,
+    ...loadedReadonly
+  ];
+  if (meta.preBalances.length !== keyStrings.length ||
+      meta.postBalances.length !== keyStrings.length) {
+    throw new Error("Finalized transaction balance arrays do not cover static and loaded account keys");
+  }
   validateFinalizedInnerInstructionMetadata(meta.innerInstructions, message.instructions, keyStrings.length);
   if (keyStrings.some(key => !isCanonicalPublicKey(key)) ||
       new Set(keyStrings).size !== keyStrings.length) {
