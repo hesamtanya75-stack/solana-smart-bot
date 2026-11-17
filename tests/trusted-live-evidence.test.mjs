@@ -1697,6 +1697,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
             message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(21)), encodeBase58(new Uint8Array(32).fill(22))] }
           },
           meta: {
+            innerInstructions: [],
             err: null,
             fee: 5000,
             preBalances: [100_000_000, 1, 1],
@@ -1759,6 +1760,54 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }
 });
 
+
+test("settlement proof rejects absent and malformed finalized CPI execution metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(17));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const owner = BOT_WALLET;
+  const accountKeys = [owner, encodeBase58(new Uint8Array(32).fill(61)), encodeBase58(new Uint8Array(32).fill(62))];
+  const baseResult = {
+    slot: 456,
+    transaction: {
+      signatures: [signature],
+      message: { accountKeys, instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] }
+    },
+    meta: {
+      err: null, fee: 5000, innerInstructions: [],
+      preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner, uiTokenAmount: { amount: "10000000", decimals: 9 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner, uiTokenAmount: { amount: "0", decimals: 9 } },
+        { accountIndex: 2, mint: outputMint, owner, uiTokenAmount: { amount: "12345", decimals: 6 } }
+      ]
+    }
+  };
+  const makeFetch = result => async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    return Response.json({ jsonrpc: "2.0", id: 1, result: method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] } : result });
+  };
+  const args = { signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345", expectedOwner: owner };
+  const absent = structuredClone(baseResult);
+  delete absent.meta.innerInstructions;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(absent)), /CPI metadata is missing or malformed/);
+
+  for (const innerInstructions of [
+    [{ index: 4, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 99, accounts: [0], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [99], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "!" }] }],
+    [{ index: 0, instructions: [] }]
+  ]) {
+    const malformed = structuredClone(baseResult);
+    malformed.meta.innerInstructions = innerInstructions;
+    await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(malformed)), /Finalized CPI metadata/);
+  }
+});
+
 test("settlement proof requires the connected Phantom owner explicitly", async () => {
   let rpcCalled = false;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
@@ -1789,6 +1838,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
             message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(41)), encodeBase58(new Uint8Array(32).fill(42))] }
           },
           meta: {
+            innerInstructions: [],
             err: null, fee: 5000,
             preBalances: [5_000, 100_000_000, 1, 1], postBalances: [0, 89_995_000, 1, 1],
             preTokenBalances: [
@@ -1824,6 +1874,7 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
           slot: 124,
           transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))] } },
           meta: {
+            innerInstructions: [],
             err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{
               accountIndex: 1,
