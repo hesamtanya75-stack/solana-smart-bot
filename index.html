@@ -519,13 +519,13 @@ async function scanToken(){
 
  try{
   let risk=0,notes=[],market=null,rug=null;
-  let mintInfo=null,mintRawInfo=null,holderData=null,supplyData=null;
+  let mintInfo=null,mintRawInfo=null,holderData=null,supplyData=null,trustedScan=null;
 
   const tasks=await Promise.allSettled([
   getJSON("https://api.dexscreener.com/latest/dex/tokens/"+mint),
   getJSON("https://api.rugcheck.xyz/v1/tokens/"+mint+"/report"),
   rpc("getAccountInfo",[mint,{encoding:"base64",commitment:"confirmed"}]),
-  rpc("getTokenLargestAccounts",[mint,{commitment:"confirmed"}]),
+  serverRequest("/api/scan",{method:"POST",body:JSON.stringify({mint})}),
   rpc("getTokenSupply",[mint,{commitment:"confirmed"}])
 ].map(p =>
   Promise.race([
@@ -545,7 +545,10 @@ async function scanToken(){
   if(tasks[1].status==="fulfilled")rug=tasks[1].value;
   // یەک داواکاریی AccountInfo بەکاردەهێنین بۆ کەمکردنەوەی کاتی چاوەڕوانی
   if(tasks[2].status==="fulfilled"){mintInfo=tasks[2].value;mintRawInfo=tasks[2].value?.value;}
-  if(tasks[3].status==="fulfilled")holderData=tasks[3].value?.value;
+  if(tasks[3].status==="fulfilled" && tasks[3].value?.mint===mint){
+    trustedScan=tasks[3].value;
+    holderData=Array.isArray(trustedScan.holders)?trustedScan.holders:null;
+  }
   if(tasks[4].status==="fulfilled")supplyData=tasks[4].value?.value;
  let tokenExtensions=[];
 try{
@@ -814,28 +817,16 @@ row("Token-2022 Extensions",
 
   const total=Number(supplyData?.amount);
 
-  if(Array.isArray(holderData)&&holderData.length&&total>0){
-        holders=holderData.slice(0,10).map(x=>({
-      address:x.address||"نەزانراو",
-      owner:null,
-      insider:null,
-      pct:Number(x.amount)/total*100
-    })).filter(x=>Number.isFinite(x.pct));
-
-    holderCount=holderData.length;
-    holderText="داتا لە RPC وەرگیرا";
-  }
-
-        if(!holders.length&&Array.isArray(rug?.topHolders)&&rug.topHolders.length){
-    holders=rug.topHolders.slice(0,10).map(x=>({
-      address:x.address||"نەزانراو",
+  if(Array.isArray(holderData)&&holderData.length&&trustedScan?.holderCensusComplete===true){
+    holders=holderData.slice(0,10).map(x=>({
+      address:x.owner||"نەزانراو",
       owner:x.owner||null,
-      insider:x.insider??null,
+      insider:null,
       pct:Number(x.pct)
-    })).filter(x=>Number.isFinite(x.pct));
+    })).filter(x=>Number.isFinite(x.pct)&&x.pct>=0);
 
-    holderCount=rug.topHolders.length;
-    holderText="داتا لە RugCheck وەرگیرا";
+    holderCount=Number(trustedScan.holderOwnerCount)||"نەزانراو";
+    holderText="سەرژمێری تەواوی Wallet ـەکان لە سێرڤەر پشتڕاست کراوەتەوە";
   }
 
   if(holders.length){
@@ -863,7 +854,7 @@ row("Token-2022 Extensions",
     row("دۆخی داتا",holderText)+
     row("گەورەترین هەژماری تۆکن",largestText)+
     row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
-    row("ژمارەی هەژمارە گەورەکان",holderCount)+
+    row("ژمارەی Wallet ـە جیاوازەکان",holderCount)+
     (holders.length&&Math.max(...holders.map(x=>x.pct))>30
       ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
       : "")+
@@ -874,7 +865,7 @@ row("Token-2022 Extensions",
         (x.insider===true?" | ⚠️ Insider": "")
       )
     ).join("")+
-    "<p class='small'>ئەم ناونیشانانە هەژماری تۆکنن؛ بە دڵنیایی ناونیشانی خاوەنە کۆتاییەکان نین.</p>"
+    "<p class='small'>ئەم ناونیشانانە Wallet ـە جیاوازەکانن؛ هەموو Token Account ـەکانی هەر Wallet لە یەکدا کۆکراونەتەوە.</p>"
   );
   const largestPct=holders.length ? Math.max(...holders.map(x=>x.pct)) : 0;
   const topTenPct=holders.reduce((sum,x)=>sum+x.pct,0);
@@ -883,7 +874,7 @@ row("Token-2022 Extensions",
     const topTenShare=Math.min(100,Math.max(0,topTenPct));
     const restShare=100-topTenShare;
     el("holders").insertAdjacentHTML("afterbegin",
-      '<div class="visual-card holder-visual"><b class="visual-title">👥 دابەشبوونی ١٠ هەژماری گەورەتر</b><div class="donut-wrap"><div class="donut" style="background:conic-gradient(#20e6a0 0% '+topTenShare+'%,#34456f '+topTenShare+'% 100%)"><div class="donut-hole"><b>'+topTenShare.toFixed(1)+'%</b><small>١٠ هەژمار</small></div></div><div class="donut-legend"><span><i class="legend-dot"></i> ١٠ هەژماری گەورەتر: '+topTenShare.toFixed(2)+'%</span><span><i class="legend-dot rest"></i> هەموو هەژمارەکانی تر: '+restShare.toFixed(2)+'%</span></div></div><small>ئەم دابەشبوونە لەسەر بنەمای ١٠ هەژماری گەورەترە؛ ژمارەی خاوەنە جیاوازەکان نییە.</small></div>');
+      '<div class="visual-card holder-visual"><b class="visual-title">👥 دابەشبوونی ١٠ هەژماری گەورەتر</b><div class="donut-wrap"><div class="donut" style="background:conic-gradient(#20e6a0 0% '+topTenShare+'%,#34456f '+topTenShare+'% 100%)"><div class="donut-hole"><b>'+topTenShare.toFixed(1)+'%</b><small>١٠ هەژمار</small></div></div><div class="donut-legend"><span><i class="legend-dot"></i> ١٠ هەژماری گەورەتر: '+topTenShare.toFixed(2)+'%</span><span><i class="legend-dot rest"></i> هەموو هەژمارەکانی تر: '+restShare.toFixed(2)+'%</span></div></div><small>ئەم دابەشبوونە لەسەر بنەمای ١٠ Wallet ـی گەورەترە، دوای کۆکردنەوەی Token Account ـەکانی هەر Wallet.</small></div>');
   }
 
 
@@ -968,6 +959,10 @@ if(!mintChecked || mintAuth!==false || freezeAuth!==false)
 
 if(!holders.length || topTenPct>50)
  window.demoBuyBlockReasons.push("داتای هۆڵدەرەکان ناتەواوە یان کۆبوونەوە زۆرە");
+if(!trustedScan || trustedScan.holderCensusComplete!==true)
+ window.demoBuyBlockReasons.push("سەرژمێری تەواوی Wallet ـەکان لە سێرڤەر پشتڕاست نەکراوەتەوە");
+if(trustedScan && trustedScan.ok!==true)
+ (Array.isArray(trustedScan.reasons)?trustedScan.reasons:[]).forEach(reason=>window.demoBuyBlockReasons.push(String(reason)));
 if(largestPct>30)
   window.demoBuyBlockReasons.push("یەک هەژمار زیاتر لە 30%ی تۆکنی هەیە");
 if(!rug || rug.score==null)
