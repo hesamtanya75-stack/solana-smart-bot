@@ -1292,8 +1292,7 @@ test("settlement proof rejects malformed outer-instruction metadata", async () =
           slot: 128,
           transaction: {
             signatures: [signature],
-            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
-            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(15))], instructions: { malformed: true } }
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(15))], instructions: { malformed: true } }
           },
           meta: {
             err: null,
@@ -1609,8 +1608,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
-            message: { accountKeys: [encodeBase58(new Uint8Array(32).fill(1)), BOT_WALLET, encodeBase58(new Uint8Array(32).fill(2)), encodeBase58(new Uint8Array(32).fill(3))] }
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [encodeBase58(new Uint8Array(32).fill(1)), BOT_WALLET, encodeBase58(new Uint8Array(32).fill(2)), encodeBase58(new Uint8Array(32).fill(3))] }
           },
           meta: {
             err: null, fee: 5000,
@@ -1632,7 +1630,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
     verifyFinalizedJupiterSettlement({
       signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
     }, fetchImpl),
-    /not the finalized transaction fee payer/
+    /not the finalized writable transaction fee payer/
   );
 });
 
@@ -1645,8 +1643,7 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(33)), encodeBase58(new Uint8Array(32).fill(34))] } },
+          transaction: { signatures: [signature], message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(33)), encodeBase58(new Uint8Array(32).fill(34))] } },
           meta: {
             err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{ accountIndex: 1, mint: "So11111111111111111111111111111111111111112",
@@ -1685,8 +1682,7 @@ test("settlement proof rejects noncanonical or out-of-range owned token balances
           slot: 130,
           transaction: {
             signatures: [signature],
-            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
-            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(35)), encodeBase58(new Uint8Array(32).fill(36))] }
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(35)), encodeBase58(new Uint8Array(32).fill(36))] }
           },
           meta: {
             err: null,
@@ -1722,8 +1718,7 @@ test("settlement proof rejects duplicate and out-of-range owned token account in
     slot: 131,
     transaction: {
       signatures: [signature],
-      header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
-      message: { accountKeys: [BOT_WALLET, inputAccount, outputAccount] }
+      message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, inputAccount, outputAccount] }
     },
     meta: {
       err: null,
