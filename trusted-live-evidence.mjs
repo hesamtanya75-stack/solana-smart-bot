@@ -725,8 +725,8 @@ export async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApi
     for (const row of rows) {
       const rawAmount = String(row.amount);
       const accountAddress = row.address || row.pubkey;
-      if (row.mint !== mint || typeof row.owner !== "string" ||
-          typeof accountAddress !== "string" || accountAddress.length < 32 ||
+      if (row.mint !== mint || !isCanonicalPublicKey(row.owner) ||
+          !isCanonicalPublicKey(accountAddress) ||
           seenAccounts.has(accountAddress) || !/^\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
         throw new Error("Alchemy holder page contains incomplete, duplicate, or mismatched account data");
       }
