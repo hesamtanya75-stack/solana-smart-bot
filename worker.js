@@ -1055,7 +1055,7 @@ export default {
           });
           return json(result);
         } catch (error) {
-          console.error("Paper buy failed", String(error?.message || error));
+          console.error("Paper buy failed", Number.isInteger(error?.status) ? error.status : "internal");
           return json({ error: "Paper buy could not be completed; retry after checking server status." }, error.status || 503);
         }
       }
