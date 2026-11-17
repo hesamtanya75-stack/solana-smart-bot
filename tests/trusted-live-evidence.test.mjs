@@ -1776,6 +1776,7 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
   const result = {
     slot: 789,
     transaction: {
+      version: 0,
       signatures: [signature],
       message: {
         accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(74))],
@@ -1837,6 +1838,9 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       value.version = 0;
       delete value.transaction.message.addressTableLookups;
     },
+    value => { value.transaction.version = "legacy"; },
+    value => { value.meta.loadedAddresses.writable.pop(); },
+    value => { value.meta.loadedAddresses.readonly.push(loadedInputAccount); },
     value => { value.transaction.message.addressTableLookups[0].writableIndexes = "invalid"; },
     value => {
       value.meta.loadedAddresses.writable = Array.from({ length: 255 }, (_, index) =>
@@ -1858,7 +1862,7 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       signature, inputMint, outputMint,
       inputAmount: "10000000", outputAmount: "12345",
       expectedOwner: BOT_WALLET
-    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|missing address-lookup metadata|account key count exceeds/);
+    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|missing address-lookup metadata|lookup tables require version 0|loaded-address counts do not match|account key count exceeds/);
   }
 });
 
