@@ -595,3 +595,34 @@ test("malformed legacy activity metadata permanently closes the browser migratio
     assert.equal(attempt.status, 409);
   }
 });
+
+
+test("compare-and-set closes migration on malformed or non-empty raw activity metadata", async () => {
+  const cases = [
+    { scannedMints: { mint: mintA } },
+    { scannedMints: ["not-a-valid-mint"] },
+    { deferredMints: { mint: mintA, retryAt: 123 } },
+    { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
+    { lastScanReport: { mint: mintA, status: "blocked" } },
+    { lastScanReport: [{ mint: 7, status: null }] }
+  ];
+  for (const metadata of cases) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, true);
+    const updated = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: initial.body.revision,
+      state: { ...initial.body.state, ...metadata }
+    });
+    assert.equal(updated.status, 200);
+    const current = await call(instance, { operation: "get" });
+    assert.equal(current.body.migrationOpen, false);
+    const migration = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: current.body.revision,
+      state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(migration.status, 409);
+  }
+});
