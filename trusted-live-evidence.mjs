@@ -1123,10 +1123,15 @@ export async function verifyFinalizedJupiterSettlement({
   const message = transaction?.transaction?.message;
   const signatures = transaction?.transaction?.signatures;
   const accountKeys = message?.accountKeys;
+  const addressTableLookups = message?.addressTableLookups ?? [];
+  const hasAddressTableLookups = Array.isArray(addressTableLookups) && addressTableLookups.length > 0;
   const loadedAddresses = meta?.loadedAddresses ?? { writable: [], readonly: [] };
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
       !Array.isArray(accountKeys) ||
+      (message?.addressTableLookups != null && !Array.isArray(message.addressTableLookups)) ||
+      (hasAddressTableLookups && (!meta.loadedAddresses ||
+        typeof meta.loadedAddresses !== "object" || Array.isArray(meta.loadedAddresses))) ||
       !loadedAddresses || !Array.isArray(loadedAddresses.writable) ||
       !Array.isArray(loadedAddresses.readonly) ||
       !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
@@ -1137,6 +1142,28 @@ export async function verifyFinalizedJupiterSettlement({
   }
   const validAddress = isCanonicalPublicKey;
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  let expectedWritableLookupCount = 0;
+  let expectedReadonlyLookupCount = 0;
+  const seenLookupTables = new Set();
+  for (const lookup of addressTableLookups) {
+    if (!lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+        !validAddress(lookup.accountKey) || seenLookupTables.has(lookup.accountKey) ||
+        !Array.isArray(lookup.writableIndexes) || !Array.isArray(lookup.readonlyIndexes) ||
+        lookup.writableIndexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
+        lookup.readonlyIndexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
+        new Set(lookup.writableIndexes).size !== lookup.writableIndexes.length ||
+        new Set(lookup.readonlyIndexes).size !== lookup.readonlyIndexes.length) {
+      throw new Error("Finalized transaction address-table lookup metadata is malformed");
+    }
+    seenLookupTables.add(lookup.accountKey);
+    expectedWritableLookupCount += lookup.writableIndexes.length;
+    expectedReadonlyLookupCount += lookup.readonlyIndexes.length;
+  }
+  if (expectedWritableLookupCount + expectedReadonlyLookupCount > 256 ||
+      loadedAddresses.writable.length !== expectedWritableLookupCount ||
+      loadedAddresses.readonly.length !== expectedReadonlyLookupCount) {
+    throw new Error("Finalized transaction loaded-address metadata does not match its lookup descriptors");
+  }
   const loadedKeyStrings = [...loadedAddresses.writable, ...loadedAddresses.readonly];
   if (keyStrings.some(key => !validAddress(key)) ||
       loadedKeyStrings.some(key => !validAddress(key)) ||
