@@ -1058,7 +1058,7 @@ function sumOwnedTokenBalance(rows, mint, owner, accountCount) {
         Array.isArray(row.uiTokenAmount) ||
         !Number.isInteger(row.uiTokenAmount.decimals) ||
         row.uiTokenAmount.decimals < 0 || row.uiTokenAmount.decimals > 255 ||
-        (row.owner != null && !isCanonicalPublicKey(row.owner)) ||
+        !isCanonicalPublicKey(row.owner) ||
         (row.programId != null && !isCanonicalPublicKey(row.programId))) {
       throw new Error("Finalized transaction contains invalid or duplicate owned token account indexes");
     }
