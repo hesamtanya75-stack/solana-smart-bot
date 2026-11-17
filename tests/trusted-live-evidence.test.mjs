@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchCompleteMintTokenAccounts, fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -765,10 +765,27 @@ test("holder verification fails closed when Alchemy credentials are absent", asy
   );
 });
 
+
+test("Alchemy holder census rejects non-canonical wallet owners and token-account addresses", async () => {
+  const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const key = "test-alchemy-api-key-123456";
+  for (const row of [
+    { address: encodeBase58(new Uint8Array(32).fill(3)), mint, owner: "not-a-wallet-address", amount: "1" },
+    { address: "not-a-token-account-address", mint, owner: "11111111111111111111111111111111", amount: "1" }
+  ]) {
+    await assert.rejects(
+      fetchCompleteMintTokenAccounts(mint, async () =>
+        Response.json({ jsonrpc: "2.0", id: 1, result: { token_accounts: [row], errors: [] } })
+      , key),
+      /incomplete, duplicate, or mismatched account data/
+    );
+  }
+});
+
 test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const firstPage = Array.from({ length: 100 }, (_, i) => ({
-    address: "TokenAccountAddress" + String(i).padStart(20, "0"),
+    address: encodeBase58(new Uint8Array(32).fill(i + 1)),
     mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
@@ -806,7 +823,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       holderPages++;
       return Response.json({ jsonrpc: "2.0", id: request.id, result: {
         token_accounts: request.params.page === 1 ? firstPage : [{
-          address: "TokenAccountAddress" + "100".padStart(20, "0"),
+          address: encodeBase58(new Uint8Array(32).fill(101)),
           mint, owner: "11111111111111111111111111111112", amount: "1"
         }],
         errors: []
