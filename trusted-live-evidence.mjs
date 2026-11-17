@@ -1675,13 +1675,13 @@ export function verifyCompleteOuterProgramIdentity({
   });
 }
 
-function sumOwnedTokenBalance(rows, mint, owner, accountKeys) {
-  if (!Array.isArray(rows) || !Array.isArray(accountKeys) || accountKeys.length < 1) {
+function sumOwnedTokenBalance(rows, mint, owner, accountKeys, decimalsByMint = new Map()) {
+  if (!Array.isArray(rows) || !Array.isArray(accountKeys) || accountKeys.length < 1 ||
+      !(decimalsByMint instanceof Map)) {
     throw new Error("Finalized transaction token balance metadata is unavailable");
   }
   let total = 0n;
   const seenAccountIndexes = new Set();
-  const decimalsByMint = new Map();
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row) ||
         !Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
@@ -1840,8 +1840,11 @@ export async function verifyFinalizedJupiterSettlement({
   // expectedOwner to the wallet that received the quote and approved the order.
   if (ownerIndex !== 0) throw new Error("Expected owner is not the finalized transaction fee payer");
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings);
+  // Mint decimals are immutable; reconcile them across both snapshots and
+  // both swap mints rather than validating each pre/post array in isolation.
+  const decimalsByMint = new Map();
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings, decimalsByMint);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings, decimalsByMint);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -1849,8 +1852,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings, decimalsByMint);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings, decimalsByMint);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
