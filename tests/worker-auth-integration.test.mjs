@@ -145,6 +145,32 @@ async function totpCode(secret, counter) {
   return String(binary % 1000000).padStart(6, "0");
 }
 
+test("Worker rejects malformed stored session versions and corrupted AuthGuard versions", async () => {
+  {
+    const { env } = makeEnvironment();
+    const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+    assert.equal(login.status, 200);
+    const { token } = await login.json();
+    await env.BOT_STATE.put("session:" + token, JSON.stringify({
+      expiresAt: Date.now() + 60000,
+      sessionVersion: "0"
+    }));
+    const rejected = await get("/api/profile", env, token);
+    assert.equal(rejected.status, 401);
+  }
+  {
+    const { env, guard } = makeEnvironment();
+    const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+    assert.equal(login.status, 200);
+    const { token } = await login.json();
+    const state = guard.ctx.storage.values.get("auth_guard_state");
+    state.sessionVersion = -1;
+    guard.ctx.storage.values.set("auth_guard_state", state);
+    const rejected = await get("/api/profile", env, token);
+    assert.equal(rejected.status, 401);
+  }
+});
+
 test("Worker login migrates legacy MFA and enforces one-time TOTP and backup codes", async () => {
   const secret = "JBSWY3DPEHPK3PXP";
   const backupCode = "ABCD1234EFGH5678";
