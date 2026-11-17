@@ -20,6 +20,8 @@ Example secret setup (Wrangler prompts for each value):
 ```sh
 npx wrangler secret put BOT_LOGIN_PASSWORD
 npx wrangler secret put AUTH_GUARD_INTERNAL_TOKEN
+npx wrangler secret put COORDINATOR_INTERNAL_TOKEN
+npx wrangler secret put COORDINATOR_OPERATOR_TOKEN
 ```
 
 Use independently generated, high-entropy values. Do not reuse the administrator password as the internal token.
@@ -36,7 +38,7 @@ Verify the deployed Worker has the bindings defined in `wrangler.jsonc`:
 
 The Durable Object migrations in `wrangler.jsonc` must be applied in order. A local build or CI dry-run does not prove that production bindings, migrations, or secrets are configured correctly.
 
-The authenticated dashboard may read `POST /api/live/kill-switch` only to activate the emergency stop (`{ "enabled": true })); there is deliberately no browser/API path to deactivate it. `GET /api/live/status` reads coordinator status. These controls require both coordinator secrets and the Durable Object binding. The coordinator remains isolated: there is still no public reservation, signing, swap, or Mainnet transaction route.
+The authenticated dashboard may read `POST /api/live/kill-switch` only to activate the emergency stop (`{ "enabled": true }`); there is deliberately no browser/API path to deactivate it. `GET /api/live/status` reads coordinator status. These controls require both coordinator secrets and the Durable Object binding. The coordinator remains isolated: there is still no public reservation, signing, swap, or Mainnet transaction route.
 
 ### Verification before any production release
 
@@ -49,7 +51,7 @@ The authenticated dashboard may read `POST /api/live/kill-switch` only to activa
 
 ### Live trading remains disabled
 
-The LiveTradeCoordinator is an isolated safety component; the Worker currently has no live-trading route that invokes it. Settlement transitions fail closed until independent on-chain transaction verification and replay-safe settlement are implemented and tested. Do not enable live trading, remove its kill switch, or treat a successful Devnet test as authorization for Mainnet activity.
+The Worker now exposes authenticated coordinator status and a one-way emergency-stop activation endpoint only. It still exposes no reservation, signing, swap, or live-order route. Settlement transitions fail closed until independent on-chain transaction verification, complete all-in cost accounting, and replay-safe settlement are implemented and tested. Do not enable live trading, remove its kill switch, or treat a successful Devnet test as authorization for Mainnet activity.
 
 ## Development
 
