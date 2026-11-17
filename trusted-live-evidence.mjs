@@ -1150,6 +1150,8 @@ export async function verifyFinalizedJupiterSettlement({
         !Array.isArray(instruction.accounts) ||
         instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
           index >= allKeys.length) ||
+        (instruction.stackHeight != null &&
+          (!Number.isSafeInteger(instruction.stackHeight) || instruction.stackHeight < 1)) ||
         typeof instruction.data !== "string" ||
         (instruction.data !== "" && (() => {
           try {
