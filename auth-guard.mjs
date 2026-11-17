@@ -116,6 +116,7 @@ export class AuthGuard {
     await this.ctx.storage.transaction(async txn => {
       const state = (await txn.get("auth_guard_state")) || {
         initialized: false,
+        sessionVersion: 0,
         backupHash: null,
         lastTotpCounter: -1,
         failures: {},
@@ -209,6 +210,7 @@ export class AuthGuard {
   async getProfile() {
     return this.withState(state => ({
       initialized: state.initialized === true,
+      sessionVersion: Number.isSafeInteger(state.sessionVersion) && state.sessionVersion >= 0 ? state.sessionVersion : 0,
       totpEnabled: state.totpEnabled === true,
       totpSecret: state.totpSecret || null,
       pendingTotpSecret: state.pendingTotpSecret || null,
@@ -277,6 +279,7 @@ export class AuthGuard {
       }
       state.totpSecret = state.pendingTotpSecret;
       state.totpEnabled = true;
+      state.sessionVersion = (Number.isSafeInteger(state.sessionVersion) && state.sessionVersion >= 0 ? state.sessionVersion : 0) + 1;
       state.lastTotpCounter = counter;
       state.backupHash = backupHash.toLowerCase();
       state.pendingTotpSecret = null;
