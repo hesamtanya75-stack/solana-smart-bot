@@ -1069,6 +1069,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   let invalidNativeBalanceFixture = false;
+  let invalidLoadedAddressMetadataFixture = false;
+  let invalidLookupDescriptorFixture = false;
   let invalidStackHeightFixture = false;
   let invalidOuterStackHeightFixture = false;
   let invalidInnerStackHeightFixture = false;
@@ -1084,6 +1086,11 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
             signatures: [signature],
             message: {
               accountKeys: [BOT_WALLET],
+              addressTableLookups: [{
+                accountKey: encodeBase58(new Uint8Array(32).fill(13)),
+                writableIndexes: [0],
+                readonlyIndexes: [0]
+              }],
               instructions: [{
                 programIdIndex: 0,
                 accounts: [0],
@@ -1095,10 +1102,12 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           meta: {
             err: null,
             fee: 5000,
-            loadedAddresses: {
-              writable: [encodeBase58(new Uint8Array(32).fill(11))],
-              readonly: [encodeBase58(new Uint8Array(32).fill(12))]
-            },
+            ...(invalidLoadedAddressMetadataFixture ? {} : {
+              loadedAddresses: {
+                writable: [encodeBase58(new Uint8Array(32).fill(11))],
+                readonly: [encodeBase58(new Uint8Array(32).fill(12))]
+              }
+            }),
             innerInstructions: [{
               index: 0,
               instructions: [{
@@ -1185,6 +1194,33 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(Object.hasOwn(proof, "allInCosts"), false);
   assert.equal(Object.hasOwn(proof, "nativeSolOutflowLamports"), false);
   assert.equal(Object.hasOwn(proof, "totalLamports"), false);
+
+  invalidLookupDescriptorFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, async (url, options) => {
+    const response = await fetchImpl(url, options);
+    const body = await response.json();
+    if (JSON.parse(options.body).method === "getTransaction") {
+      body.result.transaction.message.addressTableLookups[0].writableIndexes = [0, 1];
+    }
+    return Response.json(body);
+  }), /loaded-address metadata does not match/);
+  invalidLookupDescriptorFixture = false;
+
+  invalidLoadedAddressMetadataFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /metadata is incomplete or indicates failure/);
+  invalidLoadedAddressMetadataFixture = false;
 
   invalidNativeBalanceFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
