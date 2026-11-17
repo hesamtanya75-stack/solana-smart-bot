@@ -820,7 +820,7 @@ row("Token-2022 Extensions",
   if(Array.isArray(holderData)&&holderData.length&&trustedScan?.holderCensusComplete===true){
     holders=holderData.slice(0,10).map(x=>({
       address:x.owner||"نەزانراو",
-      owner:x.owner||null,
+      owner:null,
       insider:null,
       pct:Number(x.pct)
     })).filter(x=>Number.isFinite(x.pct)&&x.pct>=0);
@@ -852,11 +852,11 @@ row("Token-2022 Extensions",
 
   show("holders",
     row("دۆخی داتا",holderText)+
-    row("گەورەترین هەژماری تۆکن",largestText)+
-    row("کۆی ١٠ هەژماری گەورەتر",topTenText)+
+    row("گەورەترین Wallet",largestText)+
+    row("کۆی ١٠ Wallet ـی گەورەتر",topTenText)+
     row("ژمارەی Wallet ـە جیاوازەکان",holderCount)+
     (holders.length&&Math.max(...holders.map(x=>x.pct))>30
-      ? "<p class='bad'><b>⚠️ ئاگاداری: یەک هەژمار زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
+      ? "<p class='bad'><b>⚠️ ئاگاداری: یەک Wallet زیاتر لە 30%ی کۆینەکەی هەیە!</b></p>"
       : "")+
         holders.map((x,i)=>
       row("هەژمار "+(i+1),
@@ -874,7 +874,7 @@ row("Token-2022 Extensions",
     const topTenShare=Math.min(100,Math.max(0,topTenPct));
     const restShare=100-topTenShare;
     el("holders").insertAdjacentHTML("afterbegin",
-      '<div class="visual-card holder-visual"><b class="visual-title">👥 دابەشبوونی ١٠ هەژماری گەورەتر</b><div class="donut-wrap"><div class="donut" style="background:conic-gradient(#20e6a0 0% '+topTenShare+'%,#34456f '+topTenShare+'% 100%)"><div class="donut-hole"><b>'+topTenShare.toFixed(1)+'%</b><small>١٠ هەژمار</small></div></div><div class="donut-legend"><span><i class="legend-dot"></i> ١٠ هەژماری گەورەتر: '+topTenShare.toFixed(2)+'%</span><span><i class="legend-dot rest"></i> هەموو هەژمارەکانی تر: '+restShare.toFixed(2)+'%</span></div></div><small>ئەم دابەشبوونە لەسەر بنەمای ١٠ Wallet ـی گەورەترە، دوای کۆکردنەوەی Token Account ـەکانی هەر Wallet.</small></div>');
+      '<div class="visual-card holder-visual"><b class="visual-title">👥 دابەشبوونی ١٠ Wallet ـی گەورەتر</b><div class="donut-wrap"><div class="donut" style="background:conic-gradient(#20e6a0 0% '+topTenShare+'%,#34456f '+topTenShare+'% 100%)"><div class="donut-hole"><b>'+topTenShare.toFixed(1)+'%</b><small>١٠ هەژمار</small></div></div><div class="donut-legend"><span><i class="legend-dot"></i> ١٠ Wallet ـی گەورەتر: '+topTenShare.toFixed(2)+'%</span><span><i class="legend-dot rest"></i> هەموو هەژمارەکانی تر: '+restShare.toFixed(2)+'%</span></div></div><small>ئەم دابەشبوونە لەسەر بنەمای ١٠ Wallet ـی گەورەترە، دوای کۆکردنەوەی Token Account ـەکانی هەر Wallet.</small></div>');
   }
 
 
@@ -964,7 +964,7 @@ if(!trustedScan || trustedScan.holderCensusComplete!==true)
 if(trustedScan && trustedScan.ok!==true)
  (Array.isArray(trustedScan.reasons)?trustedScan.reasons:[]).forEach(reason=>window.demoBuyBlockReasons.push(String(reason)));
 if(largestPct>30)
-  window.demoBuyBlockReasons.push("یەک هەژمار زیاتر لە 30%ی تۆکنی هەیە");
+  window.demoBuyBlockReasons.push("یەک Wallet زیاتر لە 30%ی تۆکنی هەیە");
 if(!rug || rug.score==null)
  window.demoBuyBlockReasons.push("داتای RugCheck بەردەست نییە");
 
