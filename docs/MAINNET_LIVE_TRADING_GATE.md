@@ -62,3 +62,17 @@ No live signer, private-key handling, Jupiter/DEX swap execution, Mainnet transa
 ### Explicit priority-fee ceiling configuration
 
 The priority-fee sub-check now validates every outer instruction envelope and account-meta shape before reporting its narrow fee result, including v1 message-config transactions; malformed/null instructions, invalid program/account keys, invalid role flags, and non-canonical instruction data fail closed. This is still not semantic transaction approval or complete outflow analysis. The coordinator requires `LIVE_MAX_PRIORITY_FEE_LAMPORTS` to be explicitly configured as a non-negative safe integer and rejects any computed priority fee above it. There is intentionally no default value and no production ceiling is selected by this repository change. Until an operator reviews the fee policy and configures this value, reservation attempts fail closed. A test-only fixture value is used solely for unit tests and must not be copied as an operational recommendation. This setting alone does not make fee evidence trustworthy: instruction semantics and all-in outflow decoding remain mandatory blockers.
+
+## CI evidence snapshot (2026-11-17, PR #30 head)
+
+Reviewed commit: `fb36e71d351b39da30e56655d6ccee760cafb96a`.
+
+- Node safety and Durable Objects runtime tests: success.
+- Workflow validation and Devnet script syntax checks: success.
+- Cloudflare Worker configuration validation and dry-run build: success; no deployment.
+- Devnet read-only cluster identity/RPC preflight: success.
+- Manual funded Devnet lifecycle: skipped by design because this run was not manually dispatched with the explicit `DEVNET_ONLY` confirmation. No signature or transfer was submitted.
+- Legacy Deno deployment status: failure, with the explicit provider response `Organization suspended - resolve billing to deploy`. This is an external account/billing blocker, not a Cloudflare Worker build failure.
+- PR #30 remains open and Draft. No merge, production deployment, Phantom signing, Mainnet transaction, or swap execution occurred.
+
+The passing checks above validate the preparation branch only. They do not satisfy semantic instruction verification, the funded Devnet lifecycle, or manual Phantom buy/sell end-to-end gates.
