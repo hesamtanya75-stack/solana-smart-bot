@@ -866,6 +866,52 @@ export default {
           return json({ error: String(error?.message || "Trusted token scan failed") }, error.status || 503);
         }
       }
+      if (url.pathname === "/api/live/status" && request.method === "GET") {
+        try {
+          const internalToken = String(env.COORDINATOR_INTERNAL_TOKEN || "");
+          if (internalToken.length < 32 || !env.LIVE_TRADE_COORDINATOR) {
+            return json({ error: "Live coordinator is not configured" }, 503);
+          }
+          const id = env.LIVE_TRADE_COORDINATOR.idFromName("live-trade-coordinator");
+          const stub = env.LIVE_TRADE_COORDINATOR.get(id);
+          const response = await stub.fetch(new Request("https://coordinator.internal/status", {
+            headers: { Authorization: "Bearer " + internalToken }
+          }));
+          const data = await response.json().catch(() => ({}));
+          return json(data, response.status);
+        } catch {
+          return json({ error: "Live coordinator status is unavailable" }, 503);
+        }
+      }
+      if (url.pathname === "/api/live/kill-switch" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).length !== 1 || body.enabled !== true) {
+            return json({ error: "Emergency stop endpoint only accepts enabled: true" }, 400);
+          }
+          const internalToken = String(env.COORDINATOR_INTERNAL_TOKEN || "");
+          const operatorToken = String(env.COORDINATOR_OPERATOR_TOKEN || "");
+          if (internalToken.length < 32 || operatorToken.length < 32 ||
+              internalToken === operatorToken || !env.LIVE_TRADE_COORDINATOR) {
+            return json({ error: "Live coordinator operator controls are not configured" }, 503);
+          }
+          const id = env.LIVE_TRADE_COORDINATOR.idFromName("live-trade-coordinator");
+          const stub = env.LIVE_TRADE_COORDINATOR.get(id);
+          const response = await stub.fetch(new Request("https://coordinator.internal/kill-switch", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + internalToken,
+              "X-Operator-Token": operatorToken,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ enabled: true })
+          }));
+          const data = await response.json().catch(() => ({}));
+          return json(data, response.status);
+        } catch {
+          return json({ error: "Emergency stop activation failed" }, 503);
+        }
+      }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
           const state = await readState(env);
