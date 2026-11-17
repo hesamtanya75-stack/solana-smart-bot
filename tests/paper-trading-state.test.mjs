@@ -569,3 +569,27 @@ test("compare-and-set permanently closes legacy migration after deferred or scan
     assert.equal(migration.status, 409);
   }
 });
+
+
+test("malformed legacy activity metadata permanently closes the browser migration window", async () => {
+  const malformedCases = [
+    { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
+    { deferredMints: { mint: mintA, retryAt: 123 } },
+    { lastScanReport: [{ mint: 7, status: null, reasons: "invalid" }] },
+    { lastScanReport: { mint: mintA, status: "blocked" } }
+  ];
+  for (const extra of malformedCases) {
+    const { instance } = makeDO({
+      balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
+    });
+    const result = await call(instance, { operation: "get" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.migrationOpen, false);
+    const attempt = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: result.body.revision,
+      state: { balance: 65, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(attempt.status, 409);
+  }
+});
