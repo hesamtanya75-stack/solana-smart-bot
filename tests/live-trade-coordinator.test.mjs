@@ -999,6 +999,27 @@ test("confirmation fails closed when finalized settlement has no independently v
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+test("confirmation rejects matching cost fields without gross outflow verification", async () => {
+  const verifier = async args => ({
+    ...mockFinalizedSettlement(args),
+    grossOutflowsVerified: false
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "4".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /matching independently verified all-in cost evidence/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
 test("confirmation rejects finalized all-in cost evidence that differs from the reserved cost breakdown", async () => {
   const verifier = async args => {
     const costs = trustedEvidence().costs;
