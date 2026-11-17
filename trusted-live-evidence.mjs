@@ -1158,14 +1158,15 @@ export async function verifyFinalizedJupiterSettlement({
     throw new Error("Finalized outer-instruction metadata has an invalid shape");
   }
   const outerInstructionsRecorded = Array.isArray(message.instructions);
-  const compileInstructionEvidence = (instruction, label) => {
+  const compileInstructionEvidence = (instruction, label, isInner) => {
     if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
         instruction.programIdIndex < 0 || instruction.programIdIndex >= allKeys.length ||
         !Array.isArray(instruction.accounts) ||
         instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
           index >= allKeys.length) ||
         (instruction.stackHeight != null &&
-          (!Number.isSafeInteger(instruction.stackHeight) || instruction.stackHeight < 1)) ||
+          (!Number.isSafeInteger(instruction.stackHeight) ||
+            (isInner ? instruction.stackHeight < 2 : instruction.stackHeight !== 1))) ||
         typeof instruction.data !== "string" ||
         (instruction.data !== "" && (() => {
           try {
@@ -1191,7 +1192,7 @@ export async function verifyFinalizedJupiterSettlement({
   };
   const outerInstructionEvidence = outerInstructionsRecorded
     ? Object.freeze(message.instructions.map(instruction =>
-        compileInstructionEvidence(instruction, "outer instruction")))
+        compileInstructionEvidence(instruction, "outer instruction", false)))
     : null;
   if (meta.innerInstructions != null && !Array.isArray(meta.innerInstructions)) {
     throw new Error("Finalized inner-instruction metadata has an invalid shape");
@@ -1210,7 +1211,7 @@ export async function verifyFinalizedJupiterSettlement({
         return Object.freeze({
           index: group.index,
           instructions: Object.freeze(group.instructions.map(instruction =>
-            compileInstructionEvidence(instruction, "inner instruction")))
+            compileInstructionEvidence(instruction, "inner instruction", true)))
         });
       }))
     : null;
