@@ -1168,6 +1168,11 @@ if (duplicate) {
     return;
   }
 
+  if (serverLogoutLocked) {
+    status.innerText = "دوای دەرچوون، بۆ پاراستنی داتای Paper Trading دەبێت دووبارە بچیتە ژوورەوە.";
+    return;
+  }
+
   const price = Number(window.lastTokenPrice || 0);
   if (price <= 0) {
     status.innerText = "نرخی کۆین بەردەست نییە.";
@@ -1534,6 +1539,7 @@ setInterval(() => {
 
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
+let serverLogoutLocked = localStorage.getItem("solanaBotServerLogoutLocked") === "1";
 let serverStateRevision = null;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
@@ -1680,6 +1686,8 @@ async function finishServerLogin(token) {
     applyServerState(remote);
   }
   serverModeReady = true;
+  serverLogoutLocked = false;
+  localStorage.removeItem("solanaBotServerLogoutLocked");
   serverLogin.style.display = "none";
   renderServerControls(remote.updatedAt ? remote : {
     autoEnabled: false, paused: false
@@ -1773,6 +1781,8 @@ if (serverToken) {
   finishServerLogin(serverToken).catch(() => {
     clearServerPolling();
     serverModeReady = false;
+    serverLogoutLocked = true;
+    localStorage.setItem("solanaBotServerLogoutLocked", "1");
     localStorage.removeItem("solanaBotSession");
     serverToken = "";
     serverLogin.style.display = "flex";
@@ -1857,6 +1867,8 @@ if (serverToken) {
       clearServerPolling();
       serverToken="";
       serverModeReady=false;
+      serverLogoutLocked=true;
+      localStorage.setItem("solanaBotServerLogoutLocked", "1");
       localStorage.removeItem("solanaBotSession");
       modal.style.display="none";
       serverLogin.style.display="flex";
