@@ -63,7 +63,14 @@ async function runScheduledWithDexPrice(t, initial, priceUsd, beforeCompareAndSe
     idFromName: name => name,
     get: id => {
       assert.equal(id, "paper-trading");
-      return { fetch: (url, init) => instance.fetch(new Request(url, init)) };
+      return { fetch: async (url, init) => {
+        const request = new Request(url, init);
+        if (beforeCompareAndSet) {
+          const body = await request.clone().json();
+          if (body.operation === "compare-and-set") await beforeCompareAndSet(instance);
+        }
+        return instance.fetch(request);
+      } };
     }
   };
   const pending = [];
