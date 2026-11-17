@@ -1,9 +1,12 @@
 // Prefer an explicitly configured Devnet RPC, then Alchemy Devnet when its
 // API key is available. The public endpoint is a last-resort read-only fallback.
+const PUBLIC_DEVNET_RPC = "https://api.devnet.solana.com";
 const DEVNET_RPC = process.env.DEVNET_RPC_URL ||
   (process.env.ALCHEMY_API_KEY
     ? "https://solana-devnet.g.alchemy.com/v2/" + encodeURIComponent(process.env.ALCHEMY_API_KEY)
-    : "https://api.devnet.solana.com");
+    : PUBLIC_DEVNET_RPC);
+let activeDevnetRpc = DEVNET_RPC;
+let usedPublicRpcFallback = false;
 const EXPECTED_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const TOKEN_PROGRAMS = new Set([
@@ -29,7 +32,7 @@ async function rpc(method, params = []) {
   let response;
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      response = await fetch(DEVNET_RPC, {
+      response = await fetch(activeDevnetRpc, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -38,6 +41,16 @@ async function rpc(method, params = []) {
     } catch (error) {
       // Retry transient network failures/timeouts as well as retryable HTTP
       // responses; never print the RPC URL because it may contain a key.
+      if (attempt === 5 && error?.cause?.code === "ENOTFOUND" &&
+          activeDevnetRpc !== PUBLIC_DEVNET_RPC) {
+        // A DNS lookup failure on the configured read-only provider can be an
+        // infrastructure outage. Fall back to official public Devnet for
+        // read-only checks only; funded lifecycle uses a separate strict RPC.
+        activeDevnetRpc = PUBLIC_DEVNET_RPC;
+        usedPublicRpcFallback = true;
+        attempt = -1;
+        continue;
+      }
       if (attempt === 5) {
         // Keep credentials and the RPC URL out of logs. Node's fetch commonly
         // wraps DNS, TLS, socket, and timeout failures in TypeError; expose only
@@ -181,6 +194,7 @@ async function main() {
     topTenOwnerShareOfSupplyInSamplePct,
     holderMetricNote: "Largest-account sample only; not a complete holder census or a pass/fail token safety verdict.",
     holderDataWarning,
+    rpcProviderFallback: usedPublicRpcFallback ? "official public Devnet RPC (configured provider DNS failure)" : null,
     solUsdQuote: quote,
     marketRiskFeeds: "DexScreener/RugCheck mainnet market data is not treated as Devnet validation.",
     signing: "not performed",
