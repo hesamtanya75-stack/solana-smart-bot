@@ -202,3 +202,9 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 - PR #30 remains open and Draft. No merge, production deployment, Phantom signing, Mainnet RPC, swap, or Mainnet transaction was performed.
 
 The latest test-only change adds adversarial checks for duplicate inner-instruction groups, invalid zero stack height, oversized inner-instruction groups, excessive account-index lists, and aggregate inner-instruction metadata exceeding the configured bound. These are structural metadata-validation tests only; they do not semantically decode or authorize CPI instructions. Keep semantic instruction verification false and the live reservation/signing path disconnected.
+
+## Follow-up CI result (2026-11-17, documentation head `b6f12d665e250cc9ec8b5e77d331e00b0b5522a8`)
+
+All automatically triggered checks for this documentation-only head completed successfully: both Node/runtime test jobs, both Worker configuration/build validation jobs, workflow validation, Cloudflare Worker build, and Devnet read-only preflight. The manual funded-Devnet lifecycle and explicit-confirmation jobs were skipped as designed. The Cloudflare build was a dry-run/build validation only; it did not deploy. Devnet validation performed cluster identity and read-only RPC checks only; it did not sign or submit a transaction.
+
+This follow-up validates the documentation update and existing safety tests. It does not close the semantic instruction, all-in cost provenance, manual Phantom lifecycle, or funded Devnet lifecycle gates.
