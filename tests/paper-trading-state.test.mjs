@@ -46,7 +46,7 @@ async function call(instance, body) {
 const mintA = "So11111111111111111111111111111111111111112";
 const requestId = suffix => "paper-test-request-" + suffix;
 
-async function runScheduledWithDexPrice(t, initial, priceUsd) {
+async function runScheduledWithDexPrice(t, initial, priceUsd, beforeCompareAndSet = null) {
   const { instance } = makeDO(initial);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async url => {
@@ -430,6 +430,39 @@ test("scheduled cron paper-sells at the -5% threshold and credits the reduced va
   assert.equal(result.body.state.balance, 99.75);
   assert.equal(result.body.state.trades[0].sold, true);
   assert.equal(result.body.state.trades[0].saleValue, 4.75);
+});
+
+
+test("scheduled cron does not credit a previously sold paper trade twice", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const first = await runScheduledWithDexPrice(t, initial, "2.2");
+  const second = await runScheduledWithDexPrice(t, first.body.state, "2.2");
+  assert.equal(first.body.state.balance, 100.5);
+  assert.equal(second.body.state.balance, 100.5);
+  assert.equal(second.body.state.trades[0].sold, true);
+  assert.equal(second.body.state.trades[0].saleValue, 5.5);
+});
+
+test("scheduled cron retries a sell after a concurrent revision change without double-crediting", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  let injected = false;
+  const result = await runScheduledWithDexPrice(t, initial, "2.2", async instance => {
+    if (injected) return;
+    injected = true;
+    const concurrent = await call(instance, { operation: "automation", settings: { paused: true } });
+    assert.equal(concurrent.status, 200);
+  });
+  assert.equal(injected, true);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.paused, true);
+  assert.equal(result.body.state.balance, 100.5);
+  assert.equal(result.body.state.trades[0].sold, true);
+  assert.equal(result.body.state.trades[0].saleValue, 5.5);
+  assert.equal(result.body.revision, 3);
 });
 
 test("scheduled cron ignores non-finite provider prices without corrupting paper state", async t => {
