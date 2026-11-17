@@ -12,6 +12,8 @@ Configure these in the Cloudflare dashboard or with Wrangler. Never commit their
 
 - `BOT_LOGIN_PASSWORD` — administrator login password.
 - `AUTH_GUARD_INTERNAL_TOKEN` — random internal credential of at least 32 characters used for Worker-to-AuthGuard Durable Object calls.
+- `COORDINATOR_INTERNAL_TOKEN` — independent random internal credential of at least 32 characters for Worker-to-LiveTradeCoordinator calls.
+- `COORDINATOR_OPERATOR_TOKEN` — a separate random operator credential of at least 32 characters for emergency-stop control. It must not equal the coordinator internal token.
 
 Example secret setup (Wrangler prompts for each value):
 
@@ -33,6 +35,8 @@ Verify the deployed Worker has the bindings defined in `wrangler.jsonc`:
 - Static assets: `ASSETS`
 
 The Durable Object migrations in `wrangler.jsonc` must be applied in order. A local build or CI dry-run does not prove that production bindings, migrations, or secrets are configured correctly.
+
+The authenticated dashboard may read `POST /api/live/kill-switch` only to activate the emergency stop (`{ "enabled": true })); there is deliberately no browser/API path to deactivate it. `GET /api/live/status` reads coordinator status. These controls require both coordinator secrets and the Durable Object binding. The coordinator remains isolated: there is still no public reservation, signing, swap, or Mainnet transaction route.
 
 ### Verification before any production release
 
