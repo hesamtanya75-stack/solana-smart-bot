@@ -1673,14 +1673,27 @@ async function finishServerLogin(token) {
   // Enable server persistence before migrating the browser's existing paper-trading
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
-  serverModeReady = true;
   if (remote.canMigrateLegacy === true) {
-    let old = null;
-    try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
-    if (old && Array.isArray(old.trades)) {
-      demoBalance = Number.isFinite(Number(old.balance)) ? Number(old.balance) : 100;
+    // Never replace an unreadable or malformed local paper-trading snapshot with
+    // the default $100 balance: that would consume the one-time migration window
+    // and silently discard the user's previous paper history.
+    const legacyRaw = localStorage.getItem("demoTradingData");
+    if (legacyRaw !== null) {
+      let old;
+      try { old = JSON.parse(legacyRaw); }
+      catch (_) { throw new Error("داتای کڕینی خەیاڵی لۆکاڵ خوێندرایەوە نییە؛ داتاکە مەسڕەوە و پێش گواستنەوە پشکنینی بکە."); }
+      if (!old || typeof old !== "object" || Array.isArray(old) ||
+          !Array.isArray(old.trades) ||
+          typeof old.balance !== "number" || !Number.isFinite(old.balance) || old.balance < 0) {
+        throw new Error("داتای کڕینی خەیاڵی لۆکاڵ ناتەواوە؛ گواستنەوە ڕاگیرا بۆ پاراستنی مێژووی مامەڵەکان.");
+      }
+      demoBalance = old.balance;
       demoTrades = old.trades;
     }
+  }
+  // Enable server persistence only after validating any existing local snapshot.
+  serverModeReady = true;
+  if (remote.canMigrateLegacy === true) {
     await saveServerState();
   } else {
     applyServerState(remote);
