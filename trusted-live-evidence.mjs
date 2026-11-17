@@ -1129,6 +1129,18 @@ export async function verifyFinalizedJupiterSettlement({
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
       !Array.isArray(accountKeys) ||
+      !message.header || typeof message.header !== "object" || Array.isArray(message.header) ||
+      !Number.isSafeInteger(message.header.numRequiredSignatures) ||
+      message.header.numRequiredSignatures < 1 ||
+      message.header.numRequiredSignatures > accountKeys.length ||
+      !Number.isSafeInteger(message.header.numReadonlySignedAccounts) ||
+      message.header.numReadonlySignedAccounts < 0 ||
+      message.header.numReadonlySignedAccounts > message.header.numRequiredSignatures ||
+      message.header.numReadonlySignedAccounts === message.header.numRequiredSignatures ||
+      !Number.isSafeInteger(message.header.numReadonlyUnsignedAccounts) ||
+      message.header.numReadonlyUnsignedAccounts < 0 ||
+      message.header.numReadonlyUnsignedAccounts >
+        accountKeys.length - message.header.numRequiredSignatures ||
       (message?.addressTableLookups != null && !Array.isArray(message.addressTableLookups)) ||
       (hasAddressTableLookups && (!meta.loadedAddresses ||
         typeof meta.loadedAddresses !== "object" || Array.isArray(meta.loadedAddresses))) ||
@@ -1173,9 +1185,13 @@ export async function verifyFinalizedJupiterSettlement({
     throw new Error("Finalized transaction account keys or loaded-address balance metadata is inconsistent");
   }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
-  // Solana's first required signer is the fee payer. Require the pinned bot
-  // wallet in that position so a third-party transaction cannot settle an order.
-  if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
+  // Solana message headers define the signer and writable partitions. Account
+  // zero is the fee payer; require it to be a signer and writable, not merely
+  // the first matching key in an untrusted RPC response.
+  if (ownerIndex !== 0 || message.header.numRequiredSignatures < 1 ||
+      message.header.numReadonlySignedAccounts >= message.header.numRequiredSignatures) {
+    throw new Error("Expected bot wallet is not the finalized writable transaction fee payer");
+  }
 
   // Preserve finalized outer and inner instruction evidence for a future
   // semantic verifier. Missing CPI metadata is never treated as proof that
