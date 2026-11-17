@@ -37,6 +37,20 @@ test("server polling timers are replaced on login and stopped on logout", () => 
   assert.ok(dashboardSource.includes("clearServerPolling();\n    serverModeReady = false;"));
 });
 
+test("server logout permanently blocks local paper-buy fallback until a fresh server login", () => {
+  assert.ok(dashboardSource.includes('let serverLogoutLocked = localStorage.getItem("solanaBotServerLogoutLocked") === "1";'));
+  const buy = dashboardSource.indexOf('document.getElementById("demoBuy").onclick = async function ()');
+  const localLock = dashboardSource.indexOf("if (serverLogoutLocked)", buy);
+  const localPurchase = dashboardSource.indexOf("demoBalance -= 5;", buy);
+  assert.ok(buy >= 0 && localLock > buy && localPurchase > localLock);
+  const login = dashboardSource.indexOf("async function finishServerLogin(token)");
+  const unlock = dashboardSource.indexOf('localStorage.removeItem("solanaBotServerLogoutLocked");', login);
+  assert.ok(unlock > login, "only a successful server login/state load may clear the logout lock");
+  const logout = dashboardSource.indexOf('document.getElementById("profileLogout").onclick');
+  const lockAtLogout = dashboardSource.indexOf('localStorage.setItem("solanaBotServerLogoutLocked", "1");', logout);
+  assert.ok(lockAtLogout > logout);
+});
+
 test("worker session authorization requires one exact Bearer token without whitespace", () => {
   assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
   assert.ok(workerSource.includes("if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))"));
