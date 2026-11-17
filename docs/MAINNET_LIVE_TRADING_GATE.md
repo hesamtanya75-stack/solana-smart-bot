@@ -104,17 +104,17 @@ The verifier may report `semantically-verified` only when every instruction and 
 
 ### Settlement proof scope: token deltas are not all-in cost proof
 
-The current `verifyFinalizedJupiterSettlement()` checks that the exact signature is successfully finalized, the pinned bot wallet is the fee payer, and the owner-scoped input and output token balance deltas match the reserved amounts. It returns a settlement proof containing those swap facts only.
+The current `verifyFinalizedJupiterSettlement()` checks that the exact signature is successfully finalized, the pinned bot wallet is the fee payer, and the owner-scoped input and output token balance deltas match the reserved amounts. It also validates every native pre/post balance as a non-negative safe integer and records the fee payer's pre-balance, post-balance, net lamport decrease, and RPC-reported network fee as `nativeLamportEvidence`.
 
-This verifier does **not** independently reconcile the bot wallet's native SOL lamport balance delta, prove the actual priority fee, identify every rent payment or tip, or establish the complete transaction outflow. In particular, wrapped SOL token-account deltas are not the same as the wallet's native SOL balance delta. The RPC transaction metadata exposes a fee field, but merely checking that the field is a non-negative integer does not make it a complete, policy-bound cost attestation.
+This is a useful reconciliation signal, but it is **not** a gross-outflow or all-in cost proof. A net balance delta can conceal gross outflows when rent refunds, incoming transfers, or account closures occur. The verifier still does not decode and classify every System Program transfer, rent payment/refund, Jupiter tip, wrapped-SOL setup/cleanup, or downstream CPI value movement. Nor does the RPC fee field alone prove that priority-fee policy was followed or that every cost is accounted for.
 
 Therefore:
-- A successful settlement proof must never be interpreted as all-in spend verification.
+- A successful settlement proof's `nativeLamportEvidence` must never be interpreted as all-in spend verification.
 - Do not release, replenish, or close daily spend reservations using token deltas alone.
-- Keep actual fee, rent, tip, and every other native/token outflow accounting as a separate required verifier, bound to the same finalized transaction and immutable order intent.
+- Keep gross actual fee, rent, tip, and every other native/token outflow accounting as a separate required verifier, bound to the same finalized transaction and immutable order intent.
 - Reject settlement reconciliation as incomplete for budget/accounting purposes whenever the complete outflow evidence is missing, inconsistent, or exceeds the reserved all-in ceiling.
 
-This is a documentation clarification of the current verifier's scope; it does not add a live transaction path or claim that native SOL cost reconciliation is implemented.
+This change records validated net lamport movement and the RPC-reported network fee; it does not add a live transaction path or claim that gross native SOL cost reconciliation or all-in spend verification is implemented.
 
 
 ### Worker integration boundary
