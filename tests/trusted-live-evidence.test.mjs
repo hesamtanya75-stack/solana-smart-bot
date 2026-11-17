@@ -1255,6 +1255,19 @@ test("complete outer-program identity requires an exact reviewed set and never a
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.verificationScope, "complete-outer-program-deployment-identity-only");
 
+  // Provider-supplied claims must never upgrade identity evidence into
+  // semantic approval, even if an untrusted evidence object says "true".
+  const spoofed = verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: {
+      ...evidence,
+      semanticInstructionVerification: true,
+      verificationScope: "semantically-verified"
+    }
+  });
+  assert.equal(spoofed.semanticInstructionVerification, false);
+  assert.equal(spoofed.verificationScope, "complete-outer-program-deployment-identity-only");
+
   assert.throws(() => verifyCompleteOuterProgramIdentity({
     outerInstructionEvidence: outer,
     programIdentityEvidence: { ...evidence, programs: [system] }
