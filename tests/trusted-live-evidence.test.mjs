@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchCompleteMintTokenAccounts, fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchCompleteMintTokenAccounts, fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, decodeAllowlistedJupiterTip, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -1607,6 +1607,62 @@ test("Jupiter /build response envelope is structurally validated without semanti
   assert.equal(parsed.swapInstruction.programId, "11111111111111111111111111111111");
   assert.equal(parsed.semanticInstructionVerification, false);
   assert.equal(parsed.routeVerification, "build-envelope-only");
+});
+
+test("Jupiter tip transfers require exact System Program semantics and an explicit destination allowlist", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(44));
+  const data = Buffer.alloc(12);
+  data.writeUInt32LE(2, 0);
+  data.writeBigUInt64LE(2500n, 4);
+  const tipInstruction = {
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    data: data.toString("base64")
+  };
+  const evidence = decodeAllowlistedJupiterTip(tipInstruction, [destination]);
+  assert.deepEqual(evidence, {
+    programId: "11111111111111111111111111111111",
+    source: BOT_WALLET,
+    destination,
+    lamports: "2500",
+    semantics: "system-transfer-allowlisted-destination"
+  });
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, []), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [BOT_WALLET]), /allowlisted System Program transfer/);
+  const forged = { ...tipInstruction, data: Buffer.from("arbitrary").toString("base64") };
+  assert.throws(() => decodeAllowlistedJupiterTip(forged, [destination]), /discriminator or data length/);
+  const readonlySource = {
+    ...tipInstruction,
+    accounts: [{ ...tipInstruction.accounts[0], isWritable: false }, tipInstruction.accounts[1]]
+  };
+  assert.throws(() => decodeAllowlistedJupiterTip(readonlySource, [destination]), /allowlisted System Program transfer/);
+});
+
+test("Jupiter /build refuses a tip unless its destination is explicitly allowlisted", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(45));
+  const data = Buffer.alloc(12);
+  data.writeUInt32LE(2, 0);
+  data.writeBigUInt64LE(1000n, 4);
+  const tipInstruction = {
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    data: data.toString("base64")
+  };
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    tipInstruction
+  })), /allowlisted System Program transfer/);
+  const parsed = validateJupiterBuildResponse(validBuildResponse({
+    tipInstruction
+  }), { tipAccounts: [destination] });
+  assert.equal(parsed.tipEvidence.destination, destination);
+  assert.equal(parsed.tipEvidence.lamports, "1000");
+  assert.equal(parsed.semanticInstructionVerification, false);
 });
 
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
