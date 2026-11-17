@@ -1311,6 +1311,15 @@ test("System Program decoder accepts only correctly authorized native SOL transf
     lamports: "12345",
     verificationScope: "system-program-transfer-instruction-only"
   }]);
+  assert.throws(() => decodeReviewedSystemTransfers([
+    transfer, { ...transfer, instructionIndex: 2 }
+  ]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, instructionIndex: 256
+  }]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, instructionIndex: undefined
+  }]), /invalid or duplicate index/);
   assert.throws(() => decodeReviewedSystemTransfers([{
     ...transfer, accounts: [transfer.accounts[0]]
   }]), /accounts or data are malformed/);
@@ -1361,6 +1370,12 @@ test("classic SPL Token decoder accepts only Transfer and TransferChecked with s
     authority, amount: "987654321",
     verificationScope: "classic-spl-token-transfer-instruction-only"
   }]);
+  assert.throws(() => decodeReviewedSplTokenTransfers([
+    transfer, { ...transfer, instructionIndex: 4 }
+  ]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, programId: "not-a-canonical-program-id"
+  }]), /invalid or duplicate index/);
 
   const checkedData = Buffer.alloc(10);
   checkedData[0] = 12;
