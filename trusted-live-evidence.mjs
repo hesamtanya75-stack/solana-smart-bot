@@ -692,7 +692,7 @@ export async function fetchTrustedSolUsdQuote(fetchImpl = fetch) {
   });
 }
 
-async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
+export async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
   if (typeof alchemyApiKey !== "string" || alchemyApiKey.length < 16) {
     throw new Error("Alchemy API key is required for complete paginated holder verification");
   }
@@ -1174,7 +1174,7 @@ export async function verifyFinalizedJupiterSettlement({
 }
 
 
-function parseMintAccount(account) {
+export function parseMintAccount(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account is unavailable");
   const parsed = value.data?.parsed?.info;
