@@ -1179,6 +1179,9 @@ export async function verifyFinalizedJupiterSettlement({
     ? Object.freeze(message.instructions.map(instruction =>
         compileInstructionEvidence(instruction, "outer instruction")))
     : null;
+  if (meta.innerInstructions != null && !Array.isArray(meta.innerInstructions)) {
+    throw new Error("Finalized inner-instruction metadata has an invalid shape");
+  }
   const innerInstructionsRecorded = Array.isArray(meta.innerInstructions);
   const innerGroups = innerInstructionsRecorded ? meta.innerInstructions : [];
   const seenParentIndexes = new Set();
