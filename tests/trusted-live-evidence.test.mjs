@@ -1622,7 +1622,7 @@ test("Jupiter tip transfers require exact System Program semantics and an explic
     ],
     data: data.toString("base64")
   };
-  const evidence = decodeAllowlistedJupiterTip(tipInstruction, [destination]);
+  const evidence = decodeAllowlistedJupiterTip(tipInstruction, [destination], "2500");
   assert.deepEqual(evidence, {
     programId: "11111111111111111111111111111111",
     source: BOT_WALLET,
@@ -1630,15 +1630,16 @@ test("Jupiter tip transfers require exact System Program semantics and an explic
     lamports: "2500",
     semantics: "system-transfer-allowlisted-destination"
   });
-  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, []), /allowlisted System Program transfer/);
-  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [BOT_WALLET]), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [], "2500"), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [BOT_WALLET], "2500"), /allowlisted System Program transfer/);
   const forged = { ...tipInstruction, data: Buffer.from("arbitrary").toString("base64") };
-  assert.throws(() => decodeAllowlistedJupiterTip(forged, [destination]), /discriminator or data length/);
+  assert.throws(() => decodeAllowlistedJupiterTip(forged, [destination], "2500"), /discriminator or data length/);
   const readonlySource = {
     ...tipInstruction,
     accounts: [{ ...tipInstruction.accounts[0], isWritable: false }, tipInstruction.accounts[1]]
   };
-  assert.throws(() => decodeAllowlistedJupiterTip(readonlySource, [destination]), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(readonlySource, [destination], "2500"), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [destination], "2499"), /exceeds the configured maximum/);
 });
 
 test("Jupiter /build refuses a tip unless its destination is explicitly allowlisted", () => {
@@ -1659,7 +1660,7 @@ test("Jupiter /build refuses a tip unless its destination is explicitly allowlis
   })), /allowlisted System Program transfer/);
   const parsed = validateJupiterBuildResponse(validBuildResponse({
     tipInstruction
-  }), { tipAccounts: [destination] });
+  }), { tipAccounts: [destination], maxTipLamports: "1000" });
   assert.equal(parsed.tipEvidence.destination, destination);
   assert.equal(parsed.tipEvidence.lamports, "1000");
   assert.equal(parsed.semanticInstructionVerification, false);
