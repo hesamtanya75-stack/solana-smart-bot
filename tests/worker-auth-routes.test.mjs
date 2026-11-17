@@ -56,6 +56,14 @@ test("worker session authorization requires one exact Bearer token without white
   assert.ok(workerSource.includes("if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))"));
 });
 
+test("paper-buy rate limit scope extracts the exact Bearer token before provider inspection", () => {
+  assert.ok(workerSource.includes(String.raw`const sessionToken = authorization.replace(/^Bearer\s+/i, "");`));
+  const route = workerSource.indexOf('if (url.pathname === "/api/paper/buy"');
+  const limiter = workerSource.indexOf("consumeApiRateLimit(env, buyScope, 5, 60000)", route);
+  const inspect = workerSource.indexOf("await inspectMint(mint, env)", route);
+  assert.ok(route >= 0 && limiter > route && inspect > limiter);
+});
+
 test("private API authentication guard precedes private route handlers", () => {
   assert.notEqual(privateApiStart, -1, "private API router must exist");
   assert.ok(authGuard > privateApiStart, "session guard must be inside the private API router");
