@@ -1142,6 +1142,9 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }]);
   assert.equal(proof.innerInstructionsRecorded, true);
   assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.grossOutflowsVerified, false);
+  assert.equal(proof.allInCostEvidence, null);
+  assert.equal(proof.costVerification, "net-lamport-delta-only");
   assert.deepEqual(proof.nativeLamportEvidence, {
     feePayerPreBalanceLamports: "100000000",
     feePayerPostBalanceLamports: "89995000",
@@ -1265,6 +1268,9 @@ test("settlement proof marks missing inner-instruction metadata as unavailable, 
   assert.equal(proof.innerInstructionsRecorded, false);
   assert.equal(proof.innerInstructionEvidence, null);
   assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.grossOutflowsVerified, false);
+  assert.equal(proof.allInCostEvidence, null);
+  assert.equal(proof.costVerification, "net-lamport-delta-only");
 });
 
 test("settlement proof rejects duplicate CPI parent instruction groups", async () => {
