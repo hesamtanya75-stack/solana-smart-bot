@@ -189,7 +189,9 @@ export class PaperTradingState {
     const initialState = cleanState(legacy || DEFAULT_STATE);
     const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
       initialState.autoEnabled === false && initialState.paused === false &&
-      initialState.scannedMints.length === 0;
+      initialState.scannedMints.length === 0 && initialState.deferredMints.length === 0 &&
+      initialState.lastRunAt === null && initialState.lastScanReport.length === 0 &&
+      initialState.lastMessage === DEFAULT_STATE.lastMessage && initialState.updatedAt === null;
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
@@ -273,7 +275,9 @@ export class PaperTradingState {
           const canMigrate = record.migrationOpen === true &&
             current.balance === 100 && current.trades.length === 0 &&
             current.autoEnabled === false && current.paused === false &&
-            current.scannedMints.length === 0;
+            current.scannedMints.length === 0 && current.deferredMints.length === 0 &&
+            current.lastRunAt === null && current.lastScanReport.length === 0 &&
+            current.lastMessage === DEFAULT_STATE.lastMessage && current.updatedAt === null;
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
