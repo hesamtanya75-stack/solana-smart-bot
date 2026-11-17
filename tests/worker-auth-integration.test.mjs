@@ -232,13 +232,23 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const confirmed = await confirm.json();
   assert.equal(typeof confirmed.backupCode, "string");
 
-  const profile = await get("/api/profile", env, token);
-  assert.equal(profile.status, 200);
-  assert.equal((await profile.json()).totpEnabled, true);
+  // Enabling MFA must revoke every session issued before MFA was enabled.
+  const oldSessionProfile = await get("/api/profile", env, token);
+  assert.equal(oldSessionProfile.status, 401);
 
   const nextLogin = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(nextLogin.status, 200);
-  assert.equal((await nextLogin.json()).mfaRequired, true);
+  const challenge = await nextLogin.json();
+  assert.equal(challenge.mfaRequired, true);
+  const mfaLogin = await post("/api/login/totp", {
+    challengeId: challenge.challengeId,
+    code: confirmed.backupCode
+  }, env);
+  assert.equal(mfaLogin.status, 200);
+  const freshSession = await mfaLogin.json();
+  const profile = await get("/api/profile", env, freshSession.token);
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).totpEnabled, true);
 });
 
 
