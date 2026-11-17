@@ -1807,7 +1807,14 @@ export async function verifyFinalizedJupiterSettlement({
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
+  if (transaction.version !== undefined && transaction.version !== "legacy" &&
+      transaction.version !== 0) {
+    throw new Error("Finalized transaction version is unsupported");
+  }
   const lookupTables = message.addressTableLookups;
+  if (transaction.version === 0 && !Array.isArray(lookupTables)) {
+    throw new Error("Versioned finalized transaction is missing address-lookup metadata");
+  }
   if (lookupTables != null && (!Array.isArray(lookupTables) ||
       lookupTables.length > 256 || lookupTables.some(lookup =>
         !lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
