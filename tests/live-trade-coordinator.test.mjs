@@ -253,6 +253,42 @@ test("reservation fails closed when the reviewed priority-fee ceiling is absent 
   assert.match(exceeded.body.error, /Priority fee exceeds the reviewed maximum/);
 });
 
+test("reservation rejects malformed and overflowing all-in cost components", async () => {
+  const invalidCosts = [
+    { computeUnitPriceMicroLamports: "-1" },
+    { computeUnitPriceMicroLamports: "1.5" },
+    { computeUnitLimit: 1_400_001 },
+    { baseFeeLamports: -1 },
+    { tipLamports: 0.5 },
+    { rentLamports: Number.MAX_SAFE_INTEGER + 1 },
+    { otherOutflowLamports: "100" }
+  ];
+  for (let index = 0; index < invalidCosts.length; index++) {
+    const { coordinator } = makeCoordinator(async () => trustedEvidence({
+      costs: { ...trustedEvidence().costs, ...invalidCosts[index] }
+    }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "invalid-cost-component-" + index
+    }));
+    assert.equal(result.status, 409, "invalid cost component " + index + " must block reservation");
+  }
+
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    costs: {
+      ...trustedEvidence().costs,
+      baseFeeLamports: Number.MAX_SAFE_INTEGER,
+      rentLamports: Number.MAX_SAFE_INTEGER
+    }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const overflow = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "all-in-cost-overflow"
+  }));
+  assert.equal(overflow.status, 409);
+  assert.match(overflow.body.error, /All-in transaction cost exceeds safe accounting limits/);
+});
+
 test("reservation stores the complete all-in lamport cost breakdown", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
