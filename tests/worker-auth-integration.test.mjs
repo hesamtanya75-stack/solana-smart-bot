@@ -12,7 +12,7 @@ const workerSource = await readFile(new URL("../worker.js", import.meta.url), "u
 const executableWorkerSource = workerSource
   .replace(/^export default \{/m, "const worker = {")
   .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "")
-  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m
+  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "")
   .replace(/^import \{ fetchCompleteMintTokenAccounts, parseMintAccount \} from ["'][^"']+["'];?\s*$/m, "");
 const workerContext = vm.createContext({
   crypto: webcrypto,
