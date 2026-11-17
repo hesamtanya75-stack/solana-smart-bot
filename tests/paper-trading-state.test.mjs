@@ -409,7 +409,7 @@ test("scheduled cron retries a revision conflict without overwriting concurrent 
 });
 
 
-test("scheduled cron paper-sells at the +10% threshold and credits balance only once", async t => {
+test("scheduled cron paper-sells at the +10% threshold and credits the sale value", async t => {
   const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
   }] };
