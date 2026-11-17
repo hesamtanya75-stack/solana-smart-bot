@@ -85,6 +85,21 @@ test("TOTP replay protection is delegated to transactional AuthGuard state", () 
   assert.equal(workerSource.includes('await env.BOT_STATE.put("admin_profile", JSON.stringify(profile))'), false);
 });
 
+test("legacy paper-trading migration refuses to consume malformed local snapshots", () => {
+  const login = dashboardSource.indexOf("async function finishServerLogin(token)");
+  const read = dashboardSource.indexOf('const legacyRaw = localStorage.getItem("demoTradingData");', login);
+  const parseGuard = dashboardSource.indexOf("catch (_) { throw new Error(", read);
+  const shapeGuard = dashboardSource.indexOf("!Array.isArray(old.trades)", read);
+  const balanceGuard = dashboardSource.indexOf("typeof old.balance !== \"number\"", read);
+  const enableServerMode = dashboardSource.indexOf("serverModeReady = true;", login);
+  const migrateWrite = dashboardSource.indexOf("await saveServerState();", login);
+  assert.ok(login >= 0 && read > login);
+  assert.ok(parseGuard > read && shapeGuard > parseGuard && balanceGuard > shapeGuard);
+  assert.ok(enableServerMode > balanceGuard, "server mode must not start before local snapshot validation");
+  assert.ok(migrateWrite > enableServerMode);
+  assert.ok(dashboardSource.includes("داتاکە مەسڕەوە"));
+});
+
 test("legacy state migration rejects a stale client revision", () => {
   const migrationRoute = workerSource.indexOf('if (url.pathname === "/api/state" && request.method === "PUT")');
   const revisionCheck = workerSource.indexOf("body.expectedRevision !== current.__revision", migrationRoute);
