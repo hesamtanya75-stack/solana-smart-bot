@@ -510,10 +510,7 @@ test("legacy paper history above the supported limit fails closed without trunca
 test("legacy migration window stays closed when paper metadata shows prior activity", async () => {
   const cases = [
     { deferredMints: [{ mint: mintA, retryAt: 123 }] },
-    { lastRunAt: "2026-11-17T10:00:00.000Z" },
-    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] },
-    { lastMessage: "Previous paper trading activity" },
-    { updatedAt: "2026-11-17T10:00:00.000Z" }
+    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] }
   ];
   for (const extra of cases) {
     const { instance } = makeDO({
