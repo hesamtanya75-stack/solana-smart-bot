@@ -133,11 +133,15 @@ const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
  * A tip destination is accepted only when supplied by a separately reviewed
  * trusted allowlist; this does not attest to the rest of the Jupiter route.
  */
-export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts, maxTipLamports) {
+export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts, maxTipLamports, expectedFeePayer) {
   if (!instruction || instruction.programId !== SYSTEM_PROGRAM_ID ||
       !Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
       !Array.isArray(allowedTipAccounts) || allowedTipAccounts.length === 0 ||
       !allowedTipAccounts.every(isCanonicalPublicKey) ||
+      !isU64DecimalString(maxTipLamports) ||
+      !isCanonicalPublicKey(expectedFeePayer) ||
+      !isCanonicalPublicKey(instruction.accounts[0]?.pubkey) ||
+      instruction.accounts[0]?.pubkey !== expectedFeePayer ||
       !new Set(allowedTipAccounts).has(instruction.accounts[1]?.pubkey) ||
       instruction.accounts[0]?.isSigner !== true ||
       instruction.accounts[0]?.isWritable !== true ||
@@ -215,7 +219,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const tipInstruction = build.tipInstruction === null
     ? null : validateBuildInstruction(build.tipInstruction, "tip");
   const tipEvidence = tipInstruction === null
-    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts, expected.maxTipLamports);
+    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts, expected.maxTipLamports, expected.feePayer);
   const allInstructions = [
     ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
     ...(cleanupInstruction ? [cleanupInstruction] : []),
