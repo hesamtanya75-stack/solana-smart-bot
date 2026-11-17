@@ -1775,8 +1775,8 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
   const loadedProgramAccount = encodeBase58(new Uint8Array(32).fill(73));
   const result = {
     slot: 789,
+    version: 0,
     transaction: {
-      version: 0,
       signatures: [signature],
       message: {
         accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(74))],
@@ -1838,7 +1838,7 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       value.version = 0;
       delete value.transaction.message.addressTableLookups;
     },
-    value => { value.transaction.version = "legacy"; },
+    value => { value.version = "legacy"; },
     value => { value.meta.loadedAddresses.writable.pop(); },
     value => { value.meta.loadedAddresses.readonly.push(loadedInputAccount); },
     value => { value.transaction.message.addressTableLookups[0].writableIndexes = "invalid"; },
