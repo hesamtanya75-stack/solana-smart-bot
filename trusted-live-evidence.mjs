@@ -126,6 +126,51 @@ function validateBuildInstruction(instruction, name) {
   return Object.freeze({ programId: instruction.programId, accounts: Object.freeze(accounts), data: instruction.data });
 }
 
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * Decodes only the canonical SystemProgram::Transfer wire format.
+ * A tip destination is accepted only when supplied by a separately reviewed
+ * trusted allowlist; this does not attest to the rest of the Jupiter route.
+ */
+export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts, maxTipLamports, expectedFeePayer) {
+  if (!instruction || instruction.programId !== SYSTEM_PROGRAM_ID ||
+      !Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
+      !Array.isArray(allowedTipAccounts) || allowedTipAccounts.length === 0 ||
+      !allowedTipAccounts.every(isCanonicalPublicKey) ||
+      !isU64DecimalString(maxTipLamports) ||
+      !isCanonicalPublicKey(expectedFeePayer) ||
+      !isCanonicalPublicKey(instruction.accounts[0]?.pubkey) ||
+      instruction.accounts[0]?.pubkey !== expectedFeePayer ||
+      !new Set(allowedTipAccounts).has(instruction.accounts[1]?.pubkey) ||
+      instruction.accounts[0]?.isSigner !== true ||
+      instruction.accounts[0]?.isWritable !== true ||
+      instruction.accounts[1]?.isSigner !== false ||
+      instruction.accounts[1]?.isWritable !== true ||
+      typeof instruction.data !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.data)) {
+    throw new Error("Jupiter tip instruction is not an allowlisted System Program transfer");
+  }
+  const data = Uint8Array.from(atob(instruction.data), char => char.charCodeAt(0));
+  if (btoa(String.fromCharCode(...data)) !== instruction.data ||
+      data.length !== 12 || data[0] !== 2 || data[1] !== 0 ||
+      data[2] !== 0 || data[3] !== 0) {
+    throw new Error("Jupiter tip transfer discriminator or data length is invalid");
+  }
+  let lamports = 0n;
+  for (let i = 0; i < 8; i++) lamports |= BigInt(data[4 + i]) << BigInt(i * 8);
+  if (lamports <= 0n || lamports > BigInt(maxTipLamports)) {
+    throw new Error("Jupiter tip transfer amount exceeds the configured maximum");
+  }
+  return Object.freeze({
+    programId: SYSTEM_PROGRAM_ID,
+    source: instruction.accounts[0].pubkey,
+    destination: instruction.accounts[1].pubkey,
+    lamports: lamports.toString(),
+    semantics: "system-transfer-allowlisted-destination"
+  });
+}
+
 /**
  * Validates the documented Jupiter Swap V2 /build response envelope only.
  * It does not decode instruction semantics or establish program trust.
@@ -173,6 +218,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const otherInstructions = validateList(build.otherInstructions, "other");
   const tipInstruction = build.tipInstruction === null
     ? null : validateBuildInstruction(build.tipInstruction, "tip");
+  const tipEvidence = tipInstruction === null
+    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts, expected.maxTipLamports, expected.feePayer);
   const allInstructions = [
     ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
     ...(cleanupInstruction ? [cleanupInstruction] : []),
@@ -230,6 +277,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     cleanupInstruction,
     otherInstructions,
     tipInstruction,
+    tipEvidence,
     addressesByLookupTableAddress: Object.freeze(lookupTables),
     blockhashWithMetadata: Object.freeze({
       blockhash: Object.freeze([...build.blockhashWithMetadata.blockhash]),
@@ -317,6 +365,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     uniqueAddresses.add(key);
   }
+  const inlineAccountKeys = Array.from({ length: addressCount }, (_, i) =>
+    encodeBase58(bytes.subarray(addressesStart + i * 32, addressesStart + (i + 1) * 32))
+  );
   cursor += addressCount * 32;
   const configBytes = ((configMask & 0x3) ? 8 : 0) +
     ((configMask & 0x4) ? 4 : 0) +
@@ -328,7 +379,17 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   // Config values are encoded in ascending bit order: priority fee (u64),
   // compute-unit limit (u32), loaded-account data limit (u32), heap size (u32).
   let configOffset = cursor;
-  if ((configMask & 0x3) !== 0) configOffset += 8;
+  let priorityFeeLamports = null;
+  if ((configMask & 0x3) !== 0) {
+    // V1 stores the total priority fee in lamports as a little-endian u64;
+    // unlike legacy/v0, this is not a micro-lamports-per-CU price.
+    let value = 0n;
+    for (let i = 0; i < 8; i++) {
+      value |= BigInt(bytes[configOffset + i]) << BigInt(i * 8);
+    }
+    priorityFeeLamports = value.toString();
+    configOffset += 8;
+  }
   const computeUnitLimit = (configMask & 0x4) !== 0
     ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
       (bytes[configOffset + 2] << 16) | (bytes[configOffset + 3] << 24)) >>> 0
@@ -371,16 +432,30 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     headers.push({ programIdIndex, accountCount, dataLength });
   }
+  const instructions = [];
   for (const header of headers) {
     if (cursor + header.accountCount + header.dataLength > bytes.length) {
       throw new Error("V1 Jupiter instruction payload is truncated");
     }
-    for (let i = 0; i < header.accountCount; i++) {
-      if (bytes[cursor++] >= addressCount) {
-        throw new Error("V1 Jupiter instruction account index is invalid");
-      }
+    const accountIndexes = Array.from(bytes.subarray(cursor, cursor + header.accountCount));
+    cursor += header.accountCount;
+    if (accountIndexes.some(index => index >= addressCount)) {
+      throw new Error("V1 Jupiter instruction account index is invalid");
     }
+    const data = bytes.slice(cursor, cursor + header.dataLength);
     cursor += header.dataLength;
+    instructions.push({
+      programIdIndex: header.programIdIndex,
+      programId: inlineAccountKeys[header.programIdIndex],
+      accountIndexes,
+      accounts: accountIndexes.map(index => ({
+        index,
+        address: inlineAccountKeys[index],
+        isSigner: index === 0,
+        isWritable: index === 0 || index < addressCount - readonlyUnsigned
+      })),
+      dataBase64: btoa(String.fromCharCode(...data))
+    });
   }
   const signaturesLength = requiredSignatures * 64;
   if (cursor + signaturesLength !== bytes.length) {
@@ -392,11 +467,68 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   return {
     signatureCount: requiredSignatures,
     staticAccountCount: addressCount,
+    staticAccountKeys: inlineAccountKeys,
     instructionCount,
+    instructions,
     addressLookupCount: 0,
     messageVersion: 1,
+    priorityFeeLamports,
     semanticInstructionVerification: false
   };
+}
+
+const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+
+function decodeLegacyV0ComputeBudget(instructions) {
+  const seen = new Set();
+  const evidence = {
+    requestHeapFrameBytes: null,
+    computeUnitLimit: null,
+    computeUnitPriceMicroLamports: null,
+    loadedAccountsDataSizeLimitBytes: null
+  };
+  for (const instruction of instructions) {
+    if (instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID) continue;
+    if (instruction.accountIndexes.length !== 0) {
+      throw new Error("Compute Budget instruction unexpectedly references accounts");
+    }
+    const data = Uint8Array.from(atob(instruction.dataBase64), char => char.charCodeAt(0));
+    if (data.length === 0) throw new Error("Compute Budget instruction data is empty");
+    const discriminator = data[0];
+    const expectedLength = discriminator === 3 ? 9 :
+      [1, 2, 4].includes(discriminator) ? 5 : 0;
+    if (expectedLength === 0 || data.length !== expectedLength) {
+      throw new Error("Compute Budget instruction discriminator or data length is unsupported");
+    }
+    if (seen.has(discriminator)) {
+      throw new Error("Duplicate Compute Budget instruction variant");
+    }
+    seen.add(discriminator);
+    const readU32 = () => (data[1] | (data[2] << 8) |
+      (data[3] << 16) | (data[4] << 24)) >>> 0;
+    if (discriminator === 1) {
+      const value = readU32();
+      if (value < 32768 || value > 262144 || value % 1024 !== 0) {
+        throw new Error("Compute Budget heap frame is outside the valid range");
+      }
+      evidence.requestHeapFrameBytes = value;
+    } else if (discriminator === 2) {
+      evidence.computeUnitLimit = readU32();
+    } else if (discriminator === 3) {
+      let value = 0n;
+      for (let i = 0; i < 8; i++) {
+        value |= BigInt(data[i + 1]) << BigInt(i * 8);
+      }
+      evidence.computeUnitPriceMicroLamports = value.toString();
+    } else {
+      const value = readU32();
+      if (value === 0) {
+        throw new Error("Compute Budget loaded-account-data limit must be non-zero");
+      }
+      evidence.loadedAccountsDataSizeLimitBytes = value;
+    }
+  }
+  return Object.freeze(evidence);
 }
 
 export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
@@ -480,6 +612,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
   const instructionAccountIndexes = [];
+  const instructions = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -495,15 +628,30 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
       throw new Error("Jupiter instruction account list is invalid");
     }
-    for (let j = 0; j < accountHeader.value; j++) {
-      instructionAccountIndexes.push(bytes[cursor++]);
-    }
+    const accountIndexes = Array.from(bytes.subarray(cursor, cursor + accountHeader.value));
+    for (const index of accountIndexes) instructionAccountIndexes.push(index);
+    cursor += accountHeader.value;
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
     if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
       throw new Error("Jupiter instruction data is invalid");
     }
+    const data = bytes.slice(cursor, cursor + dataHeader.value);
     cursor += dataHeader.value;
+    instructions.push({
+      programIdIndex,
+      programId: staticAccountKeys[programIdIndex],
+      accountIndexes,
+      accounts: accountIndexes.map(index => ({
+        index,
+        address: staticAccountKeys[index] ?? null,
+        isSigner: index < requiredSignatures,
+        isWritable: index >= keyCount ? null : index < requiredSignatures
+          ? index < requiredSignatures - readonlySigned
+          : index < keyCount - readonlyUnsigned
+      })),
+      dataBase64: btoa(String.fromCharCode(...data))
+    });
   }
   let addressLookupCount = 0;
   let loadedAddressCount = 0;
@@ -547,9 +695,11 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
     instructionCount,
+    instructions,
     addressLookupCount,
     addressLookups,
     messageVersion,
+    computeBudget: decodeLegacyV0ComputeBudget(instructions),
     // Lookup descriptors are retained for independent RPC resolution; semantics stay untrusted.
     semanticInstructionVerification: false
   };
@@ -590,7 +740,7 @@ export async function fetchTrustedSolUsdQuote(fetchImpl = fetch) {
   });
 }
 
-async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
+export async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
   if (typeof alchemyApiKey !== "string" || alchemyApiKey.length < 16) {
     throw new Error("Alchemy API key is required for complete paginated holder verification");
   }
@@ -623,8 +773,8 @@ async function fetchCompleteMintTokenAccounts(mint, fetchImpl, alchemyApiKey) {
     for (const row of rows) {
       const rawAmount = String(row.amount);
       const accountAddress = row.address || row.pubkey;
-      if (row.mint !== mint || typeof row.owner !== "string" ||
-          typeof accountAddress !== "string" || accountAddress.length < 32 ||
+      if (row.mint !== mint || !isCanonicalPublicKey(row.owner) ||
+          !isCanonicalPublicKey(accountAddress) ||
           seenAccounts.has(accountAddress) || !/^\d+$/.test(rawAmount) || BigInt(rawAmount) <= 0n) {
         throw new Error("Alchemy holder page contains incomplete, duplicate, or mismatched account data");
       }
@@ -706,7 +856,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     throw new Error("Jupiter address lookup descriptors are missing or invalid");
   }
   const keys = Array.from(lookups, item => item?.accountKey);
-  if (keys.some(key => typeof key !== "string" || decodeBase58(key).length !== 32) ||
+  if (keys.some(key => !isCanonicalPublicKey(key)) ||
       new Set(keys).size !== keys.length) {
     throw new Error("Jupiter address lookup table keys are invalid or duplicated");
   }
@@ -743,7 +893,13 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     if (account.data[0].length > maxLookupTableBase64Length) {
       throw new Error("Address lookup table account data exceeds the maximum encoded size");
     }
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+      throw new Error("Address lookup table account data is not canonical base64");
+    }
     const data = Uint8Array.from(atob(account.data[0]), char => char.charCodeAt(0));
+    if (btoa(String.fromCharCode(...data)) !== account.data[0]) {
+      throw new Error("Address lookup table account data is not canonical base64");
+    }
     if (data.length < 56 || (data.length - 56) % 32 !== 0 ||
         data.length > 56 + 256 * 32) {
       throw new Error("Address lookup table account data length is invalid");
@@ -844,8 +1000,29 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (new Set(allMessageKeys).size !== allMessageKeys.length) {
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
+  // Resolve every compiled instruction account index against Solana's canonical
+  // static + writable-ALT + readonly-ALT key ordering. This enriches structure
+  // only; it does not decode or approve any instruction semantics.
+  const resolvedInstructions = parsed.instructions.map(instruction => Object.freeze({
+    ...instruction,
+    accounts: Object.freeze(instruction.accountIndexes.map(index => {
+      if (!Number.isInteger(index) || index < 0 || index >= allMessageKeys.length) {
+        throw new Error("Jupiter instruction account index is outside the resolved message key space");
+      }
+      const isStatic = index < parsed.staticAccountCount;
+      return Object.freeze({
+        index,
+        address: allMessageKeys[index],
+        isSigner: isStatic && index < 1,
+        isWritable: isStatic
+          ? instruction.accounts.find(account => account.index === index)?.isWritable ?? null
+          : index < parsed.staticAccountCount + resolution.writableAddresses.length
+      });
+    }))
+  }));
   return Object.freeze({
     ...parsed,
+    instructions: Object.freeze(resolvedInstructions),
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
@@ -868,16 +1045,33 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
-function sumOwnedTokenBalance(rows, mint, owner) {
+function sumOwnedTokenBalance(rows, mint, owner, accountCount) {
   if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
   let total = 0n;
+  const seenAccountIndexes = new Set();
   for (const row of rows) {
-    if (row?.mint !== mint || row?.owner !== owner) continue;
-    const amount = row?.uiTokenAmount?.amount;
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
+    if (!row || typeof row !== "object" || Array.isArray(row) ||
+        !Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
+        row.accountIndex >= accountCount || seenAccountIndexes.has(row.accountIndex) ||
+        !isCanonicalPublicKey(row.mint) ||
+        !row.uiTokenAmount || typeof row.uiTokenAmount !== "object" ||
+        Array.isArray(row.uiTokenAmount) ||
+        !Number.isInteger(row.uiTokenAmount.decimals) ||
+        row.uiTokenAmount.decimals < 0 || row.uiTokenAmount.decimals > 255 ||
+        !isCanonicalPublicKey(row.owner) ||
+        (row.programId != null && !isCanonicalPublicKey(row.programId))) {
+      throw new Error("Finalized transaction contains invalid or duplicate owned token account indexes");
+    }
+    if (!isU64DecimalString(row.uiTokenAmount.amount, true)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
-    total += BigInt(amount);
+    // accountIndex identifies one token account globally within each pre/post
+    // balance list. Validate every row before filtering by mint/owner so a
+    // duplicate index cannot hide behind a different owner or mint.
+    seenAccountIndexes.add(row.accountIndex);
+    if (row.mint === mint && row.owner === owner) {
+      total += BigInt(row.uiTokenAmount.amount);
+    }
   }
   return total;
 }
@@ -892,13 +1086,21 @@ export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner = EXPECTED_BOT_WALLET
 }, fetchImpl = fetch) {
-  const validAddress = value => typeof value === "string" &&
-    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
-  const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
-  if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
-      !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
-      !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
-      !validAmount(inputAmount) || !validAmount(outputAmount)) {
+  const validSignature = typeof signature === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature) &&
+    (() => {
+      try {
+        const decoded = decodeBase58(signature);
+        return decoded.length === 64 && encodeBase58(decoded) === signature;
+      } catch {
+        return false;
+      }
+    })();
+  if (!validSignature ||
+      !isCanonicalPublicKey(inputMint) || !isCanonicalPublicKey(outputMint) ||
+      inputMint === outputMint ||
+      !isCanonicalPublicKey(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
+      !isU64DecimalString(inputAmount) || !isU64DecimalString(outputAmount)) {
     throw new Error("Settlement proof request is incomplete or invalid");
   }
 
@@ -921,22 +1123,158 @@ export async function verifyFinalizedJupiterSettlement({
   const message = transaction?.transaction?.message;
   const signatures = transaction?.transaction?.signatures;
   const accountKeys = message?.accountKeys;
+  const addressTableLookups = message?.addressTableLookups ?? [];
+  const hasAddressTableLookups = Array.isArray(addressTableLookups) && addressTableLookups.length > 0;
+  const loadedAddresses = meta?.loadedAddresses ?? { writable: [], readonly: [] };
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
-      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
-      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
-      meta.postBalances.length !== accountKeys.length ||
-      !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
+      !Array.isArray(accountKeys) ||
+      !message.header || typeof message.header !== "object" || Array.isArray(message.header) ||
+      !Number.isSafeInteger(message.header.numRequiredSignatures) ||
+      message.header.numRequiredSignatures < 1 ||
+      message.header.numRequiredSignatures > accountKeys.length ||
+      !Number.isSafeInteger(message.header.numReadonlySignedAccounts) ||
+      message.header.numReadonlySignedAccounts < 0 ||
+      message.header.numReadonlySignedAccounts > message.header.numRequiredSignatures ||
+      message.header.numReadonlySignedAccounts === message.header.numRequiredSignatures ||
+      !Number.isSafeInteger(message.header.numReadonlyUnsignedAccounts) ||
+      message.header.numReadonlyUnsignedAccounts < 0 ||
+      message.header.numReadonlyUnsignedAccounts >
+        accountKeys.length - message.header.numRequiredSignatures ||
+      (message?.addressTableLookups != null && !Array.isArray(message.addressTableLookups)) ||
+      (hasAddressTableLookups && (!meta.loadedAddresses ||
+        typeof meta.loadedAddresses !== "object" || Array.isArray(meta.loadedAddresses))) ||
+      !loadedAddresses || !Array.isArray(loadedAddresses.writable) ||
+      !Array.isArray(loadedAddresses.readonly) ||
+      !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
+      !Number.isSafeInteger(meta.fee) || meta.fee < 0 ||
+      meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.preBalances[0] < meta.fee) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
+  const validAddress = isCanonicalPublicKey;
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  let expectedWritableLookupCount = 0;
+  let expectedReadonlyLookupCount = 0;
+  const seenLookupTables = new Set();
+  for (const lookup of addressTableLookups) {
+    if (!lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+        !validAddress(lookup.accountKey) || seenLookupTables.has(lookup.accountKey) ||
+        !Array.isArray(lookup.writableIndexes) || !Array.isArray(lookup.readonlyIndexes) ||
+        lookup.writableIndexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
+        lookup.readonlyIndexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
+        new Set(lookup.writableIndexes).size !== lookup.writableIndexes.length ||
+        new Set(lookup.readonlyIndexes).size !== lookup.readonlyIndexes.length) {
+      throw new Error("Finalized transaction address-table lookup metadata is malformed");
+    }
+    seenLookupTables.add(lookup.accountKey);
+    expectedWritableLookupCount += lookup.writableIndexes.length;
+    expectedReadonlyLookupCount += lookup.readonlyIndexes.length;
+  }
+  if (expectedWritableLookupCount + expectedReadonlyLookupCount > 256 ||
+      loadedAddresses.writable.length !== expectedWritableLookupCount ||
+      loadedAddresses.readonly.length !== expectedReadonlyLookupCount) {
+    throw new Error("Finalized transaction loaded-address metadata does not match its lookup descriptors");
+  }
+  const loadedKeyStrings = [...loadedAddresses.writable, ...loadedAddresses.readonly];
+  if (keyStrings.some(key => !validAddress(key)) ||
+      loadedKeyStrings.some(key => !validAddress(key)) ||
+      new Set([...keyStrings, ...loadedKeyStrings]).size !== keyStrings.length + loadedKeyStrings.length ||
+      meta.preBalances.length !== keyStrings.length + loadedKeyStrings.length ||
+      meta.postBalances.length !== keyStrings.length + loadedKeyStrings.length) {
+    throw new Error("Finalized transaction account keys or loaded-address balance metadata is inconsistent");
+  }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
-  // Solana's first required signer is the fee payer. Require the pinned bot
-  // wallet in that position so a third-party transaction cannot settle an order.
-  if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
+  // Solana message headers define the signer and writable partitions. Account
+  // zero is the fee payer; require it to be a signer and writable, not merely
+  // the first matching key in an untrusted RPC response.
+  if (ownerIndex !== 0 || message.header.numRequiredSignatures < 1 ||
+      message.header.numReadonlySignedAccounts >= message.header.numRequiredSignatures) {
+    throw new Error("Expected bot wallet is not the finalized writable transaction fee payer");
+  }
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  // Preserve finalized outer and inner instruction evidence for a future
+  // semantic verifier. Missing CPI metadata is never treated as proof that
+  // no CPI occurred. Parent indexes must point at an actual outer instruction.
+  const allKeys = [...keyStrings, ...loadedKeyStrings];
+  if (message.instructions != null && !Array.isArray(message.instructions)) {
+    throw new Error("Finalized outer-instruction metadata has an invalid shape");
+  }
+  const outerInstructionsRecorded = Array.isArray(message.instructions);
+  const compileInstructionEvidence = (instruction, label, isInner) => {
+    if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+        instruction.programIdIndex < 0 || instruction.programIdIndex >= allKeys.length ||
+        !Array.isArray(instruction.accounts) ||
+        instruction.accounts.some(index => !Number.isInteger(index) || index < 0 ||
+          index >= allKeys.length) ||
+        (instruction.stackHeight != null &&
+          (!Number.isSafeInteger(instruction.stackHeight) ||
+            (isInner ? instruction.stackHeight < 2 : instruction.stackHeight !== 1))) ||
+        typeof instruction.data !== "string" ||
+        (instruction.data !== "" && (() => {
+          try {
+            const decoded = decodeBase58(instruction.data);
+            return encodeBase58(decoded) !== instruction.data;
+          } catch {
+            return true;
+          }
+        })())) {
+      throw new Error(`Finalized ${label} contains invalid compiled account indexes or data`);
+    }
+    return Object.freeze({
+      programIdIndex: instruction.programIdIndex,
+      programId: allKeys[instruction.programIdIndex],
+      accountIndexes: Object.freeze([...instruction.accounts]),
+      accounts: Object.freeze(instruction.accounts.map(index => Object.freeze({
+        index,
+        address: allKeys[index]
+      }))),
+      dataBase58: instruction.data,
+      stackHeight: Number.isSafeInteger(instruction.stackHeight) ? instruction.stackHeight : null
+    });
+  };
+  const outerInstructionEvidence = outerInstructionsRecorded
+    ? Object.freeze(message.instructions.map(instruction =>
+        compileInstructionEvidence(instruction, "outer instruction", false)))
+    : null;
+  if (meta.innerInstructions != null && !Array.isArray(meta.innerInstructions)) {
+    throw new Error("Finalized inner-instruction metadata has an invalid shape");
+  }
+  const innerInstructionsRecorded = Array.isArray(meta.innerInstructions);
+  const innerGroups = innerInstructionsRecorded ? meta.innerInstructions : [];
+  const seenParentIndexes = new Set();
+  const innerInstructionEvidence = innerInstructionsRecorded
+    ? Object.freeze(innerGroups.map(group => {
+        if (!group || !Number.isInteger(group.index) || group.index < 0 ||
+            !Array.isArray(group.instructions) || !outerInstructionsRecorded ||
+            group.index >= message.instructions.length || seenParentIndexes.has(group.index)) {
+          throw new Error("Finalized inner-instruction metadata has an invalid parent index or shape");
+        }
+        seenParentIndexes.add(group.index);
+        const instructions = group.instructions.map(instruction =>
+          compileInstructionEvidence(instruction, "inner instruction", true));
+        const stackHeights = instructions.map(instruction => instruction.stackHeight);
+        // When the RPC supplies stack heights, require a complete, coherent
+        // CPI trace: the first inner call is depth 2 and nesting can increase
+        // by only one level at a time. A decrease represents returning to a
+        // parent frame. Missing stack heights remain structural-only evidence.
+        if (stackHeights.some(height => height !== null) &&
+            (stackHeights.some(height => height === null) ||
+              stackHeights[0] !== 2 ||
+              stackHeights.some((height, index) =>
+                index > 0 && height > stackHeights[index - 1] + 1))) {
+          throw new Error("Finalized inner-instruction stack-height sequence is inconsistent");
+        }
+        return Object.freeze({
+          index: group.index,
+          instructions: Object.freeze(instructions)
+        });
+      }))
+    : null;
+
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, allKeys.length);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, allKeys.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -944,8 +1282,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, allKeys.length);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, allKeys.length);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
@@ -959,12 +1297,30 @@ export async function verifyFinalizedJupiterSettlement({
     inputAmount,
     outputMint,
     outputAmount,
-    owner: expectedOwner
+    owner: expectedOwner,
+    // Net fee-payer lamport movement and the RPC-reported network fee are
+    // evidence only; they do not prove gross rent, tip, or other outflows.
+    nativeLamportEvidence: Object.freeze({
+      feePayerPreBalanceLamports: String(meta.preBalances[0]),
+      feePayerPostBalanceLamports: String(meta.postBalances[0]),
+      feePayerNetDecreaseLamports: (BigInt(meta.preBalances[0]) - BigInt(meta.postBalances[0])).toString(),
+      networkFeeLamports: String(meta.fee)
+    }),
+    // Explicitly distinguish token settlement proof from transaction-cost proof.
+    // This remains false until every native outflow is decoded and reconciled.
+    grossOutflowsVerified: false,
+    allInCostEvidence: null,
+    costVerification: "net-lamport-delta-only",
+    outerInstructionsRecorded,
+    outerInstructionEvidence,
+    innerInstructionsRecorded,
+    innerInstructionEvidence,
+    semanticInstructionVerification: false
   });
 }
 
 
-function parseMintAccount(account) {
+export function parseMintAccount(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account is unavailable");
   const parsed = value.data?.parsed?.info;

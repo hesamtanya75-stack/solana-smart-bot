@@ -112,7 +112,7 @@ function validateAllInCostEvidence(costs, amountLamports, configuredPriorityFeeC
     throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
   }
   const priceText = String(costs.computeUnitPriceMicroLamports);
-  if (!/^\d{1,20}$/.test(priceText) ||
+  if (!/^(?:0|[1-9]\d{0,19})$/.test(priceText) ||
       !Number.isSafeInteger(costs.computeUnitLimit) || costs.computeUnitLimit < 1 ||
       costs.computeUnitLimit > 1_400_000) {
     throw new Error("Trusted compute budget evidence is invalid");
@@ -455,7 +455,8 @@ export class LiveTradeCoordinator {
       "maxPriorityFeeLamports", "baseFeeLamports", "tipLamports",
       "rentLamports", "otherOutflowLamports", "totalFeeLamports", "totalLamports"
     ];
-    if (!expectedCosts || !settledCosts || typeof settledCosts !== "object" ||
+    if (proof.grossOutflowsVerified !== true ||
+        !expectedCosts || !settledCosts || typeof settledCosts !== "object" ||
         Array.isArray(settledCosts) ||
         costFields.some(field => !Object.prototype.hasOwnProperty.call(settledCosts, field) ||
           settledCosts[field] !== expectedCosts[field])) {

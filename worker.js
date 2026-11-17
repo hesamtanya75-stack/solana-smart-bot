@@ -1,4 +1,5 @@
 import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "./rpc-response.mjs";
+import { fetchCompleteMintTokenAccounts, parseMintAccount } from "./trusted-live-evidence.mjs";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -12,7 +13,6 @@ const DEFAULT_STATE = {
   lastScanReport: [],
   updatedAt: null
 };
-const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
 const RPCS = [
   "https://api.mainnet-beta.solana.com",
   "https://solana-rpc.publicnode.com",
@@ -21,7 +21,15 @@ const RPCS = [
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
 
-function json(data, status = 200) {
+export function isShareAbovePercent(amount, supply, thresholdPercent) {
+  if (typeof amount !== "bigint" || typeof supply !== "bigint" ||
+      typeof thresholdPercent !== "bigint" || amount < 0n || supply <= 0n || thresholdPercent < 0n) {
+    throw new TypeError("Share comparison requires non-negative BigInt amounts and a positive supply");
+  }
+  return amount * 100n > supply * thresholdPercent;
+}
+
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -30,7 +38,8 @@ function json(data, status = 200) {
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      ...extraHeaders
     }
   });
 }
@@ -382,102 +391,87 @@ async function getDexJson(url, env, ttlSeconds = 30) {
   return data;
 }
 
-function mintDetails(account) {
-  const value = account?.value;
-  if (!value) throw new Error("Mint account unavailable");
-  let mintAuthority = null, freezeAuthority = null, extensions = [];
-  const parsed = value.data?.parsed?.info;
-  if (parsed) {
-    mintAuthority = !!parsed.mintAuthority;
-    freezeAuthority = !!parsed.freezeAuthority;
-  }
-  const raw = value.data;
-  if (Array.isArray(raw) && typeof raw[0] === "string") {
-    const bytes = Uint8Array.from(atob(raw[0]), c => c.charCodeAt(0));
-    if (bytes.length >= 82) {
-      const u32 = i => (bytes[i] | (bytes[i+1] << 8) | (bytes[i+2] << 16) | (bytes[i+3] << 24)) >>> 0;
-      const ma = u32(0), fa = u32(46);
-      if (ma <= 1 && fa <= 1) {
-        mintAuthority = ma === 1;
-        freezeAuthority = fa === 1;
-      }
-    }
-    if (bytes.length >= 166) {
-      let offset = 166;
-      while (offset + 4 <= bytes.length) {
-        const type = bytes[offset] | (bytes[offset+1] << 8);
-        const length = bytes[offset+2] | (bytes[offset+3] << 8);
-        if (type === 0 && length === 0) break;
-        if (offset + 4 + length > bytes.length) break;
-        extensions.push(type);
-        offset += 4 + length;
-      }
-    }
-  }
-  return { mintAuthority, freezeAuthority, extensions, owner: value.owner };
-}
 async function inspectMint(mint, env, diagnostics = null) {
-  // Check for a real Solana market first. New-token profile entries can exist
-  // before DexScreener has indexed a tradable pair; avoid spending RPC calls then.
+  // The exact requested mint must be the base token in the selected Solana pair.
   const dex = await getDexJson(
     "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
   );
   const market = (dex.pairs || []).filter(p =>
     p.chainId === "solana" && p.baseToken?.address === mint
   ).sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))[0];
-  if (!market) throw new Error("No Solana market pair");
+  if (!market) throw new Error("No verified Solana market pair for the requested mint");
 
-  const [rug, rpcResults] = await Promise.all([
+  // Parse the mint only after confirming its account owner is an official SPL
+  // Token or Token-2022 program. Use a complete Alchemy holder census and
+  // reconcile every positive-balance token account against finalized supply.
+  const [rug, rpcResults, holderAccounts] = await Promise.all([
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpcBatch([
-      { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
-      { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
-      { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
-    ], env, diagnostics)
+      { method: "getAccountInfo", params: [mint, { encoding: "jsonParsed", commitment: "finalized" }] },
+      { method: "getTokenSupply", params: [mint, { commitment: "finalized" }] }
+    ], env, diagnostics),
+    fetchCompleteMintTokenAccounts(mint, fetch, env.ALCHEMY_API_KEY)
   ]);
-  const [account, largest, supply] = rpcResults;
-  const details = mintDetails(account);
-  const supplyAmount = Number(supply?.value?.amount || 0);
-  const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
-  // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
-  const accountDetails = await rpc(
-    "getMultipleAccounts",
-    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
-    env,
-    diagnostics
-  );
-  const ownerBalances = new Map();
-  for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
-    const info = account?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
+  const [account, supply] = rpcResults;
+  const details = parseMintAccount(account);
+  const rawSupply = String(supply?.value?.amount ?? "");
+  if (!/^[0-9]+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
+      !Array.isArray(holderAccounts) || holderAccounts.length === 0) {
+    throw new Error("Complete holder data or finalized token supply is unavailable");
   }
-  if (!ownerBalances.size) throw new Error("Token account owners unavailable");
-  const ownerPercentages = [...ownerBalances.values()]
-    .map(amount => amount / supplyAmount * 100)
-    .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
-  const liquidity = Number(market.liquidity?.usd || 0);
-  const volume = Number(market.volume?.h24 || 0);
-  const sells = Number(market.txns?.h24?.sells || 0);
+  const supplyAmount = BigInt(rawSupply);
+  const ownerBalances = new Map();
+  let totalAccountBalance = 0n;
+  for (const holder of holderAccounts) {
+    if (!holder || typeof holder.owner !== "string" || typeof holder.amount !== "bigint" || holder.amount <= 0n) {
+      throw new Error("Complete holder census contains invalid account data");
+    }
+    ownerBalances.set(holder.owner, (ownerBalances.get(holder.owner) || 0n) + holder.amount);
+    totalAccountBalance += holder.amount;
+  }
+  if (ownerBalances.size === 0 || totalAccountBalance !== supplyAmount) {
+    throw new Error("Complete holder census does not reconcile to finalized token supply");
+  }
+  const rankedOwners = [...ownerBalances.entries()].sort((a, b) => a[1] > b[1] ? -1 : a[1] < b[1] ? 1 : 0);
+  const sortedOwnerBalances = rankedOwners.map(([, amount]) => amount);
+  const percentOfSupply = amount => Number((amount * 1000000n) / supplyAmount) / 10000;
+  const holders = rankedOwners.slice(0, 10).map(([owner, amount]) => ({
+    owner, amount: amount.toString(), pct: percentOfSupply(amount)
+  }));
+  const largestAmount = sortedOwnerBalances[0];
+  const topTenAmount = sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
+  const largestPct = percentOfSupply(largestAmount);
+  const topTenPct = percentOfSupply(topTenAmount);
+  // Display percentages are rounded down; make safety decisions against exact
+  // integer balances so a value just above a threshold cannot slip through.
+  const largestAbove30 = isShareAbovePercent(largestAmount, supplyAmount, 30n);
+  const topTenAbove50 = isShareAbovePercent(topTenAmount, supplyAmount, 50n);
+  const liquidity = Number(market.liquidity?.usd);
+  const volume = Number(market.volume?.h24);
+  const sells = Number(market.txns?.h24?.sells);
   const reasons = [];
-  if (liquidity < 10000) reasons.push("Liquidity below $10,000");
-  if (volume < 1000) reasons.push("24h volume below $1,000");
-  if (sells <= 0) reasons.push("No 24h sells");
-  if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
-  if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
-  if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
-  const price = Number(market.priceUsd || 0);
-  if (!(price > 0)) reasons.push("Price unavailable");
-  return { ok: reasons.length === 0, reasons, price, market, rugScore: rug?.score, largestPct, topTenPct };
+  if (!Number.isFinite(liquidity) || liquidity < 10000) reasons.push("Liquidity unavailable or below $10,000");
+  if (!Number.isFinite(volume) || volume < 1000) reasons.push("24h volume unavailable or below $1,000");
+  if (!Number.isFinite(sells) || sells <= 0) reasons.push("24h sell-count data unavailable or no sells");
+  if (details.mintAuthoritySafe !== true || details.freezeAuthoritySafe !== true) {
+    reasons.push("Mint/Freeze authority not confirmed inactive");
+  }
+  if (details.token2022ExtensionsSafe !== true) {
+    reasons.push("Unsupported token program or Token-2022 extension detected");
+  }
+  if (largestAbove30) reasons.push("Largest wallet holder above 30%");
+  if (topTenAbove50) reasons.push("Top 10 wallet holders above 50%");
+  if (!rug || rug.score == null || !Number.isFinite(Number(rug.score)) || Number(rug.score) > 2500) {
+    reasons.push("RugCheck unavailable or score above 2500");
+  }
+  const price = Number(market.priceUsd);
+  if (!Number.isFinite(price) || price <= 0) reasons.push("Price unavailable");
+  return {
+    ok: reasons.length === 0, reasons, price, market, rugScore: Number(rug?.score),
+    largestPct, topTenPct, largestAbove30, topTenAbove50, holderAccountCount: holderAccounts.length,
+    holderOwnerCount: ownerBalances.size, holderSampleOnly: false,
+    holderCensusComplete: true, holders
+  };
 }
 async function refreshTrades(state, env) {
   const open = state.trades.filter(t => !t.sold);
@@ -545,7 +539,7 @@ async function autoBuy(state, env, diagnostics = null) {
       report.push({ mint, status: "bought-paper", reasons: ["هەموو پشکنینەکان تێپەڕاند"] });
     } catch (error) {
       const message = String(error?.message || "داتای پشکنین بەردەست نییە");
-      if (message === "No Solana market pair") {
+      if (message.startsWith("No verified Solana market pair")) {
         // Keep the token eligible, but don't let an unindexed profile consume
         // every minute's scan slot. Recheck it after a short cooldown.
         state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
@@ -692,6 +686,14 @@ async function migrateLegacyFailure(env, scope, legacyKey) {
     await authGuardCall(env, { operation: "import-legacy-failure", scope, count });
     await env.BOT_STATE.delete(legacyKey);
   }
+}
+async function consumeApiRateLimit(env, scope, limit, windowMs) {
+  return authGuardCall(env, {
+    operation: "consume-rate-limit",
+    scope,
+    limit,
+    windowMs
+  });
 }
 async function isAuthRateLimited(env, scope) {
   const result = await authGuardCall(env, { operation: "is-rate-limited", scope });
@@ -871,6 +873,81 @@ export default {
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
       }
+      if (url.pathname === "/api/scan" && request.method === "POST") {
+        try {
+          const authorization = request.headers.get("Authorization") || "";
+          const sessionToken = authorization.replace(/^Bearer\s+/i, "");
+          const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+          const scanScope = "scan:" + await hashText(sessionToken + ":" + clientIp);
+          const rate = await consumeApiRateLimit(env, scanScope, 10, 60000);
+          if (!rate.allowed) {
+            const retryAfterSeconds = Math.max(1, Math.ceil((rate.resetAt - Date.now()) / 1000));
+            return json({
+              error: "Scan rate limit reached; wait before requesting another scan.",
+              retryAfterSeconds
+            }, 429, { "Retry-After": String(retryAfterSeconds) });
+          }
+
+          const body = await readBoundedJson(request, 4096);
+          const mint = String(body.mint || "");
+          if (Object.keys(body).some(key => key !== "mint") ||
+              !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+            return json({ error: "Invalid token scan request" }, 400);
+          }
+          // Full holder census and market checks run server-side. Partial
+          // browser/RPC holder samples are never promoted to trusted evidence.
+          const inspected = await inspectMint(mint, env);
+          return json({ mint, ...inspected });
+        } catch (error) {
+          return json({ error: String(error?.message || "Trusted token scan failed") }, error.status || 503);
+        }
+      }
+      if (url.pathname === "/api/live/status" && request.method === "GET") {
+        try {
+          const internalToken = String(env.COORDINATOR_INTERNAL_TOKEN || "");
+          if (internalToken.length < 32 || !env.LIVE_TRADE_COORDINATOR) {
+            return json({ error: "Live coordinator is not configured" }, 503);
+          }
+          const id = env.LIVE_TRADE_COORDINATOR.idFromName("live-trade-coordinator");
+          const stub = env.LIVE_TRADE_COORDINATOR.get(id);
+          const response = await stub.fetch(new Request("https://coordinator.internal/status", {
+            headers: { Authorization: "Bearer " + internalToken }
+          }));
+          const data = await response.json().catch(() => ({}));
+          return json(data, response.status);
+        } catch {
+          return json({ error: "Live coordinator status is unavailable" }, 503);
+        }
+      }
+      if (url.pathname === "/api/live/kill-switch" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).length !== 1 || body.enabled !== true) {
+            return json({ error: "Emergency stop endpoint only accepts enabled: true" }, 400);
+          }
+          const internalToken = String(env.COORDINATOR_INTERNAL_TOKEN || "");
+          const operatorToken = String(env.COORDINATOR_OPERATOR_TOKEN || "");
+          if (internalToken.length < 32 || operatorToken.length < 32 ||
+              internalToken === operatorToken || !env.LIVE_TRADE_COORDINATOR) {
+            return json({ error: "Live coordinator operator controls are not configured" }, 503);
+          }
+          const id = env.LIVE_TRADE_COORDINATOR.idFromName("live-trade-coordinator");
+          const stub = env.LIVE_TRADE_COORDINATOR.get(id);
+          const response = await stub.fetch(new Request("https://coordinator.internal/kill-switch", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + internalToken,
+              "X-Operator-Token": operatorToken,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ enabled: true })
+          }));
+          const data = await response.json().catch(() => ({}));
+          return json(data, response.status);
+        } catch {
+          return json({ error: "Emergency stop activation failed" }, 503);
+        }
+      }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
           const state = await readState(env);
@@ -1034,63 +1111,79 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
-      const rpcDiagnostics = { successes: [], errors: [] };
-      const state = await readState(env);
-      let sold = 0;
-      let refreshWarning = "";
-      let buyMessage = "";
-      let buyWarning = "";
+      // A dashboard write can advance the authoritative revision while this
+      // cycle is checking market data. Retry once from a fresh snapshot rather
+      // than overwriting that newer state or silently dropping the cycle.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rpcDiagnostics = { successes: [], errors: [] };
+        const state = await readState(env);
+        let sold = 0;
+        let refreshWarning = "";
+        let buyMessage = "";
+        let buyWarning = "";
 
-      // A temporary price-refresh failure must not prevent discovery and paper buys.
-      try {
-        sold = await refreshTrades(state, env);
-      } catch (error) {
-        refreshWarning = String(error?.message || error);
-        console.error("Trade refresh warning", {
-          error: refreshWarning,
-          durationMs: Date.now() - startedAt
+        // A temporary price-refresh failure must not prevent discovery and paper buys.
+        try {
+          sold = await refreshTrades(state, env);
+        } catch (error) {
+          refreshWarning = String(error?.message || error);
+          console.error("Trade refresh warning", {
+            error: refreshWarning,
+            durationMs: Date.now() - startedAt
+          });
+        }
+
+        // Run discovery independently so one subsystem cannot silently block the other.
+        try {
+          buyMessage = await autoBuy(state, env, rpcDiagnostics);
+        } catch (error) {
+          buyWarning = String(error?.message || error);
+          console.error("Auto-buy warning", {
+            error: buyWarning,
+            durationMs: Date.now() - startedAt
+          });
+        }
+
+        state.lastRunAt = new Date().toISOString();
+        const warnings = [
+          refreshWarning ? "Price refresh warning: " + refreshWarning : "",
+          buyWarning ? "Auto-buy warning: " + buyWarning : ""
+        ].filter(Boolean);
+        const rpcSummary = rpcDiagnostics.successes.length
+          ? " RPC responded: " + [...new Set(rpcDiagnostics.successes)].join(", ") + "."
+          : " No successful RPC response was confirmed in this cycle.";
+        const rpcErrors = rpcDiagnostics.errors.length
+          ? " RPC errors: " + [...new Set(rpcDiagnostics.errors)].join(" | ") + "."
+          : "";
+        state.lastMessage = (warnings.length
+          ? "Server cycle completed with warning. Sold: " + sold + ". " +
+            (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
+          : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
+
+        try {
+          await saveState(env, state);
+        } catch (error) {
+          if (error.status === 409 && attempt === 0) {
+            console.warn("Paper state changed during cron cycle; retrying from fresh revision.");
+            continue;
+          }
+          throw error;
+        }
+
+        // Safe operational log: never include secrets, wallet data, or API keys.
+        console.info("Server cycle finished", {
+          sold,
+          message: buyMessage,
+          warnings,
+          rpcResponded: [...new Set(rpcDiagnostics.successes)],
+          rpcErrors: [...new Set(rpcDiagnostics.errors)],
+          openTrades: state.trades.filter(t => !t.sold).length,
+          scannedMints: state.scannedMints.length,
+          durationMs: Date.now() - startedAt,
+          revisionRetry: attempt
         });
+        return;
       }
-
-      // Run discovery independently so one subsystem cannot silently block the other.
-      try {
-        buyMessage = await autoBuy(state, env, rpcDiagnostics);
-      } catch (error) {
-        buyWarning = String(error?.message || error);
-        console.error("Auto-buy warning", {
-          error: buyWarning,
-          durationMs: Date.now() - startedAt
-        });
-      }
-
-      state.lastRunAt = new Date().toISOString();
-      const warnings = [
-        refreshWarning ? "Price refresh warning: " + refreshWarning : "",
-        buyWarning ? "Auto-buy warning: " + buyWarning : ""
-      ].filter(Boolean);
-      const rpcSummary = rpcDiagnostics.successes.length
-        ? " RPC responded: " + [...new Set(rpcDiagnostics.successes)].join(", ") + "."
-        : " No successful RPC response was confirmed in this cycle.";
-      const rpcErrors = rpcDiagnostics.errors.length
-        ? " RPC errors: " + [...new Set(rpcDiagnostics.errors)].join(" | ") + "."
-        : "";
-      state.lastMessage = (warnings.length
-        ? "Server cycle completed with warning. Sold: " + sold + ". " +
-          (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
-        : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
-
-      // Safe operational log: never include secrets, wallet data, or API keys.
-      console.info("Server cycle finished", {
-        sold,
-        message: buyMessage,
-        warnings,
-        rpcResponded: [...new Set(rpcDiagnostics.successes)],
-        rpcErrors: [...new Set(rpcDiagnostics.errors)],
-        openTrades: state.trades.filter(t => !t.sold).length,
-        scannedMints: state.scannedMints.length,
-        durationMs: Date.now() - startedAt
-      });
     })());
   }
 };

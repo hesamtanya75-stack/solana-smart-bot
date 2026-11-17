@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test"
+    "start": "npx --yes wrangler@4 dev --config wrangler.jsonc",
+    "test": "node --test",
+    "dev": "npx --yes wrangler@4 dev --config wrangler.jsonc"
   },
   "engines": {
     "node": ">=20"

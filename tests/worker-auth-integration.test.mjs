@@ -4,14 +4,17 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
+import { fetchCompleteMintTokenAccounts, parseMintAccount } from "../trusted-live-evidence.mjs";
 import { PaperTradingState } from "../paper-trading-state.mjs";
 import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "../rpc-response.mjs";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const executableWorkerSource = workerSource
   .replace(/^export default \{/m, "const worker = {")
+  .replace(/^export function isShareAbovePercent/m, "function isShareAbovePercent")
   .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "")
-  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "");
+  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "")
+  .replace(/^import \{ fetchCompleteMintTokenAccounts, parseMintAccount \} from ["'][^"']+["'];?\s*$/m, "");
 const workerContext = vm.createContext({
   crypto: webcrypto,
   Request,
@@ -29,7 +32,9 @@ const workerContext = vm.createContext({
   structuredClone,
   parseRpcResponse,
   parseRpcBatchResponse,
-  readBoundedJsonResponse
+  readBoundedJsonResponse,
+  fetchCompleteMintTokenAccounts,
+  parseMintAccount
 });
 vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
 const worker = workerContext.__worker;
@@ -234,6 +239,74 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const nextLogin = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(nextLogin.status, 200);
   assert.equal((await nextLogin.json()).mfaRequired, true);
+});
+
+test("Worker trusted scanner requires an authenticated session and rejects malformed mint requests", async () => {
+  const { env } = makeEnvironment();
+  const mint = "So11111111111111111111111111111111111111112";
+
+  const unauthorized = await post("/api/scan", { mint }, env);
+  assert.equal(unauthorized.status, 401);
+
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const headers = { Authorization: "Bearer " + token };
+
+  const malformed = await post("/api/scan", { mint: "not-a-mint", extra: true }, env, headers);
+  assert.equal(malformed.status, 400);
+  assert.match((await malformed.json()).error, /Invalid token scan request/);
+});
+
+test("Worker exposes authenticated status and one-way emergency-stop activation only", async () => {
+  const { env } = makeEnvironment();
+  const internalToken = "coordinator-internal-test-token-0123456789";
+  const operatorToken = "coordinator-operator-test-token-9876543210";
+  const calls = [];
+  env.COORDINATOR_INTERNAL_TOKEN = internalToken;
+  env.COORDINATOR_OPERATOR_TOKEN = operatorToken;
+  env.LIVE_TRADE_COORDINATOR = {
+    idFromName: name => name,
+    get: id => ({
+      fetch: async request => {
+        calls.push({ id, request });
+        const url = new URL(request.url);
+        if (url.pathname === "/status") {
+          return Response.json({ killSwitch: true, dailySpendUsdCents: 0, openPositions: 0 });
+        }
+        if (url.pathname === "/kill-switch") {
+          return Response.json({ ok: true, killSwitch: true });
+        }
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+    })
+  };
+
+  const unauthorized = await get("/api/live/status", env);
+  assert.equal(unauthorized.status, 401);
+
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+
+  const status = await get("/api/live/status", env, token);
+  assert.equal(status.status, 200);
+  assert.equal((await status.json()).killSwitch, true);
+
+  const deactivate = await post("/api/live/kill-switch", { enabled: false }, env, {
+    Authorization: "Bearer " + token
+  });
+  assert.equal(deactivate.status, 400);
+
+  const activate = await post("/api/live/kill-switch", { enabled: true }, env, {
+    Authorization: "Bearer " + token
+  });
+  assert.equal(activate.status, 200);
+  assert.equal((await activate.json()).killSwitch, true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].request.headers.get("Authorization"), "Bearer " + internalToken);
+  assert.equal(calls[1].request.headers.get("X-Operator-Token"), operatorToken);
+  assert.equal(calls[1].request.headers.get("Authorization"), "Bearer " + internalToken);
 });
 
 test("Worker logout revokes the bearer session immediately", async () => {

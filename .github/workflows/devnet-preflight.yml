@@ -30,7 +30,7 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         env:
-          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL || 'https://api.devnet.solana.com' }}
+          DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
       - name: Report funded Devnet lifecycle as skipped without explicit opt-in
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true) }}
@@ -42,12 +42,11 @@ jobs:
   funded-devnet-lifecycle:
     # This isolated job is never part of pull_request runs. The secret is not
     # exposed to checkout, dependency installation, or PR test steps.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/security/pr33-safety-transplant-4678a20' && inputs.run_funded_devnet_lifecycle == true }}
     needs: devnet-read-only
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+    environment: devnet-funded
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -58,4 +57,6 @@ jobs:
       - name: Install isolated Devnet lifecycle dependency
         run: npm install --no-save --ignore-scripts --package-lock=false @solana/web3.js@1.98.4
       - name: Verify dedicated RPC and submit faucet-funded Devnet test transfer
+        env:
+          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
         run: node scripts/devnet-signed-lifecycle.mjs

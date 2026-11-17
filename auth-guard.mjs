@@ -318,6 +318,47 @@ export class AuthGuard {
     });
   }
 
+  async consumeRateLimit(scope, limit = 10, windowMs = 60000, now = Date.now()) {
+    if (!validScope(scope) || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+        !Number.isSafeInteger(windowMs) || windowMs < 1000 || windowMs > 3600000 ||
+        !Number.isSafeInteger(now) || now < 0) {
+      throw new Error("Invalid API rate-limit request");
+    }
+    return this.withState(state => {
+      state.rateLimits ||= {};
+      for (const [key, entry] of Object.entries(state.rateLimits)) {
+        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) {
+          delete state.rateLimits[key];
+        }
+      }
+      const existing = state.rateLimits[scope];
+      if (!existing && Object.keys(state.rateLimits).length >= MAX_FAILURE_BUCKETS) {
+        const resetAt = Math.min(...Object.values(state.rateLimits).map(entry => entry.resetAt));
+        return { allowed: false, remaining: 0, resetAt, capacityLimited: true };
+      }
+      if (existing && (!Number.isSafeInteger(existing.count) || existing.count < 0 ||
+          !Number.isSafeInteger(existing.resetAt) || existing.resetAt <= now)) {
+        return { allowed: false, remaining: 0, resetAt: now + 1000, capacityLimited: true };
+      }
+      const active = existing && existing.resetAt > now &&
+        existing.windowMs === windowMs && existing.limit === limit
+        ? existing
+        : { count: 0, resetAt: now + windowMs, windowMs, limit };
+      if (active.count >= limit) {
+        state.rateLimits[scope] = active;
+        return { allowed: false, remaining: 0, resetAt: active.resetAt, capacityLimited: false };
+      }
+      active.count += 1;
+      state.rateLimits[scope] = active;
+      return {
+        allowed: true,
+        remaining: Math.max(0, limit - active.count),
+        resetAt: active.resetAt,
+        capacityLimited: false
+      };
+    });
+  }
+
   async createMfaChallenge(challengeId, now = Date.now()) {
     if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) ||
         !Number.isSafeInteger(now) || now < 0) {
@@ -469,6 +510,9 @@ export class AuthGuard {
         imported: await this.importLegacyFailure(body.scope, body.count)
       });
       if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
+      if (body.operation === "consume-rate-limit") {
+        return json(await this.consumeRateLimit(body.scope, body.limit, body.windowMs));
+      }
       if (body.operation === "create-challenge") {
         return json({ created: await this.createMfaChallenge(body.challengeId) });
       }

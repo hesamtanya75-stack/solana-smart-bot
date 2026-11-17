@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
+import { isShareAbovePercent } from "../worker.js";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const dashboardSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -11,6 +13,14 @@ const authGuard = workerSource.indexOf(
 );
 const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/setup"');
 const totpConfirmRoute = workerSource.indexOf('if (url.pathname === "/api/totp/confirm"');
+
+test("all dashboard inline JavaScript parses without syntax errors", () => {
+  const scripts = [...dashboardSource.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+  assert.ok(scripts.length > 0, "dashboard must contain its application scripts");
+  scripts.forEach((match, index) => {
+    new vm.Script(match[1], { filename: "index.html:inline-script-" + index });
+  });
+});
 
 test("worker session authorization requires one exact Bearer token without whitespace", () => {
   assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
@@ -122,12 +132,45 @@ test("static asset fallback exposes only the self-contained dashboard routes", (
   assert.ok(assetFetch > dashboardGate, "the asset binding must only be reached after the dashboard allowlist");
 });
 
-test("live coordinator remains isolated until semantic verification and all-in cost gates are complete", () => {
-  // The Durable Object class may be exported and bound for isolated tests,
-  // but the public Worker must not expose a live-trading route or call it.
+test("live coordinator exposes only authenticated status and one-way emergency stop while trade gates remain incomplete", () => {
   assert.ok(workerSource.includes('export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";'));
-  assert.equal(workerSource.includes("env.LIVE_TRADE_COORDINATOR"), false);
-  assert.equal(workerSource.includes('url.pathname.startsWith("/api/live/")'), false);
-  assert.equal(workerSource.includes('url.pathname === "/api/live"'), false);
+  assert.ok(workerSource.includes('url.pathname === "/api/live/status"'));
+  assert.ok(workerSource.includes('url.pathname === "/api/live/kill-switch"'));
+  assert.ok(workerSource.includes('body.enabled !== true'));
+  assert.ok(workerSource.includes('COORDINATOR_INTERNAL_TOKEN'));
+  assert.ok(workerSource.includes('COORDINATOR_OPERATOR_TOKEN'));
+  for (const route of ["/api/live/reserve", "/api/live/confirm", "/api/live/fail", "/api/live/close", "/api/live/execute"]) {
+    assert.equal(workerSource.includes('url.pathname === "' + route + '"'), false);
+  }
+  assert.equal(workerSource.includes("executeLiveOrder("), false);
   assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
+});
+
+
+test("holder concentration thresholds use exact integer arithmetic at the boundary", () => {
+  const supply = 10_000n;
+  assert.equal(isShareAbovePercent(3_000n, supply, 30n), false);
+  assert.equal(isShareAbovePercent(3_001n, supply, 30n), true);
+  assert.equal(isShareAbovePercent(5_000n, supply, 50n), false);
+  assert.equal(isShareAbovePercent(5_001n, supply, 50n), true);
+  assert.equal(isShareAbovePercent(3_000_000_000_000_000_001n, 10_000_000_000_000_000_000n, 30n), true);
+});
+
+test("missing Solana market pair uses the same marker for the five-minute defer path", () => {
+  assert.ok(workerSource.includes('throw new Error("No verified Solana market pair for the requested mint")'));
+  assert.ok(workerSource.includes('message.startsWith("No verified Solana market pair")'));
+  assert.ok(workerSource.includes("retryAt: Date.now() + 5 * 60 * 1000"));
+});
+
+
+test("trusted token scans are authenticated and rate-limited before provider RPC work", () => {
+  const auth = workerSource.indexOf('if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);');
+  const scan = workerSource.indexOf('if (url.pathname === "/api/scan" && request.method === "POST")');
+  const limiter = workerSource.indexOf("consumeApiRateLimit(env, scanScope, 10, 60000)", scan);
+  const inspect = workerSource.indexOf("await inspectMint(mint, env)", scan);
+  assert.ok(auth >= 0 && scan > auth, "scan route must remain behind session authorization");
+  assert.ok(limiter > scan && inspect > limiter, "rate limit must be consumed before expensive provider calls");
+  assert.ok(workerSource.includes('operation: "consume-rate-limit"'));
+  assert.ok(workerSource.includes("retryAfterSeconds"));
+  assert.ok(workerSource.includes('{ "Retry-After": String(retryAfterSeconds) }'));
 });

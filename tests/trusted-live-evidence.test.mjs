@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchCompleteMintTokenAccounts, fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, decodeAllowlistedJupiterTip, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 function decodeBase58(value) {
@@ -102,6 +102,70 @@ function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signat
   return Buffer.from(Uint8Array.from([1, ...new Array(64).fill(signatureByte), ...message])).toString("base64");
 }
 
+function unsignedTransactionWithComputeBudget(instructions) {
+  const signer = decodeBase58(BOT_WALLET);
+  const program = decodeBase58("ComputeBudget111111111111111111111111111111");
+  const payload = [
+    1, 0, 1, 2, ...signer, ...program,
+    ...new Array(32).fill(0),
+    instructions.length
+  ];
+  for (const instruction of instructions) {
+    const accounts = instruction.accounts ?? [];
+    payload.push(1, accounts.length, ...accounts, instruction.data.length, ...instruction.data);
+  }
+  const message = Uint8Array.from(payload);
+  return Buffer.from(Uint8Array.from([
+    1, ...new Array(64).fill(0), ...message
+  ])).toString("base64");
+}
+function u32le(value) {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value, 0);
+  return [...bytes];
+}
+function u64le(value) {
+  const bytes = Buffer.alloc(8);
+  bytes.writeBigUInt64LE(BigInt(value), 0);
+  return [...bytes];
+}
+
+test("legacy/v0 parser decodes Compute Budget price and limit as exact wire values", () => {
+  const parsed = validateUnsignedJupiterTransaction(unsignedTransactionWithComputeBudget([
+    { data: [3, ...u64le("18446744073709551615")] },
+    { data: [2, ...u32le(300000)] },
+    { data: [4, ...u32le(4096)] },
+    { data: [1, ...u32le(32768)] }
+  ]), BOT_WALLET);
+  assert.equal(parsed.computeBudget.computeUnitPriceMicroLamports, "18446744073709551615");
+  assert.equal(parsed.computeBudget.computeUnitLimit, 300000);
+  assert.equal(parsed.computeBudget.loadedAccountsDataSizeLimitBytes, 4096);
+  assert.equal(parsed.computeBudget.requestHeapFrameBytes, 32768);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("legacy/v0 Compute Budget parser rejects duplicates, unknown tags, malformed lengths and accounts", () => {
+  const price = { data: [3, ...u64le(1000)] };
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([price, price]), BOT_WALLET
+  ), /Duplicate Compute Budget/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [9, 0, 0, 0, 0] }]), BOT_WALLET
+  ), /discriminator or data length/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [3, 1] }]), BOT_WALLET
+  ), /discriminator or data length/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [2, ...u32le(10)], accounts: [0] }]), BOT_WALLET
+  ), /unexpectedly references accounts/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [1, ...u32le(32769)] }]), BOT_WALLET
+  ), /heap frame is outside/);
+  assert.throws(() => validateUnsignedJupiterTransaction(
+    unsignedTransactionWithComputeBudget([{ data: [4, ...u32le(0)] }]), BOT_WALLET
+  ), /loaded-account-data limit must be non-zero/);
+});
+
 test("v1 transaction rejects duplicate inline account addresses", () => {
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes.copy(bytes, 74, 42, 74);
@@ -194,6 +258,57 @@ test("v1 heap-size config rejects values outside the protocol bounds or alignmen
   }
 });
 
+test("v1 transaction enforces the currently active 64-address limit", () => {
+  for (const addressCount of [65, 96]) {
+    const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+    // SIMD-0596 is still a draft without a feature gate; 96 is not active.
+    bytes[41] = addressCount;
+    assert.throws(
+      () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+      /instruction or address count is invalid/
+    );
+  }
+});
+
+test("v1 transaction rejects instruction account indexes outside the inline address table", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // The fixture has two inline addresses (indexes 0 and 1); index 2 is invalid.
+  bytes[118] = 2;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /V1 Jupiter instruction account index is invalid/
+  );
+});
+
+test("v1 parser retains instruction program, ordered accounts, privileges, and raw data", () => {
+  const parsed = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programIdIndex, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [0]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 0, address: BOT_WALLET, isSigner: true, isWritable: true
+  }]);
+  assert.equal(parsed.instructions[0].dataBase64, "AA==");
+  assert.equal(parsed.semanticInstructionVerification, false);
+  assert.equal(parsed.routeVerification, undefined);
+});
+
+test("legacy parser retains compiled instruction structure but never semantically trusts it", () => {
+  const parsed = validateUnsignedJupiterTransaction(validUnsignedTransaction(), BOT_WALLET);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programIdIndex, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [0]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 0, address: BOT_WALLET, isSigner: true, isWritable: true
+  }]);
+  assert.equal(parsed.instructions[0].dataBase64, "");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("unknown instruction program is parsed structurally but never semantically trusted", () => {
   const unknownProgram = new Array(32).fill(17);
   const parsed = validateUnsignedJupiterTransaction(
@@ -266,6 +381,12 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
   assert.equal(parsed.lookupContextSlot, 100);
   assert.equal(parsed.resolvedWritableAddresses[0], encodeBase58(new Uint8Array(32).fill(7)));
   assert.equal(parsed.resolvedReadonlyAddresses[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 2,
+    address: encodeBase58(new Uint8Array(32).fill(7)),
+    isSigner: false,
+    isWritable: true
+  }]);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
@@ -375,6 +496,17 @@ test("ALT resolver rejects tables not owned by the Address Lookup Table program"
   } })), /unexpected program/);
 });
 
+test("ALT resolver rejects noncanonical base64 account data before parsing", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const malformed = mockLookupTableAccount();
+  malformed.data = [malformed.data[0] + " ", "base64"];
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [malformed]
+  } })), /not canonical base64/);
+});
+
 test("ALT resolver rejects oversized encoded account data before decoding", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const oversized = mockLookupTableAccount();
@@ -442,6 +574,7 @@ test("v1 priority fee requires both mask bits and preserves config offsets", () 
     unsignedV1TransactionWithPriorityFee(5000), BOT_WALLET
   );
   assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.priorityFeeLamports, "5000");
   assert.equal(parsed.semanticInstructionVerification, false);
   const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
   bytes[4] = 0x0d; // only one of the two priority-fee mask bits
@@ -456,7 +589,21 @@ test("v1 priority fee and heap config values are parsed in wire order", () => {
     unsignedV1TransactionWithPriorityFeeAndHeap(5000, 32768), BOT_WALLET
   );
   assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.priorityFeeLamports, "5000");
   assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v1 priority fee parser preserves zero and full u64 precision", () => {
+  const zero = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFee(0), BOT_WALLET
+  );
+  assert.equal(zero.priorityFeeLamports, "0");
+  const maximum = validateUnsignedJupiterTransaction(
+    unsignedV1TransactionWithPriorityFee("18446744073709551615"), BOT_WALLET
+  );
+  assert.equal(maximum.priorityFeeLamports, "18446744073709551615");
+  const omitted = validateUnsignedJupiterTransaction(validUnsignedV1Transaction(), BOT_WALLET);
+  assert.equal(omitted.priorityFeeLamports, null);
 });
 
 test("v1 compute and loaded-data limits accept their supported upper boundaries", () => {
@@ -629,10 +776,27 @@ test("holder verification fails closed when Alchemy credentials are absent", asy
   );
 });
 
+
+test("Alchemy holder census rejects non-canonical wallet owners and token-account addresses", async () => {
+  const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const key = "test-alchemy-api-key-123456";
+  for (const row of [
+    { address: encodeBase58(new Uint8Array(32).fill(3)), mint, owner: "not-a-wallet-address", amount: "1" },
+    { address: "not-a-token-account-address", mint, owner: "11111111111111111111111111111111", amount: "1" }
+  ]) {
+    await assert.rejects(
+      fetchCompleteMintTokenAccounts(mint, async () =>
+        Response.json({ jsonrpc: "2.0", id: 1, result: { token_accounts: [row], errors: [] } })
+      , key),
+      /incomplete, duplicate, or mismatched account data/
+    );
+  }
+});
+
 test("risk inspection pages the complete Alchemy holder census and reconciles supply", async () => {
   const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const firstPage = Array.from({ length: 100 }, (_, i) => ({
-    address: "TokenAccountAddress" + String(i).padStart(20, "0"),
+    address: encodeBase58(new Uint8Array(32).fill(i + 1)),
     mint, owner: "11111111111111111111111111111111", amount: "10"
   }));
   let holderPages = 0;
@@ -670,7 +834,7 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       holderPages++;
       return Response.json({ jsonrpc: "2.0", id: request.id, result: {
         token_accounts: request.params.page === 1 ? firstPage : [{
-          address: "TokenAccountAddress" + "100".padStart(20, "0"),
+          address: encodeBase58(new Uint8Array(32).fill(101)),
           mint, owner: "11111111111111111111111111111112", amount: "1"
         }],
         errors: []
@@ -777,6 +941,12 @@ test("v0 transaction with address lookup tables remains structurally parsed but 
   assert.equal(parsed.messageVersion, 0);
   assert.equal(parsed.addressLookupCount, 1);
   assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.instructions.length, 1);
+  assert.equal(parsed.instructions[0].programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [2]);
+  assert.deepEqual(parsed.instructions[0].accounts, [{
+    index: 2, address: null, isSigner: false, isWritable: null
+  }]);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
@@ -867,9 +1037,45 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 });
 
 
+test("settlement proof rejects noncanonical signatures and noncanonical or out-of-range u64 amounts before RPC", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  let rpcCalls = 0;
+  const fetchImpl = async () => {
+    rpcCalls++;
+    throw new Error("RPC must not be called for invalid settlement input");
+  };
+  const invalidRequests = [
+    { signature: "1" + signature, inputAmount: "1", outputAmount: "1" },
+    { signature, inputAmount: "01", outputAmount: "1" },
+    { signature, inputAmount: "18446744073709551616", outputAmount: "1" },
+    { signature, inputAmount: "1", outputAmount: "00" }
+  ];
+  for (const request of invalidRequests) {
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature: request.signature,
+      inputMint,
+      outputMint,
+      inputAmount: request.inputAmount,
+      outputAmount: request.outputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+  assert.equal(rpcCalls, 0);
+});
+
+
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  let invalidNativeBalanceFixture = false;
+  let invalidLoadedAddressMetadataFixture = false;
+  let invalidStackHeightFixture = false;
+  let invalidOuterStackHeightFixture = false;
+  let invalidInnerStackHeightFixture = false;
+  let invalidInnerStackSequenceFixture = false;
+  let duplicateForeignTokenBalanceFixture = false;
+  let malformedForeignTokenBalanceFixture = false;
   const fetchImpl = async (_url, options) => {
     const { method } = JSON.parse(options.body);
     const result = method === "getSignatureStatuses"
@@ -878,26 +1084,67 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              addressTableLookups: [{
+                accountKey: encodeBase58(new Uint8Array(32).fill(13)),
+                writableIndexes: [0],
+                readonlyIndexes: [0]
+              }],
+              instructions: [{
+                programIdIndex: 0,
+                accounts: [0],
+                data: "1",
+                ...(invalidOuterStackHeightFixture ? { stackHeight: 2 } : {})
+              }]
+            }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [89_995_000],
-            preTokenBalances: [{
-              mint: "So11111111111111111111111111111111111111112",
+            ...(invalidLoadedAddressMetadataFixture ? {} : {
+              loadedAddresses: {
+                writable: [encodeBase58(new Uint8Array(32).fill(11))],
+                readonly: [encodeBase58(new Uint8Array(32).fill(12))]
+              }
+            }),
+            innerInstructions: [{
+              index: 0,
+              instructions: [
+                {
+                  programIdIndex: 1,
+                  accounts: [0, 2],
+                  data: "2",
+                  stackHeight: invalidStackHeightFixture ? -1 :
+                    (invalidInnerStackHeightFixture ? 1 : 2)
+                },
+                ...(invalidInnerStackSequenceFixture ? [{
+                  programIdIndex: 1,
+                  accounts: [0, 2],
+                  data: "2",
+                  stackHeight: 4
+                }] : [])
+              ]
+            }],
+            preBalances: invalidNativeBalanceFixture ? [null, 1, 2] : [100_000_000, 1, 2],
+            postBalances: [89_995_000, 1, 2],
+            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              {
-                mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              {
-                mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: duplicateForeignTokenBalanceFixture ? 0 : 1, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
-              }
+              },
+              ...(malformedForeignTokenBalanceFixture ? [{
+                accountIndex: 2,
+                mint: encodeBase58(new Uint8Array(32).fill(13)),
+                owner: encodeBase58(new Uint8Array(32).fill(14)),
+                uiTokenAmount: { amount: "01", decimals: 6 }
+              }] : [])
             ]
           }
         };
@@ -915,17 +1162,458 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
-  // The native SOL balance delta includes the 10,000,000-lamport wrapped-SOL
-  // input and 5,000-lamport base fee in this fixture. The verifier does not
-  // yet attest priority fees, rent, tips, or every other native outflow.
-  for (const field of [
-    "costs", "allInCosts", "nativeSolOutflowLamports",
-    "baseFeeLamports", "priorityFeeLamports", "rentLamports",
-    "tipLamports", "totalLamports"
-  ]) {
-    assert.equal(Object.hasOwn(proof, field), false, field);
-  }
+  assert.equal(proof.outerInstructionsRecorded, true);
+  assert.deepEqual(proof.outerInstructionEvidence, [{
+    programIdIndex: 0,
+    programId: BOT_WALLET,
+    accountIndexes: [0],
+    accounts: [{ index: 0, address: BOT_WALLET }],
+    dataBase58: "1",
+    stackHeight: null
+  }]);
+  assert.equal(proof.innerInstructionsRecorded, true);
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.grossOutflowsVerified, false);
+  assert.equal(proof.allInCostEvidence, null);
+  assert.equal(proof.costVerification, "net-lamport-delta-only");
+  assert.deepEqual(proof.nativeLamportEvidence, {
+    feePayerPreBalanceLamports: "100000000",
+    feePayerPostBalanceLamports: "89995000",
+    feePayerNetDecreaseLamports: "10005000",
+    networkFeeLamports: "5000"
+  });
+  assert.deepEqual(proof.innerInstructionEvidence, [{
+    index: 0,
+    instructions: [{
+      programIdIndex: 1,
+      programId: encodeBase58(new Uint8Array(32).fill(11)),
+      accountIndexes: [0, 2],
+      accounts: [
+        { index: 0, address: BOT_WALLET },
+        { index: 2, address: encodeBase58(new Uint8Array(32).fill(12)) }
+      ],
+      dataBase58: "2",
+      stackHeight: 2
+    }]
+  }]);
+  // Native lamport evidence is only the fee payer's net balance movement
+  // plus the RPC-reported network fee. It does not reveal gross rent, tips,
+  // transfers, or other outflows and is not an all-in cost attestation.
+  assert.equal(Object.hasOwn(proof, "costs"), false);
+  assert.equal(Object.hasOwn(proof, "allInCosts"), false);
+  assert.equal(Object.hasOwn(proof, "nativeSolOutflowLamports"), false);
+  assert.equal(Object.hasOwn(proof, "totalLamports"), false);
+
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, async (url, options) => {
+    const response = await fetchImpl(url, options);
+    const body = await response.json();
+    if (JSON.parse(options.body).method === "getTransaction") {
+      body.result.transaction.message.addressTableLookups[0].writableIndexes = [0, 1];
+    }
+    return Response.json(body);
+  }), /loaded-address metadata does not match/);
+
+  invalidLoadedAddressMetadataFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /metadata is incomplete or indicates failure/);
+  invalidLoadedAddressMetadataFixture = false;
+
+  invalidNativeBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /metadata is incomplete or indicates failure/);
+
+  invalidNativeBalanceFixture = false;
+  duplicateForeignTokenBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid or duplicate owned token account indexes/);
+
+  duplicateForeignTokenBalanceFixture = false;
+  malformedForeignTokenBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid owned token balance/);
+
+  malformedForeignTokenBalanceFixture = false;
+  invalidInnerStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
+
+  invalidInnerStackHeightFixture = false;
+  invalidInnerStackSequenceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /stack-height sequence is inconsistent/);
+
+  invalidInnerStackSequenceFixture = false;
+  invalidOuterStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
+
+  invalidOuterStackHeightFixture = false;
+  invalidStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
 });
+
+test("settlement proof rejects malformed outer-instruction metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(4));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 128,
+          transaction: {
+            signatures: [signature],
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(15))], instructions: { malformed: true } }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000, 1],
+            postBalances: [99_995_000, 1],
+            preTokenBalances: [{
+              accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "100", decimals: 0 }
+            }],
+            postTokenBalances: [
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 1, mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "200", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /outer-instruction metadata has an invalid shape/);
+});
+
+test("settlement proof rejects malformed inner-instruction metadata instead of treating it as absent", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(5));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 127,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: { malformed: true },
+            preTokenBalances: [{
+              accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "100", decimals: 0 }
+            }],
+            postTokenBalances: [
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "200", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /inner-instruction metadata has an invalid shape/);
+});
+
+test("settlement proof rejects CPI groups that reference a nonexistent outer instruction", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(6));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 126,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: [{
+              index: 1,
+              instructions: [{
+                programIdIndex: 0,
+                accounts: [0],
+                data: "2",
+                stackHeight: 2
+              }]
+            }]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid parent index or shape/);
+});
+
+test("settlement proof marks missing inner-instruction metadata as unavailable, not CPI-free", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(5));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 127,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [99_995_000, 1, 1],
+            preTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+            ],
+            postTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.innerInstructionsRecorded, false);
+  assert.equal(proof.innerInstructionEvidence, null);
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.grossOutflowsVerified, false);
+  assert.equal(proof.allInCostEvidence, null);
+  assert.equal(proof.costVerification, "net-lamport-delta-only");
+});
+
+test("settlement proof rejects duplicate CPI parent instruction groups", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(4));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 128,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: [
+              { index: 0, instructions: [] },
+              { index: 0, instructions: [] }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid parent index or shape/);
+});
+
+test("settlement proof rejects non-base58 compiled instruction data", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(3));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 129,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "0" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: [],
+            preTokenBalances: [
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+            ],
+            postTokenBalances: [
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid compiled account indexes or data/);
+});
+
+test("settlement proof rejects incomplete loaded-address balance metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 123,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+              accountKeys: [BOT_WALLET],
+              addressTableLookups: [{
+                accountKey: encodeBase58(new Uint8Array(32).fill(13)),
+                writableIndexes: [0],
+                readonlyIndexes: [0]
+              }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            loadedAddresses: {
+              writable: [encodeBase58(new Uint8Array(32).fill(11))],
+              readonly: [encodeBase58(new Uint8Array(32).fill(12))]
+            },
+            preBalances: [100_000_000, 1, 2],
+            postBalances: [89_995_000, 1],
+            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
+              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
+                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+              },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "12345", decimals: 6 }
+              }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0", id: 1, result
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  await assert.rejects(
+    verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+    }, fetchImpl),
+    /loaded-address balance metadata is inconsistent/
+  );});
 
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
@@ -939,11 +1627,11 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [encodeBase58(new Uint8Array(32).fill(1)), BOT_WALLET, encodeBase58(new Uint8Array(32).fill(2)), encodeBase58(new Uint8Array(32).fill(3))] }
           },
           meta: {
             err: null, fee: 5000,
-            preBalances: [1, 100_000_000, 1, 1], postBalances: [1, 89_995_000, 1, 1],
+            preBalances: [10_000, 100_000_000, 1, 1], postBalances: [5_000, 89_995_000, 1, 1],
             preTokenBalances: [
               { accountIndex: 2, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
             ],
@@ -961,8 +1649,89 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
     verifyFinalizedJupiterSettlement({
       signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
     }, fetchImpl),
-    /not the finalized transaction fee payer/
+    /not the finalized writable transaction fee payer/
   );
+});
+
+test("settlement proof rejects a missing or read-only fee-payer message header", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(21));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  for (const header of [null, {
+    numRequiredSignatures: 1,
+    numReadonlySignedAccounts: 1,
+    numReadonlyUnsignedAccounts: 0
+  }]) {
+    const fetchImpl = async (_url, options) => {
+      const { method } = JSON.parse(options.body);
+      const result = method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : {
+            slot: 126,
+            transaction: {
+              signatures: [signature],
+              message: {
+                ...(header ? { header } : {}),
+                accountKeys: [BOT_WALLET]
+              }
+            },
+            meta: {
+              err: null,
+              fee: 5000,
+              preBalances: [100_000_000],
+              postBalances: [99_995_000]
+            }
+          };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    };
+    await assert.rejects(
+      verifyFinalizedJupiterSettlement({
+        signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+      }, fetchImpl),
+      /Finalized transaction metadata is incomplete|writable transaction fee payer/
+    );
+  }
+});
+
+test("settlement proof rejects a fee larger than the fee payer's pre-transaction balance", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(9));
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 127,
+          transaction: {
+            signatures: [signature],
+            message: {
+              header: {
+                numRequiredSignatures: 1,
+                numReadonlySignedAccounts: 0,
+                numReadonlyUnsignedAccounts: 0
+              },
+              accountKeys: [BOT_WALLET]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5001,
+            preBalances: [5000],
+            postBalances: [0]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "100",
+    outputAmount: "200"
+  }, fetchImpl), /Finalized transaction metadata is incomplete/);
 });
 
 test("settlement proof rejects a finalized transaction with mismatched output", async () => {
@@ -974,20 +1743,17 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          transaction: { signatures: [signature], message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(33)), encodeBase58(new Uint8Array(32).fill(34))] } },
           meta: {
-            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
-            preTokenBalances: [{
-              mint: "So11111111111111111111111111111111111111112",
+            err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
+            preTokenBalances: [{ accountIndex: 1, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              {
-                mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 1, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              {
-                mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
             ]
@@ -1002,6 +1768,133 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
     inputAmount: "10000000",
     outputAmount: "12345"
   }, fetchImpl), /output token balance delta does not match/);
+});
+
+test("settlement proof rejects noncanonical or out-of-range owned token balances", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(10));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 130,
+          transaction: {
+            signatures: [signature],
+            message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(35)), encodeBase58(new Uint8Array(32).fill(36))] }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [99_995_000, 1, 1],
+            preTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+            ],
+            postTokenBalances: [
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "1"
+  }, fetchImpl), /invalid owned token balance/);
+});
+
+test("settlement proof rejects duplicate and out-of-range owned token account indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(13));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const inputAccount = encodeBase58(new Uint8Array(32).fill(21));
+  const outputAccount = encodeBase58(new Uint8Array(32).fill(22));
+  const base = {
+    slot: 131,
+    transaction: {
+      signatures: [signature],
+      message: { header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 }, accountKeys: [BOT_WALLET, inputAccount, outputAccount] }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      preBalances: [100_000_000, 1, 1],
+      postBalances: [99_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+      ]
+    }
+  };
+  for (const [label, mutate] of [
+    ["duplicate", rows => rows.push({ ...rows[1], uiTokenAmount: { amount: "0", decimals: 0 } })],
+    ["out-of-range", rows => { rows[1].accountIndex = 3; }]
+  ]) {
+    const result = structuredClone(base);
+    mutate(result.meta.postTokenBalances);
+    const fetchImpl = async (_url, options) => {
+      const { method } = JSON.parse(options.body);
+      const payload = method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : result;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: payload }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+    }, fetchImpl), label === "duplicate" ? /duplicate owned token account indexes/ : /invalid or duplicate owned token account indexes/);
+  }
+});
+
+test("settlement proof rejects token balance rows without explicit owner attribution", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(31));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 132,
+    transaction: {
+      signatures: [signature],
+      message: {
+        header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+        accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(23)), encodeBase58(new Uint8Array(32).fill(24))]
+      }
+    },
+    meta: {
+      err: null, fee: 5000,
+      preBalances: [100_000_000, 1, 1], postBalances: [99_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, uiTokenAmount: { amount: "200", decimals: 0 } }
+      ]
+    }
+  };
+  delete result.meta.postTokenBalances[1].owner;
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const payload = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: payload }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid or duplicate owned token account indexes/);
 });
 
 test("settlement proof rejects confirmed but non-finalized signatures", async () => {
@@ -1066,6 +1959,66 @@ test("Jupiter /build response envelope is structurally validated without semanti
   assert.equal(parsed.swapInstruction.programId, "11111111111111111111111111111111");
   assert.equal(parsed.semanticInstructionVerification, false);
   assert.equal(parsed.routeVerification, "build-envelope-only");
+});
+
+test("Jupiter tip transfers require exact System Program semantics and an explicit destination allowlist", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(44));
+  const data = Buffer.alloc(12);
+  data.writeUInt32LE(2, 0);
+  data.writeBigUInt64LE(2500n, 4);
+  const tipInstruction = {
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    data: data.toString("base64")
+  };
+  const evidence = decodeAllowlistedJupiterTip(tipInstruction, [destination], "2500", BOT_WALLET);
+  assert.deepEqual(evidence, {
+    programId: "11111111111111111111111111111111",
+    source: BOT_WALLET,
+    destination,
+    lamports: "2500",
+    semantics: "system-transfer-allowlisted-destination"
+  });
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [], "2500", BOT_WALLET), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [BOT_WALLET], "2500", BOT_WALLET), /allowlisted System Program transfer/);
+  const forged = { ...tipInstruction, data: Buffer.from("arbitrary").toString("base64") };
+  assert.throws(() => decodeAllowlistedJupiterTip(forged, [destination], "2500", BOT_WALLET), /discriminator or data length/);
+  const readonlySource = {
+    ...tipInstruction,
+    accounts: [{ ...tipInstruction.accounts[0], isWritable: false }, tipInstruction.accounts[1]]
+  };
+  assert.throws(() => decodeAllowlistedJupiterTip(readonlySource, [destination], "2500", BOT_WALLET), /allowlisted System Program transfer/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [destination], "2499", BOT_WALLET), /exceeds the configured maximum/);
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [destination], "invalid", BOT_WALLET), /allowlisted System Program transfer/);
+  const otherFeePayer = encodeBase58(new Uint8Array(32).fill(46));
+  assert.throws(() => decodeAllowlistedJupiterTip(tipInstruction, [destination], "2500", otherFeePayer), /allowlisted System Program transfer/);
+});
+
+test("Jupiter /build refuses a tip unless its destination is explicitly allowlisted", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(45));
+  const data = Buffer.alloc(12);
+  data.writeUInt32LE(2, 0);
+  data.writeBigUInt64LE(1000n, 4);
+  const tipInstruction = {
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    data: data.toString("base64")
+  };
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    tipInstruction
+  })), /allowlisted System Program transfer/);
+  const parsed = validateJupiterBuildResponse(validBuildResponse({
+    tipInstruction
+  }), { tipAccounts: [destination], maxTipLamports: "1000", feePayer: BOT_WALLET });
+  assert.equal(parsed.tipEvidence.destination, destination);
+  assert.equal(parsed.tipEvidence.lamports, "1000");
+  assert.equal(parsed.semanticInstructionVerification, false);
 });
 
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
@@ -1372,7 +2325,7 @@ test("production trusted evidence integration never claims semantic trust or all
       return Response.json({
         jsonrpc: "2.0", id: request.id,
         result: { token_accounts: [{
-          address: "TokenAccountAddress111111111111111111111",
+          address: encodeBase58(new Uint8Array(32).fill(102)),
           mint, owner, amount: "1001"
         }], errors: [] }
       });

@@ -250,3 +250,42 @@ test("scheduled cron persists its cycle status through authoritative paper state
   assert.match(current.body.state.lastMessage, /Auto-buy inactive/);
   assert.equal(current.body.revision, 1);
 });
+
+
+test("scheduled cron retries a revision conflict without overwriting concurrent dashboard settings", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+  let injectedConflict = false;
+  const namespace = {
+    idFromName: name => name,
+    get: id => {
+      assert.equal(id, "paper-trading");
+      return {
+        fetch: async (url, init) => {
+          const request = new Request(url, init);
+          const body = await request.clone().json();
+          if (body.operation === "compare-and-set" && !injectedConflict) {
+            injectedConflict = true;
+            const concurrent = await call(instance, { operation: "automation", settings: { paused: true } });
+            assert.equal(concurrent.status, 200);
+          }
+          return instance.fetch(request);
+        }
+      };
+    }
+  };
+  const pending = [];
+  await Worker.scheduled({}, { PAPER_TRADING_STATE: namespace }, {
+    waitUntil: promise => pending.push(promise)
+  });
+  await Promise.all(pending);
+
+  const current = await call(instance, { operation: "get" });
+  assert.equal(injectedConflict, true);
+  assert.equal(current.status, 200);
+  assert.equal(current.body.state.paused, true);
+  assert.equal(current.body.state.balance, 100);
+  assert.equal(current.body.state.trades.length, 0);
+  assert.ok(Number.isFinite(Date.parse(current.body.state.lastRunAt)));
+  assert.match(current.body.state.lastMessage, /Auto-buy inactive/);
+  assert.equal(current.body.revision, 2);
+});
