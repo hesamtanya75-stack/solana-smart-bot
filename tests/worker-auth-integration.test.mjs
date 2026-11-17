@@ -240,6 +240,23 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await nextLogin.json()).mfaRequired, true);
 });
 
+test("Worker trusted scanner requires an authenticated session and rejects malformed mint requests", async () => {
+  const { env } = makeEnvironment();
+  const mint = "So11111111111111111111111111111111111111112";
+
+  const unauthorized = await post("/api/scan", { mint }, env);
+  assert.equal(unauthorized.status, 401);
+
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const headers = { Authorization: "Bearer " + token };
+
+  const malformed = await post("/api/scan", { mint: "not-a-mint", extra: true }, env, headers);
+  assert.equal(malformed.status, 400);
+  assert.match((await malformed.json()).error, /Invalid token scan request/);
+});
+
 test("Worker logout revokes the bearer session immediately", async () => {
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
