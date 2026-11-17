@@ -1143,6 +1143,9 @@ export async function verifyFinalizedJupiterSettlement({
   // semantic verifier. Missing CPI metadata is never treated as proof that
   // no CPI occurred. Parent indexes must point at an actual outer instruction.
   const allKeys = [...keyStrings, ...loadedKeyStrings];
+  if (message.instructions != null && !Array.isArray(message.instructions)) {
+    throw new Error("Finalized outer-instruction metadata has an invalid shape");
+  }
   const outerInstructionsRecorded = Array.isArray(message.instructions);
   const compileInstructionEvidence = (instruction, label) => {
     if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
