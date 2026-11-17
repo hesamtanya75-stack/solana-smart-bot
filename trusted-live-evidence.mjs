@@ -1823,6 +1823,9 @@ export async function verifyFinalizedJupiterSettlement({
     ...loadedWritable,
     ...loadedReadonly
   ];
+  if (keyStrings.length === 0 || keyStrings.length > 256) {
+    throw new Error("Finalized transaction account key count exceeds the Solana message limit");
+  }
   if (meta.preBalances.length !== keyStrings.length ||
       meta.postBalances.length !== keyStrings.length) {
     throw new Error("Finalized transaction balance arrays do not cover static and loaded account keys");
