@@ -161,3 +161,15 @@ test("missing Solana market pair uses the same marker for the five-minute defer 
   assert.ok(workerSource.includes('message.startsWith("No verified Solana market pair")'));
   assert.ok(workerSource.includes("retryAt: Date.now() + 5 * 60 * 1000"));
 });
+
+
+test("trusted token scans are authenticated and rate-limited before provider RPC work", () => {
+  const auth = workerSource.indexOf('if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);');
+  const scan = workerSource.indexOf('if (url.pathname === "/api/scan" && request.method === "POST")');
+  const limiter = workerSource.indexOf("consumeApiRateLimit(env, scanScope, 10, 60000)", scan);
+  const inspect = workerSource.indexOf("await inspectMint(mint, env)", scan);
+  assert.ok(auth >= 0 && scan > auth, "scan route must remain behind session authorization");
+  assert.ok(limiter > scan && inspect > limiter, "rate limit must be consumed before expensive provider calls");
+  assert.ok(workerSource.includes('operation: "consume-rate-limit"'));
+  assert.ok(workerSource.includes("retryAfterSeconds"));
+});
