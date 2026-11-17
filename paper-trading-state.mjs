@@ -23,10 +23,13 @@ function cleanState(value) {
     throw new Error("Paper trading state integrity error: trades must be an array");
   }
   const sourceTrades = s.trades || [];
+  if (sourceTrades.length > 500) {
+    throw new Error("Paper trading state integrity error: trade history exceeds the supported limit");
+  }
   const finite = (value, fallback = 0) =>
     value === undefined ? fallback :
     typeof value === "number" && Number.isFinite(value) ? value : NaN;
-  const trades = sourceTrades.slice(-500).map(trade => {
+  const trades = sourceTrades.map(trade => {
     if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
         typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) {
       throw new Error("Paper trading state integrity error: malformed trade record");
