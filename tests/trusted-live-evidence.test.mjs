@@ -1361,22 +1361,22 @@ test("settlement proof marks missing inner-instruction metadata as unavailable, 
           transaction: {
             signatures: [signature],
             message: {
-              accountKeys: [BOT_WALLET],
+              accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
             }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [99_995_000],
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [99_995_000, 1, 1],
             preTokenBalances: [
-              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
             ],
             postTokenBalances: [
-              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "200", decimals: 0 } }
             ]
           }
         };
@@ -1572,17 +1572,17 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(33)), encodeBase58(new Uint8Array(32).fill(34))] } },
           meta: {
-            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
-            preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
+            err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
+            preTokenBalances: [{ accountIndex: 1, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
-              { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
+              { accountIndex: 1, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
             ]
@@ -1611,20 +1611,20 @@ test("settlement proof rejects noncanonical or out-of-range owned token balances
           slot: 130,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(35)), encodeBase58(new Uint8Array(32).fill(36))] }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [99_995_000],
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [99_995_000, 1, 1],
             preTokenBalances: [
-              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
             ],
             postTokenBalances: [
-              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
+              { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "01", decimals: 0 } }
             ]
           }
         };
