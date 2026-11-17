@@ -78,7 +78,7 @@ test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release 
     "utf8"
   );
   assert.match(script, /function retryDelayMs\(response, attempt\)/);
-  assert.match(script, /Math\.min\(dateDelay, 10_000\)/);
+  assert.match(script, /Math\.min\(dateDelay, 30_000\)/);
   assert.match(script, /response\.body\?\.cancel\(\)/);
   assert.match(script, /setTimeout\(resolve, retryDelayMs\(response, attempt\)\)/);
 });
