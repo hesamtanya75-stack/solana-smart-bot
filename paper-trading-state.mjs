@@ -247,7 +247,7 @@ export class PaperTradingState {
         const requestId = String(body.requestId || "");
         if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) return response({ error: "Invalid request id" }, 400);
         const result = await this.transact(record => {
-          const intent = body.operation === "paper-buy" ? String(body.mint || "") : "";
+          const intent = body.operation === "paper-buy" ? JSON.stringify({ mint: String(body.mint || ""), price: Number(body.price) }) : "";
           const previous = record.recentOperations.find(item => item.id === requestId);
           if (previous) {
             if (previous.operation !== body.operation || previous.intent !== intent) {

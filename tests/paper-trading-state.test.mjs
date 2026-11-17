@@ -213,6 +213,29 @@ test("idempotency keys cannot be replayed for a different mint or operation", as
   assert.equal(current.body.state.trades.length, 1);
 });
 
+
+test("paper-buy idempotency rejects the same mint with a changed price", async () => {
+  const { instance } = makeDO({ balance: 20, trades: [], updatedAt: null });
+  const first = await call(instance, {
+    operation: "paper-buy", mint: mintA, price: 2, requestId: requestId("price-bound")
+  });
+  assert.equal(first.status, 200);
+  const changedPrice = await call(instance, {
+    operation: "paper-buy", mint: mintA, price: 3, requestId: requestId("price-bound")
+  });
+  assert.equal(changedPrice.status, 409);
+  assert.match(changedPrice.body.error, /Idempotency key/);
+  const replay = await call(instance, {
+    operation: "paper-buy", mint: mintA, price: 2, requestId: requestId("price-bound")
+  });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.replayed, true);
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.body.state.balance, 15);
+  assert.equal(current.body.state.trades.length, 1);
+  assert.equal(current.body.state.trades[0].buyPrice, 2);
+});
+
 test("clearing history preserves the current paper balance", async () => {
   const { instance } = makeDO({ balance: 87.5, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: true, sellPrice: 2, saleValue: 5
