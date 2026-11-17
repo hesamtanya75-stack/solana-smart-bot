@@ -190,3 +190,15 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 - In particular, base signature/precompile fees, rent/account creation, tips, System Program transfers, token outflows, and unknown instruction effects are not yet independently derived end-to-end from the unsigned transaction. A caller-supplied `otherOutflowLamports` number is not a substitute for decoding those effects.
 - Consequently, passing these arithmetic tests does not establish complete all-in transaction-cost verification, semantic approval, or signing eligibility. Keep `semanticInstructionVerification` false and the Worker live reservation/signing route disconnected until the evidence is generated from a reviewed decoder registry and tied to the exact immutable transaction bytes.
 - This test-only change does not enable funded Devnet activity, Phantom signing, Mainnet execution, merge, or deployment.
+
+## CI evidence snapshot (2026-11-17, PR #30 head `d346c0a09a6253266c1f6f7246add7b40aa46c4e`)
+
+- Cloudflare Worker build: success (build-only; no deployment).
+- Both Node test jobs: success.
+- Both Worker validation jobs: success.
+- Workflow validation: success.
+- Devnet read-only identity/RPC preflight: success.
+- The manual `funded-devnet-lifecycle` and `require-explicit-confirmation` jobs were skipped because this was not an explicitly confirmed manual Devnet dispatch. No funded Devnet transfer, signing, or transaction submission is evidenced by this run.
+- PR #30 remains open and Draft. No merge, production deployment, Phantom signing, Mainnet RPC, swap, or Mainnet transaction was performed.
+
+The latest test-only change adds adversarial checks for duplicate inner-instruction groups, invalid zero stack height, oversized inner-instruction groups, excessive account-index lists, and aggregate inner-instruction metadata exceeding the configured bound. These are structural metadata-validation tests only; they do not semantically decode or authorize CPI instructions. Keep semantic instruction verification false and the live reservation/signing path disconnected.
