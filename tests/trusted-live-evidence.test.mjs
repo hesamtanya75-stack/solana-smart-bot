@@ -1833,6 +1833,10 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
   for (const corrupt of [
     value => { value.meta.loadedAddresses.writable = "not-an-address-array"; },
     value => { delete value.meta.loadedAddresses; },
+    value => {
+      value.version = 0;
+      delete value.transaction.message.addressTableLookups;
+    },
     value => { value.transaction.message.addressTableLookups[0].writableIndexes = "invalid"; },
     value => {
       value.meta.loadedAddresses.writable = Array.from({ length: 255 }, (_, index) =>
@@ -1854,7 +1858,7 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       signature, inputMint, outputMint,
       inputAmount: "10000000", outputAmount: "12345",
       expectedOwner: BOT_WALLET
-    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|account key count exceeds/);
+    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|missing address-lookup metadata|account key count exceeds/);
   }
 });
 
