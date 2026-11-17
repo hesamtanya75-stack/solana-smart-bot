@@ -455,7 +455,8 @@ export class LiveTradeCoordinator {
       "maxPriorityFeeLamports", "baseFeeLamports", "tipLamports",
       "rentLamports", "otherOutflowLamports", "totalFeeLamports", "totalLamports"
     ];
-    if (!expectedCosts || !settledCosts || typeof settledCosts !== "object" ||
+    if (proof.grossOutflowsVerified !== true ||
+        !expectedCosts || !settledCosts || typeof settledCosts !== "object" ||
         Array.isArray(settledCosts) ||
         costFields.some(field => !Object.prototype.hasOwnProperty.call(settledCosts, field) ||
           settledCosts[field] !== expectedCosts[field])) {
