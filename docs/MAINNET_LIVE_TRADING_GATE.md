@@ -48,7 +48,7 @@ The current PR adds regression coverage that removes either semantic route attes
 1. Complete independent semantic verification of Jupiter instruction programs/accounts and resolve every address lookup table; the current parser validates wire structure only.
 2. Establish quote freshness and validate all relevant amounts, fees, and token programs.
 3. Complete and independently test the existing Durable Object coordinator's durable idempotency and settlement state machine, including restart recovery and duplicate Cron/request behavior.
-4. Wire an authenticated emergency stop into the same strongly coordinated component and prove that it blocks new reservations immediately; define safe exit behavior.
+4. The authenticated one-way emergency-stop activation route is wired to the same Durable Object as reservations; the route has no deactivation path. Safe exit behavior for any future live positions remains unimplemented and must be independently designed.
 5. Test RPC outages, provider errors, ambiguous submissions, partial confirmations, and restart recovery.
 6. Complete a Devnet-only signing/submission test using a disposable wallet and tiny test amount.
 7. Obtain independent review of signing and transaction-decoding code.
@@ -119,10 +119,10 @@ This is a documentation clarification of the current verifier's scope; it does n
 
 ### Worker integration boundary
 
-The Wrangler configuration declares a `LIVE_TRADE_COORDINATOR` Durable Object binding, but the current public `worker.js` does not reference that binding, instantiate a coordinator stub, expose live-order routes, or call `executeLiveOrder()`. The coordinator module's existence and a Wrangler binding declaration are not an operational trading path.
+The Worker references the `LIVE_TRADE_COORDINATOR` binding only for authenticated status reads and one-way emergency-stop activation. It does not expose reservation, confirmation, failure, close, signing, swap, or live-order routes, and it does not call `executeLiveOrder()`. The coordinator module and its binding are not an operational trading path.
 
 Keep this distinction explicit during review:
-- A declared Durable Object binding is deployment configuration, not proof of application integration.
+- The status and emergency-stop routes are limited operational integration, not proof of an application trading path.
 - Do not expose reservation or execution endpoints until authentication, immutable order-intent binding, semantic instruction verification, complete all-in cost verification, idempotent settlement, and independent review are all in place.
 - The production Worker must continue serving no live-trading route while any of those gates are incomplete.
 
