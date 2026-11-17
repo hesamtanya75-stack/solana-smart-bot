@@ -170,7 +170,12 @@ async function authorized(request, env) {
   if (!session || session.expiresAt <= Date.now()) return false;
   // Compare the session's issuance version with the AuthGuard's current version.
   // Enabling MFA increments the version and invalidates every pre-MFA session.
-  const profile = await authGuardCall(env, { operation: "get-profile" });
+  let profile;
+  try {
+    profile = await authGuardCall(env, { operation: "get-profile" });
+  } catch {
+    return false;
+  }
   if (!Number.isSafeInteger(profile.sessionVersion) || profile.sessionVersion < 0) return false;
   const sessionVersion = session.sessionVersion === undefined ? 0 : session.sessionVersion;
   if (!Number.isSafeInteger(sessionVersion) || sessionVersion < 0) return false;
