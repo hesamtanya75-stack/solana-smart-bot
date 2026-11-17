@@ -1065,6 +1065,85 @@ test("settlement proof rejects noncanonical signatures and noncanonical or out-o
 });
 
 
+test("settlement proof binds the requested signature to the complete required signer vector", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(41));
+  const otherSignature = encodeBase58(new Uint8Array(64).fill(42));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const inputAccount = encodeBase58(new Uint8Array(32).fill(43));
+  const outputAccount = encodeBase58(new Uint8Array(32).fill(44));
+  const secondSigner = encodeBase58(new Uint8Array(32).fill(45));
+
+  const cases = [
+    {
+      label: "requested signature is not the fee-payer signature",
+      signatures: [otherSignature],
+      required: 1,
+      keys: [BOT_WALLET, inputAccount, outputAccount]
+    },
+    {
+      label: "signature count differs from required signer count",
+      signatures: [signature, otherSignature],
+      required: 1,
+      keys: [BOT_WALLET, inputAccount, outputAccount]
+    },
+    {
+      label: "a required signer signature is malformed",
+      signatures: [signature, "not-a-64-byte-signature"],
+      required: 2,
+      keys: [BOT_WALLET, secondSigner, inputAccount, outputAccount]
+    }
+  ];
+
+  for (const item of cases) {
+    const transaction = {
+      slot: 150,
+      transaction: {
+        signatures: item.signatures,
+        message: {
+          header: {
+            numRequiredSignatures: item.required,
+            numReadonlySignedAccounts: 0,
+            numReadonlyUnsignedAccounts: 0
+          },
+          accountKeys: item.keys
+        }
+      },
+      meta: {
+        err: null,
+        fee: 5000,
+        preBalances: item.keys.map((_, index) => index === 0 ? 100_000_000 : 1),
+        postBalances: item.keys.map((_, index) => index === 0 ? 99_995_000 : 1),
+        preTokenBalances: [
+          { accountIndex: item.keys.length - 2, mint: inputMint, owner: BOT_WALLET,
+            uiTokenAmount: { amount: "100", decimals: 0 } },
+          { accountIndex: item.keys.length - 1, mint: outputMint, owner: BOT_WALLET,
+            uiTokenAmount: { amount: "0", decimals: 0 } }
+        ],
+        postTokenBalances: [
+          { accountIndex: item.keys.length - 2, mint: inputMint, owner: BOT_WALLET,
+            uiTokenAmount: { amount: "0", decimals: 0 } },
+          { accountIndex: item.keys.length - 1, mint: outputMint, owner: BOT_WALLET,
+            uiTokenAmount: { amount: "200", decimals: 0 } }
+        ]
+      }
+    };
+    const fetchImpl = async (_url, options) => {
+      const { method } = JSON.parse(options.body);
+      const result = method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : transaction;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+    }, fetchImpl), /signatures do not match the required signer set/);
+  }
+});
+
+
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
