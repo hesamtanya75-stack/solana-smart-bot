@@ -11,6 +11,12 @@ const DEFAULT_STATE = {
   updatedAt: null
 };
 
+function hasNoMigrationMetadata(value) {
+  return ["scannedMints", "deferredMints", "lastScanReport"].every(key =>
+    value?.[key] === undefined || (Array.isArray(value[key]) && value[key].length === 0)
+  );
+}
+
 function cleanState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Paper trading state integrity error: state must be an object");
