@@ -51,7 +51,16 @@ The LiveTradeCoordinator is an isolated safety component; the Worker currently h
 
 Requires Node.js 20 or newer.
 
+The active application is the Cloudflare Worker in `worker.js`; the legacy SQLite `server.js` is not the application entry point.
+
 ```sh
 npm install
+npm start       # local Wrangler Worker development server
 npm test
+```
+
+`npm start` and `npm run dev` run Wrangler against `wrangler.jsonc`. They do not deploy to production. For an explicit preview build without deployment, use:
+
+```sh
+npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
 ```
