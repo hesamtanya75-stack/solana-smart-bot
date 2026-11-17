@@ -182,3 +182,11 @@ Latest reviewed PR head at this snapshot: `e3b983495093c914735514fcba4e98bf1d5cc
 2. Decode actual unsigned transaction instruction bytes and resolved ALT accounts; compare decoded amounts, mints, recipient, token accounts, signers, writable accounts, and all CPI targets against the immutable user intent and a reviewed policy. Route-plan metadata alone is not sufficient evidence.
 3. Wire the priority-fee decoder to the exact parsed unsigned transaction and construct trusted all-in cost evidence from decoded base fee, priority fee, tips, rent, account creation and every other lamport/token outflow. Do not accept browser-provided estimates.
 4. Only then connect an authenticated Worker route to the coordinator, retaining explicit Phantom user review/signature and independent post-submit settlement verification. Keep signing and Mainnet submission disabled until the preceding gates and dedicated Devnet signed lifecycle are proven.
+
+## All-in cost arithmetic hardening (2026-11-17)
+
+- Added adversarial coordinator tests for malformed compute-unit price strings, compute-unit limits above the protocol bound, negative or fractional fee components, unsafe integer values, and aggregate lamport-cost overflow.
+- The coordinator's arithmetic validator still consumes a trusted `costs` evidence object; it does not itself decode a serialized Jupiter transaction or prove that each cost field was derived from its exact instructions and resolved account keys.
+- In particular, base signature/precompile fees, rent/account creation, tips, System Program transfers, token outflows, and unknown instruction effects are not yet independently derived end-to-end from the unsigned transaction. A caller-supplied `otherOutflowLamports` number is not a substitute for decoding those effects.
+- Consequently, passing these arithmetic tests does not establish complete all-in transaction-cost verification, semantic approval, or signing eligibility. Keep `semanticInstructionVerification` false and the Worker live reservation/signing route disconnected until the evidence is generated from a reviewed decoder registry and tied to the exact immutable transaction bytes.
+- This test-only change does not enable funded Devnet activity, Phantom signing, Mainnet execution, merge, or deployment.
