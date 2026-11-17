@@ -499,7 +499,7 @@ test("ALT resolver rejects tables not owned by the Address Lookup Table program"
 test("ALT resolver rejects noncanonical base64 account data before parsing", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const malformed = mockLookupTableAccount();
-  malformed.data = [malformed.data[0] + "\\n", "base64"];
+  malformed.data = [malformed.data[0] + " ", "base64"];
   await assert.rejects(resolveJupiterAddressLookupTables([{
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
