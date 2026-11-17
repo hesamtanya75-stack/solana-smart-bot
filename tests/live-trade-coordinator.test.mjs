@@ -245,6 +245,20 @@ test("reservation requires trusted all-in fee evidence and validates priority-fe
   assert.match(invalid.body.error, /Priority fee does not match/);
 });
 
+test("reservation rejects noncanonical compute unit price integer encodings", async () => {
+  for (const price of ["015005", "1e4", "+15005", " 15005"]) {
+    const { coordinator } = makeCoordinator(async () => trustedEvidence({
+      costs: { ...trustedEvidence().costs, computeUnitPriceMicroLamports: price }
+    }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: `noncanonical-price-${price.replace(/[^a-z0-9]/gi, "_")}`
+    }));
+    assert.equal(result.status, 409, `price ${JSON.stringify(price)} must be rejected`);
+    assert.match(result.body.error, /compute budget evidence is invalid/);
+  }
+});
+
 test("reservation fails closed when the reviewed priority-fee ceiling is absent or exceeded", async () => {
   const storage = new MemoryStorage();
   const evidenceProvider = async () => trustedEvidence();
