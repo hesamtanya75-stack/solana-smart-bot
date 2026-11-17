@@ -1779,6 +1779,11 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       signatures: [signature],
       message: {
         accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(74))],
+        addressTableLookups: [{
+          accountKey: encodeBase58(new Uint8Array(32).fill(75)),
+          writableIndexes: [0, 1],
+          readonlyIndexes: [2]
+        }],
         instructions: [{ programIdIndex: 1, accounts: [0, 2, 3], data: "1" }]
       }
     },
@@ -1827,6 +1832,8 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
 
   for (const corrupt of [
     value => { value.meta.loadedAddresses.writable = "not-an-address-array"; },
+    value => { delete value.meta.loadedAddresses; },
+    value => { value.transaction.message.addressTableLookups[0].writableIndexes = "invalid"; },
     value => {
       value.meta.loadedAddresses.writable = Array.from({ length: 255 }, (_, index) =>
         encodeBase58(new Uint8Array(32).fill(index + 1)));
@@ -1847,7 +1854,7 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
       signature, inputMint, outputMint,
       inputAmount: "10000000", outputAmount: "12345",
       expectedOwner: BOT_WALLET
-    }, malformedFetch), /loaded-address metadata is malformed|account key count exceeds/);
+    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|account key count exceeds/);
   }
 });
 
