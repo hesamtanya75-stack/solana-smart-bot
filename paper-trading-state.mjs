@@ -17,6 +17,30 @@ function hasNoMigrationMetadata(value) {
   );
 }
 
+function validateMigrationMetadata(value) {
+  if (value.scannedMints !== undefined &&
+      (!Array.isArray(value.scannedMints) || value.scannedMints.length > 1000 ||
+       value.scannedMints.some(mint => typeof mint !== "string" || mint.length > 64))) {
+    throw new Error("Paper trading migration integrity error: invalid scanned mints");
+  }
+  if (value.deferredMints !== undefined &&
+      (!Array.isArray(value.deferredMints) || value.deferredMints.length > 1000 ||
+       value.deferredMints.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
+         typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+         typeof item.retryAt !== "number" || !Number.isFinite(item.retryAt)))) {
+    throw new Error("Paper trading migration integrity error: invalid deferred mints");
+  }
+  if (value.lastScanReport !== undefined &&
+      (!Array.isArray(value.lastScanReport) || value.lastScanReport.length > 20 ||
+       value.lastScanReport.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
+         typeof item.mint !== "string" || item.mint.length > 64 ||
+         typeof item.status !== "string" || item.status.length > 40 ||
+         !Array.isArray(item.reasons) || item.reasons.length > 10 ||
+         item.reasons.some(reason => typeof reason !== "string" || reason.length > 300)))) {
+    throw new Error("Paper trading migration integrity error: invalid scan report");
+  }
+}
+
 function cleanState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Paper trading state integrity error: state must be an object");
@@ -296,6 +320,9 @@ export class PaperTradingState {
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
+          // Migration is a one-time import: reject malformed metadata instead
+          // of letting cleanState silently filter and discard legacy history.
+          validateMigrationMetadata(body.state);
           const next = {
             ...record, state: cleanState(body.state),
             migrationOpen: false, revision: record.revision + 1
