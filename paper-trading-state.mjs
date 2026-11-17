@@ -187,10 +187,18 @@ export class PaperTradingState {
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
+    // cleanState intentionally filters malformed optional metadata for normal
+    // operation. During the one-time migration decision, however, malformed or
+    // non-empty legacy metadata must count as prior activity and close migration.
+    const noLegacyDeferredActivity = legacy?.deferredMints === undefined ||
+      (Array.isArray(legacy.deferredMints) && legacy.deferredMints.length === 0);
+    const noLegacyScanReportActivity = legacy?.lastScanReport === undefined ||
+      (Array.isArray(legacy.lastScanReport) && legacy.lastScanReport.length === 0);
     const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
       initialState.autoEnabled === false && initialState.paused === false &&
       initialState.scannedMints.length === 0 && initialState.deferredMints.length === 0 &&
-      initialState.lastScanReport.length === 0;
+      initialState.lastScanReport.length === 0 &&
+      noLegacyDeferredActivity && noLegacyScanReportActivity;
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
