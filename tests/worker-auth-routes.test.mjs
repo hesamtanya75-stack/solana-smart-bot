@@ -97,6 +97,10 @@ test("legacy paper-trading migration refuses to consume malformed local snapshot
   assert.ok(parseGuard > read && shapeGuard > parseGuard && balanceGuard > shapeGuard);
   assert.ok(enableServerMode > balanceGuard, "server mode must not start before local snapshot validation");
   assert.ok(migrateWrite > enableServerMode);
+  const stateSync = dashboardSource.indexOf("await syncServerState();", login);
+  const persistSession = dashboardSource.indexOf('localStorage.setItem("solanaBotSession", token);', login);
+  assert.ok(stateSync > migrateWrite);
+  assert.ok(persistSession > stateSync, "session token must not persist before paper-state migration and sync succeed");
   assert.ok(dashboardSource.includes("داتاکە مەسڕەوە"));
 });
 
