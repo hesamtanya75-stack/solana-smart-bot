@@ -528,3 +528,42 @@ test("legacy migration window stays closed when paper metadata shows prior activ
     assert.equal(attempt.status, 409);
   }
 });
+
+
+test("compare-and-set permanently closes legacy migration after deferred or scan-report activity", async () => {
+  const activityCases = [
+    {
+      active: { deferredMints: [{ mint: mintA, retryAt: 123 }] },
+      cleared: { deferredMints: [] }
+    },
+    {
+      active: { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] },
+      cleared: { lastScanReport: [] }
+    }
+  ];
+  for (const activity of activityCases) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, true);
+    const recorded = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: initial.body.revision,
+      state: { ...initial.body.state, ...activity.active }
+    });
+    assert.equal(recorded.status, 200);
+    assert.equal(recorded.body.migrationOpen, false);
+    const cleared = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: recorded.body.revision,
+      state: { ...recorded.body.state, ...activity.cleared }
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.migrationOpen, false);
+    const migration = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: cleared.body.revision,
+      state: { balance: 75, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(migration.status, 409);
+  }
+});
