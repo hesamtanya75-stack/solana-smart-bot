@@ -1800,12 +1800,31 @@ test("settlement proof rejects absent and malformed finalized CPI execution meta
     [{ index: 0, instructions: [{ programIdIndex: 99, accounts: [0], data: "1" }] }],
     [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [99], data: "1" }] }],
     [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "!" }] }],
-    [{ index: 0, instructions: [] }]
+    [{ index: 0, instructions: [] }],
+    [
+      { index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] },
+      { index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] }
+    ],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1", stackHeight: 0 }] }],
+    [{ index: 0, instructions: Array.from({ length: 257 }, () => ({ programIdIndex: 1, accounts: [0], data: "1" })) }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: Array(257).fill(0), data: "1" }] }]
   ]) {
     const malformed = structuredClone(baseResult);
     malformed.meta.innerInstructions = innerInstructions;
     await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(malformed)), /Finalized CPI metadata/);
   }
+
+  const excessive = structuredClone(baseResult);
+  excessive.transaction.message.instructions = Array.from({ length: 5 }, () => ({
+    programIdIndex: 1, accounts: [0, 1], data: "1"
+  }));
+  excessive.meta.innerInstructions = Array.from({ length: 5 }, (_, index) => ({
+    index,
+    instructions: Array.from({ length: 205 }, () => ({
+      programIdIndex: 1, accounts: [0], data: "1", stackHeight: 1
+    }))
+  }));
+  await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(excessive)), /CPI metadata exceeds the supported instruction limit/);
 });
 
 test("settlement proof requires the connected Phantom owner explicitly", async () => {
