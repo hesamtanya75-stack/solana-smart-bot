@@ -686,6 +686,14 @@ async function migrateLegacyFailure(env, scope, legacyKey) {
     await env.BOT_STATE.delete(legacyKey);
   }
 }
+async function consumeApiRateLimit(env, scope, limit, windowMs) {
+  return authGuardCall(env, {
+    operation: "consume-rate-limit",
+    scope,
+    limit,
+    windowMs
+  });
+}
 async function isAuthRateLimited(env, scope) {
   const result = await authGuardCall(env, { operation: "is-rate-limited", scope });
   return result.limited === true;
@@ -865,6 +873,20 @@ export default {
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
       }
       if (url.pathname === "/api/scan" && request.method === "POST") {
+        try {
+          const authorization = request.headers.get("Authorization") || "";
+          const sessionToken = authorization.replace(/^Bearer\\s+/i, "");
+          const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+          const scanScope = "scan:" + await hashText(sessionToken + ":" + clientIp);
+          const rate = await consumeApiRateLimit(env, scanScope, 10, 60000);
+          if (!rate.allowed) {
+            const retryAfterSeconds = Math.max(1, Math.ceil((rate.resetAt - Date.now()) / 1000));
+            return json({
+              error: "Scan rate limit reached; wait before requesting another scan.",
+              retryAfterSeconds
+            }, 429);
+          }
+
         try {
           const body = await readBoundedJson(request, 4096);
           const mint = String(body.mint || "");
