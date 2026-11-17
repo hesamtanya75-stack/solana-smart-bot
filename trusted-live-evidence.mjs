@@ -1710,6 +1710,48 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeys) {
  * success flags. All input and output mints, including wrapped SOL, are
  * verified through exact owner-scoped SPL token balance deltas.
  */
+function validateFinalizedInnerInstructionMetadata(innerInstructions, outerInstructions, accountKeyCount) {
+  // RPC execution metadata is separate from the unsigned message. Missing
+  // metadata must never be treated as proof that a transaction had no CPIs.
+  if (!Array.isArray(innerInstructions) || !Array.isArray(outerInstructions) ||
+      outerInstructions.length < 1 || outerInstructions.length > 256 ||
+      innerInstructions.length > outerInstructions.length) {
+    throw new Error("Finalized CPI metadata is missing or malformed");
+  }
+  const seenOuterIndexes = new Set();
+  let totalInnerInstructions = 0;
+  for (const group of innerInstructions) {
+    if (!group || !Number.isInteger(group.index) || group.index < 0 ||
+        group.index >= outerInstructions.length || seenOuterIndexes.has(group.index) ||
+        !Array.isArray(group.instructions) || group.instructions.length < 1 ||
+        group.instructions.length > 256) {
+      throw new Error("Finalized CPI metadata group is incomplete or malformed");
+    }
+    seenOuterIndexes.add(group.index);
+    totalInnerInstructions += group.instructions.length;
+    if (totalInnerInstructions > 1024) {
+      throw new Error("Finalized CPI metadata exceeds the supported instruction limit");
+    }
+    for (const instruction of group.instructions) {
+      if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+          instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeyCount ||
+          !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+          instruction.accounts.some(index => !Number.isInteger(index) || index < 0 || index >= accountKeyCount) ||
+          typeof instruction.data !== "string" ||
+          (instruction.stackHeight != null &&
+            (!Number.isInteger(instruction.stackHeight) || instruction.stackHeight < 1))) {
+        throw new Error("Finalized CPI metadata contains an invalid inner instruction");
+      }
+      try {
+        decodeBase58(instruction.data);
+      } catch {
+        throw new Error("Finalized CPI metadata contains invalid instruction data");
+      }
+    }
+  }
+  return totalInnerInstructions;
+}
+
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner
@@ -1745,7 +1787,8 @@ export async function verifyFinalizedJupiterSettlement({
   const accountKeys = message?.accountKeys;
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
-      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
+      !Array.isArray(accountKeys) || !Array.isArray(message?.instructions) ||
+      !Array.isArray(meta.preBalances) ||
       !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
       meta.postBalances.length !== accountKeys.length ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
@@ -1757,6 +1800,7 @@ export async function verifyFinalizedJupiterSettlement({
     throw new Error("Finalized transaction contains malformed native lamport balance metadata");
   }
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  validateFinalizedInnerInstructionMetadata(meta.innerInstructions, message.instructions, keyStrings.length);
   if (keyStrings.some(key => !isCanonicalPublicKey(key)) ||
       new Set(keyStrings).size !== keyStrings.length) {
     throw new Error("Finalized transaction account keys are malformed or duplicated");
