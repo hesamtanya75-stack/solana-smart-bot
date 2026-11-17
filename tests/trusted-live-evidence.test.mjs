@@ -1634,6 +1634,48 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
   );
 });
 
+test("settlement proof rejects a missing or read-only fee-payer message header", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(21));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  for (const header of [null, {
+    numRequiredSignatures: 1,
+    numReadonlySignedAccounts: 1,
+    numReadonlyUnsignedAccounts: 0
+  }]) {
+    const fetchImpl = async (_url, options) => {
+      const { method } = JSON.parse(options.body);
+      const result = method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : {
+            slot: 126,
+            transaction: {
+              signatures: [signature],
+              message: {
+                ...(header ? { header } : {}),
+                accountKeys: [BOT_WALLET]
+              }
+            },
+            meta: {
+              err: null,
+              fee: 5000,
+              preBalances: [100_000_000],
+              postBalances: [99_995_000]
+            }
+          };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    };
+    await assert.rejects(
+      verifyFinalizedJupiterSettlement({
+        signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+      }, fetchImpl),
+      /Finalized transaction metadata is incomplete|writable transaction fee payer/
+    );
+  }
+});
+
 test("settlement proof rejects a finalized transaction with mismatched output", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(8));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
