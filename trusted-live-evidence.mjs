@@ -1050,17 +1050,26 @@ function sumOwnedTokenBalance(rows, mint, owner, accountCount) {
   let total = 0n;
   const seenAccountIndexes = new Set();
   for (const row of rows) {
-    if (row?.mint !== mint || row?.owner !== owner) continue;
-    if (!Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
-        row.accountIndex >= accountCount || seenAccountIndexes.has(row.accountIndex)) {
+    if (!row || typeof row !== "object" || Array.isArray(row) ||
+        !Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
+        row.accountIndex >= accountCount || seenAccountIndexes.has(row.accountIndex) ||
+        !isCanonicalPublicKey(row.mint) ||
+        !row.uiTokenAmount || typeof row.uiTokenAmount !== "object" ||
+        Array.isArray(row.uiTokenAmount) ||
+        !isU64DecimalString(row.uiTokenAmount.amount, true) ||
+        !Number.isInteger(row.uiTokenAmount.decimals) ||
+        row.uiTokenAmount.decimals < 0 || row.uiTokenAmount.decimals > 255 ||
+        (row.owner != null && !isCanonicalPublicKey(row.owner)) ||
+        (row.programId != null && !isCanonicalPublicKey(row.programId))) {
       throw new Error("Finalized transaction contains invalid or duplicate owned token account indexes");
     }
+    // accountIndex identifies one token account globally within each pre/post
+    // balance list. Validate every row before filtering by mint/owner so a
+    // duplicate index cannot hide behind a different owner or mint.
     seenAccountIndexes.add(row.accountIndex);
-    const amount = row?.uiTokenAmount?.amount;
-    if (!isU64DecimalString(amount, true)) {
-      throw new Error("Finalized transaction contains an invalid owned token balance");
+    if (row.mint === mint && row.owner === owner) {
+      total += BigInt(row.uiTokenAmount.amount);
     }
-    total += BigInt(amount);
   }
   return total;
 }
