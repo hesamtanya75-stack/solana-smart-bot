@@ -507,6 +507,34 @@ test("legacy paper history above the supported limit fails closed without trunca
 });
 
 
+test("legacy migration rejects malformed metadata without consuming the migration window", async () => {
+  const invalidStates = [
+    { deferredMints: [{ mint: mintA, retryAt: "later" }] },
+    { deferredMints: "not-an-array" },
+    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: [42] }] },
+    { lastScanReport: [{ mint: mintA, status: "blocked" }] },
+    { scannedMints: [42] }
+  ];
+  for (const metadata of invalidStates) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.status, 200);
+    const result = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: initial.body.revision,
+      state: {
+        balance: 95, trades: [], autoEnabled: false, paused: false,
+        scannedMints: [], ...metadata
+      }
+    });
+    assert.equal(result.status, 503);
+    const current = await call(instance, { operation: "get" });
+    assert.equal(current.body.revision, initial.body.revision);
+    assert.equal(current.body.migrationOpen, true);
+    assert.equal(current.body.state.balance, 100);
+  }
+});
+
 test("legacy migration window stays closed when paper metadata shows prior activity", async () => {
   const cases = [
     { deferredMints: [{ mint: mintA, retryAt: 123 }] },
