@@ -194,11 +194,13 @@ export class PaperTradingState {
       (Array.isArray(legacy.deferredMints) && legacy.deferredMints.length === 0);
     const noLegacyScanReportActivity = legacy?.lastScanReport === undefined ||
       (Array.isArray(legacy.lastScanReport) && legacy.lastScanReport.length === 0);
+    const noLegacyScannedMintActivity = legacy?.scannedMints === undefined ||
+      (Array.isArray(legacy.scannedMints) && legacy.scannedMints.length === 0);
     const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
       initialState.autoEnabled === false && initialState.paused === false &&
       initialState.scannedMints.length === 0 && initialState.deferredMints.length === 0 &&
       initialState.lastScanReport.length === 0 &&
-      noLegacyDeferredActivity && noLegacyScanReportActivity;
+      noLegacyDeferredActivity && noLegacyScanReportActivity && noLegacyScannedMintActivity;
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
