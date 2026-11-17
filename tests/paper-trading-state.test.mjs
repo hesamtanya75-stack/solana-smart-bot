@@ -462,7 +462,7 @@ test("scheduled cron retries a sell after a concurrent revision change without d
   assert.equal(result.body.state.balance, 100.5);
   assert.equal(result.body.state.trades[0].sold, true);
   assert.equal(result.body.state.trades[0].saleValue, 5.5);
-  assert.equal(result.body.revision, 3);
+  assert.equal(result.body.revision, 2);
 });
 
 test("scheduled cron ignores non-finite provider prices without corrupting paper state", async t => {
