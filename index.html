@@ -1537,6 +1537,14 @@ let serverModeReady = false;
 let serverStateRevision = null;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
+let serverSyncTimer = null;
+let serverPriceTimer = null;
+function clearServerPolling() {
+  if (serverSyncTimer !== null) clearInterval(serverSyncTimer);
+  if (serverPriceTimer !== null) clearInterval(serverPriceTimer);
+  serverSyncTimer = null;
+  serverPriceTimer = null;
+}
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
 serverLogin.innerHTML = `
@@ -1651,6 +1659,7 @@ saveDemoState = function() {
   localSaveDemoState();
 };
 async function finishServerLogin(token) {
+  clearServerPolling();
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
@@ -1677,8 +1686,8 @@ async function finishServerLogin(token) {
   });
   await syncServerState();
   refreshServerPrices().catch(() => {});
-  setInterval(() => syncServerState().catch(() => {}), 15000);
-  setInterval(() => refreshServerPrices().catch(() => {}), 5000);
+  serverSyncTimer = setInterval(() => syncServerState().catch(() => {}), 15000);
+  serverPriceTimer = setInterval(() => refreshServerPrices().catch(() => {}), 5000);
 }
 let serverMfaChallenge = "";
 async function submitServerLogin() {
@@ -1762,6 +1771,8 @@ pauseBuyBtn.onclick = async function() {
 };
 if (serverToken) {
   finishServerLogin(serverToken).catch(() => {
+    clearServerPolling();
+    serverModeReady = false;
     localStorage.removeItem("solanaBotSession");
     serverToken = "";
     serverLogin.style.display = "flex";
@@ -1843,6 +1854,7 @@ if (serverToken) {
     status().textContent="هەڵوەشاندنەوەی Session...";
     try{
       await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      clearServerPolling();
       serverToken="";
       serverModeReady=false;
       localStorage.removeItem("solanaBotSession");
