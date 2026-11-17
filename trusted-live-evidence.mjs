@@ -133,7 +133,7 @@ const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
  * A tip destination is accepted only when supplied by a separately reviewed
  * trusted allowlist; this does not attest to the rest of the Jupiter route.
  */
-export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts) {
+export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts, maxTipLamports) {
   if (!instruction || instruction.programId !== SYSTEM_PROGRAM_ID ||
       !Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
       !Array.isArray(allowedTipAccounts) || allowedTipAccounts.length === 0 ||
@@ -215,7 +215,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const tipInstruction = build.tipInstruction === null
     ? null : validateBuildInstruction(build.tipInstruction, "tip");
   const tipEvidence = tipInstruction === null
-    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts);
+    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts, expected.maxTipLamports);
   const allInstructions = [
     ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
     ...(cleanupInstruction ? [cleanupInstruction] : []),
