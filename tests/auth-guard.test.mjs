@@ -263,6 +263,7 @@ test("legacy TOTP profile and pending enrollment state migrate exactly once", as
   assert.equal(await guard.initializeFromLegacy(legacy), true);
   assert.deepEqual(await guard.getProfile(), {
     initialized: true,
+    sessionVersion: 0,
     totpEnabled: true,
     totpSecret: legacy.totpSecret,
     pendingTotpSecret: null,
@@ -284,6 +285,7 @@ test("TOTP enrollment secret is stored and confirmed atomically in AuthGuard", a
   assert.deepEqual(result, { ok: true, counter });
   assert.deepEqual(await guard.getProfile(), {
     initialized: true,
+    sessionVersion: 1,
     totpEnabled: true,
     totpSecret: secret,
     pendingTotpSecret: null,
