@@ -93,7 +93,7 @@ test("legacy paper-trading migration refuses to consume malformed local snapshot
   const balanceGuard = dashboardSource.indexOf("typeof old.balance !== \"number\"", read);
   const tradeLimitGuard = dashboardSource.indexOf("old.trades.length > 500", read);
   const tradeValidation = dashboardSource.indexOf("const invalidTrade = old.trades.some", read);
-  const tradeValueGuard = dashboardSource.indexOf("trade.sold !== undefined && typeof trade.sold !== \"boolean\"", read);
+  const tradeValueGuard = dashboardSource.indexOf("typeof trade.sold !== \"boolean\"", read);
   const enableServerMode = dashboardSource.indexOf("serverModeReady = true;", login);
   const migrateWrite = dashboardSource.indexOf("await saveServerState();", login);
   assert.ok(login >= 0 && read > login);
