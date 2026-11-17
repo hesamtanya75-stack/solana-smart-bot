@@ -22,6 +22,21 @@ test("all dashboard inline JavaScript parses without syntax errors", () => {
   });
 });
 
+test("server polling timers are replaced on login and stopped on logout", () => {
+  assert.ok(dashboardSource.includes("let serverSyncTimer = null;"));
+  assert.ok(dashboardSource.includes("let serverPriceTimer = null;"));
+  assert.ok(dashboardSource.includes("function clearServerPolling()"));
+  const login = dashboardSource.indexOf("async function finishServerLogin(token)");
+  const clearAtLogin = dashboardSource.indexOf("clearServerPolling();", login);
+  const syncTimer = dashboardSource.indexOf("serverSyncTimer = setInterval", login);
+  const priceTimer = dashboardSource.indexOf("serverPriceTimer = setInterval", login);
+  assert.ok(clearAtLogin > login && syncTimer > clearAtLogin && priceTimer > syncTimer);
+  const logout = dashboardSource.indexOf('document.getElementById("profileLogout").onclick');
+  const clearAtLogout = dashboardSource.indexOf("clearServerPolling();", logout);
+  assert.ok(logout >= 0 && clearAtLogout > logout);
+  assert.ok(dashboardSource.includes("clearServerPolling();\n    serverModeReady = false;"));
+});
+
 test("worker session authorization requires one exact Bearer token without whitespace", () => {
   assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
   assert.ok(workerSource.includes("if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))"));
