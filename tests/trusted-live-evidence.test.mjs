@@ -1069,6 +1069,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   let invalidNativeBalanceFixture = false;
+  let invalidStackHeightFixture = false;
   const fetchImpl = async (_url, options) => {
     const { method } = JSON.parse(options.body);
     const result = method === "getSignatureStatuses"
@@ -1099,7 +1100,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
                 programIdIndex: 1,
                 accounts: [0, 2],
                 data: "2",
-                stackHeight: 2
+                stackHeight: invalidStackHeightFixture ? -1 : 2
               }]
             }],
             preBalances: invalidNativeBalanceFixture ? [null, 1, 2] : [100_000_000, 1, 2],
@@ -1181,6 +1182,16 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     inputAmount: "10000000",
     outputAmount: "12345"
   }, fetchImpl), /metadata is incomplete or indicates failure/);
+
+  invalidNativeBalanceFixture = false;
+  invalidStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
 });
 
 test("settlement proof rejects CPI groups that reference a nonexistent outer instruction", async () => {
