@@ -265,7 +265,7 @@ export class PaperTradingState {
             nextState.balance === 100 && nextState.trades.length === 0 &&
             nextState.autoEnabled === false && nextState.paused === false &&
             nextState.scannedMints.length === 0 && nextState.deferredMints.length === 0 &&
-            nextState.lastScanReport.length === 0;
+            nextState.lastScanReport.length === 0 && hasNoMigrationMetadata(body.state);
           const next = {
             ...record,
             state: nextState,
