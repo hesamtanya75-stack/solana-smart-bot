@@ -250,6 +250,15 @@ async function testTotpCode(secret, counter) {
   return String(binary % 1000000).padStart(6, "0");
 }
 
+test("getProfile rejects a corrupted session version instead of resetting it to zero", async () => {
+  const { guard, storage } = makeGuard();
+  await guard.initializeFromLegacy();
+  const state = storage.values.get("auth_guard_state");
+  state.sessionVersion = -1;
+  storage.values.set("auth_guard_state", state);
+  await assert.rejects(() => guard.getProfile(), /invalid session version/i);
+});
+
 test("legacy TOTP profile and pending enrollment state migrate exactly once", async () => {
   const { guard } = makeGuard();
   const legacy = {
