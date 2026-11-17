@@ -1073,6 +1073,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   let invalidStackHeightFixture = false;
   let invalidOuterStackHeightFixture = false;
   let invalidInnerStackHeightFixture = false;
+  let invalidInnerStackSequenceFixture = false;
   let duplicateForeignTokenBalanceFixture = false;
   let malformedForeignTokenBalanceFixture = false;
   const fetchImpl = async (_url, options) => {
@@ -1110,13 +1111,21 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
             }),
             innerInstructions: [{
               index: 0,
-              instructions: [{
-                programIdIndex: 1,
-                accounts: [0, 2],
-                data: "2",
-                stackHeight: invalidStackHeightFixture ? -1 :
-                  (invalidInnerStackHeightFixture ? 1 : 2)
-              }]
+              instructions: [
+                {
+                  programIdIndex: 1,
+                  accounts: [0, 2],
+                  data: "2",
+                  stackHeight: invalidStackHeightFixture ? -1 :
+                    (invalidInnerStackHeightFixture ? 1 : 2)
+                },
+                ...(invalidInnerStackSequenceFixture ? [{
+                  programIdIndex: 1,
+                  accounts: [0, 2],
+                  data: "2",
+                  stackHeight: 4
+                }] : [])
+              ]
             }],
             preBalances: invalidNativeBalanceFixture ? [null, 1, 2] : [100_000_000, 1, 2],
             postBalances: [89_995_000, 1, 2],
@@ -1260,6 +1269,16 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }, fetchImpl), /invalid compiled account indexes or data/);
 
   invalidInnerStackHeightFixture = false;
+  invalidInnerStackSequenceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /stack-height sequence is inconsistent/);
+
+  invalidInnerStackSequenceFixture = false;
   invalidOuterStackHeightFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
     signature,
