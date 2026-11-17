@@ -1084,6 +1084,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               addressTableLookups: [{
                 accountKey: encodeBase58(new Uint8Array(32).fill(13)),
@@ -1291,6 +1292,7 @@ test("settlement proof rejects malformed outer-instruction metadata", async () =
           slot: 128,
           transaction: {
             signatures: [signature],
+            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
             message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(15))], instructions: { malformed: true } }
           },
           meta: {
@@ -1332,6 +1334,7 @@ test("settlement proof rejects malformed inner-instruction metadata instead of t
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
             }
@@ -1376,6 +1379,7 @@ test("settlement proof rejects CPI groups that reference a nonexistent outer ins
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
             }
@@ -1418,6 +1422,7 @@ test("settlement proof marks missing inner-instruction metadata as unavailable, 
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
             }
@@ -1466,6 +1471,7 @@ test("settlement proof rejects duplicate CPI parent instruction groups", async (
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
             }
@@ -1503,6 +1509,7 @@ test("settlement proof rejects non-base58 compiled instruction data", async () =
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               instructions: [{ programIdIndex: 0, accounts: [0], data: "0" }]
             }
@@ -1544,6 +1551,7 @@ test("settlement proof rejects incomplete loaded-address balance metadata", asyn
           transaction: {
             signatures: [signature],
             message: {
+              header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
               accountKeys: [BOT_WALLET],
               addressTableLookups: [{
                 accountKey: encodeBase58(new Uint8Array(32).fill(13)),
@@ -1601,6 +1609,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
+            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
             message: { accountKeys: [encodeBase58(new Uint8Array(32).fill(1)), BOT_WALLET, encodeBase58(new Uint8Array(32).fill(2)), encodeBase58(new Uint8Array(32).fill(3))] }
           },
           meta: {
@@ -1636,6 +1645,7 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
+          header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
           transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(33)), encodeBase58(new Uint8Array(32).fill(34))] } },
           meta: {
             err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
@@ -1675,6 +1685,7 @@ test("settlement proof rejects noncanonical or out-of-range owned token balances
           slot: 130,
           transaction: {
             signatures: [signature],
+            header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
             message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(35)), encodeBase58(new Uint8Array(32).fill(36))] }
           },
           meta: {
@@ -1711,6 +1722,7 @@ test("settlement proof rejects duplicate and out-of-range owned token account in
     slot: 131,
     transaction: {
       signatures: [signature],
+      header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
       message: { accountKeys: [BOT_WALLET, inputAccount, outputAccount] }
     },
     meta: {
