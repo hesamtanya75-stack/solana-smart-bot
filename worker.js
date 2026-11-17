@@ -406,7 +406,7 @@ async function inspectMint(mint, env, diagnostics = null) {
   const [account, supply] = rpcResults;
   const details = parseMintAccount(account);
   const rawSupply = String(supply?.value?.amount ?? "");
-  if (!/^\\d+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
+  if (!/^[0-9]+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
       !Array.isArray(holderAccounts) || holderAccounts.length === 0) {
     throw new Error("Complete holder data or finalized token supply is unavailable");
   }
