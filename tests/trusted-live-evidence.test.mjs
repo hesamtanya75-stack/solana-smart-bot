@@ -1070,7 +1070,6 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   let invalidNativeBalanceFixture = false;
   let invalidLoadedAddressMetadataFixture = false;
-  let invalidLookupDescriptorFixture = false;
   let invalidStackHeightFixture = false;
   let invalidOuterStackHeightFixture = false;
   let invalidInnerStackHeightFixture = false;
@@ -1195,7 +1194,6 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   assert.equal(Object.hasOwn(proof, "nativeSolOutflowLamports"), false);
   assert.equal(Object.hasOwn(proof, "totalLamports"), false);
 
-  invalidLookupDescriptorFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
     signature,
     inputMint: "So11111111111111111111111111111111111111112",
@@ -1210,7 +1208,6 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     }
     return Response.json(body);
   }), /loaded-address metadata does not match/);
-  invalidLookupDescriptorFixture = false;
 
   invalidLoadedAddressMetadataFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
