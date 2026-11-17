@@ -155,8 +155,8 @@ export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts, max
   }
   let lamports = 0n;
   for (let i = 0; i < 8; i++) lamports |= BigInt(data[4 + i]) << BigInt(i * 8);
-  if (lamports <= 0n || lamports > 1000000000n) {
-    throw new Error("Jupiter tip transfer amount is outside the reviewed bound");
+  if (lamports <= 0n || lamports > BigInt(maxTipLamports)) {
+    throw new Error("Jupiter tip transfer amount exceeds the configured maximum");
   }
   return Object.freeze({
     programId: SYSTEM_PROGRAM_ID,
