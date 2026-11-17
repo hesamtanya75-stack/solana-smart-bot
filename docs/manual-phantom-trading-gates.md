@@ -208,3 +208,15 @@ The latest test-only change adds adversarial checks for duplicate inner-instruct
 All automatically triggered checks for this documentation-only head completed successfully: both Node/runtime test jobs, both Worker configuration/build validation jobs, workflow validation, Cloudflare Worker build, and Devnet read-only preflight. The manual funded-Devnet lifecycle and explicit-confirmation jobs were skipped as designed. The Cloudflare build was a dry-run/build validation only; it did not deploy. Devnet validation performed cluster identity and read-only RPC checks only; it did not sign or submit a transaction.
 
 This follow-up validates the documentation update and existing safety tests. It does not close the semantic instruction, all-in cost provenance, manual Phantom lifecycle, or funded Devnet lifecycle gates.
+
+
+## Follow-up lookup-table settlement and CI audit (2026-11-17, PR head `b675940106b58bedf2aa0446f58cf8d8f685314d`)
+
+- Finalized settlement verification now combines static message account keys with RPC `meta.loadedAddresses.writable` and `meta.loadedAddresses.readonly` in Solana message index order before validating account indexes and owner-scoped token balance deltas.
+- It rejects malformed loaded-address arrays, balance arrays that do not cover every static and loaded key, and combined account-key counts above 256.
+- Added a settlement fixture exercising token-balance indexes that refer to loaded lookup-table addresses, plus negative cases for malformed and oversized loaded-address metadata.
+- CI for this head completed successfully: both Node test jobs, both Worker validation jobs, workflow validation, Cloudflare Worker build, and Devnet read-only preflight. The manual funded-Devnet lifecycle and explicit-confirmation jobs were skipped; no signed or funded transfer is evidenced.
+- The lookup-table change only resolves finalized account indexes and validates metadata shape. It does not prove instruction semantics, authorize CPI effects, or establish all-in cost provenance.
+- Cost-provenance audit reconfirmed that `fetchTrustedLiveEvidence` currently returns only quote/risk/pass evidence and does not construct a `costs` object. The coordinator therefore blocks reservations when all-in costs are absent. Existing arithmetic tests use injected test evidence; they do not demonstrate production derivation from the exact unsigned transaction.
+- The System Program and classic SPL Token decoders remain narrow per-instruction helpers. They are not yet composed into a complete transaction/CPI semantic registry; unknown programs, dynamic CPI effects, Token-2022, rent/account creation, base/precompile fees, tips, and every token/lamport outflow must remain fail-closed.
+- PR #30 remains open and Draft. No Worker route invokes the coordinator, no Phantom signing path is wired, and no merge or production deployment has occurred.
