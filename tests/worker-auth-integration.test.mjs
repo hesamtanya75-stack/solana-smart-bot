@@ -145,6 +145,32 @@ async function totpCode(secret, counter) {
   return String(binary % 1000000).padStart(6, "0");
 }
 
+test("Worker rejects malformed stored session versions and corrupted AuthGuard versions", async () => {
+  {
+    const { env } = makeEnvironment();
+    const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+    assert.equal(login.status, 200);
+    const { token } = await login.json();
+    await env.BOT_STATE.put("session:" + token, JSON.stringify({
+      expiresAt: Date.now() + 60000,
+      sessionVersion: "0"
+    }));
+    const rejected = await get("/api/profile", env, token);
+    assert.equal(rejected.status, 401);
+  }
+  {
+    const { env, guard } = makeEnvironment();
+    const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+    assert.equal(login.status, 200);
+    const { token } = await login.json();
+    const state = guard.ctx.storage.values.get("auth_guard_state");
+    state.sessionVersion = -1;
+    guard.ctx.storage.values.set("auth_guard_state", state);
+    const rejected = await get("/api/profile", env, token);
+    assert.equal(rejected.status, 401);
+  }
+});
+
 test("Worker login migrates legacy MFA and enforces one-time TOTP and backup codes", async () => {
   const secret = "JBSWY3DPEHPK3PXP";
   const backupCode = "ABCD1234EFGH5678";
@@ -232,13 +258,33 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const confirmed = await confirm.json();
   assert.equal(typeof confirmed.backupCode, "string");
 
-  const profile = await get("/api/profile", env, token);
-  assert.equal(profile.status, 200);
-  assert.equal((await profile.json()).totpEnabled, true);
+  // Enabling MFA must revoke every session issued before MFA was enabled.
+  const oldSessionProfile = await get("/api/profile", env, token);
+  assert.equal(oldSessionProfile.status, 401);
 
   const nextLogin = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(nextLogin.status, 200);
-  assert.equal((await nextLogin.json()).mfaRequired, true);
+  const challenge = await nextLogin.json();
+  assert.equal(challenge.mfaRequired, true);
+  const mfaLogin = await post("/api/login/totp", {
+    challengeId: challenge.challengeId,
+    code: confirmed.backupCode
+  }, env);
+  assert.equal(mfaLogin.status, 200);
+  const freshSession = await mfaLogin.json();
+  const profile = await get("/api/profile", env, freshSession.token);
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).totpEnabled, true);
+});
+
+
+test("Paper Buy rate limit is applied before expensive trusted token inspection", async () => {
+  const route = workerSource.slice(workerSource.indexOf('url.pathname === "/api/paper/buy"'));
+  const limiter = route.indexOf("consumeApiRateLimit(env, buyScope, 5, 60000)");
+  const inspection = route.indexOf("await inspectMint(mint, env)");
+  assert.ok(limiter >= 0, "Paper Buy must have a dedicated rate limiter");
+  assert.ok(inspection > limiter, "rate limiting must happen before RPC and market inspection");
+  assert.match(route, /"Retry-After": String\(retryAfterSeconds\)/);
 });
 
 test("Worker trusted scanner requires an authenticated session and rejects malformed mint requests", async () => {

@@ -167,7 +167,19 @@ async function authorized(request, env) {
     return false;
   }
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  if (!session || session.expiresAt <= Date.now()) return false;
+  // Compare the session's issuance version with the AuthGuard's current version.
+  // Enabling MFA increments the version and invalidates every pre-MFA session.
+  let profile;
+  try {
+    profile = await authGuardCall(env, { operation: "get-profile" });
+  } catch {
+    return false;
+  }
+  if (!Number.isSafeInteger(profile.sessionVersion) || profile.sessionVersion < 0) return false;
+  const sessionVersion = session.sessionVersion === undefined ? 0 : session.sessionVersion;
+  if (!Number.isSafeInteger(sessionVersion) || sessionVersion < 0) return false;
+  return sessionVersion === profile.sessionVersion;
 }
 function sameOriginApiRequest(request, url) {
   if (!url.pathname.startsWith("/api/") ||
@@ -749,7 +761,9 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({
+          expiresAt, sessionVersion: Number.isSafeInteger(profile.sessionVersion) ? profile.sessionVersion : 0
+        }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
@@ -778,9 +792,12 @@ export default {
           const status = result.reason === "rate-limited" || result.reason === "attempts-exhausted" ? 429 : 401;
           return json({ error: status === 429 ? "هەوڵەکان سنووردار کراون؛ دواتر هەوڵ بدە." : "کۆدی Authenticator هەڵەیە یان کاتی داواکاری تەواو بوو." }, status);
         }
+        const currentProfile = await ensureAuthGuard(env);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({
+          expiresAt, sessionVersion: Number.isSafeInteger(currentProfile.sessionVersion) ? currentProfile.sessionVersion : 0
+        }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
@@ -1022,6 +1039,19 @@ export default {
               Object.keys(body).some(key => !["mint", "requestId"].includes(key))) {
             return json({ error: "Invalid paper-buy request" }, 400);
           }
+          // Protect expensive RPC, DexScreener and RugCheck inspection before it starts.
+          const authorization = request.headers.get("Authorization") || "";
+          const sessionToken = authorization.replace(/^Bearer\s+/i, "");
+          const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+          const buyScope = "paper-buy:" + await hashText(sessionToken + ":" + clientIp);
+          const rate = await consumeApiRateLimit(env, buyScope, 5, 60000);
+          if (!rate.allowed) {
+            const retryAfterSeconds = Math.max(1, Math.ceil((rate.resetAt - Date.now()) / 1000));
+            return json({
+              error: "Paper-buy rate limit reached; wait before trying again.",
+              retryAfterSeconds
+            }, 429, { "Retry-After": String(retryAfterSeconds) });
+          }
           const inspected = await inspectMint(mint, env);
           if (!inspected.ok) return json({ error: "Server safety checks blocked this paper buy", reasons: inspected.reasons }, 409);
           const result = await paperStateCall(env, {
@@ -1029,7 +1059,8 @@ export default {
           });
           return json(result);
         } catch (error) {
-          return json({ error: String(error?.message || "Paper buy failed") }, error.status || 503);
+          console.error("Paper buy failed", Number.isInteger(error?.status) ? error.status : "internal");
+          return json({ error: "Paper buy could not be completed; retry after checking server status." }, error.status || 503);
         }
       }
       if (url.pathname === "/api/paper/clear-history" && request.method === "POST") {

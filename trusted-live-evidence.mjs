@@ -1127,7 +1127,7 @@ export async function verifyFinalizedJupiterSettlement({
   const hasAddressTableLookups = Array.isArray(addressTableLookups) && addressTableLookups.length > 0;
   const loadedAddresses = meta?.loadedAddresses ?? { writable: [], readonly: [] };
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
-      !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
+      !meta || meta.err !== null || !Array.isArray(signatures) ||
       !Array.isArray(accountKeys) ||
       !message.header || typeof message.header !== "object" || Array.isArray(message.header) ||
       !Number.isSafeInteger(message.header.numRequiredSignatures) ||
@@ -1152,6 +1152,21 @@ export async function verifyFinalizedJupiterSettlement({
       meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
       meta.preBalances[0] < meta.fee) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
+  }
+  // RPC signatures are ordered by required signer. The first must identify
+  // this fee-payer transaction, and every required signer slot must be valid.
+  if (signatures.length !== message.header.numRequiredSignatures ||
+      signatures[0] !== signature ||
+      signatures.some(candidate => {
+        if (typeof candidate !== "string") return true;
+        try {
+          const decoded = decodeBase58(candidate);
+          return decoded.length !== 64 || encodeBase58(decoded) !== candidate;
+        } catch {
+          return true;
+        }
+      })) {
+    throw new Error("Finalized transaction signatures do not match the required signer set");
   }
   const validAddress = isCanonicalPublicKey;
   const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
