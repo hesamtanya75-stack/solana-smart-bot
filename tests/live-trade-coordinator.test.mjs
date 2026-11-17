@@ -999,25 +999,36 @@ test("confirmation fails closed when finalized settlement has no independently v
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
-test("confirmation rejects matching cost fields without gross outflow verification", async () => {
-  const verifier = async args => ({
-    ...mockFinalizedSettlement(args),
-    grossOutflowsVerified: false
-  });
-  const { coordinator } = makeCoordinator(undefined, verifier);
-  await post(coordinator, "/kill-switch", { enabled: false });
-  await post(coordinator, "/reserve", validReservation());
+test("confirmation rejects matching cost fields unless gross outflows are explicitly verified", async () => {
+  const scenarios = [
+    { name: "false", value: false },
+    { name: "missing", omit: true },
+    { name: "non-boolean", value: "true" }
+  ];
 
-  const result = await post(coordinator, "/confirm", {
-    idempotencyKey: "order-key-0001",
-    signature: "4".repeat(64),
-    outputAmount: "987654"
-  });
-  assert.equal(result.status, 409);
-  assert.match(result.body.error, /matching independently verified all-in cost evidence/);
-  const status = await coordinator.status();
-  assert.equal(status.openPositions, 1);
-  assert.equal(status.dailySpendUsdCents, 201);
+  for (let index = 0; index < scenarios.length; index += 1) {
+    const scenario = scenarios[index];
+    const verifier = async args => {
+      const proof = { ...mockFinalizedSettlement(args) };
+      if (scenario.omit) delete proof.grossOutflowsVerified;
+      else proof.grossOutflowsVerified = scenario.value;
+      return proof;
+    };
+    const { coordinator } = makeCoordinator(undefined, verifier);
+    await post(coordinator, "/kill-switch", { enabled: false });
+    await post(coordinator, "/reserve", validReservation());
+
+    const result = await post(coordinator, "/confirm", {
+      idempotencyKey: "order-key-0001",
+      signature: String(index + 4).repeat(64),
+      outputAmount: "987654"
+    });
+    assert.equal(result.status, 409, scenario.name);
+    assert.match(result.body.error, /matching independently verified all-in cost evidence/, scenario.name);
+    const status = await coordinator.status();
+    assert.equal(status.openPositions, 1, scenario.name);
+    assert.equal(status.dailySpendUsdCents, 201, scenario.name);
+  }
 });
 
 test("confirmation rejects finalized all-in cost evidence that differs from the reserved cost breakdown", async () => {
