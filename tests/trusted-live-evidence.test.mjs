@@ -1761,6 +1761,66 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
 });
 
 
+test("settlement proof resolves finalized address-lookup-table account indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(33));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const loadedInputAccount = encodeBase58(new Uint8Array(32).fill(71));
+  const loadedOutputAccount = encodeBase58(new Uint8Array(32).fill(72));
+  const loadedProgramAccount = encodeBase58(new Uint8Array(32).fill(73));
+  const result = {
+    slot: 789,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(74))],
+        instructions: [{ programIdIndex: 1, accounts: [0, 2, 3], data: "1" }]
+      }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      loadedAddresses: { writable: [loadedInputAccount, loadedOutputAccount], readonly: [loadedProgramAccount] },
+      innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 4, accounts: [0, 2, 3], data: "1", stackHeight: 2 }]
+      }],
+      preBalances: [100_000_000, 1, 1, 1, 1],
+      postBalances: [89_995_000, 1, 1, 1, 1],
+      preTokenBalances: [{
+        accountIndex: 2, mint: inputMint, owner: BOT_WALLET,
+        uiTokenAmount: { amount: "10000000", decimals: 9 }
+      }],
+      postTokenBalances: [
+        {
+          accountIndex: 2, mint: inputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "0", decimals: 9 }
+        },
+        {
+          accountIndex: 3, mint: outputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "12345", decimals: 6 }
+        }
+      ]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    return Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : result
+    });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint,
+    inputAmount: "10000000", outputAmount: "12345",
+    expectedOwner: BOT_WALLET
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.slot, 789);
+});
+
 test("settlement proof rejects absent and malformed finalized CPI execution metadata", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(17));
   const inputMint = "So11111111111111111111111111111111111111112";
