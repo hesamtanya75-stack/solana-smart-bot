@@ -505,3 +505,29 @@ test("legacy paper history above the supported limit fails closed without trunca
   assert.equal(await storage.get("paper_state_v1"), undefined);
   assert.equal((await storage.values).size, 0);
 });
+
+
+test("legacy migration window stays closed when paper metadata shows prior activity", async () => {
+  const cases = [
+    { deferredMints: [{ mint: mintA, retryAt: 123 }] },
+    { lastRunAt: "2026-11-17T10:00:00.000Z" },
+    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] },
+    { lastMessage: "Previous paper trading activity" },
+    { updatedAt: "2026-11-17T10:00:00.000Z" }
+  ];
+  for (const extra of cases) {
+    const { instance } = makeDO({
+      balance: 100, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], ...extra
+    });
+    const result = await call(instance, { operation: "get" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.migrationOpen, false);
+    const attempt = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: result.body.revision,
+      state: { balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(attempt.status, 409);
+  }
+});
