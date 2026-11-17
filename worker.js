@@ -886,7 +886,6 @@ export default {
             }, 429);
           }
 
-        try {
           const body = await readBoundedJson(request, 4096);
           const mint = String(body.mint || "");
           if (Object.keys(body).some(key => key !== "mint") ||
