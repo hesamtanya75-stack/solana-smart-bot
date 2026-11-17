@@ -165,6 +165,29 @@ test("compare-and-set refuses malformed balance and leaves the last valid state 
   assert.equal((await storage.get("paper_state_v1")).state.balance, 72);
 });
 
+test("corrupted ledger revision fails closed and preserves the stored record", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.revision = -1;
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal((await storage.get("paper_state_v1")).revision, -1);
+});
+
+test("duplicate idempotency records fail closed without rewriting history", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  const invalid = { id: requestId("duplicate"), operation: "clear-history", intent: "" };
+  record.recentOperations = [invalid, { ...invalid }];
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  const preserved = await storage.get("paper_state_v1");
+  assert.equal(preserved.recentOperations.length, 2);
+});
 test("compare-and-set rejects stale snapshots without overwriting current state", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const first = await call(instance, { operation: "get" });
