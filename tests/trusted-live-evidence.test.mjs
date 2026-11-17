@@ -1257,16 +1257,14 @@ test("complete outer-program identity requires an exact reviewed set and never a
 
   // Provider-supplied claims must never upgrade identity evidence into
   // semantic approval, even if an untrusted evidence object says "true".
-  const spoofed = verifyCompleteOuterProgramIdentity({
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
     outerInstructionEvidence: outer,
     programIdentityEvidence: {
       ...evidence,
       semanticInstructionVerification: true,
       verificationScope: "semantically-verified"
     }
-  });
-  assert.equal(spoofed.semanticInstructionVerification, false);
-  assert.equal(spoofed.verificationScope, "complete-outer-program-deployment-identity-only");
+  }), /Finalized native program identity evidence is incomplete/);
 
   assert.throws(() => verifyCompleteOuterProgramIdentity({
     outerInstructionEvidence: outer,
