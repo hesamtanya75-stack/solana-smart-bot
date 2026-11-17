@@ -1825,6 +1825,20 @@ test("settlement proof rejects absent and malformed finalized CPI execution meta
     }))
   }));
   await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(excessive)), /CPI metadata exceeds the supported instruction limit/);
+
+  for (const instructions of [
+    [{ programIdIndex: 99, accounts: [0], data: "1" }],
+    [{ programIdIndex: 1, accounts: [99], data: "1" }],
+    [{ programIdIndex: 1, accounts: [0], data: "!" }],
+    [{}]
+  ]) {
+    const malformedOuter = structuredClone(baseResult);
+    malformedOuter.transaction.message.instructions = instructions;
+    await assert.rejects(
+      () => verifyFinalizedJupiterSettlement(args, makeFetch(malformedOuter)),
+      /Finalized outer instruction metadata/
+    );
+  }
 });
 
 test("settlement proof requires the connected Phantom owner explicitly", async () => {
