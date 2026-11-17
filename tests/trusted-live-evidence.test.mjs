@@ -1863,6 +1863,7 @@ test("settlement proof rejects token balance rows without explicit owner attribu
       ]
     }
   };
+  delete result.meta.postTokenBalances[1].owner;
   const fetchImpl = async (_url, options) => {
     const { method } = JSON.parse(options.body);
     const payload = method === "getSignatureStatuses"
