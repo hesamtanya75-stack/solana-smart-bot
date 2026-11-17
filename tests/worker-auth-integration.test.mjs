@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
+import { fetchCompleteMintTokenAccounts, parseMintAccount } from "../trusted-live-evidence.mjs";
 import { PaperTradingState } from "../paper-trading-state.mjs";
 import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "../rpc-response.mjs";
 
@@ -11,7 +12,8 @@ const workerSource = await readFile(new URL("../worker.js", import.meta.url), "u
 const executableWorkerSource = workerSource
   .replace(/^export default \{/m, "const worker = {")
   .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "")
-  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "");
+  .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m
+  .replace(/^import \{ fetchCompleteMintTokenAccounts, parseMintAccount \} from ["'][^"']+["'];?\s*$/m, "");
 const workerContext = vm.createContext({
   crypto: webcrypto,
   Request,
@@ -29,7 +31,9 @@ const workerContext = vm.createContext({
   structuredClone,
   parseRpcResponse,
   parseRpcBatchResponse,
-  readBoundedJsonResponse
+  readBoundedJsonResponse,
+  fetchCompleteMintTokenAccounts,
+  parseMintAccount
 });
 vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
 const worker = workerContext.__worker;
