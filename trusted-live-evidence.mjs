@@ -1807,7 +1807,22 @@ export async function verifyFinalizedJupiterSettlement({
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
+  const lookupTables = message.addressTableLookups;
+  if (lookupTables != null && (!Array.isArray(lookupTables) ||
+      lookupTables.length > 256 || lookupTables.some(lookup =>
+        !lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+        !isCanonicalPublicKey(lookup.accountKey) ||
+        !Array.isArray(lookup.writableIndexes) ||
+        !Array.isArray(lookup.readonlyIndexes) ||
+        lookup.writableIndexes.length > 256 || lookup.readonlyIndexes.length > 256 ||
+        [...lookup.writableIndexes, ...lookup.readonlyIndexes].some(index =>
+          !Number.isInteger(index) || index < 0 || index > 255)))) {
+    throw new Error("Finalized transaction address-lookup metadata is malformed");
+  }
   const loadedAddresses = meta.loadedAddresses;
+  if (lookupTables?.length && (!loadedAddresses || typeof loadedAddresses !== "object")) {
+    throw new Error("Finalized transaction is missing loaded addresses for declared lookup tables");
+  }
   const loadedWritable = loadedAddresses == null ? [] : loadedAddresses.writable;
   const loadedReadonly = loadedAddresses == null ? [] : loadedAddresses.readonly;
   if (!Array.isArray(loadedWritable) || !Array.isArray(loadedReadonly)) {
