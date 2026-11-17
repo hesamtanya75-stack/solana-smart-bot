@@ -1736,6 +1736,7 @@ async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
   const button = document.getElementById("serverLoginButton");
+  let receivedSessionToken = false;
   button.disabled = true;
   error.textContent = "چوونەژوورەوە...";
   try {
@@ -1746,6 +1747,7 @@ async function submitServerLogin() {
         body: JSON.stringify({ challengeId: serverMfaChallenge, code: otp.value.trim() })
       });
       serverMfaChallenge = "";
+      receivedSessionToken = true;
       await finishServerLogin(verified.token);
       return;
     }
@@ -1769,9 +1771,22 @@ async function submitServerLogin() {
       button.textContent = "پشتڕاستکردنەوە";
       return;
     }
+    receivedSessionToken = true;
     await finishServerLogin(result.token);
   } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
+    if (receivedSessionToken) {
+      // A valid credential is not enough: keep the browser fail-closed unless
+      // paper-state migration and the initial server sync both complete.
+      clearServerPolling();
+      serverModeReady = false;
+      serverStateRevision = null;
+      serverToken = "";
+      serverLogoutLocked = true;
+      localStorage.setItem("solanaBotServerLogoutLocked", "1");
+      localStorage.removeItem("solanaBotSession");
+      serverLogin.style.display = "flex";
+    }
+    error.textContent = e.message;
   } finally {
     button.disabled = false;
   }
