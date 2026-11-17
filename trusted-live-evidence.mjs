@@ -1252,10 +1252,23 @@ export async function verifyFinalizedJupiterSettlement({
           throw new Error("Finalized inner-instruction metadata has an invalid parent index or shape");
         }
         seenParentIndexes.add(group.index);
+        const instructions = group.instructions.map(instruction =>
+          compileInstructionEvidence(instruction, "inner instruction", true));
+        const stackHeights = instructions.map(instruction => instruction.stackHeight);
+        // When the RPC supplies stack heights, require a complete, coherent
+        // CPI trace: the first inner call is depth 2 and nesting can increase
+        // by only one level at a time. A decrease represents returning to a
+        // parent frame. Missing stack heights remain structural-only evidence.
+        if (stackHeights.some(height => height !== null) &&
+            (stackHeights.some(height => height === null) ||
+              stackHeights[0] !== 2 ||
+              stackHeights.some((height, index) =>
+                index > 0 && height > stackHeights[index - 1] + 1))) {
+          throw new Error("Finalized inner-instruction stack-height sequence is inconsistent");
+        }
         return Object.freeze({
           index: group.index,
-          instructions: Object.freeze(group.instructions.map(instruction =>
-            compileInstructionEvidence(instruction, "inner instruction", true)))
+          instructions: Object.freeze(instructions)
         });
       }))
     : null;
