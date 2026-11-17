@@ -1718,6 +1718,21 @@ function validateFinalizedInnerInstructionMetadata(innerInstructions, outerInstr
       innerInstructions.length > outerInstructions.length) {
     throw new Error("Finalized CPI metadata is missing or malformed");
   }
+  for (const instruction of outerInstructions) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.programIdIndex) ||
+        instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeyCount ||
+        !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+        instruction.accounts.some(index => !Number.isInteger(index) || index < 0 || index >= accountKeyCount) ||
+        typeof instruction.data !== "string" || instruction.data.length > 16384) {
+      throw new Error("Finalized outer instruction metadata is malformed");
+    }
+    try {
+      decodeBase58(instruction.data);
+    } catch {
+      throw new Error("Finalized outer instruction metadata contains invalid instruction data");
+    }
+  }
   const seenOuterIndexes = new Set();
   let totalInnerInstructions = 0;
   for (const group of innerInstructions) {
