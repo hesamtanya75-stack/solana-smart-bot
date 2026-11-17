@@ -117,6 +117,12 @@ Therefore:
 This change records validated net lamport movement and the RPC-reported network fee; it does not add a live transaction path or claim that gross native SOL cost reconciliation or all-in spend verification is implemented.
 
 
+### Coordinator enforcement of gross-outflow settlement proof
+
+The coordinator now requires `proof.grossOutflowsVerified === true` at confirmation, in addition to an exact match between the finalized settlement cost breakdown and the immutable reserved cost fields: compute-unit price, compute-unit limit, priority fee, base fee, tip, rent, other outflows, total fees, and total lamports. Missing, false, or non-boolean attestations are rejected; the reservation remains open and its daily spend remains reserved.
+
+The current finalized Jupiter settlement verifier deliberately returns `grossOutflowsVerified: false`, `allInCostEvidence: null`, and `costVerification: "net-lamport-delta-only"`. This is an explicit fail-closed status, not a completed all-in cost verifier. The coordinator's positive-path unit fixtures are synthetic policy tests only; they do not demonstrate that a provider can produce a valid production attestation.
+
 ### Worker integration boundary
 
 The Worker references the `LIVE_TRADE_COORDINATOR` binding only for authenticated status reads and one-way emergency-stop activation. It does not expose reservation, confirmation, failure, close, signing, swap, or live-order routes, and it does not call `executeLiveOrder()`. The coordinator module and its binding are not an operational trading path.
