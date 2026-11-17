@@ -483,3 +483,25 @@ test("scheduled cron ignores non-finite provider prices without corrupting paper
   assert.equal(result.body.state.trades[0].currentPrice, 2);
   assert.ok(Number.isFinite(Date.parse(result.body.state.lastRunAt)));
 });
+
+
+test("legacy paper history above the supported limit fails closed without truncation", async () => {
+  const trades = Array.from({ length: 501 }, (_, index) => ({
+    mint: mintA,
+    amount: 5,
+    buyPrice: 2,
+    currentPrice: 2,
+    tokens: 2.5,
+    sold: true,
+    sellPrice: 2,
+    saleValue: 5,
+    boughtAt: new Date(0 + index).toISOString()
+  }));
+  const legacy = { balance: 100, trades, autoEnabled: false, paused: false, scannedMints: [] };
+  const { instance, storage } = makeDO(legacy);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, "Paper trading state operation failed");
+  assert.equal(await storage.get("paper_state_v1"), undefined);
+  assert.equal((await storage.values).size, 0);
+});
