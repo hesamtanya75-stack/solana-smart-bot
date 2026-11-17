@@ -1826,6 +1826,9 @@ export async function verifyFinalizedJupiterSettlement({
           !Number.isInteger(index) || index < 0 || index > 255)))) {
     throw new Error("Finalized transaction address-lookup metadata is malformed");
   }
+  if (lookupTables?.length && transaction.version !== 0) {
+    throw new Error("Finalized transaction lookup tables require version 0 metadata");
+  }
   const loadedAddresses = meta.loadedAddresses;
   if (lookupTables?.length && (!loadedAddresses || typeof loadedAddresses !== "object")) {
     throw new Error("Finalized transaction is missing loaded addresses for declared lookup tables");
@@ -1834,6 +1837,16 @@ export async function verifyFinalizedJupiterSettlement({
   const loadedReadonly = loadedAddresses == null ? [] : loadedAddresses.readonly;
   if (!Array.isArray(loadedWritable) || !Array.isArray(loadedReadonly)) {
     throw new Error("Finalized transaction loaded-address metadata is malformed");
+  }
+  const expectedWritableCount = (lookupTables ?? []).reduce(
+    (total, lookup) => total + lookup.writableIndexes.length, 0
+  );
+  const expectedReadonlyCount = (lookupTables ?? []).reduce(
+    (total, lookup) => total + lookup.readonlyIndexes.length, 0
+  );
+  if (loadedWritable.length !== expectedWritableCount ||
+      loadedReadonly.length !== expectedReadonlyCount) {
+    throw new Error("Finalized loaded-address counts do not match declared lookup indexes");
   }
   if (meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
       meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
