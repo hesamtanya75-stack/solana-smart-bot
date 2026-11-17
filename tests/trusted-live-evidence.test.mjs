@@ -1913,7 +1913,7 @@ test("production trusted evidence integration never claims semantic trust or all
       return Response.json({
         jsonrpc: "2.0", id: request.id,
         result: { token_accounts: [{
-          address: "TokenAccountAddress111111111111111111111",
+          address: encodeBase58(new Uint8Array(32).fill(102)),
           mint, owner, amount: "1001"
         }], errors: [] }
       });
