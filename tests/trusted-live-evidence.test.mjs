@@ -1837,6 +1837,46 @@ test("settlement proof rejects duplicate and out-of-range owned token account in
   }
 });
 
+test("settlement proof rejects token balance rows without explicit owner attribution", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(31));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 132,
+    transaction: {
+      signatures: [signature],
+      message: {
+        header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+        accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(23)), encodeBase58(new Uint8Array(32).fill(24))]
+      }
+    },
+    meta: {
+      err: null, fee: 5000,
+      preBalances: [100_000_000, 1, 1], postBalances: [99_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "100", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 0 } },
+        { accountIndex: 2, mint: outputMint, uiTokenAmount: { amount: "200", decimals: 0 } }
+      ]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const payload = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: payload }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /invalid or duplicate owned token account indexes/);
+});
+
 test("settlement proof rejects confirmed but non-finalized signatures", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
   const fetchImpl = async (_url, options) => {
