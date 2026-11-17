@@ -1070,6 +1070,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   let invalidNativeBalanceFixture = false;
   let invalidStackHeightFixture = false;
+  let invalidOuterStackHeightFixture = false;
+  let invalidInnerStackHeightFixture = false;
   let duplicateForeignTokenBalanceFixture = false;
   let malformedForeignTokenBalanceFixture = false;
   const fetchImpl = async (_url, options) => {
@@ -1085,7 +1087,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
               instructions: [{
                 programIdIndex: 0,
                 accounts: [0],
-                data: "1"
+                data: "1",
+                ...(invalidOuterStackHeightFixture ? { stackHeight: 2 } : {})
               }]
             }
           },
@@ -1102,7 +1105,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
                 programIdIndex: 1,
                 accounts: [0, 2],
                 data: "2",
-                stackHeight: invalidStackHeightFixture ? -1 : 2
+                stackHeight: invalidStackHeightFixture ? -1 :
+                  (invalidInnerStackHeightFixture ? 1 : 2)
               }]
             }],
             preBalances: invalidNativeBalanceFixture ? [null, 1, 2] : [100_000_000, 1, 2],
@@ -1212,6 +1216,26 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }, fetchImpl), /invalid owned token balance/);
 
   malformedForeignTokenBalanceFixture = false;
+  invalidInnerStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
+
+  invalidInnerStackHeightFixture = false;
+  invalidOuterStackHeightFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid compiled account indexes or data/);
+
+  invalidOuterStackHeightFixture = false;
   invalidStackHeightFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
     signature,
