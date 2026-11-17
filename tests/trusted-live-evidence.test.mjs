@@ -1194,6 +1194,50 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }, fetchImpl), /invalid compiled account indexes or data/);
 });
 
+test("settlement proof rejects malformed inner-instruction metadata instead of treating it as absent", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(5));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 127,
+          transaction: {
+            signatures: [signature],
+            message: {
+              accountKeys: [BOT_WALLET],
+              instructions: [{ programIdIndex: 0, accounts: [0], data: "1" }]
+            }
+          },
+          meta: {
+            err: null,
+            fee: 5000,
+            preBalances: [100_000_000],
+            postBalances: [99_995_000],
+            innerInstructions: { malformed: true },
+            preTokenBalances: [{
+              accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "100", decimals: 0 }
+            }],
+            postTokenBalances: [
+              { accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "0", decimals: 0 } },
+              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+                uiTokenAmount: { amount: "200", decimals: 0 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "100", outputAmount: "200"
+  }, fetchImpl), /inner-instruction metadata has an invalid shape/);
+});
+
 test("settlement proof rejects CPI groups that reference a nonexistent outer instruction", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(6));
   const inputMint = "So11111111111111111111111111111111111111112";
