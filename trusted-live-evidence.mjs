@@ -1229,6 +1229,11 @@ export async function verifyFinalizedJupiterSettlement({
       feePayerNetDecreaseLamports: (BigInt(meta.preBalances[0]) - BigInt(meta.postBalances[0])).toString(),
       networkFeeLamports: String(meta.fee)
     }),
+    // Explicitly distinguish token settlement proof from transaction-cost proof.
+    // This remains false until every native outflow is decoded and reconciled.
+    grossOutflowsVerified: false,
+    allInCostEvidence: null,
+    costVerification: "net-lamport-delta-only",
     outerInstructionsRecorded,
     outerInstructionEvidence,
     innerInstructionsRecorded,
