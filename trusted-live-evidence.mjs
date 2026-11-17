@@ -1056,12 +1056,14 @@ function sumOwnedTokenBalance(rows, mint, owner, accountCount) {
         !isCanonicalPublicKey(row.mint) ||
         !row.uiTokenAmount || typeof row.uiTokenAmount !== "object" ||
         Array.isArray(row.uiTokenAmount) ||
-        !isU64DecimalString(row.uiTokenAmount.amount, true) ||
         !Number.isInteger(row.uiTokenAmount.decimals) ||
         row.uiTokenAmount.decimals < 0 || row.uiTokenAmount.decimals > 255 ||
         (row.owner != null && !isCanonicalPublicKey(row.owner)) ||
         (row.programId != null && !isCanonicalPublicKey(row.programId))) {
       throw new Error("Finalized transaction contains invalid or duplicate owned token account indexes");
+    }
+    if (!isU64DecimalString(row.uiTokenAmount.amount, true)) {
+      throw new Error("Finalized transaction contains an invalid owned token balance");
     }
     // accountIndex identifies one token account globally within each pre/post
     // balance list. Validate every row before filtering by mint/owner so a
