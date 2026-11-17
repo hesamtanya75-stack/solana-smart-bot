@@ -376,7 +376,13 @@ async function getDexJson(url, env, ttlSeconds = 30) {
         expirationTtl: Math.max(60, ttlSeconds * 2)
       });
     } catch (error) {
-      console.warn("DexScreener cache write warning", String(error?.messagasync function inspectMint(mint, env, diagnostics = null) {
+      console.warn("DexScreener cache write warning", String(error?.message || error));
+    }
+  }
+  return data;
+}
+
+async function inspectMint(mint, env, diagnostics = null) {
   // The exact requested mint must be the base token in the selected Solana pair.
   const dex = await getDexJson(
     "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(mint), env, 90
@@ -400,7 +406,7 @@ async function getDexJson(url, env, ttlSeconds = 30) {
   const [account, supply] = rpcResults;
   const details = parseMintAccount(account);
   const rawSupply = String(supply?.value?.amount ?? "");
-  if (!/^\d+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
+  if (!/^\\d+$/.test(rawSupply) || BigInt(rawSupply) <= 0n ||
       !Array.isArray(holderAccounts) || holderAccounts.length === 0) {
     throw new Error("Complete holder data or finalized token supply is unavailable");
   }
