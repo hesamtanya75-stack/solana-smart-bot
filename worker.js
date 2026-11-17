@@ -1022,6 +1022,19 @@ export default {
               Object.keys(body).some(key => !["mint", "requestId"].includes(key))) {
             return json({ error: "Invalid paper-buy request" }, 400);
           }
+          // Protect expensive RPC, DexScreener and RugCheck inspection before it starts.
+          const authorization = request.headers.get("Authorization") || "";
+          const sessionToken = authorization.replace(/^Bearer\\s+/i, "");
+          const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+          const buyScope = "paper-buy:" + await hashText(sessionToken + ":" + clientIp);
+          const rate = await consumeApiRateLimit(env, buyScope, 5, 60000);
+          if (!rate.allowed) {
+            const retryAfterSeconds = Math.max(1, Math.ceil((rate.resetAt - Date.now()) / 1000));
+            return json({
+              error: "Paper-buy rate limit reached; wait before trying again.",
+              retryAfterSeconds
+            }, 429, { "Retry-After": String(retryAfterSeconds) });
+          }
           const inspected = await inspectMint(mint, env);
           if (!inspected.ok) return json({ error: "Server safety checks blocked this paper buy", reasons: inspected.reasons }, 409);
           const result = await paperStateCall(env, {
@@ -1029,7 +1042,8 @@ export default {
           });
           return json(result);
         } catch (error) {
-          return json({ error: String(error?.message || "Paper buy failed") }, error.status || 503);
+          console.error("Paper buy failed", String(error?.message || error));
+          return json({ error: "Paper buy could not be completed; retry after checking server status." }, error.status || 503);
         }
       }
       if (url.pathname === "/api/paper/clear-history" && request.method === "POST") {
