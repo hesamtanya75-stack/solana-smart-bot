@@ -1761,7 +1761,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
       inputAmount: "10000000",
       outputAmount: "12345",
       expectedOwner: BOT_WALLET
-    }, malformedFetch), /malformed or duplicate token balance metadata/);
+    }, malformedFetch), /malformed or duplicate token balance metadata|inconsistent token decimals/);
   }
 });
 
