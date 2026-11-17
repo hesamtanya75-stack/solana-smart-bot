@@ -1543,7 +1543,14 @@ test("settlement proof rejects incomplete loaded-address balance metadata", asyn
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: {
+              accountKeys: [BOT_WALLET],
+              addressTableLookups: [{
+                accountKey: encodeBase58(new Uint8Array(32).fill(13)),
+                writableIndexes: [0],
+                readonlyIndexes: [0]
+              }]
+            }
           },
           meta: {
             err: null,
