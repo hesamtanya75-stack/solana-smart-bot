@@ -106,6 +106,40 @@ function response(data, status = 200) {
   });
 }
 
+function validateRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record) ||
+      !Number.isSafeInteger(record.revision) || record.revision < 0 ||
+      !Array.isArray(record.recentOperations) || record.recentOperations.length > 500 ||
+      (record.migrationOpen !== undefined && typeof record.migrationOpen !== "boolean") ||
+      (record.migrationMarkerPending !== undefined && typeof record.migrationMarkerPending !== "boolean")) {
+    throw new Error("Paper trading state integrity error: invalid ledger record envelope");
+  }
+  cleanState(record.state);
+  const seen = new Set();
+  for (const item of record.recentOperations) {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.id !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(item.id) ||
+        seen.has(item.id) || !["paper-buy", "clear-history"].includes(item.operation) ||
+        typeof item.intent !== "string") {
+      throw new Error("Paper trading state integrity error: invalid idempotency record");
+    }
+    seen.add(item.id);
+    if (item.operation === "clear-history") {
+      if (item.intent !== "") throw new Error("Paper trading state integrity error: invalid clear-history intent");
+    } else {
+      let intent;
+      try { intent = JSON.parse(item.intent); }
+      catch { throw new Error("Paper trading state integrity error: malformed paper-buy intent"); }
+      if (!intent || typeof intent !== "object" || Array.isArray(intent) ||
+          typeof intent.mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(intent.mint) ||
+          typeof intent.price !== "number" || !Number.isFinite(intent.price) || intent.price <= 0 ||
+          Object.keys(intent).some(key => !["mint", "price"].includes(key))) {
+        throw new Error("Paper trading state integrity error: invalid paper-buy intent");
+      }
+    }
+  }
+  return record;
+}
 export class PaperTradingState {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -118,7 +152,7 @@ export class PaperTradingState {
     if (record) {
       // Validate persisted ledger data before returning it or allowing any later
       // compare-and-set write. Corruption must fail closed, never normalize to $100.
-      cleanState(record.state);
+      validateRecord(record);
       // If the DO record committed but the KV completion marker write failed,
       // finish that marker before ever allowing recovery from the legacy snapshot.
       if (record.migrationMarkerPending !== false) {
@@ -126,7 +160,9 @@ export class PaperTradingState {
         if (marker !== "complete") await this.env.BOT_STATE.put(migrationKey, "complete");
         record = await this.ctx.storage.transaction(async txn => {
           const current = await txn.get("paper_state_v1");
-          if (!current || current.migrationMarkerPending === false) return current;
+          if (!current) return current;
+          validateRecord(current);
+          if (current.migrationMarkerPending === false) return current;
           const completed = { ...current, migrationMarkerPending: false };
           await txn.put("paper_state_v1", completed);
           return completed;
@@ -139,7 +175,7 @@ export class PaperTradingState {
       // Never re-import an old KV snapshot if the Durable Object's own storage
       // was reset after a completed migration; fail closed instead of resurrecting stale trades.
       record = await this.ctx.storage.get("paper_state_v1");
-      if (record) return record;
+      if (record) return validateRecord(record);
       throw new Error("PaperTradingState storage is missing after its one-time KV migration");
     }
     // An "initializing" marker is recoverable: a prior isolate may have stopped
@@ -154,14 +190,16 @@ export class PaperTradingState {
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
-      if (existing) return existing;
+      if (existing) return validateRecord(existing);
       await txn.put("paper_state_v1", candidate);
       return candidate;
     });
     await this.env.BOT_STATE.put(migrationKey, "complete");
     record = await this.ctx.storage.transaction(async txn => {
       const current = await txn.get("paper_state_v1");
-      if (!current || current.migrationMarkerPending === false) return current;
+      if (!current) return current;
+      validateRecord(current);
+      if (current.migrationMarkerPending === false) return current;
       const completed = { ...current, migrationMarkerPending: false };
       await txn.put("paper_state_v1", completed);
       return completed;
@@ -172,7 +210,7 @@ export class PaperTradingState {
   async transact(mutator) {
     await this.ensureRecord();
     return this.ctx.storage.transaction(async txn => {
-      const record = await txn.get("paper_state_v1");
+      const record = validateRecord(await txn.get("paper_state_v1"));
       const result = await mutator(record);
       if (result?.write) await txn.put("paper_state_v1", result.record);
       return result?.value;
