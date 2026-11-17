@@ -126,6 +126,47 @@ function validateBuildInstruction(instruction, name) {
   return Object.freeze({ programId: instruction.programId, accounts: Object.freeze(accounts), data: instruction.data });
 }
 
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * Decodes only the canonical SystemProgram::Transfer wire format.
+ * A tip destination is accepted only when supplied by a separately reviewed
+ * trusted allowlist; this does not attest to the rest of the Jupiter route.
+ */
+export function decodeAllowlistedJupiterTip(instruction, allowedTipAccounts) {
+  if (!instruction || instruction.programId !== SYSTEM_PROGRAM_ID ||
+      !Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
+      !Array.isArray(allowedTipAccounts) || allowedTipAccounts.length === 0 ||
+      !allowedTipAccounts.every(isCanonicalPublicKey) ||
+      !new Set(allowedTipAccounts).has(instruction.accounts[1]?.pubkey) ||
+      instruction.accounts[0]?.isSigner !== true ||
+      instruction.accounts[0]?.isWritable !== true ||
+      instruction.accounts[1]?.isSigner !== false ||
+      instruction.accounts[1]?.isWritable !== true ||
+      typeof instruction.data !== "string" ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.data)) {
+    throw new Error("Jupiter tip instruction is not an allowlisted System Program transfer");
+  }
+  const data = Uint8Array.from(atob(instruction.data), char => char.charCodeAt(0));
+  if (btoa(String.fromCharCode(...data)) !== instruction.data ||
+      data.length !== 12 || data[0] !== 2 || data[1] !== 0 ||
+      data[2] !== 0 || data[3] !== 0) {
+    throw new Error("Jupiter tip transfer discriminator or data length is invalid");
+  }
+  let lamports = 0n;
+  for (let i = 0; i < 8; i++) lamports |= BigInt(data[4 + i]) << BigInt(i * 8);
+  if (lamports <= 0n || lamports > 1000000000n) {
+    throw new Error("Jupiter tip transfer amount is outside the reviewed bound");
+  }
+  return Object.freeze({
+    programId: SYSTEM_PROGRAM_ID,
+    source: instruction.accounts[0].pubkey,
+    destination: instruction.accounts[1].pubkey,
+    lamports: lamports.toString(),
+    semantics: "system-transfer-allowlisted-destination"
+  });
+}
+
 /**
  * Validates the documented Jupiter Swap V2 /build response envelope only.
  * It does not decode instruction semantics or establish program trust.
@@ -173,6 +214,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   const otherInstructions = validateList(build.otherInstructions, "other");
   const tipInstruction = build.tipInstruction === null
     ? null : validateBuildInstruction(build.tipInstruction, "tip");
+  const tipEvidence = tipInstruction === null
+    ? null : decodeAllowlistedJupiterTip(tipInstruction, expected.tipAccounts);
   const allInstructions = [
     ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
     ...(cleanupInstruction ? [cleanupInstruction] : []),
@@ -230,6 +273,7 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     cleanupInstruction,
     otherInstructions,
     tipInstruction,
+    tipEvidence,
     addressesByLookupTableAddress: Object.freeze(lookupTables),
     blockhashWithMetadata: Object.freeze({
       blockhash: Object.freeze([...build.blockhashWithMetadata.blockhash]),
