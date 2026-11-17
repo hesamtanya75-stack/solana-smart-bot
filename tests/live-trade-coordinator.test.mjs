@@ -63,6 +63,7 @@ function mockFinalizedSettlement(args) {
     inputAmount: args.inputAmount, outputMint: args.outputMint,
     outputAmount: args.outputAmount, owner: args.expectedOwner,
     confirmationStatus: "finalized",
+    grossOutflowsVerified: true,
     costs: { ...costs, totalFeeLamports, totalLamports: Number(args.inputAmount) + totalFeeLamports }
   };
 }
@@ -980,7 +981,7 @@ test("confirmation fails closed when finalized settlement has no independently v
     verified: true, signature: args.signature, inputMint: args.inputMint,
     inputAmount: args.inputAmount, outputMint: args.outputMint,
     outputAmount: args.outputAmount, owner: args.expectedOwner,
-    confirmationStatus: "finalized", costs: null
+    confirmationStatus: "finalized", grossOutflowsVerified: true, costs: null
   });
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -1007,7 +1008,7 @@ test("confirmation rejects finalized all-in cost evidence that differs from the 
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized",
+      confirmationStatus: "finalized", grossOutflowsVerified: true,
       costs: { ...costs, baseFeeLamports: costs.baseFeeLamports + 1,
         totalFeeLamports: totalFeeLamports + 1,
         totalLamports: Number(args.inputAmount) + totalFeeLamports + 1 }
