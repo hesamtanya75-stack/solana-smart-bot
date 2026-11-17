@@ -11,6 +11,7 @@ import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const executableWorkerSource = workerSource
   .replace(/^export default \{/m, "const worker = {")
+  .replace(/^export function isShareAbovePercent/m, "function isShareAbovePercent")
   .replace(/^export \{[^}]+\} from ["'][^"']+["'];?\s*$/gm, "")
   .replace(/^import \{ parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse \} from ["'][^"']+["'];?\s*$/m, "")
   .replace(/^import \{ fetchCompleteMintTokenAccounts, parseMintAccount \} from ["'][^"']+["'];?\s*$/m, "");
