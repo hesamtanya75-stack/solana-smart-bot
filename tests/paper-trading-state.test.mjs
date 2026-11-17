@@ -50,7 +50,7 @@ async function runScheduledWithDexPrice(t, initial, priceUsd) {
   const { instance } = makeDO(initial);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async url => {
-    assert.match(String(url), /api\\.dexscreener\\.com\\/latest\\/dex\\/tokens\\//);
+    assert.match(String(url), /api\.dexscreener\.com\/latest\/dex\/tokens\//);
     return new Response(JSON.stringify({ pairs: [{
       chainId: "solana",
       baseToken: { address: mintA },
