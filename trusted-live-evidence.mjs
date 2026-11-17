@@ -1149,7 +1149,8 @@ export async function verifyFinalizedJupiterSettlement({
       !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0 ||
       meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
-      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0)) {
+      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.preBalances[0] < meta.fee) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
   const validAddress = isCanonicalPublicKey;
