@@ -1612,7 +1612,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           },
           meta: {
             err: null, fee: 5000,
-            preBalances: [1, 100_000_000, 1, 1], postBalances: [1, 89_995_000, 1, 1],
+            preBalances: [10_000, 100_000_000, 1, 1], postBalances: [5_000, 89_995_000, 1, 1],
             preTokenBalances: [
               { accountIndex: 2, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
             ],
