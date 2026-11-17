@@ -97,8 +97,8 @@ test("legacy paper-trading migration refuses to consume malformed local snapshot
   const enableServerMode = dashboardSource.indexOf("serverModeReady = true;", login);
   const migrateWrite = dashboardSource.indexOf("await saveServerState();", login);
   assert.ok(login >= 0 && read > login);
-  assert.ok(parseGuard > read && shapeGuard > parseGuard && balanceGuard > shapeGuard);
-  assert.ok(tradeLimitGuard > balanceGuard && tradeValidation > tradeLimitGuard && tradeValueGuard > tradeValidation);
+  assert.ok(parseGuard > read && shapeGuard > parseGuard && tradeLimitGuard > shapeGuard && balanceGuard > tradeLimitGuard);
+  assert.ok(tradeValidation > balanceGuard && tradeValueGuard > tradeValidation);
   assert.ok(enableServerMode > tradeValueGuard, "server mode must not start before every legacy trade is validated");
   assert.ok(migrateWrite > enableServerMode);
   const stateSync = dashboardSource.indexOf("await syncServerState();", login);
