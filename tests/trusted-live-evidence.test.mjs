@@ -1694,7 +1694,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(21)), encodeBase58(new Uint8Array(32).fill(22))] }
+            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(21)), encodeBase58(new Uint8Array(32).fill(22))], instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] }
           },
           meta: {
             innerInstructions: [],
@@ -1835,7 +1835,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(41)), encodeBase58(new Uint8Array(32).fill(42))] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(41)), encodeBase58(new Uint8Array(32).fill(42))], instructions: [{ programIdIndex: 0, accounts: [1, 2], data: "1" }] }
           },
           meta: {
             innerInstructions: [],
@@ -1872,7 +1872,7 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))] } },
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))], instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] } },
           meta: {
             innerInstructions: [],
             err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
