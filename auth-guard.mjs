@@ -208,14 +208,20 @@ export class AuthGuard {
   }
 
   async getProfile() {
-    return this.withState(state => ({
-      initialized: state.initialized === true,
-      sessionVersion: Number.isSafeInteger(state.sessionVersion) && state.sessionVersion >= 0 ? state.sessionVersion : 0,
-      totpEnabled: state.totpEnabled === true,
-      totpSecret: state.totpSecret || null,
-      pendingTotpSecret: state.pendingTotpSecret || null,
-      pendingTotpAt: state.pendingTotpAt ?? null
-    }));
+    return this.withState(state => {
+      if (state.sessionVersion !== undefined &&
+          (!Number.isSafeInteger(state.sessionVersion) || state.sessionVersion < 0)) {
+        throw new Error("Authentication state integrity error: invalid session version");
+      }
+      return {
+        initialized: state.initialized === true,
+        sessionVersion: state.sessionVersion ?? 0,
+        totpEnabled: state.totpEnabled === true,
+        totpSecret: state.totpSecret || null,
+        pendingTotpSecret: state.pendingTotpSecret || null,
+        pendingTotpAt: state.pendingTotpAt ?? null
+      };
+    });
   }
 
   async verifyLegacyProfile({
