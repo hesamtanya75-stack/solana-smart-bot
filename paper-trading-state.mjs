@@ -12,24 +12,43 @@ const DEFAULT_STATE = {
 };
 
 function cleanState(value) {
-  const s = value && typeof value === "object" ? value : {};
-  const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
-  const trades = Array.isArray(s.trades) ? s.trades.slice(-500).flatMap(trade => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Paper trading state integrity error: state must be an object");
+  }
+  const s = value;
+  if (typeof s.balance !== "number" || !Number.isFinite(s.balance) || s.balance < 0) {
+    throw new Error("Paper trading state integrity error: invalid balance");
+  }
+  if (s.trades !== undefined && !Array.isArray(s.trades)) {
+    throw new Error("Paper trading state integrity error: trades must be an array");
+  }
+  const sourceTrades = s.trades || [];
+  const finite = (value, fallback = 0) =>
+    value === undefined ? fallback :
+    typeof value === "number" && Number.isFinite(value) ? value : NaN;
+  const trades = sourceTrades.slice(-500).map(trade => {
     if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
-        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return [];
+        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) {
+      throw new Error("Paper trading state integrity error: malformed trade record");
+    }
     const amount = finite(trade.amount), buyPrice = finite(trade.buyPrice), tokens = finite(trade.tokens);
-    if (amount <= 0 || buyPrice <= 0 || tokens <= 0) return [];
-    return [{
+    const currentPrice = finite(trade.currentPrice, buyPrice);
+    const sellPrice = finite(trade.sellPrice), saleValue = finite(trade.saleValue);
+    if (![amount, buyPrice, tokens, currentPrice, sellPrice, saleValue].every(Number.isFinite) ||
+        amount <= 0 || buyPrice <= 0 || tokens <= 0 || currentPrice < 0 ||
+        sellPrice < 0 || saleValue < 0 || (trade.sold !== undefined && typeof trade.sold !== "boolean")) {
+      throw new Error("Paper trading state integrity error: invalid trade values");
+    }
+    return {
       mint: trade.mint.trim(), amount, buyPrice,
-      currentPrice: finite(trade.currentPrice) || buyPrice, tokens,
-      sold: trade.sold === true, sellPrice: finite(trade.sellPrice),
-      saleValue: finite(trade.saleValue),
+      currentPrice: currentPrice || buyPrice, tokens,
+      sold: trade.sold === true, sellPrice, saleValue,
       boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
       soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
-    }];
-  }) : [];
+    };
+  });
   return {
-    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
+    balance: s.balance,
     trades,
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
@@ -97,6 +116,9 @@ export class PaperTradingState {
     const migrationKey = "paper_state_do_migration_v1";
     let record = await this.ctx.storage.get("paper_state_v1");
     if (record) {
+      // Validate persisted ledger data before returning it or allowing any later
+      // compare-and-set write. Corruption must fail closed, never normalize to $100.
+      cleanState(record.state);
       // If the DO record committed but the KV completion marker write failed,
       // finish that marker before ever allowing recovery from the legacy snapshot.
       if (record.migrationMarkerPending !== false) {
