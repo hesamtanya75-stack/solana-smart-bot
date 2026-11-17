@@ -576,7 +576,9 @@ test("malformed legacy activity metadata permanently closes the browser migratio
     { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
     { deferredMints: { mint: mintA, retryAt: 123 } },
     { lastScanReport: [{ mint: 7, status: null, reasons: "invalid" }] },
-    { lastScanReport: { mint: mintA, status: "blocked" } }
+    { lastScanReport: { mint: mintA, status: "blocked" } },
+    { scannedMints: ["malformed-but-nonempty"] },
+    { scannedMints: { mint: mintA } }
   ];
   for (const extra of malformedCases) {
     const { instance } = makeDO({
