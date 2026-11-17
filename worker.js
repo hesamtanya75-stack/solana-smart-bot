@@ -1037,7 +1037,7 @@ export default {
           }
           // Protect expensive RPC, DexScreener and RugCheck inspection before it starts.
           const authorization = request.headers.get("Authorization") || "";
-          const sessionToken = authorization.replace(/^Bearer\\s+/i, "");
+          const sessionToken = authorization.replace(/^Bearer\s+/i, "");
           const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
           const buyScope = "paper-buy:" + await hashText(sessionToken + ":" + clientIp);
           const rate = await consumeApiRateLimit(env, buyScope, 5, 60000);
