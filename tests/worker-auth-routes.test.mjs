@@ -85,6 +85,45 @@ test("TOTP replay protection is delegated to transactional AuthGuard state", () 
   assert.equal(workerSource.includes('await env.BOT_STATE.put("admin_profile", JSON.stringify(profile))'), false);
 });
 
+test("failed manual server-state initialization clears the received session and stays fail-closed", () => {
+  const handler = dashboardSource.indexOf("async function submitServerLogin()");
+  const handlerEnd = dashboardSource.indexOf('document.getElementById("serverLoginButton").addEventListener', handler);
+  const loginHandler = dashboardSource.slice(handler, handlerEnd);
+  assert.ok(handler >= 0 && handlerEnd > handler);
+  assert.ok(loginHandler.includes("let receivedSessionToken = false;"));
+  assert.ok(loginHandler.includes("if (receivedSessionToken)"));
+  assert.ok(loginHandler.includes("clearServerPolling();"));
+  assert.ok(loginHandler.includes("serverModeReady = false;"));
+  assert.ok(loginHandler.includes('serverToken = "";'));
+  assert.ok(loginHandler.includes('localStorage.setItem("solanaBotServerLogoutLocked", "1");'));
+  assert.ok(loginHandler.includes('localStorage.removeItem("solanaBotSession");'));
+  assert.ok(loginHandler.includes('serverLogin.style.display = "flex";'));
+  assert.ok(loginHandler.indexOf("receivedSessionToken = true;") < loginHandler.indexOf("await finishServerLogin("));
+});
+
+test("legacy paper-trading migration refuses to consume malformed local snapshots", () => {
+  const login = dashboardSource.indexOf("async function finishServerLogin(token)");
+  const read = dashboardSource.indexOf('const legacyRaw = localStorage.getItem("demoTradingData");', login);
+  const parseGuard = dashboardSource.indexOf("catch (_) { throw new Error(", read);
+  const shapeGuard = dashboardSource.indexOf("!Array.isArray(old.trades)", read);
+  const balanceGuard = dashboardSource.indexOf("typeof old.balance !== \"number\"", read);
+  const tradeLimitGuard = dashboardSource.indexOf("old.trades.length > 500", read);
+  const tradeValidation = dashboardSource.indexOf("const invalidTrade = old.trades.some", read);
+  const tradeValueGuard = dashboardSource.indexOf("typeof trade.sold !== \"boolean\"", read);
+  const enableServerMode = dashboardSource.indexOf("serverModeReady = true;", login);
+  const migrateWrite = dashboardSource.indexOf("await saveServerState();", login);
+  assert.ok(login >= 0 && read > login);
+  assert.ok(parseGuard > read && shapeGuard > parseGuard && tradeLimitGuard > shapeGuard && balanceGuard > tradeLimitGuard);
+  assert.ok(tradeValidation > balanceGuard && tradeValueGuard > tradeValidation);
+  assert.ok(enableServerMode > tradeValueGuard, "server mode must not start before every legacy trade is validated");
+  assert.ok(migrateWrite > enableServerMode);
+  const stateSync = dashboardSource.indexOf("await syncServerState();", login);
+  const persistSession = dashboardSource.indexOf('localStorage.setItem("solanaBotSession", token);', login);
+  assert.ok(stateSync > migrateWrite);
+  assert.ok(persistSession > stateSync, "session token must not persist before paper-state migration and sync succeed");
+  assert.ok(dashboardSource.includes("داتاکە مەسڕەوە"));
+});
+
 test("legacy state migration rejects a stale client revision", () => {
   const migrationRoute = workerSource.indexOf('if (url.pathname === "/api/state" && request.method === "PUT")');
   const revisionCheck = workerSource.indexOf("body.expectedRevision !== current.__revision", migrationRoute);
