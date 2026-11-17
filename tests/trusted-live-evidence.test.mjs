@@ -1706,6 +1706,10 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
               accountIndex: 1,
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }, {
+              accountIndex: 2,
+              mint: outputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "0", decimals: 6 }
             }],
             postTokenBalances: [
               {
@@ -1739,6 +1743,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
 
   for (const corrupt of [
     result => result.meta.postTokenBalances.push({ ...result.meta.postTokenBalances[0] }),
+    result => { result.meta.postTokenBalances[1].uiTokenAmount.decimals = 7; },
     result => { result.meta.postTokenBalances[0].accountIndex = 99; },
     // Token-balance rows must refer to a token account, never the wallet fee-payer key.
     result => { result.meta.postTokenBalances[1].accountIndex = 0; }
