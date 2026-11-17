@@ -797,7 +797,6 @@ export default {
         return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!auth.totpEnabled });
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
-        try {
           const body = await readBoundedJson(request, 4096);
           const p = await readProfile(env);
           if (typeof body.email === "string") {
@@ -875,7 +874,7 @@ export default {
       if (url.pathname === "/api/scan" && request.method === "POST") {
         try {
           const authorization = request.headers.get("Authorization") || "";
-          const sessionToken = authorization.replace(/^Bearer\\s+/i, "");
+          const sessionToken = authorization.replace(/^Bearer\s+/i, "");
           const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
           const scanScope = "scan:" + await hashText(sessionToken + ":" + clientIp);
           const rate = await consumeApiRateLimit(env, scanScope, 10, 60000);
