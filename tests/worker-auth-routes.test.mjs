@@ -172,4 +172,5 @@ test("trusted token scans are authenticated and rate-limited before provider RPC
   assert.ok(limiter > scan && inspect > limiter, "rate limit must be consumed before expensive provider calls");
   assert.ok(workerSource.includes('operation: "consume-rate-limit"'));
   assert.ok(workerSource.includes("retryAfterSeconds"));
+  assert.ok(workerSource.includes('{ "Retry-After": String(retryAfterSeconds) }'));
 });
