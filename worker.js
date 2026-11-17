@@ -167,7 +167,15 @@ async function authorized(request, env) {
     return false;
   }
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  if (!session || session.expiresAt <= Date.now()) return false;
+  // Compare the session's issuance version with the AuthGuard's current version.
+  // Enabling MFA increments the version and invalidates every pre-MFA session.
+  const profile = await authGuardCall(env, { operation: "get-profile" });
+  const currentVersion = Number.isSafeInteger(profile.sessionVersion) && profile.sessionVersion >= 0
+    ? profile.sessionVersion : 0;
+  const sessionVersion = Number.isSafeInteger(session.sessionVersion) && session.sessionVersion >= 0
+    ? session.sessionVersion : 0;
+  return sessionVersion === currentVersion;
 }
 function sameOriginApiRequest(request, url) {
   if (!url.pathname.startsWith("/api/") ||
@@ -749,7 +757,9 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({
+          expiresAt, sessionVersion: Number.isSafeInteger(profile.sessionVersion) ? profile.sessionVersion : 0
+        }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
@@ -778,9 +788,12 @@ export default {
           const status = result.reason === "rate-limited" || result.reason === "attempts-exhausted" ? 429 : 401;
           return json({ error: status === 429 ? "هەوڵەکان سنووردار کراون؛ دواتر هەوڵ بدە." : "کۆدی Authenticator هەڵەیە یان کاتی داواکاری تەواو بوو." }, status);
         }
+        const currentProfile = await ensureAuthGuard(env);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({
+          expiresAt, sessionVersion: Number.isSafeInteger(currentProfile.sessionVersion) ? currentProfile.sessionVersion : 0
+        }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
