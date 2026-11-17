@@ -49,6 +49,10 @@ function cleanState(value) {
   if (typeof s.balance !== "number" || !Number.isFinite(s.balance) || s.balance < 0) {
     throw new Error("Paper trading state integrity error: invalid balance");
   }
+  if ((s.autoEnabled !== undefined && typeof s.autoEnabled !== "boolean") ||
+      (s.paused !== undefined && typeof s.paused !== "boolean")) {
+    throw new Error("Paper trading state integrity error: invalid automation flags");
+  }
   if (s.trades !== undefined && !Array.isArray(s.trades)) {
     throw new Error("Paper trading state integrity error: trades must be an array");
   }
