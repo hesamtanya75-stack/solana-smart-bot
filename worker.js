@@ -29,7 +29,7 @@ export function isShareAbovePercent(amount, supply, thresholdPercent) {
   return amount * 100n > supply * thresholdPercent;
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -38,7 +38,8 @@ function json(data, status = 200) {
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      ...extraHeaders
     }
   });
 }
@@ -884,7 +885,7 @@ export default {
             return json({
               error: "Scan rate limit reached; wait before requesting another scan.",
               retryAfterSeconds
-            }, 429);
+            }, 429, { "Retry-After": String(retryAfterSeconds) });
           }
 
           const body = await readBoundedJson(request, 4096);
