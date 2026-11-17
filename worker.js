@@ -423,9 +423,14 @@ async function inspectMint(mint, env, diagnostics = null) {
   if (ownerBalances.size === 0 || totalAccountBalance !== supplyAmount) {
     throw new Error("Complete holder census does not reconcile to finalized token supply");
   }
-  const sortedOwnerBalances = [...ownerBalances.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
-  const largestPct = Number((sortedOwnerBalances[0] * 1000000n) / supplyAmount) / 10000;
-  const topTenPct = Number((sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n) * 1000000n) / supplyAmount) / 10000;
+  const rankedOwners = [...ownerBalances.entries()].sort((a, b) => a[1] > b[1] ? -1 : a[1] < b[1] ? 1 : 0);
+  const sortedOwnerBalances = rankedOwners.map(([, amount]) => amount);
+  const percentOfSupply = amount => Number((amount * 1000000n) / supplyAmount) / 10000;
+  const holders = rankedOwners.slice(0, 10).map(([owner, amount]) => ({
+    owner, amount: amount.toString(), pct: percentOfSupply(amount)
+  }));
+  const largestPct = percentOfSupply(sortedOwnerBalances[0]);
+  const topTenPct = percentOfSupply(sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n));
   const liquidity = Number(market.liquidity?.usd);
   const volume = Number(market.volume?.h24);
   const sells = Number(market.txns?.h24?.sells);
@@ -449,7 +454,8 @@ async function inspectMint(mint, env, diagnostics = null) {
   return {
     ok: reasons.length === 0, reasons, price, market, rugScore: Number(rug?.score),
     largestPct, topTenPct, holderAccountCount: holderAccounts.length,
-    holderOwnerCount: ownerBalances.size, holderSampleOnly: false
+    holderOwnerCount: ownerBalances.size, holderSampleOnly: false,
+    holderCensusComplete: true, holders
   };
 }
 async function refreshTrades(state, env) {
@@ -843,6 +849,22 @@ export default {
           }
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
+      }
+      if (url.pathname === "/api/scan" && request.method === "POST") {
+        try {
+          const body = await readBoundedJson(request, 4096);
+          const mint = String(body.mint || "");
+          if (Object.keys(body).some(key => key !== "mint") ||
+              !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+            return json({ error: "Invalid token scan request" }, 400);
+          }
+          // Full holder census and market checks run server-side. Partial
+          // browser/RPC holder samples are never promoted to trusted evidence.
+          const inspected = await inspectMint(mint, env);
+          return json({ mint, ...inspected });
+        } catch (error) {
+          return json({ error: String(error?.message || "Trusted token scan failed") }, error.status || 503);
+        }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
