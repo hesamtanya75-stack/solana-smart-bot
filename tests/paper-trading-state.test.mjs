@@ -551,17 +551,19 @@ test("compare-and-set permanently closes legacy migration after deferred or scan
       state: { ...initial.body.state, ...activity.active }
     });
     assert.equal(recorded.status, 200);
-    assert.equal(recorded.body.migrationOpen, false);
+    const afterActivity = await call(instance, { operation: "get" });
+    assert.equal(afterActivity.body.migrationOpen, false);
     const cleared = await call(instance, {
       operation: "compare-and-set",
       expectedRevision: recorded.body.revision,
       state: { ...recorded.body.state, ...activity.cleared }
     });
     assert.equal(cleared.status, 200);
-    assert.equal(cleared.body.migrationOpen, false);
+    const afterClear = await call(instance, { operation: "get" });
+    assert.equal(afterClear.body.migrationOpen, false);
     const migration = await call(instance, {
       operation: "migrate-legacy",
-      expectedRevision: cleared.body.revision,
+      expectedRevision: afterClear.body.revision,
       state: { balance: 75, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
     });
     assert.equal(migration.status, 409);
