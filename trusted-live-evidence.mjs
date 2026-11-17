@@ -856,7 +856,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     throw new Error("Jupiter address lookup descriptors are missing or invalid");
   }
   const keys = Array.from(lookups, item => item?.accountKey);
-  if (keys.some(key => typeof key !== "string" || decodeBase58(key).length !== 32) ||
+  if (keys.some(key => !isCanonicalPublicKey(key)) ||
       new Set(keys).size !== keys.length) {
     throw new Error("Jupiter address lookup table keys are invalid or duplicated");
   }
@@ -893,7 +893,13 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
     if (account.data[0].length > maxLookupTableBase64Length) {
       throw new Error("Address lookup table account data exceeds the maximum encoded size");
     }
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+      throw new Error("Address lookup table account data is not canonical base64");
+    }
     const data = Uint8Array.from(atob(account.data[0]), char => char.charCodeAt(0));
+    if (btoa(String.fromCharCode(...data)) !== account.data[0]) {
+      throw new Error("Address lookup table account data is not canonical base64");
+    }
     if (data.length < 56 || (data.length - 56) % 32 !== 0 ||
         data.length > 56 + 256 * 32) {
       throw new Error("Address lookup table account data length is invalid");
