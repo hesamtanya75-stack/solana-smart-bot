@@ -1070,6 +1070,8 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   let invalidNativeBalanceFixture = false;
   let invalidStackHeightFixture = false;
+  let duplicateForeignTokenBalanceFixture = false;
+  let malformedForeignTokenBalanceFixture = false;
   const fetchImpl = async (_url, options) => {
     const { method } = JSON.parse(options.body);
     const result = method === "getSignatureStatuses"
@@ -1112,9 +1114,15 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
               { accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: duplicateForeignTokenBalanceFixture ? 0 : 1, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
-              }
+              },
+              ...(malformedForeignTokenBalanceFixture ? [{
+                accountIndex: 2,
+                mint: encodeBase58(new Uint8Array(32).fill(13)),
+                owner: encodeBase58(new Uint8Array(32).fill(14)),
+                uiTokenAmount: { amount: "01", decimals: 6 }
+              }] : [])
             ]
           }
         };
@@ -1184,6 +1192,26 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }, fetchImpl), /metadata is incomplete or indicates failure/);
 
   invalidNativeBalanceFixture = false;
+  duplicateForeignTokenBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid or duplicate owned token account indexes/);
+
+  duplicateForeignTokenBalanceFixture = false;
+  malformedForeignTokenBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /invalid or duplicate owned token account indexes/);
+
+  malformedForeignTokenBalanceFixture = false;
   invalidStackHeightFixture = true;
   await assert.rejects(() => verifyFinalizedJupiterSettlement({
     signature,
@@ -1206,13 +1234,13 @@ test("settlement proof rejects malformed outer-instruction metadata", async () =
           slot: 128,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET], instructions: { malformed: true } }
+            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(15))], instructions: { malformed: true } }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [99_995_000],
+            preBalances: [100_000_000, 1],
+            postBalances: [99_995_000, 1],
             preTokenBalances: [{
               accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
               uiTokenAmount: { amount: "100", decimals: 0 }
@@ -1220,7 +1248,7 @@ test("settlement proof rejects malformed outer-instruction metadata", async () =
             postTokenBalances: [
               { accountIndex: 0, mint: inputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "0", decimals: 0 } },
-              { accountIndex: 0, mint: outputMint, owner: BOT_WALLET,
+              { accountIndex: 1, mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "200", decimals: 0 } }
             ]
           }
