@@ -1,5 +1,9 @@
-// Prefer a dedicated Devnet RPC supplied as a GitHub Actions secret.
-const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
+// Prefer an explicitly configured Devnet RPC, then Alchemy Devnet when its
+// API key is available. The public endpoint is a last-resort read-only fallback.
+const DEVNET_RPC = process.env.DEVNET_RPC_URL ||
+  (process.env.ALCHEMY_API_KEY
+    ? "https://solana-devnet.g.alchemy.com/v2/" + encodeURIComponent(process.env.ALCHEMY_API_KEY)
+    : "https://api.devnet.solana.com");
 const EXPECTED_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const TOKEN_PROGRAMS = new Set([
@@ -15,15 +19,15 @@ function retryDelayMs(response, attempt) {
       ? seconds * 1000
       : Date.parse(retryAfter) - Date.now();
     if (Number.isFinite(dateDelay) && dateDelay >= 0) {
-      return Math.min(dateDelay, 10_000);
+      return Math.min(dateDelay, 30_000);
     }
   }
-  return 1000 * (attempt + 1);
+  return Math.min(1000 * (2 ** attempt), 30_000);
 }
 
 async function rpc(method, params = []) {
   let response;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       response = await fetch(DEVNET_RPC, {
         method: "POST",
@@ -34,7 +38,7 @@ async function rpc(method, params = []) {
     } catch (error) {
       // Retry transient network failures/timeouts as well as retryable HTTP
       // responses; never print the RPC URL because it may contain a key.
-      if (attempt === 3) {
+      if (attempt === 5) {
         // Keep credentials and the RPC URL out of logs. Node's fetch commonly
         // wraps DNS, TLS, socket, and timeout failures in TypeError; expose only
         // the stable low-level error code when the runtime provides one.
@@ -44,14 +48,14 @@ async function rpc(method, params = []) {
           ? causeCode
           : (typeof causeName === "string" && /^[A-Za-z0-9]{2,40}$/.test(causeName)
             ? causeName : "no-cause-code");
-        throw new Error(method + " network request failed after 4 attempts (" +
+        throw new Error(method + " network request failed after 6 attempts (" +
           String(error?.name || "network error") + "; cause=" + diagnostic + ")");
       }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * (2 ** attempt), 30_000)));
       continue;
     }
     if (response.ok) break;
-    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
+    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 5) {
       throw new Error(method + " returned HTTP " + response.status);
     }
     // Release the retryable response before waiting, and respect a bounded
