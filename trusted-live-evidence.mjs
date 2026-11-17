@@ -1065,7 +1065,9 @@ export async function verifyFinalizedJupiterSettlement({
       !loadedAddresses || !Array.isArray(loadedAddresses.writable) ||
       !Array.isArray(loadedAddresses.readonly) ||
       !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
-      !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
+      !Number.isSafeInteger(meta.fee) || meta.fee < 0 ||
+      meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0)) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
   const validAddress = isCanonicalPublicKey;
@@ -1165,6 +1167,14 @@ export async function verifyFinalizedJupiterSettlement({
     outputMint,
     outputAmount,
     owner: expectedOwner,
+    // Net fee-payer lamport movement and the RPC-reported network fee are
+    // evidence only; they do not prove gross rent, tip, or other outflows.
+    nativeLamportEvidence: Object.freeze({
+      feePayerPreBalanceLamports: String(meta.preBalances[0]),
+      feePayerPostBalanceLamports: String(meta.postBalances[0]),
+      feePayerNetDecreaseLamports: (BigInt(meta.preBalances[0]) - BigInt(meta.postBalances[0])).toString(),
+      networkFeeLamports: String(meta.fee)
+    }),
     outerInstructionsRecorded,
     outerInstructionEvidence,
     innerInstructionsRecorded,
