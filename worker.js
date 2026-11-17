@@ -797,6 +797,7 @@ export default {
         return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!auth.totpEnabled });
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
+        try {
           const body = await readBoundedJson(request, 4096);
           const p = await readProfile(env);
           if (typeof body.email === "string") {
