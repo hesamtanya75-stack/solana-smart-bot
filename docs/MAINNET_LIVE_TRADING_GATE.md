@@ -76,3 +76,15 @@ Reviewed commit: `fb36e71d351b39da30e56655d6ccee760cafb96a`.
 - PR #30 remains open and Draft. No merge, production deployment, Phantom signing, Mainnet transaction, or swap execution occurred.
 
 The passing checks above validate the preparation branch only. They do not satisfy semantic instruction verification, the funded Devnet lifecycle, or manual Phantom buy/sell end-to-end gates.
+
+## Follow-up CI completion (2026-11-17)
+
+The asynchronous checks for the recorded PR #30 evidence snapshot subsequently completed:
+
+- Cloudflare `Workers Builds: solana-smart-bot-new`: success. This was a build/check only; no deployment was performed.
+- `devnet-read-only`: success, including the Devnet cluster identity and read-only RPC verification step.
+- `test`, `validate-workflow`, and `validate-new-worker`: success.
+- `funded-devnet-lifecycle` and `require-explicit-confirmation`: skipped as designed because no explicit manual `DEVNET_ONLY` dispatch was requested.
+- The separate legacy Deno deployment status remains failed with `Organization suspended - resolve billing to deploy`; this does not negate the successful Cloudflare build.
+
+These results close the CI/build and read-only Devnet checks for this commit only. They do not establish a funded Devnet signature/transfer, semantic instruction approval, Phantom buy/sell, or Mainnet readiness.
