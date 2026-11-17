@@ -14,3 +14,25 @@ test("all inline dashboard scripts parse without syntax errors", () => {
     assert.doesNotThrow(() => new vm.Script(source, { filename: "index.html:inline-script-" + index }));
   });
 });
+
+
+test("dashboard logout always clears local session and locks local trading in finally", () => {
+  const start = html.indexOf('document.getElementById("profileLogout").onclick=async()=>{');
+  const end = html.indexOf('document.getElementById("profileSave").onclick=async()=>{', start);
+  assert.ok(start >= 0 && end > start, "profile logout handler should exist");
+  const handler = html.slice(start, end);
+  const finallyStart = handler.indexOf("finally{");
+  assert.ok(finallyStart >= 0, "logout must have an unconditional finally cleanup");
+  const cleanup = handler.slice(finallyStart);
+  for (const required of [
+    "clearServerPolling()",
+    'serverToken=""',
+    "serverModeReady=false",
+    "serverLogoutLocked=true",
+    'localStorage.removeItem("solanaBotSession")',
+    'serverLogin.style.display="flex"'
+  ]) {
+    assert.ok(cleanup.includes(required), "logout finally must include " + required);
+  }
+  assert.match(handler, /serverRevoked\s*\?\s*"چوونەژوورەوە هەڵوەشێندرایەوە\."/);
+});
