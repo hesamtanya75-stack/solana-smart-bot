@@ -21,6 +21,14 @@ const RPCS = [
 let rpcCursor = 0;
 let alchemyUnauthorized = false;
 
+export function isShareAbovePercent(amount, supply, thresholdPercent) {
+  if (typeof amount !== "bigint" || typeof supply !== "bigint" ||
+      typeof thresholdPercent !== "bigint" || amount < 0n || supply <= 0n || thresholdPercent < 0n) {
+    throw new TypeError("Share comparison requires non-negative BigInt amounts and a positive supply");
+  }
+  return amount * 100n > supply * thresholdPercent;
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -429,8 +437,14 @@ async function inspectMint(mint, env, diagnostics = null) {
   const holders = rankedOwners.slice(0, 10).map(([owner, amount]) => ({
     owner, amount: amount.toString(), pct: percentOfSupply(amount)
   }));
-  const largestPct = percentOfSupply(sortedOwnerBalances[0]);
-  const topTenPct = percentOfSupply(sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n));
+  const largestAmount = sortedOwnerBalances[0];
+  const topTenAmount = sortedOwnerBalances.slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
+  const largestPct = percentOfSupply(largestAmount);
+  const topTenPct = percentOfSupply(topTenAmount);
+  // Display percentages are rounded down; make safety decisions against exact
+  // integer balances so a value just above a threshold cannot slip through.
+  const largestAbove30 = isShareAbovePercent(largestAmount, supplyAmount, 30n);
+  const topTenAbove50 = isShareAbovePercent(topTenAmount, supplyAmount, 50n);
   const liquidity = Number(market.liquidity?.usd);
   const volume = Number(market.volume?.h24);
   const sells = Number(market.txns?.h24?.sells);
@@ -444,8 +458,8 @@ async function inspectMint(mint, env, diagnostics = null) {
   if (details.token2022ExtensionsSafe !== true) {
     reasons.push("Unsupported token program or Token-2022 extension detected");
   }
-  if (largestPct > 30) reasons.push("Largest wallet holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 wallet holders above 50%");
+  if (largestAbove30) reasons.push("Largest wallet holder above 30%");
+  if (topTenAbove50) reasons.push("Top 10 wallet holders above 50%");
   if (!rug || rug.score == null || !Number.isFinite(Number(rug.score)) || Number(rug.score) > 2500) {
     reasons.push("RugCheck unavailable or score above 2500");
   }
@@ -453,7 +467,7 @@ async function inspectMint(mint, env, diagnostics = null) {
   if (!Number.isFinite(price) || price <= 0) reasons.push("Price unavailable");
   return {
     ok: reasons.length === 0, reasons, price, market, rugScore: Number(rug?.score),
-    largestPct, topTenPct, holderAccountCount: holderAccounts.length,
+    largestPct, topTenPct, largestAbove30, topTenAbove50, holderAccountCount: holderAccounts.length,
     holderOwnerCount: ownerBalances.size, holderSampleOnly: false,
     holderCensusComplete: true, holders
   };
@@ -524,7 +538,7 @@ async function autoBuy(state, env, diagnostics = null) {
       report.push({ mint, status: "bought-paper", reasons: ["هەموو پشکنینەکان تێپەڕاند"] });
     } catch (error) {
       const message = String(error?.message || "داتای پشکنین بەردەست نییە");
-      if (message === "No Solana market pair") {
+      if (message.startsWith("No verified Solana market pair")) {
         // Keep the token eligible, but don't let an unindexed profile consume
         // every minute's scan slot. Recheck it after a short cooldown.
         state.deferredMints.push({ mint, retryAt: Date.now() + 5 * 60 * 1000 });
