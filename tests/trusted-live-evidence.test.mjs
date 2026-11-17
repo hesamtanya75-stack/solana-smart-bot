@@ -1819,6 +1819,31 @@ test("settlement proof resolves finalized address-lookup-table account indexes",
   }, fetchImpl);
   assert.equal(proof.verified, true);
   assert.equal(proof.slot, 789);
+
+  for (const corrupt of [
+    value => { value.meta.loadedAddresses.writable = "not-an-address-array"; },
+    value => {
+      value.meta.loadedAddresses.writable = Array.from({ length: 255 }, (_, index) =>
+        encodeBase58(new Uint8Array(32).fill(index + 1)));
+    }
+  ]) {
+    const malformedFetch = async (_url, options) => {
+      const method = JSON.parse(options.body).method;
+      const value = structuredClone(result);
+      if (method === "getTransaction") corrupt(value);
+      return Response.json({
+        jsonrpc: "2.0", id: 1,
+        result: method === "getSignatureStatuses"
+          ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+          : value
+      });
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint,
+      inputAmount: "10000000", outputAmount: "12345",
+      expectedOwner: BOT_WALLET
+    }, malformedFetch), /loaded-address metadata is malformed|account key count exceeds/);
+  }
 });
 
 test("settlement proof rejects absent and malformed finalized CPI execution metadata", async () => {
