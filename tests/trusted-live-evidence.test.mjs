@@ -1040,6 +1040,7 @@ test("settlement proof rejects noncanonical signatures and noncanonical or out-o
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  let invalidNativeBalanceFixture = false;
   const fetchImpl = async (_url, options) => {
     const { method } = JSON.parse(options.body);
     const result = method === "getSignatureStatuses"
@@ -1073,7 +1074,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
                 stackHeight: 2
               }]
             }],
-            preBalances: [100_000_000, 1, 2],
+            preBalances: invalidNativeBalanceFixture ? [null, 1, 2] : [100_000_000, 1, 2],
             postBalances: [89_995_000, 1, 2],
             preTokenBalances: [{ accountIndex: 0, mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
@@ -1113,6 +1114,12 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }]);
   assert.equal(proof.innerInstructionsRecorded, true);
   assert.equal(proof.semanticInstructionVerification, false);
+  assert.deepEqual(proof.nativeLamportEvidence, {
+    feePayerPreBalanceLamports: "100000000",
+    feePayerPostBalanceLamports: "89995000",
+    feePayerNetDecreaseLamports: "10005000",
+    networkFeeLamports: "5000"
+  });
   assert.deepEqual(proof.innerInstructionEvidence, [{
     index: 0,
     instructions: [{
@@ -1127,13 +1134,22 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
       stackHeight: 2
     }]
   }]);
-  // The fixture's native SOL balance delta differs from the wrapped-SOL
-  // token input. This verifier proves token settlement only.
-  // It must not be mistaken for native SOL fee/rent/tip or all-in cost proof.
+  // Native lamport evidence is only the fee payer's net balance movement
+  // plus the RPC-reported network fee. It does not reveal gross rent, tips,
+  // transfers, or other outflows and is not an all-in cost attestation.
   assert.equal(Object.hasOwn(proof, "costs"), false);
   assert.equal(Object.hasOwn(proof, "allInCosts"), false);
   assert.equal(Object.hasOwn(proof, "nativeSolOutflowLamports"), false);
   assert.equal(Object.hasOwn(proof, "totalLamports"), false);
+
+  invalidNativeBalanceFixture = true;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint,
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, fetchImpl), /metadata is incomplete or indicates failure/);
 });
 
 test("settlement proof rejects CPI groups that reference a nonexistent outer instruction", async () => {
