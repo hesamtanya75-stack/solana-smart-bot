@@ -248,7 +248,8 @@ export class PaperTradingState {
           const migrationStillOpen = record.migrationOpen === true &&
             nextState.balance === 100 && nextState.trades.length === 0 &&
             nextState.autoEnabled === false && nextState.paused === false &&
-            nextState.scannedMints.length === 0;
+            nextState.scannedMints.length === 0 && nextState.deferredMints.length === 0 &&
+            nextState.lastScanReport.length === 0;
           const next = {
             ...record,
             state: nextState,
