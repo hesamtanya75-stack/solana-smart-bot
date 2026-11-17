@@ -12,6 +12,7 @@ Configure these in the Cloudflare dashboard or with Wrangler. Never commit their
 
 - `BOT_LOGIN_PASSWORD` — administrator login password.
 - `AUTH_GUARD_INTERNAL_TOKEN` — random internal credential of at least 32 characters used for Worker-to-AuthGuard Durable Object calls.
+- `ALCHEMY_API_KEY` — Alchemy Solana Mainnet API key used by the authenticated scanner to retrieve the complete paginated token-account census. If it is missing or the census cannot reconcile to finalized supply, the scanner fails closed and paper buys are blocked.
 - `COORDINATOR_INTERNAL_TOKEN` — independent random internal credential of at least 32 characters for Worker-to-LiveTradeCoordinator calls.
 - `COORDINATOR_OPERATOR_TOKEN` — a separate random operator credential of at least 32 characters for emergency-stop control. It must not equal the coordinator internal token.
 
@@ -20,6 +21,7 @@ Example secret setup (Wrangler prompts for each value):
 ```sh
 npx wrangler secret put BOT_LOGIN_PASSWORD
 npx wrangler secret put AUTH_GUARD_INTERNAL_TOKEN
+npx wrangler secret put ALCHEMY_API_KEY
 npx wrangler secret put COORDINATOR_INTERNAL_TOKEN
 npx wrangler secret put COORDINATOR_OPERATOR_TOKEN
 ```
