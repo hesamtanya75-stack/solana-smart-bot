@@ -14,7 +14,7 @@ const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/set
 const totpConfirmRoute = workerSource.indexOf('if (url.pathname === "/api/totp/confirm"');
 
 test("all dashboard inline JavaScript parses without syntax errors", () => {
-  const scripts = [...dashboardSource.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+  const scripts = [...dashboardSource.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   assert.ok(scripts.length > 0, "dashboard must contain its application scripts");
   scripts.forEach((match, index) => {
     new vm.Script(match[1], { filename: "index.html:inline-script-" + index });
