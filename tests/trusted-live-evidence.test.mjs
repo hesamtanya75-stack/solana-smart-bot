@@ -1209,7 +1209,7 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     outputMint,
     inputAmount: "10000000",
     outputAmount: "12345"
-  }, fetchImpl), /invalid or duplicate owned token account indexes/);
+  }, fetchImpl), /invalid owned token balance/);
 
   malformedForeignTokenBalanceFixture = false;
   invalidStackHeightFixture = true;
