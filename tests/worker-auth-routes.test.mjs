@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const dashboardSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -11,6 +12,14 @@ const authGuard = workerSource.indexOf(
 );
 const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/setup"');
 const totpConfirmRoute = workerSource.indexOf('if (url.pathname === "/api/totp/confirm"');
+
+test("all dashboard inline JavaScript parses without syntax errors", () => {
+  const scripts = [...dashboardSource.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+  assert.ok(scripts.length > 0, "dashboard must contain its application scripts");
+  scripts.forEach((match, index) => {
+    new vm.Script(match[1], { filename: "index.html:inline-script-" + index });
+  });
+});
 
 test("worker session authorization requires one exact Bearer token without whitespace", () => {
   assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
