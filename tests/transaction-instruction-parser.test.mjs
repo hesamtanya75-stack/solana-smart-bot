@@ -277,3 +277,63 @@ test("parser leaves System account privilege analysis explicitly absent without 
   assert.equal(parsed.semanticVerification, "incomplete");
   assert.equal(parsed.signingPermitted, false);
 });
+
+
+test("parser integrates analysis-only SPL Token TransferChecked and cross-checks account privileges", () => {
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(250n, 1);
+  tokenData[9] = 6;
+  const accountKeys = [
+    "ComputeBudget111111111111111111111111111111",
+    DESTINATION,
+    SYSTEM,
+    "SysvarRent111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  ];
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 2
+    },
+    instructions: [{
+      programIdIndex: 4,
+      accountKeyIndexes: [1, 3, 2, 0],
+      data: tokenData.toString("base64")
+    }]
+  });
+  assert.equal(parsed.instructions[0].variant, "transferChecked");
+  assert.equal(parsed.instructions[0].amount, 250n);
+  assert.equal(parsed.instructions[0].decimals, 6);
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser rejects SPL Token transfer when authority is not a signer", () => {
+  const tokenData = Buffer.alloc(9);
+  tokenData[0] = 3;
+  tokenData.writeBigUInt64LE(10n, 1);
+  const accountKeys = [
+    DESTINATION,
+    SYSTEM,
+    "SysvarRent111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 0,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    instructions: [{
+      programIdIndex: 3,
+      accountKeyIndexes: [0, 1, 2],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token authority account privilege requirements are not satisfied/);
+});
