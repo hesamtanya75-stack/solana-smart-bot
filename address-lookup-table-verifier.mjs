@@ -34,7 +34,7 @@ function snapshotPlainArray(value, label, maxLength) {
   const keys = Reflect.ownKeys(value);
   if (keys.length !== value.length + 1 ||
       keys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) || Number(key) >= value.length))) {
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) {
     throw new Error(`${label} has unsupported properties`);
   }
   const snapshot = [];
