@@ -12,15 +12,12 @@ Configure these in the Cloudflare dashboard or with Wrangler. Never commit their
 
 - `BOT_LOGIN_PASSWORD` — administrator login password.
 - `AUTH_GUARD_INTERNAL_TOKEN` — random internal credential of at least 32 characters used for Worker-to-AuthGuard Durable Object calls.
-- `JUPITER_API_KEY` — optional. If configured, it is used only by the authenticated, quote-only preview route and is never sent to the browser. Without it, Quote Preview remains unavailable; core scanning and paper trading do not require this key.
 
 Example secret setup (Wrangler prompts for each value):
 
 ```sh
 npx wrangler secret put BOT_LOGIN_PASSWORD
 npx wrangler secret put AUTH_GUARD_INTERNAL_TOKEN
-# Optional, only if you choose to enable Jupiter Quote Preview:
-npx wrangler secret put JUPITER_API_KEY
 ```
 
 Use independently generated, high-entropy values. Do not reuse the administrator password as the internal token.
@@ -40,7 +37,7 @@ The Durable Object migrations in `wrangler.jsonc` must be applied in order. A lo
 ### Verification before any production release
 
 1. Confirm the production Worker name, route/domain, KV namespace ID, and all Durable Object bindings in the Cloudflare dashboard.
-2. Confirm the two required secrets are present without revealing their values. The optional Jupiter key is needed only for Quote Preview; without it, that endpoint deliberately returns unavailable.
+2. Confirm the two required secrets are present without revealing their values. Phantom remains read-only and does not require a Jupiter quote-preview key.
 3. Run the repository test suite: `npm test`.
 4. Confirm the Cloudflare Worker build validation and Devnet read-only checks pass for the exact commit being considered. The funded signed Devnet transfer step is skipped unless a dedicated DEVNET_RPC_URL is configured; a successful workflow does not prove that a signed transfer was tested.
 5. Verify login, MFA enrollment and recovery, logout/revocation, paper buy, paper sell thresholds, and one-time legacy-state migration in a non-production environment.
