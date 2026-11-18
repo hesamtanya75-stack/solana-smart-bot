@@ -87,3 +87,16 @@ Therefore a future Phantom order flow must not treat either a browser-supplied w
 The current global session format and pinned `EXPECTED_BOT_WALLET` coordinator do not meet these requirements. Do not retrofit this by silently changing session KV records, migrating live KV data, or accepting client-supplied identities. Design and test a versioned identity/session change separately, with explicit migration and rollback review before any deployment.
 
 This is a documented prerequisite only. No session schema, KV record, Worker route, wallet binding, signing, or transaction submission was changed by this note.
+
+### Wallet-binding challenge protocol (future implementation)
+
+A wallet-binding challenge is a one-time proof of control, not a transaction approval:
+
+- The server creates a cryptographically random nonce and stores the minimum challenge state: account ID, expected origin/host, intended Solana cluster, creation time, expiry, and unused status.
+- The message is a deterministic, domain-separated plain-text payload containing the application domain, a statement that this is wallet-account binding (not a trade), a non-secret account/session reference, wallet public key, cluster, nonce, issued-at time, and expiry. The browser must show the exact message before requesting the wallet signature.
+- The server verifies the Ed25519 signature against the exact claimed public key and exact stored challenge bytes. It must not trust a client-supplied “verified” flag or decode an arbitrary message into a looser equivalent.
+- The nonce is consumed atomically exactly once, including on concurrent requests. Expired, replayed, wrong-origin, wrong-cluster, wrong-account, or wrong-wallet challenges fail closed.
+- A successful proof creates a versioned account-to-wallet binding with audit metadata. Rebinding requires a fresh challenge and explicit user-visible confirmation; it invalidates outstanding order intents and approvals for the previous wallet.
+- The wallet public key is not a secret. Never store a wallet private key, seed phrase, or reusable transaction-signing capability on the Worker.
+
+Before implementation, add tests for signature tampering, wrong key, wrong domain, wrong cluster, expired nonce, replay, concurrent replay, account switching, disconnect/rebind, and stale order-intent invalidation. Review this binding protocol independently before it can authorize any order flow.
