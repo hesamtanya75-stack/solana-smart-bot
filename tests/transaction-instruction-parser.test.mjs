@@ -653,3 +653,72 @@ test("parser rejects an instruction program account marked as a signer", () => {
     }]
   }), /Instruction program account privilege requirements are not satisfied/);
 });
+
+
+test("parser validates complete v0 account ordering before checking loaded writable privileges", () => {
+  const staticAccountKeys = [SYSTEM, SOURCE];
+  const resolvedAddressTableLookups = [{
+    writableAddresses: [DESTINATION],
+    readonlyAddresses: ["SysvarRent111111111111111111111111111111"]
+  }];
+  const parsed = parseSupportedInstructionMessage({
+    staticAccountKeys,
+    accountKeys: [...staticAccountKeys, DESTINATION, "SysvarRent111111111111111111111111111111"],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    resolvedAddressTableLookups,
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(25)
+    }]
+  });
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.instructions[0].lamports, 25n);
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser rejects v0 lookup inputs without explicit static keys", () => {
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    resolvedAddressTableLookups: [{
+      writableAddresses: [DESTINATION],
+      readonlyAddresses: []
+    }],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(25)
+    }]
+  }), /must provide staticAccountKeys separately/);
+});
+
+test("parser rejects v0 account keys that disagree with canonical static and lookup ordering", () => {
+  assert.throws(() => parseSupportedInstructionMessage({
+    staticAccountKeys: [SYSTEM, SOURCE],
+    accountKeys: [SYSTEM, SOURCE, "SysvarRent111111111111111111111111111111"],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    resolvedAddressTableLookups: [{
+      writableAddresses: [DESTINATION],
+      readonlyAddresses: ["SysvarRent111111111111111111111111111111"]
+    }],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(25)
+    }]
+  }), /do not match static and lookup account ordering/);
+});
