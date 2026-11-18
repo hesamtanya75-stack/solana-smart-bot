@@ -169,7 +169,7 @@ async function main() {
     );
   } catch (error) {
     const message = String(error?.message || error);
-    if (!/HTTP\\s*429/.test(message)) throw error;
+    if (!/HTTP\s*429/.test(message)) throw error;
     holderDataWarning = "Devnet RPC rate-limited holder enumeration; holder concentration was not validated.";
   }
 
