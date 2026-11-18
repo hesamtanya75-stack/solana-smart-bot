@@ -1004,3 +1004,12 @@ second regression test asserts that successful decoding still yields a frozen,
 analysis-only result with semantic verification incomplete and signing and
 submission disabled. This protects the boundary between instruction decoding
 and transaction authorization; it does not complete semantic verification.
+
+## Transaction-cost evidence record hardening
+
+The cost helper now snapshots only an exact plain-data schema before reading
+values. It rejects inherited records, accessor-backed properties, symbol keys,
+unexpected fields, and missing own fields. Regression tests verify that a
+hostile getter is rejected without being invoked. This is input-shape hardening
+only; it does not make caller-supplied verification booleans authoritative and
+does not replace the still-missing independent semantic verifier.
