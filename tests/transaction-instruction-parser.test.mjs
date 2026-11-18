@@ -62,6 +62,14 @@ test("transaction message parser rejects unverified execution metadata and CPI e
     () => parseSupportedInstructionMessage({ ...valid, meta: { innerInstructions: [] } }),
     /does not accept execution metadata or CPI evidence/
   );
+  const inheritedEvidence = Object.assign(
+    Object.create({ innerInstructions: [] }),
+    valid
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(inheritedEvidence),
+    /does not accept execution metadata or CPI evidence/
+  );
 });
 
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
