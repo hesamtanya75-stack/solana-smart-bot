@@ -40,9 +40,12 @@ export function deriveMessageAccountRoles({ staticAccountKeys, header, resolvedA
     throw new Error("Message header privilege counts are invalid");
   }
 
-  const allKeys = [...staticAccountKeys];
-  if (allKeys.some(key => !isCanonicalPublicKey(key)) || new Set(allKeys).size !== allKeys.length) {
-    throw new Error("Static account keys are invalid or duplicated");
+  const allKeys = [];
+  for (const key of staticAccountKeys) {
+    if (!isCanonicalPublicKey(key) || allKeys.includes(key)) {
+      throw new Error("Static account keys are invalid or duplicated");
+    }
+    allKeys.push(key);
   }
 
   const roles = staticAccountKeys.map((publicKey, index) => Object.freeze({
