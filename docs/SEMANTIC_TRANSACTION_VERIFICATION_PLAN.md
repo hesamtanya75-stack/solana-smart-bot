@@ -665,3 +665,63 @@ Source:
 
 No executable code, dependency, parser status, coordinator gate, signing,
 transaction submission, UI, deployment, or production data was changed.
+
+
+## Async ATA PDA verifier implementation branch: 2026-11-18
+
+A separate implementation branch, `feat/async-ata-pda-verifier`, now contains
+an initial SDK-backed verifier rather than changing the existing syntax parser.
+
+### Fixed paired vectors
+
+For owner
+`CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` and mint
+`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, the canonical PDA derivation
+produces the already pinned upstream addresses and these bump candidates:
+
+| Token program | Expected ATA | Expected bump |
+|---|---|---:|
+| Classic Token | `3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b` | 251 |
+| Token-2022 | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` | 254 |
+
+The addresses are explicitly present in the Solana Foundation Pay-Kit tests and
+cross-checked there against Ruby and `spl-token`. The bump values were computed
+from the same owner/mint/program tuples using the canonical PDA hash, seed order,
+and Ed25519 off-curve rejection procedure. The SDK-backed tests in this branch
+are intended to independently reproduce both address+bump pairs; they must
+pass in CI before the values are treated as runtime-validated by this project.
+
+### Code added
+
+- `associated-token-account-pda.mjs` imports `getAddressEncoder` and
+  `getProgramDerivedAddress` from exact dependency `@solana/addresses@8.6.0`.
+- The selected token program is explicit and restricted to Classic Token or
+  Token-2022. Seed order is owner, token program, mint, under the ATA program.
+- The helper is asynchronous; no synchronous custom PDA implementation is
+  introduced.
+- `verifyAssociatedTokenInstructionPda` accepts only a decoder-issued record
+  (guarded by the decoder's private WeakSet), and compares the derived address
+  to the instruction's associated-account key.
+- Result scope is explicitly `pda-only`; it does not claim on-chain existence,
+  account ownership, initialization, balance, transaction validity, or
+  semantic transaction verification.
+- Tests cover both pinned address+bump pairs, distinct outputs by token program,
+  malformed owner/mint, unsupported token program, wrong ATA/owner/mint, and
+  forged decoder records.
+
+### Validation still required
+
+This branch has not yet had Node tests or Wrangler build executed in the
+current environment. Its pull-request CI must validate SDK API compatibility
+and build resolution. The Worker validation workflow was updated to install
+project dependencies and use Node 22 for the Worker dry-run.
+
+The repository does not yet have a committed package-manager lockfile. The
+exact dependency is pinned in `package.json`, but reproducible frozen-lockfile
+installation remains a separate outstanding task; do not describe dependency
+installation as fully reproducible until a generated lockfile is committed and
+CI uses it.
+
+No merge, deployment, signing, transaction submission, Mainnet trading, or UI
+design change is part of this branch. The syntax parser's semantic trust status
+and coordinator gates remain unchanged.
