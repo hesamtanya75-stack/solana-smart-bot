@@ -71,7 +71,7 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
       "Jupiter build routePlan[" + index + "] swapInfo"
     );
     if (!Number.isInteger(stepRecord.percent) || stepRecord.percent < 1 || stepRecord.percent > 100 ||
-        !Number.isInteger(stepRecord.bps) || stepRecord.bps < 1 || stepRecord.bps > 10000 ||
+        (stepRecord.bps != null && (!Number.isInteger(stepRecord.bps) || stepRecord.bps < 1 || stepRecord.bps > 10000)) ||
         !isCanonicalPublicKey(info.ammKey) ||
         !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
         info.inputMint === info.outputMint ||
