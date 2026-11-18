@@ -126,3 +126,10 @@ Tests cover the supported Compute Budget path, rejection of unregistered System/
 5. Keep semantic attestation false and all coordinator/signing/submission gates closed until the full acceptance gate above is satisfied.
 
 This slice does not change the semantic trust flags in the existing Jupiter parser, does not enable the LiveTradeCoordinator, and does not add signing, submission, Worker execution routes, deployment, or production data operations.
+
+
+## Duplicate account-key rejection follow-up: PR #40
+
+The analysis-only transaction instruction parser now rejects duplicate entries in the message-level `accountKeys` array before resolving any compiled instruction indexes. This prevents ambiguous account-index interpretation from entering the decoder path. A regression test supplies the same canonical Compute Budget program key twice and confirms the parser fails closed.
+
+This is an additional structural invariant only. It does not establish signer/writable privileges, decode System Program instructions, reconstruct SOL/token funds flow, verify Jupiter CPI behavior, or produce semantic trust. The parser remains analysis-only and signing/submission remain prohibited.
