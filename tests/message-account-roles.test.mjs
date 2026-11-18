@@ -70,6 +70,25 @@ test("keeps all writable lookup keys before readonly keys across multiple tables
   ]);
 });
 
+test("rejects static and resolved lookup account lists above the 256-key bound", () => {
+  const staticKeys = Array.from({ length: 257 }, () => keys.a);
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: staticKeys,
+    header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 256 }
+  }), /input is malformed/);
+
+  const lookupKeys = [keys.b, keys.c, keys.d, keys.e];
+  const repeated = Array.from({ length: 256 }, (_, index) => lookupKeys[index % lookupKeys.length]);
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 0 },
+    resolvedAddressTableLookups: [{
+      writableAddresses: repeated,
+      readonlyAddresses: []
+    }]
+  }), /exceed parser limit/);
+});
+
 test("rejects malformed header counts, invalid keys, duplicates and unresolved lookup shapes", () => {
   assert.throws(() => deriveMessageAccountRoles({
     staticAccountKeys: [keys.a],
