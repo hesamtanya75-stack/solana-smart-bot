@@ -19,7 +19,7 @@ function readDensePlainArray(value, maximum, label) {
   }
   if (keys.length !== value.length + 1 ||
       keys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
          Number(key) >= value.length))) {
     throw new Error(label + " contains unsupported properties");
   }
