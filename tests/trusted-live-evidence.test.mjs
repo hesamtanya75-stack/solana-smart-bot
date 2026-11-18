@@ -873,14 +873,29 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
       /complete quote-only sell-route response/
     );
+    for (const transaction of ["unsigned-transaction-string", { message: "not-a-verified-message" }]) {
+      jupiterResponseOverride = {
+        requestId: "unexpected-transaction-payload",
+        transaction,
+        inputMint: mint,
+        outputMint: "So11111111111111111111111111111111111111112",
+        inAmount: "3",
+        outAmount: "1000000",
+        routePlan: [{ swapInfo: { label: "test-route" } }]
+      };
+      await assert.rejects(
+        fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
+        /complete quote-only sell-route response/
+      );
+    }
   } finally {
     Date.now = originalNow;
   }
   assert.equal(risk.fetchedAt, 1000);
   assert.ok(clock > risk.fetchedAt);
-  // Three full evidence fetches run: one valid quote and two malformed quote regressions.
+  // Five full evidence fetches run: one valid quote and four malformed quote regressions.
   // Each must still page both holder-census pages completely.
-  assert.equal(holderPages, 6);
+  assert.equal(holderPages, 10);
   assert.equal(risk.holderSampleOnly, false);
   assert.equal(risk.holderAccountCount, 101);
   assert.equal(risk.holderOwnerCount, 2);
