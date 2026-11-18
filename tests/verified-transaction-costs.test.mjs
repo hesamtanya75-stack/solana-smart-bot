@@ -23,6 +23,10 @@ test("calculates priority fee with ceiling and sums every cost component exactly
   assert.equal(result.maxPriorityFeeLamports, "2000");
   assert.equal(result.totalFeeLamports, "2047530");
   assert.equal(result.messageDigest, "a".repeat(64));
+  assert.equal(result.analysisOnly, true);
+  assert.equal(result.semanticVerification, "incomplete");
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
 });
 
 test("rounds fractional priority lamports upward", () => {
@@ -85,4 +89,14 @@ test("rejects evidence with a missing required own data field", () => {
   const incomplete = evidence();
   delete incomplete.otherOutflowLamports;
   assert.throws(() => calculateVerifiedTransactionCosts(incomplete), /incomplete/);
+});
+
+
+test("cost calculation never produces signing or submission authorization", () => {
+  const result = calculateVerifiedTransactionCosts(evidence());
+  assert.equal(result.analysisOnly, true);
+  assert.equal(result.semanticVerification, "incomplete");
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+  assert.ok(Object.isFrozen(result));
 });
