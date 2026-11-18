@@ -952,7 +952,11 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   assert.equal(risk.sellRoute.semanticInstructionVerification, false);
   assert.equal(risk.sellRoute.signatureCount, null);
   assert.equal(risk.sellRoute.walletTokenBalance, undefined);
+  assert.equal(risk.sellRoute.analysisOnly, true);
+  assert.equal(risk.sellRoute.semanticInstructionVerification, false);
   assert.equal(risk.sellRoute.routeVerification, "quote-only-no-transaction");
+  assert.equal(risk.sellRoute.signingPermitted, false);
+  assert.equal(risk.sellRoute.submissionPermitted, false);
   assert.equal(risk.passed, false);
 });
 
