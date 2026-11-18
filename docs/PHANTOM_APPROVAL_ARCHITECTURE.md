@@ -70,3 +70,20 @@ Do not enable live trading until all are true:
 ## Explicitly out of scope for this design stage
 
 No Phantom signing calls, no transaction submission, no Mainnet enablement, no production deployment, no PR merge, no Cloudflare secret/binding/KV/DO migration, and no dashboard redesign.
+
+## Additional prerequisite: authenticated user and wallet ownership binding
+
+The current Worker session is an administrator-style bearer session, not a per-user trading identity. Login and TOTP create a random session token whose KV record currently contains only `expiresAt`; the authorization helper checks token shape and expiry and returns a boolean. It does not return a stable user identifier or an authenticated wallet binding.
+
+Therefore a future Phantom order flow must not treat either a browser-supplied wallet address or the existing generic session token as sufficient proof of wallet ownership. Before any order-intent endpoint is designed, the application needs an explicit identity model that:
+
+1. Resolves the authenticated session to a stable, server-validated account identifier (without exposing session secrets).
+2. Binds a Phantom public key to that account only after a fresh, domain- and nonce-bound wallet challenge is signed by the connected wallet and verified server-side.
+3. Stores the wallet binding with account ownership and lifecycle metadata; account switching, disconnect, expiry, revocation, and re-binding must invalidate stale approvals.
+4. Scopes every order intent, idempotency key, reservation, audit record, and settlement proof to that authenticated account and its bound wallet.
+5. Re-checks the account-to-wallet binding immediately before issuing the unsigned transaction and again before accepting the signed transaction; a client-provided wallet address alone is never authoritative.
+6. Keeps wallet connection/signature challenges separate from transaction signing. A challenge signature proves wallet control for binding; it is not trade approval and must never authorize a swap.
+
+The current global session format and pinned `EXPECTED_BOT_WALLET` coordinator do not meet these requirements. Do not retrofit this by silently changing session KV records, migrating live KV data, or accepting client-supplied identities. Design and test a versioned identity/session change separately, with explicit migration and rollback review before any deployment.
+
+This is a documented prerequisite only. No session schema, KV record, Worker route, wallet binding, signing, or transaction submission was changed by this note.
