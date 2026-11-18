@@ -6,6 +6,48 @@ const decodedLookupTables = new WeakSet();
 
 export const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = "AddressLookupTab1e1111111111111111111111111";
 
+function snapshotPlainRecord(value, fields, label) {
+  if (!value || typeof value !== "object" ||
+      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) {
+    throw new Error(`${label} is malformed`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) {
+    throw new Error(`${label} has unsupported properties`);
+  }
+  const result = Object.create(null);
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(`${label} contains accessor-backed or missing fields`);
+    }
+    result[field] = descriptor.value;
+  }
+  return result;
+}
+
+function snapshotPlainArray(value, label, maxLength) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maxLength) {
+    throw new Error(`${label} is malformed`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) || Number(key) >= value.length))) {
+    throw new Error(`${label} has unsupported properties`);
+  }
+  const snapshot = [];
+  for (let i = 0; i < value.length; i++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(`${label} contains sparse or accessor-backed entries`);
+    }
+    snapshot.push(descriptor.value);
+  }
+  return snapshot;
+}
+
 function encodeBase58(bytes) {
   let value = 0n;
   for (const byte of bytes) value = (value << 8n) | BigInt(byte);
@@ -86,12 +128,18 @@ export function decodeAddressLookupTableAccountData(input) {
  * slotHashes must come from a separately authenticated, same-bank finalized
  * context; this pure helper cannot establish that provenance itself.
  */
-export function resolveAddressLookupTableIndexes({ table, indexes, bankSlot, slotHashes }) {
+export function resolveAddressLookupTableIndexes(input) {
+  const { table, indexes: rawIndexes, bankSlot, slotHashes: rawSlotHashes } =
+    snapshotPlainRecord(input, ["table", "indexes", "bankSlot", "slotHashes"],
+      "Address lookup table resolution input");
   if (!table || typeof table !== "object" || !decodedLookupTables.has(table) ||
-      !Array.isArray(table.addresses) ||
-      typeof bankSlot !== "bigint" || bankSlot < 0n ||
-      !Array.isArray(indexes) || indexes.length < 1 ||
-      !Array.isArray(slotHashes)) {
+      typeof bankSlot !== "bigint" || bankSlot < 0n || bankSlot > U64_MAX) {
+    throw new Error("Address lookup table resolution input is malformed");
+  }
+  const indexes = snapshotPlainArray(rawIndexes, "Address lookup table indexes", 256);
+  const slotHashes = snapshotPlainArray(rawSlotHashes, "Address lookup table SlotHashes", 512);
+  if (indexes.length < 1 || slotHashes.some(slot =>
+    typeof slot !== "bigint" || slot < 0n || slot > U64_MAX)) {
     throw new Error("Address lookup table resolution input is malformed");
   }
   const active = table.deactivationSlot === U64_MAX ||
