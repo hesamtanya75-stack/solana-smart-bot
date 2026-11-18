@@ -392,10 +392,10 @@ test("parser rejects ATA creation when payer is not a signer", () => {
     "11111111111111111111111111111113",
     "11111111111111111111111111111114",
     "11111111111111111111111111111115",
+    "11111111111111111111111111111116",
     SYSTEM,
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-    "11111111111111111111111111111116"
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
   ];
   assert.throws(() => parseSupportedInstructionMessage({
     accountKeys: keys,
