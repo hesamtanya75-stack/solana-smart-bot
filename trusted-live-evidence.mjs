@@ -823,18 +823,41 @@ const ALT_DEACTIVATION_SLOT_NEVER = 18446744073709551615n;
  * fails closed. This establishes address resolution only, not instruction safety.
  */
 export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fetch) {
-  if (!Array.isArray(lookups) || lookups.length === 0 || lookups.length > 64) {
+  const lookupSnapshot = snapshotDensePlainArray(
+    lookups, 64, "Jupiter address lookup descriptors",
+    "Jupiter address lookup descriptors are missing or invalid"
+  );
+  if (lookupSnapshot.length === 0) {
     throw new Error("Jupiter address lookup descriptors are missing or invalid");
   }
-  const keys = Array.from(lookups, item => item?.accountKey);
+  // Snapshot every descriptor and index list before reading values or making
+  // an RPC request. This exported entry point must be safe when called without
+  // the transaction parser, including against accessor-backed hostile inputs.
+  const tables = lookupSnapshot.map((item, index) => {
+    const descriptor = snapshotPlainRecord(
+      item, ["accountKey", "writableIndexes", "readonlyIndexes"],
+      "Jupiter address lookup descriptor " + index
+    );
+    const writableIndexes = snapshotDensePlainArray(
+      descriptor.writableIndexes, 256,
+      "Jupiter writable lookup indexes", "Jupiter address lookup indexes are malformed"
+    );
+    const readonlyIndexes = snapshotDensePlainArray(
+      descriptor.readonlyIndexes, 256,
+      "Jupiter readonly lookup indexes", "Jupiter address lookup indexes are malformed"
+    );
+    return Object.freeze({
+      accountKey: descriptor.accountKey,
+      writableIndexes: Object.freeze(writableIndexes),
+      readonlyIndexes: Object.freeze(readonlyIndexes)
+    });
+  });
+  const keys = tables.map(item => item.accountKey);
   if (keys.some(key => typeof key !== "string" || decodeBase58(key).length !== 32) ||
       new Set(keys).size !== keys.length) {
     throw new Error("Jupiter address lookup table keys are invalid or duplicated");
   }
-  for (const table of lookups) {
-    if (!Array.isArray(table?.writableIndexes) || !Array.isArray(table?.readonlyIndexes)) {
-      throw new Error("Jupiter address lookup indexes are malformed");
-    }
+  for (const table of tables) {
     const indexes = [...table.writableIndexes, ...table.readonlyIndexes];
     if (indexes.length > 256 ||
         indexes.some(index => !Number.isInteger(index) || index < 0 || index > 255) ||
@@ -842,6 +865,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
       throw new Error("Jupiter address lookup indexes are invalid or duplicated");
     }
   }
+  lookups = tables;
   const result = await rpc(fetchImpl, "getMultipleAccounts", [
     keys, { commitment: "finalized", encoding: "base64" }
   ]);
