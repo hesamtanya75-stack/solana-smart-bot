@@ -1417,8 +1417,11 @@ test("Jupiter /build response envelope is structurally validated without semanti
   });
   assert.equal(parsed.transactionVersion, 0);
   assert.equal(parsed.swapInstruction.programId, "11111111111111111111111111111111");
+  assert.equal(parsed.analysisOnly, true);
   assert.equal(parsed.semanticInstructionVerification, false);
   assert.equal(parsed.routeVerification, "build-envelope-only");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
 });
 
 test("every Jupiter /build instruction slot remains untrusted regardless of program ID", () => {
