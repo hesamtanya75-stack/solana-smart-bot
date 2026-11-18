@@ -108,10 +108,23 @@ function validateAllInCostEvidence(costs, amountLamports, configuredPriorityFeeC
     "rentLamports", "otherOutflowLamports"
   ];
   if (!costs || typeof costs !== "object" || Array.isArray(costs) ||
-      fields.some(field => !Object.prototype.hasOwnProperty.call(costs, field))) {
+      (Object.getPrototypeOf(costs) !== Object.prototype && Object.getPrototypeOf(costs) !== null)) {
     throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
   }
-  const priceText = String(costs.computeUnitPriceMicroLamports);
+  const ownKeys = Reflect.ownKeys(costs);
+  if (ownKeys.length !== fields.length || ownKeys.some(key => !fields.includes(key))) {
+    throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
+  }
+  const snapshot = Object.create(null);
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(costs, field);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
+    }
+    snapshot[field] = descriptor.value;
+  }
+  costs = snapshot;
+  const priceText = costs.computeUnitPriceMicroLamports;
   if (!/^\d{1,20}$/.test(priceText) || BigInt(priceText) > 18_446_744_073_709_551_615n ||
       !Number.isSafeInteger(costs.computeUnitLimit) || costs.computeUnitLimit < 1 ||
       costs.computeUnitLimit > 1_400_000) {
