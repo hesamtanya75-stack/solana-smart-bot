@@ -994,3 +994,13 @@ The new unit tests cover ceiling arithmetic, missing verification gates,
 non-canonical/negative/overflowing values, malformed message digests, and
 aggregate u64 overflow. These tests have been added to the Node test suite;
 their execution on the current PR head remains pending CI confirmation.
+
+## Parser non-authorization regression coverage
+
+The parser test suite now also asserts that caller-supplied approval claims
+(e.g. semantic verification, signing permission, submission permission, or
+message-effect verification) are rejected as unsupported message fields. A
+second regression test asserts that successful decoding still yields a frozen,
+analysis-only result with semantic verification incomplete and signing and
+submission disabled. This protects the boundary between instruction decoding
+and transaction authorization; it does not complete semantic verification.
