@@ -280,6 +280,12 @@ export function parseSupportedInstructionMessage(message) {
   validateSplTokenInstructionSet(splTokenInstructions);
   validateAssociatedTokenInstructionSet(associatedTokenInstructions);
 
+  if (message.header === undefined &&
+      (message.staticAccountKeys !== undefined ||
+       message.resolvedAddressTableLookups !== undefined)) {
+    throw new Error("Message account-role metadata requires a message header");
+  }
+
   let accountPrivilegeAnalysis = "not-provided";
   if (message.header !== undefined) {
     const lookupTables = message.resolvedAddressTableLookups ?? [];
