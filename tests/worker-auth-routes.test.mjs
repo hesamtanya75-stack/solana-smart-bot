@@ -183,6 +183,7 @@ test("browser sessions use Secure HttpOnly SameSite cookies instead of JavaScrip
     "browser bearer authorization must not be accepted; internal AuthGuard authentication remains separate");
   assert.ok(dashboardSource.includes('credentials: "same-origin"'));
   assert.ok(dashboardSource.includes('localStorage.removeItem("solanaBotSession")'));
+  assert.ok(dashboardSource.includes("browser token.\\nlocalStorage.removeItem"), "legacy token cleanup must execute, not remain inside a comment");
   assert.equal(dashboardSource.includes('localStorage.setItem("solanaBotSession"'), false);
   assert.equal(dashboardSource.includes("serverToken"), false);
 });
