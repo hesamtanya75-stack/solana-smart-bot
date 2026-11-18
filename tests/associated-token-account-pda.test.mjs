@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  decodeAssociatedTokenInstruction
+  decodeAssociatedTokenInstruction,
+  validateAssociatedTokenInstructionSet
 } from "../associated-token-account-decoder.mjs";
 import {
   deriveAssociatedTokenAddress,
@@ -153,4 +154,45 @@ test("ATA decoder snapshots account keys and rejects accessor-backed key slots w
     /accessor-backed/
   );
   assert.equal(getterCalled, false);
+});
+
+
+test("ATA instruction-set validator rejects accessors without invoking getters", () => {
+  const record = decodeAssociatedTokenInstruction(
+    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1),
+    [0, 1, 0, 2, 3, 4],
+    [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID]
+  );
+  let getterCalled = false;
+  const instructions = [record];
+  Object.defineProperty(instructions, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return record;
+    }
+  });
+  assert.throws(() => validateAssociatedTokenInstructionSet(instructions), /invalid/);
+  assert.equal(getterCalled, false);
+});
+
+test("ATA instruction-set validator rejects sparse, decorated and custom-prototype arrays", () => {
+  const record = decodeAssociatedTokenInstruction(
+    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1),
+    [0, 1, 0, 2, 3, 4],
+    [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID]
+  );
+  const sparse = [];
+  sparse.length = 1;
+  assert.throws(() => validateAssociatedTokenInstructionSet(sparse), /unreviewed record/);
+
+  const decorated = [record];
+  decorated.extra = true;
+  assert.throws(() => validateAssociatedTokenInstructionSet(decorated), /invalid/);
+
+  const custom = [record];
+  Object.setPrototypeOf(custom, { inherited: true });
+  assert.throws(() => validateAssociatedTokenInstructionSet(custom), /invalid/);
+
+  assert.deepEqual(validateAssociatedTokenInstructionSet([record]), [record]);
 });
