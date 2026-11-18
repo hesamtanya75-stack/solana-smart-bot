@@ -144,3 +144,10 @@ The isolated decoder currently recognizes only the exact fixed-width `Transfer` 
 This implementation is deliberately not wired into the transaction parser or trusted decoder registry. It does not have signer/writable metadata, cannot prove the required account privileges, and does not establish runtime success, rent sufficiency, account state, CPI behavior, transaction-wide SOL effects, or approved-destination intent. In particular, a decoded Transfer is not proof that the source is the enrolled wallet or that the destination is allowed. Semantic verification, signing, and submission remain disabled.
 
 Format and account-role reference: Solana's official instruction documentation explains that instruction data encoding is program-defined and that signer/writable requirements must be taken from the program implementation; the System Program reference documents Transfer and CreateAccount behavior. This syntax-only slice intentionally does not claim those privilege checks are complete.
+
+
+## System Program account-index alias rejection follow-up
+
+A review of the isolated System Program syntax decoder found that its two-account variants accepted the same compiled account index in both positions. The decoder now rejects aliased indexes for Transfer and CreateAccount, and regression tests cover both cases. This prevents a source/destination or funding/new-account role collision from being represented as a normal two-account instruction record.
+
+This is still a syntax-level structural check only. It does not validate signer/writable privileges, account identities, runtime effects, rent, approved destinations, or transaction-wide funds flow. The decoder remains isolated from the transaction parser and semantic trust registry; signing and submission remain prohibited.
