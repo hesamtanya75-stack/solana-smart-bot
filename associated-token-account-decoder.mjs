@@ -144,16 +144,33 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
 }
 
 export function validateAssociatedTokenInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
+  if (!Array.isArray(instructions) ||
+      Object.getPrototypeOf(instructions) !== Array.prototype ||
+      instructions.length > 64) {
     throw new Error("Associated Token instruction set is invalid");
   }
+  const keys = Reflect.ownKeys(instructions);
+  const snapshot = [];
   for (let index = 0; index < instructions.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(instructions, index) ||
-        !instructions[index] || !decodedRecords.has(instructions[index])) {
+    const descriptor = Object.getOwnPropertyDescriptor(instructions, String(index));
+    if (!descriptor) {
       throw new Error("Associated Token instruction set contains an unreviewed record");
     }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Associated Token instruction set is invalid");
+    }
+    if (!descriptor.value || !decodedRecords.has(descriptor.value)) {
+      throw new Error("Associated Token instruction set contains an unreviewed record");
+    }
+    snapshot.push(descriptor.value);
   }
-  return Object.freeze([...instructions]);
+  if (keys.length !== instructions.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+         Number(key) >= instructions.length))) {
+    throw new Error("Associated Token instruction set is invalid");
+  }
+  return Object.freeze(snapshot);
 }
 
 /** True only for records produced by this module's syntax decoder. */
