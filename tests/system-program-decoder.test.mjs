@@ -31,6 +31,8 @@ test("rejects unsupported variants, malformed lengths, wrong accounts and forged
   assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([1,0,0,0,...Array(32).fill(0)])), [0]), /unsupported/);
   assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([2,0,0,0,...Array(9).fill(0)])), [0,1]), /payload or account count/);
   assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([2,0,0,0,...Array(8).fill(0)])), [0]), /account count/);
+  assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([2,0,0,0,...Array(8).fill(0)])), [1, 1]), /distinct account indexes/);
+  assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([0,0,0,0,...Array(48).fill(0)])), [2, 2]), /distinct account indexes/);
   assert.throws(() => decodeSystemProgramInstruction("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", encoded(Buffer.from([2,0,0,0,...Array(8).fill(0)])), [0,1]), /unknown program/);
   assert.throws(() => validateSystemProgramInstructionSet([{}]), /unreviewed/);
 });
