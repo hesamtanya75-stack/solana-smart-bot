@@ -122,7 +122,7 @@ test("raw Token-2022 mint TLV layout is validated and extensions remain unsafe",
     }), /Token-2022/);
   }
 
-  const truncated = Buffer.alloc(169);
+  const truncated = Buffer.alloc(170);
   truncated[165] = 1;
   truncated.writeUInt16LE(1, 166);
   truncated.writeUInt16LE(4, 168);
