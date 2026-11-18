@@ -48,19 +48,15 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: async args => {
-      const proof = await settlementVerifier(args);
-      if (proof && !Object.prototype.hasOwnProperty.call(proof, "costs")) {
-        const costs = trustedEvidence().costs;
-        const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
-          costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
-        return { ...proof, costs: { ...costs, totalFeeLamports,
-          totalLamports: Number(args.inputAmount) + totalFeeLamports } };
-      }
-      return proof;
-    }
+    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
   return { coordinator, storage };
+}
+function fixtureSettlementCosts(inputAmount) {
+  const costs = trustedEvidence().costs;
+  const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+    costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+  return { ...costs, totalFeeLamports, totalLamports: Number(inputAmount) + totalFeeLamports };
 }
 function validReservation(overrides = {}) {
   return {
@@ -433,7 +429,8 @@ test("confirmation stores only independently verified finalized settlement evide
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -461,7 +458,8 @@ test("confirmed reservation rejects replay with a different finalized signature"
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -504,7 +502,8 @@ test("concurrent identical confirmations are idempotent after finalized settleme
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -845,7 +844,8 @@ test("kill switch activated during settlement verification does not strand a sub
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   ({ coordinator } = makeCoordinator(undefined, verifier));
