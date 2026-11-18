@@ -71,5 +71,7 @@ test("Compute Budget instruction set rejects duplicate variants and malformed en
   assert.throws(() => validateComputeBudgetInstructionSet([limit, limit]), /unknown or duplicate variant/);
   assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit, decoderVersion: 2 }]),
     /unknown or duplicate variant/);
+  assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit }]),
+    /unknown or duplicate variant/);
   assert.throws(() => validateComputeBudgetInstructionSet(new Array(65)), /collection is invalid/);
 });
