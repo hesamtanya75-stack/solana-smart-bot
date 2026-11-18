@@ -1013,3 +1013,9 @@ unexpected fields, and missing own fields. Regression tests verify that a
 hostile getter is rejected without being invoked. This is input-shape hardening
 only; it does not make caller-supplied verification booleans authoritative and
 does not replace the still-missing independent semantic verifier.
+
+The transaction-cost calculation result is explicitly marked
+`analysisOnly: true` and `semanticVerification: "incomplete"`, with both
+`signingPermitted` and `submissionPermitted` fixed to false. This prevents a
+successful arithmetic result from being mistaken for a transaction approval.
+Regression coverage asserts these fields and the frozen result object.
