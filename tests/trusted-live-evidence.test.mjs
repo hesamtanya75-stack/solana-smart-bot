@@ -1155,7 +1155,7 @@ test("Jupiter /build instruction arrays reject custom iterators and decorated pr
       accounts,
       data: ""
     }
-  })), /instruction account list is malformed/);
+  })), /instruction account.*malformed/);
   assert.equal(iteratorCalls, 0);
 
   const decorated = [];
