@@ -271,7 +271,7 @@ test("legacy authenticated sessions contain no trading principal or wallet autho
     "/api/wallet/bindings",
     "/api/order-intents"
   ]) {
-    const response = await get(route, env, token);
+    const response = await get(route, env, cookie);
     assert.equal(response.status, 404, `future trading route ${route} must remain absent`);
   }
 });
