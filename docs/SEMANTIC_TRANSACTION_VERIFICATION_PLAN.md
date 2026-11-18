@@ -1030,3 +1030,12 @@ just a missing transaction field. This protects the deliberate no-taker quote
 path from silently accepting an executable-looking payload. It does not parse,
 authenticate, or semantically verify a Jupiter transaction, and it does not
 change the coordinator's fail-closed gate.
+
+## SPL Token decoder record provenance regression
+
+The SPL Token instruction-set validator accepts only record objects registered
+by the decoder module itself. Regression coverage now verifies that copying or
+freezing a shallow clone of a valid decoded record does not preserve that
+provenance and is rejected as unreviewed. This is still syntax/provenance
+hardening, not proof of token balance effects, Token-2022 extension behavior,
+CPI execution, or semantic transaction approval.
