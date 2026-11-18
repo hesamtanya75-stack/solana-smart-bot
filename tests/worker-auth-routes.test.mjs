@@ -139,6 +139,7 @@ test("Jupiter live quote preview is authenticated, bounded, and quote-only", () 
   assert.ok(source.includes('otherAmountThreshold: /^\\d+$/'));
   assert.ok(source.includes('platformFeeAmount: /^\\d+$/'));
   assert.ok(source.includes('order.slippageBps != null'));
+  assert.ok(source.includes('order.feeBps != null'), "missing Jupiter fees must remain unknown, not become zero");
   assert.ok(source.includes('outUsdValue:'));
   assert.ok(source.includes('slippageBps:'));
   assert.ok(source.includes('platformFeeAmount:'));
