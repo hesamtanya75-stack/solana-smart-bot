@@ -339,3 +339,329 @@ For structural privilege analysis of a v0 message, the parser now requires the c
 This prevents the parser from treating the already-expanded key list as static keys and appending lookup addresses a second time, which could otherwise misalign privilege indexes. Regression tests cover a valid loaded writable destination, missing static-key metadata, and a mismatched expanded key order.
 
 This validates only the consistency of caller-supplied decoded inputs. It does not fetch or authenticate lookup-table accounts, verify their on-chain contents or slot state, or establish semantic transaction verification. Signing and submission remain disabled.
+
+
+## ATA PDA SDK selection research — follow-up to PR #41
+
+The ATA decoder must not implement Ed25519 point validation or PDA bump search by hand. The current project manifest targets Node.js >=20 and currently declares no Solana SDK dependency. The inspected PR #41 branch also has no npm, pnpm, Yarn, or Bun lockfile.
+
+### Protocol inputs confirmed from Solana documentation
+
+The canonical ATA PDA uses the Associated Token Account Program as the deriving program and the ordered seeds:
+
+1. wallet/owner public-key bytes;
+2. selected token-program public-key bytes (classic Token or Token-2022);
+3. mint public-key bytes.
+
+The token-program ID is part of the seeds, so the classic Token and Token-2022 addresses must be derived independently. The payer is not a PDA seed. The canonical bump is found using Solana's PDA derivation algorithm, which hashes the seeds, program ID, and `ProgramDerivedAddress` marker, rejecting on-curve results.
+
+References:
+- https://solana.com/docs/tokens/basics/create-token-account
+- https://solana.com/docs/core/pda/pda-derivation
+- https://github.com/solana-program/associated-token-account/blob/main/interface/src/address.rs
+
+### SDK candidate — not yet installed
+
+Solana's current JavaScript documentation recommends `@solana/kit` for new TypeScript development and documents the `getProgramDerivedAddress` API. This is the preferred candidate for evaluation in this project. Do not assume that legacy `@solana/web3.js` v1 examples or APIs are interchangeable with the current Kit API.
+
+References:
+- https://solana.com/docs/clients/official/javascript
+- https://solana.com/docs/core/pda/pda-derivation
+
+No dependency is added in this documentation-only step. The SDK choice must be validated against this repository's Node test runner and Cloudflare Worker bundling/runtime before installation. Then pin an exact version, generate and commit the repository's lockfile using the matching package manager, and require clean-lockfile installation in CI. Do not use a floating version or hand-authored lock metadata.
+
+### Required implementation and tests before changing the parser status
+
+- Use the selected SDK's canonical PDA derivation API; do not write a custom curve test, SHA-256 derivation, or bump loop.
+- Derive with both classic Token and Token-2022 program IDs and prove they yield different addresses for the same owner and mint.
+- Add fixed expected-address and bump vectors independently cross-checked against the official Associated Token Account implementation or a trusted Solana SDK.
+- Reject malformed owner, mint, token-program, and ATA program IDs before derivation.
+- Test wrong owner, wrong mint, wrong token program, wrong ATA program, wrong bump/address, and on-curve candidate rejection using SDK-supported primitives and fixed vectors.
+- Keep `associatedAddressVerification: "not-performed"` until the new derivation is integrated into the parser and all tests pass.
+- Keep authenticated on-chain account-state checks as a separate later requirement; deriving the expected address alone does not prove an account exists or is correctly initialized.
+
+This research note changes no executable code, parser trust flags, coordinator gates, wallet signing, transaction submission, deployment, or production data. Mainnet trading remains disabled.
+
+
+### Repository-specific Worker build gate
+
+The inspected `.github/workflows/cloudflare-worker-validation.yml` runs on pull requests that change `package.json`, `worker.js`, `wrangler.jsonc`, or tests. Its validation step runs `npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc`; this is a build-only dry run, not a deployment. Therefore, a future SDK dependency change to `package.json` will trigger this Worker bundling check. The current workflow does not run a clean install from a committed project lockfile, so it does not by itself prove lockfile reproducibility.
+
+The official SDK documentation lists `@solana/kit` as the recommended TypeScript SDK and exposes `getProgramDerivedAddress`. The published `@solana/kit` package describes Node, web, and React Native support, but that broad statement is not a project-specific Cloudflare Workers compatibility guarantee. A changelog entry for one transitive `@solana/errors` package adding `workerd` and `edge-light` exports is useful evidence, but it does not establish that every package in the SDK dependency graph is Worker-compatible. Treat the Wrangler dry-run plus a focused runtime test in the actual Worker environment as required evidence before relying on this SDK for PDA verification.
+
+References:
+- https://solana.com/docs/clients/official/javascript
+- https://solana.com/docs/core/pda/pda-derivation
+- https://www.npmjs.com/package/@solana/kit
+- https://github.com/anza-xyz/kit/blob/main/packages/errors/CHANGELOG.md
+
+
+### Confirmed integration constraints from the current repository
+
+The current Worker entry point is `worker.js` and is an ES module importing local `.mjs` modules. `wrangler.jsonc` sets `compatibility_date` to `2026-11-06`; it does not declare an explicit `compatibility_flags` array. Cloudflare's current compatibility documentation states that dates on or after `2026-08-04` enable Node.js compatibility behavior by default. This is useful context, but the PDA implementation should still prefer SDK paths that run on standard Web APIs and should not depend on Node-only crypto or Buffer behavior.
+
+The repository currently has no `@solana/kit` dependency and no committed npm lockfile in this branch. `package.json` uses Node `>=20`, has a `test` script of `node --test`, and currently lists only `better-sqlite3` as a production dependency. The Worker validation workflow invokes Wrangler's `deploy --dry-run` when `package.json` or Worker/test paths change. Cloudflare documents that Wrangler uses esbuild, resolves npm dependencies, honors conditional package exports, and selects the `workerd` export condition when bundling for Workers.
+
+Implementation gate: when the SDK is introduced, verify the actual resolved `@solana/kit` dependency graph has a usable `workerd`/browser-compatible path (rather than assuming one transitive package's export is sufficient), run the existing Node test suite, run the repository's Wrangler dry-run build, and add a focused test in a real Workers-compatible runtime. Do not alter `compatibility_date` or enable new Node compatibility flags merely to make a dependency load without a documented need and a separate review.
+
+References:
+- https://developers.cloudflare.com/workers/wrangler/bundling/
+- https://developers.cloudflare.com/workers/configuration/compatibility-flags/
+- https://solana.com/docs/clients/official/javascript
+
+
+
+### Smaller direct-package candidate: `@solana/addresses`
+
+A follow-up package-level review found that the documented `getProgramDerivedAddress` helper is also published from the standalone `@solana/addresses` package. This creates a narrower candidate than importing the umbrella `@solana/kit` package when the implementation needs only address/PDA derivation.
+
+The package metadata inspected during this review lists stable release `8.6.0` and five direct dependencies. Treat that version as a research candidate only, not as an approved or installed dependency. A smaller direct package may reduce the dependency surface, but its transitive exports and actual Cloudflare Workers runtime behavior still require verification.
+
+Before choosing between `@solana/addresses` and `@solana/kit`:
+
+- Confirm the exact exported import path and API against the pinned package version.
+- Inspect the complete resolved dependency graph and package export conditions; do not infer Worker compatibility from one dependency's `workerd` export.
+- Generate the lockfile with the repository's chosen package manager and prove a clean frozen/locked install.
+- Run all Node tests, the Wrangler Worker dry-run, and a focused test using the actual Workers-compatible runtime.
+- Keep the ATA parser result at `not-performed` until fixed-vector tests and parser integration pass.
+
+No package has been installed or added by this research note. No executable code, parser trust status, coordinator gate, signing, submission, deployment, or production data has changed.
+
+
+
+### API-shape finding: PDA derivation is asynchronous
+
+The published `@solana/addresses` API reference documents `getProgramDerivedAddress` as returning a `Promise<[Address, bump]>`, and its example awaits the call. The documented import path is directly from `@solana/addresses`, with `getAddressEncoder` used to encode the owner, token-program, and mint seed addresses.
+
+This matters to the current repository: `parseSupportedInstructionMessage()` is presently synchronous. Integrating the SDK helper directly therefore requires an explicit design decision to make the parser asynchronous and update every caller/test accordingly, or to keep syntax parsing synchronous and introduce a separate asynchronous PDA-verification stage. Do not block the event loop or replace the SDK with a hand-written synchronous derivation algorithm to preserve the current function signature.
+
+The safer staged option is to keep the existing syntax parser and its `not-performed` status unchanged, then add a distinct async verification layer with fixed vectors and explicit result binding. The parser must not claim semantic verification merely because PDA derivation succeeds; the on-chain ATA account state remains a separate check.
+
+References:
+- https://www.solanakit.com/api/functions/getProgramDerivedAddress
+- https://www.npmjs.com/package/@solana/addresses?activeTab=versions
+
+This is a research/design note only. No executable code or parser API has changed.
+
+## SDK package and Cloudflare export audit: 2026-11-18
+
+Inspected the published `@solana/addresses@8.6.0` package metadata and the matching upstream `anza-xyz/kit` tag.
+
+Confirmed package facts:
+
+- The package declares explicit conditional exports for `workerd`, `edge-light`, `browser`, `node`, and `react-native`. The `workerd` condition resolves to the package's Node-targeted ESM/CJS distribution files; this is an explicit Workers runtime export, not an inference from its browser build.
+- The implementation of `getProgramDerivedAddress()` uses `crypto.subtle.digest('SHA-256', ...)`, `TextEncoder`, and `Uint8Array`. It checks for digest capability before deriving. These are APIs available in the Workers runtime, but this source inspection alone is not a substitute for executing the built package inside the project's actual Workers-compatible test runtime.
+- The function is asynchronous and returns the PDA and bump as a tuple. It tries bump seeds from 255 downward and retries only when the candidate digest is on the Ed25519 curve.
+- The implementation enforces at most 16 seeds and at most 32 bytes per seed. ATA derivation uses three 32-byte public-key seeds plus the one-byte bump, within those limits.
+- The package's direct runtime dependencies are `@solana/assertions`, `@solana/codecs-core`, `@solana/codecs-strings`, `@solana/errors`, and `@solana/nominal-types`. This is a small standalone package compared with importing the full `@solana/kit` package, but it is not dependency-free.
+- Its declared Node engine is `>=20.18.0`; the repository currently declares `>=20`. CI must therefore verify the actual pinned Node version before adopting this package. Do not silently raise the repository's engine floor as part of an ATA-only change.
+
+### Adoption gate
+
+The source audit supports keeping `@solana/addresses@8.6.0` as the leading SDK candidate, but does not yet establish that it is safe to add to this repository. Before adding it:
+
+1. Verify the repository's actual Node version in all test and build workflows against the package's `>=20.18.0` engine.
+2. Install the exact pinned version and commit the package-manager lockfile; do not use an unpinned or floating dependency.
+3. Run the package through the existing Node test suite and the existing Wrangler dry-run build.
+4. Add a focused test that imports the built Worker bundle in the project's Workers-compatible runtime and derives known ATA vectors for both Classic Token and Token-2022.
+5. Cross-check expected address and bump vectors against the official Associated Token Program implementation or an independent trusted implementation.
+6. Test malformed keys, incorrect program IDs, wrong token program, wrong owner/mint, and on-curve rejection. Keep the verifier async and separate from the synchronous syntax decoder.
+7. Preserve `semanticInstructionVerification: false` and all coordinator fail-closed gates until the complete semantic-verification acceptance matrix is satisfied.
+
+No dependency was added by this audit. No executable source, parser behavior, signing, transaction submission, Worker routes, UI/design, deployment, or production data was changed.
+
+### Repository CI engine-floor cross-check: 2026-11-18
+
+The repository files were checked against the SDK's declared Node engine:
+
+- Root `package.json` declares `engines.node: >=20`.
+- `.github/workflows/test.yml` selects Node 22 for the Node test job.
+- `.github/workflows/cloudflare-worker-validation.yml` selects Node 20 for the Wrangler dry-run job.
+- The candidate `@solana/addresses@8.6.0` package declares `engines.node: >=20.18.0`.
+
+The Node 22 test job is above the candidate's stated floor. The Wrangler workflow requests the Node 20 major line, not an explicit patch/minor floor; the workflow currently uses the hosted setup-node Node 20 distribution, but the repository does not pin or assert Node >=20.18.0 in that job. Therefore the engine compatibility check is not fully deterministic from workflow configuration alone.
+
+Before adoption, make the Wrangler job's Node version explicit at 20.18.0 or newer (or align both workflows on Node 22 after confirming Wrangler compatibility), then run the dry-run build. Do not change the workflow as part of this documentation-only audit.
+
+No dependency or lockfile was added. No workflow, executable code, parser, UI, signing, transaction, or deployment behavior was changed.
+
+
+
+## Official ATA program test-fixture cross-check: 2026-11-18
+
+Inspected the upstream Associated Token Account program's pinned source revision
+`solana-program/associated-token-account@fbf5379`, specifically
+`pinocchio/program/tests/bump.rs` and `pinocchio/program/tests/common.rs`.
+
+The upstream tests provide independently sourced canonical-bump fixtures for the
+Classic Token program and explicitly exercise both Classic Token and Token-2022
+through a token-program test matrix:
+
+| Wallet | Mint | Token program | Expected canonical bump |
+|---|---|---|---:|
+| `1117mWrzzrZr312ebPDHu8tbfMwFNvCvMbr6WepCNG` | `8N6gdBxJaZUG9cBnSSaHDsx7vMeQ4VR1LmCmk9SCu38s` | Classic Token | 255 |
+| `111FJo4zLAGU9nzTWa6EnbV4VAmtG4FR8kcokrtZYr` | same mint | Classic Token | 254 |
+| `3zPynWFGj3nyJBtHhCy8UEJoGvbn1TmgHca2afHTSByQ` | same mint | Classic Token | 253 |
+| `931gKnvtYWR12hueG8Zb1yDigAntDghosriFUoK1Fr8P` | same mint | Classic Token | 253 |
+
+The upstream source also gives a negative fixture for the last wallet: bump 254
+produces the on-curve address
+`2XughgGgvRsf8VJiteF7ZEYF2jZbCTcTAFoEfrCfUXs7`, while the canonical bump is
+253. The upstream test asserts that the canonical result is off-curve and that
+the incorrect on-curve bump hint is rejected.
+
+Important limitation: these upstream tests expose the expected bump values and
+one deliberately incorrect on-curve candidate, but this inspection did not
+establish a fixed canonical ATA address string for each positive fixture.
+Therefore, do not copy a guessed address into JavaScript tests or claim the
+complete address+bump vector requirement is satisfied. The next test-authoring
+step must independently derive and cross-check the canonical address strings
+for these same fixtures, and add at least one Token-2022-specific address+bump
+pair from the official program or another independent trusted implementation.
+
+The upstream tests' Token-2022 matrix confirms that the canonical derivation
+path is exercised with both token program IDs, but it is not by itself a
+published fixed expected-address vector for the Token-2022 case. Keep
+`associatedAddressVerification: "not-performed"` until both program variants
+have fixed address+bump vectors and the repository's Node and Workers-runtime
+tests pass.
+
+Sources:
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/pinocchio/program/tests/bump.rs
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/pinocchio/program/tests/common.rs
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/interface/src/address.rs
+
+This source cross-check changes documentation only. No dependency, executable
+code, parser status, coordinator gate, signing, transaction submission, UI,
+deployment, or production data was changed.
+
+
+### Seed-order and legacy-helper review
+
+A direct read of the same pinned upstream `interface/src/address.rs` confirms the
+canonical seed order used by the official ATA helper:
+
+1. Wallet/owner public-key bytes.
+2. Selected token-program public-key bytes.
+3. Mint public-key bytes.
+
+The PDA program is the Associated Token Account Program ID. The upstream
+`get_associated_token_address_with_program_id` helper passes the selected token
+program ID into that derivation path. The older two-argument
+`get_associated_token_address` helper is explicitly deprecated because it
+assumes the Classic SPL Token program and does not work for Token-2022 mints.
+
+Implementation consequence: do not use the deprecated two-argument helper for
+the verifier. The selected token program must be an explicit, validated input,
+and it must occupy the second seed position. Add a regression test that swaps
+the token-program and mint seed positions and confirms the resulting address
+does not match the canonical fixed vector.
+
+This review confirms the source-level seed contract only. It does not supply
+the missing fixed ATA address strings, prove the SDK package runtime behavior,
+or authorize changing `associatedAddressVerification` from
+`"not-performed"`.
+
+Pinned upstream source:
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/interface/src/address.rs
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
+
+
+### Clarification: scope of the upstream Token-2022 matrix
+
+The `pinocchio/program/tests/bump.rs` source was re-read in full to avoid
+overstating what its Token-2022 matrix proves. The fixed wallet/mint/bump cases
+listed above are Classic Token fixtures. The Token-2022 matrix at the end of
+that test file uses a dynamically constructed harness wallet and mint and checks
+acceptance of an existing ATA using a bump computed at runtime; it does not
+publish a fixed Token-2022 address+bump pair.
+
+Accordingly, the upstream source currently gives:
+- Fixed Classic Token wallet/mint/bump fixtures, plus negative bump/address cases.
+- Runtime-derived Token-2022 acceptance coverage in a program test matrix.
+- No fixed Token-2022 address+bump fixture in the inspected test file.
+
+This distinction is mandatory in any implementation report. A future fixed
+Token-2022 vector must be independently generated and verified against the
+official helper using the explicit Token-2022 program ID; a runtime-computed
+expected value inside the same test is not an independent fixed vector.
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
+
+
+
+### Independent Token-2022 address candidate located: 2026-11-18
+
+A further source search located a fixed Token-2022 ATA address fixture in
+`themusebook/x402-messaging`, at pinned revision
+`e9e3b653041503ae6e138d6c356022aab10820e0`, file
+`pay-kit-main/lua/tests/methods_solana_ata_spec.lua`.
+
+The fixture states that its expected address is cross-checked against the
+project's Ruby reference implementation and `spl-token` CLI, and records:
+
+| Owner | Mint | Token program | Expected ATA address |
+|---|---|---|---|
+| `CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | Token-2022 (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`) | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` |
+
+This is useful independent, cross-implementation address evidence, but the
+inspected fixture does not publish the canonical bump. It is therefore an
+address-only candidate, not yet the required fixed address+bump vector. Do not
+invent or infer the bump from this table. Before using it as a final test
+vector, independently verify the exact owner/mint/token-program tuple and
+derive the bump with a second trusted implementation; record the implementation
+and version used. The official Solana Foundation `pay-kit` repository also
+contains Token-2022 harness fixtures for this owner and program ID, but those
+harness excerpts inspected so far do not themselves state the ATA bump.
+
+Sources:
+- https://github.com/themusebook/x402-messaging/blob/e9e3b653041503ae6e138d6c356022aab10820e0/pay-kit-main/lua/tests/methods_solana_ata_spec.lua
+- https://github.com/solana-foundation/pay-kit/tree/86400da56a35705516f166394a026ea32e8356fb
+
+This is documentation-only evidence collection. No executable code,
+dependency, parser status, coordinator gate, signing, transaction submission,
+UI, deployment, or production data was changed.
+
+
+### Official Solana Foundation cross-check for paired ATA addresses: 2026-11-18
+
+The Token-2022 address-only candidate above is now corroborated by the
+Solana Foundation's own `pay-kit` repository at pinned revision
+`86400da56a35705516f166394a026ea32e8356fb`, file
+`lua/tests/methods_solana_ata_spec.lua`.
+
+That test uses the same owner and USDC mainnet mint for both token programs
+and explicitly says the expected addresses are cross-checked against the
+Ruby reference implementation and `spl-token` CLI:
+
+| Owner | Mint | Token program | Expected ATA address |
+|---|---|---|---|
+| `CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | Classic Token (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`) | `3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b` |
+| same | same | Token-2022 (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`) | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` |
+
+This establishes a strong, pinned, cross-implementation pair of expected
+addresses for one owner/mint tuple and demonstrates that changing only the
+token program changes the ATA. The upstream test still does not publish the
+canonical bump for either result. Therefore these are verified address
+fixtures, but not yet the required address+bump vectors. The bump must be
+derived and cross-checked independently before claiming the full vector
+requirement is satisfied.
+
+An additional independent SDK implementation was inspected in
+`metaplex-foundation/mpl-token-metadata` at pinned revision
+`7ce760f9e010cb9819ffd7dd86986a44691bd1f8`,
+`clients/js-kit/src/hooked/pdas.ts`. Its `findAssociatedTokenPda`
+returns the SDK's `ProgramDerivedAddress` tuple using the same three seed
+components (owner, selected token program, mint) and ATA program ID. This is
+a suitable independent implementation to use when obtaining the bump, but
+no runtime execution of that SDK has been performed in this repository.
+
+Source:
+- https://github.com/solana-foundation/pay-kit/blob/86400da56a35705516f166394a026ea32e8356fb/lua/tests/methods_solana_ata_spec.lua
+- https://github.com/metaplex-foundation/mpl-token-metadata/blob/7ce760f9e010cb9819ffd7dd86986a44691bd1f8/clients/js-kit/src/hooked/pdas.ts
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
