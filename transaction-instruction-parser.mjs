@@ -114,16 +114,44 @@ const UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS = Object.freeze([
 ]);
 
 export function parseSupportedInstructionMessage(message) {
-  if (!message || typeof message !== "object" || Array.isArray(message) ||
-      !Array.isArray(message.accountKeys) ||
-      message.accountKeys.length < 1 || message.accountKeys.length > MAX_ACCOUNT_KEYS ||
-      !Array.isArray(message.instructions) ||
-      message.instructions.length < 1 || message.instructions.length > MAX_INSTRUCTIONS) {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
     throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
 
   if (UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS.some(field => field in message)) {
     throw new Error("Transaction message parser does not accept execution metadata or CPI evidence");
+  }
+
+  // Accept only plain data records with an explicit schema. This prevents
+  // unknown metadata aliases, inherited fields, accessors, and symbol keys
+  // from being silently ignored or evaluated during parsing.
+  const prototype = Object.getPrototypeOf(message);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("Transaction message must be a plain data record");
+  }
+  const allowedFields = new Set([
+    "accountKeys",
+    "instructions",
+    "header",
+    "resolvedAddressTableLookups",
+    "staticAccountKeys",
+    "computeBudgetPolicy"
+  ]);
+  for (const field of Reflect.ownKeys(message)) {
+    if (typeof field !== "string" || !allowedFields.has(field)) {
+      throw new Error("Transaction message contains an unsupported field");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(message, field);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Transaction message fields must be plain data properties");
+    }
+  }
+
+  if (!Array.isArray(message.accountKeys) ||
+      message.accountKeys.length < 1 || message.accountKeys.length > MAX_ACCOUNT_KEYS ||
+      !Array.isArray(message.instructions) ||
+      message.instructions.length < 1 || message.instructions.length > MAX_INSTRUCTIONS) {
+    throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
 
   for (let index = 0; index < message.instructions.length; index++) {
