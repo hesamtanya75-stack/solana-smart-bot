@@ -178,3 +178,45 @@ All PR-triggered workflows for this exact head completed:
 - Funded Devnet lifecycle: skipped (job 134764962922). No funded signing or transfer was performed.
 
 This validates the repository tests, Worker build, and read-only Devnet checks for this documentation-only commit. It does not implement a decoder registry or instruction decoders, and does not validate signing, transaction submission, settlement, or live trading. PR #40 remains Draft and unmerged; no production deployment or Mainnet trading is authorized by this result.
+
+
+## Current readiness review — PR #40 head `06b332995050b29f471739614ea4bcb456e97c7b`
+
+This review was performed after adding the analysis-only transaction instruction parser and its negative tests.
+
+### CI evidence for this exact head
+
+- Node tests: success.
+- Cloudflare Worker build validation: success; this is a build/validation result, not a deployment.
+- Devnet read-only validation: success.
+- Funded Devnet lifecycle: skipped; no funded signing or transfer was performed.
+- PR #40 remains open and Draft; it is not merged.
+
+### Source state confirmed
+
+- `transaction-instruction-parser.mjs` accepts a bounded, already-deserialized message and currently recognizes only the registered Compute Budget instruction family.
+- System Program, SPL Token, Token-2022, Associated Token Account, and Jupiter/router instructions remain unsupported and are rejected. The parser explicitly reports incomplete semantics and disallows signing/submission.
+- `live-trading.mjs` retrieves unsigned Jupiter order evidence only. It explicitly reports semantic verification false and `executeLiveOrder()` throws that live execution is not implemented.
+- `live-trade-coordinator.mjs` requires semantic verification and route verification attestations before reservation. The current evidence producer does not provide those attestations, so the gate correctly remains closed.
+- The Worker has no live execution route invoking the coordinator.
+- The wallet model remains a hardcoded expected public key, not a principal-scoped dedicated-wallet enrollment and isolated signer.
+- Settlement failure/close transitions remain disabled pending independent proofs.
+
+### Mainnet release decision
+
+**NO-GO — do not enable real-money trading.** Successful Node tests, Worker build, and read-only Devnet checks do not prove transaction semantics, signing security, submission correctness, or finalized settlement.
+
+The following gates must be completed in order before a separate Mainnet release review:
+
+1. Implement and independently review complete legacy/v0 message decoding, including address lookup table resolution and account signer/writable privileges.
+2. Implement versioned, reject-by-default semantic decoders for each supported instruction family: System, Compute Budget, SPL Token, Token-2022, Associated Token Account, and the exact Jupiter/router programs and CPI paths. Reject every unrecognized variant.
+3. Reconstruct the complete SOL/token funds flow, including input/output amounts, base and priority fees, tips, rent, WSOL wrapping/unwrapping, account creation/closure, and every other debit/credit; bind it to an immutable, short-lived server-side order intent.
+4. Implement a stable authenticated principal and dedicated trading-wallet enrollment/revocation model. Keep the primary Phantom wallet separate. Never collect or store seed phrases/private keys in the browser, Worker, KV, Durable Objects, or repository.
+5. Implement a separately isolated signer that independently checks principal, wallet, cluster, exact intent, transaction bytes, limits, expiry, and idempotency. The signer must not expose general-purpose signing.
+6. Implement one-time wallet-control proof and step-up MFA for enrollment and policy changes; wallet proof must not itself authorize trades.
+7. Implement safe one-time submission, signature reconciliation after ambiguous RPC results, finalized settlement, and independently provable failure/close/cancel transitions.
+8. Complete buy/sell policy and loss controls: per-order/daily spend, total exposure, open positions, daily loss, slippage, price impact, quote age, liquidity, volume, mint/freeze authorities, Token-2022 extensions, holder concentration, sell-route, and allow/deny lists.
+9. Add durable audit/alerts, emergency stop, key rotation/recovery, failure injection, and independent security review.
+10. Run the complete buy and sell lifecycle on a disposable funded Devnet wallet only after explicit opt-in. Then conduct a separate Mainnet readiness review and require explicit release authorization.
+
+Until every gate is independently verified, keep live trading disabled, the coordinator disconnected from Worker execution routes, and the existing paper-trading path unchanged. Do not merge PR #40, deploy to production, fund a wallet for testing, or submit any Mainnet transaction as part of this preparation.
