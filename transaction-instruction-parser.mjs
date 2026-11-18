@@ -44,6 +44,9 @@ export function parseSupportedInstructionMessage(message) {
   if (accountKeys.some(key => !isCanonicalPublicKey(key))) {
     throw new Error("Transaction message contains an invalid account key");
   }
+  if (new Set(accountKeys).size !== accountKeys.length) {
+    throw new Error("Transaction message contains duplicate account keys");
+  }
 
   const decodedInstructions = message.instructions.map((instruction, position) => {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
