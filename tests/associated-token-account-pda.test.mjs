@@ -58,9 +58,9 @@ test("rejects malformed owner and mint and unsupported token program", async () 
 });
 
 test("verifies a decoded ATA instruction against the canonical PDA", async () => {
-  const keys = [OWNER, CLASSIC_ATA, OWNER, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
+  const keys = [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
   const record = decodeAssociatedTokenInstruction(
-    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0,1,2,3,4,5], keys
+    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0,1,0,2,3,4], keys
   );
   const result = await verifyAssociatedTokenInstructionPda(record, keys);
   assert.equal(result.performed, true);
@@ -71,20 +71,20 @@ test("verifies a decoded ATA instruction against the canonical PDA", async () =>
 });
 
 test("rejects a wrong ATA address, wrong owner, and wrong mint", async () => {
-  const keys = [OWNER, TOKEN_2022_ATA, OWNER, MINT, SYSTEM, TOKEN_2022_PROGRAM_ID];
+  const keys = [OWNER, TOKEN_2022_ATA, MINT, SYSTEM, TOKEN_2022_PROGRAM_ID];
   const record = decodeAssociatedTokenInstruction(
-    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0,1,2,3,4,5], keys
+    ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0,1,0,2,3,4], keys
   );
   const wrongAta = [...keys];
   wrongAta[1] = CLASSIC_ATA;
   assert.equal((await verifyAssociatedTokenInstructionPda(record, wrongAta)).verified, false);
 
   const wrongOwner = [...keys];
-  wrongOwner[2] = "11111111111111111111111111111112";
+  wrongOwner[0] = "11111111111111111111111111111112";
   assert.equal((await verifyAssociatedTokenInstructionPda(record, wrongOwner)).verified, false);
 
   const wrongMint = [...keys];
-  wrongMint[3] = "11111111111111111111111111111113";
+  wrongMint[2] = "11111111111111111111111111111113";
   assert.equal((await verifyAssociatedTokenInstructionPda(record, wrongMint)).verified, false);
 });
 
