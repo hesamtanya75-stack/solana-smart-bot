@@ -46,6 +46,53 @@ test("raw mint account parsing requires bounded canonical base64 encoding", () =
   assert.equal(getterCalls, 0);
 });
 
+test("parsed mint evidence requires explicit authority fields and safe extension metadata", () => {
+  const classic = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const parsed = (owner, info) => ({
+    value: { owner, data: { parsed: { type: "mint", info } } }
+  });
+
+  assert.deepEqual(parseTrustedMintAccount(parsed(classic, {
+    mintAuthority: null, freezeAuthority: null
+  })), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.deepEqual(parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null, extensions: []
+  })), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.equal(parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null
+  })).token2022ExtensionsSafe, false);
+
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, {
+    freezeAuthority: null
+  })), /authority metadata is incomplete/);
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, {
+    mintAuthority: null, freezeAuthority: "not-a-public-key"
+  })), /authority metadata is malformed/);
+
+  let getterCalls = 0;
+  const hostileInfo = { freezeAuthority: null };
+  Object.defineProperty(hostileInfo, "mintAuthority", {
+    get() { getterCalls += 1; return null; }
+  });
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, hostileInfo)),
+    /authority metadata is incomplete/);
+  assert.equal(getterCalls, 0);
+
+  const sparseExtensions = new Array(1);
+  assert.throws(() => parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null, extensions: sparseExtensions
+  })), /extensions are malformed/);
+});
+
 test("raw Token-2022 mint data with extension space remains unsafe", () => {
   const extended = Buffer.alloc(166).toString("base64");
   const result = parseTrustedMintAccount({
