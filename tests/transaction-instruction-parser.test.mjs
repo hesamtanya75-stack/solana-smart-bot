@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COMPUTE_BUDGET_PROGRAM } from "../compute-budget-decoder.mjs";
-import { SYSTEM_PROGRAM_ID } from "../system-program-decoder.mjs";
 import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
 
 function data(tag, value) {
