@@ -19,7 +19,7 @@ function readDensePlainArray(value, maximum, label) {
   }
   if (keys.length !== value.length + 1 ||
       keys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
          Number(key) >= value.length))) {
     throw new Error(label + " contain unsupported properties");
   }
@@ -128,7 +128,7 @@ export function validateSystemProgramInstructionSet(instructions) {
   }
   if (keys.length !== instructions.length + 1 ||
       keys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
          Number(key) >= instructions.length))) {
     throw new Error("System instruction set contains unsupported properties");
   }
