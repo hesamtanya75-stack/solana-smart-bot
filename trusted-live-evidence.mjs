@@ -1,4 +1,5 @@
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
+import { decodeAddressLookupTableAccountData } from "./address-lookup-table-verifier.mjs";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
@@ -734,43 +735,31 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   for (let i = 0; i < lookups.length; i++) {
     const account = accounts[i];
     if (!account || account.owner !== ADDRESS_LOOKUP_TABLE_PROGRAM_ID ||
+        account.executable !== false ||
         !Array.isArray(account.data) || typeof account.data[0] !== "string" ||
         account.data[1] !== "base64") {
-      throw new Error("Address lookup table is missing, malformed, or owned by an unexpected program");
+      throw new Error("Address lookup table is missing, malformed, executable, or owned by an unexpected program");
     }
-    // Bound encoded account data before base64 decoding to cap RPC-controlled memory use.
+    // Bound and canonicalize RPC-controlled base64 before decoding.
+    const encodedData = account.data[0];
     const maxLookupTableBase64Length = 4 * Math.ceil((56 + 256 * 32) / 3);
-    if (account.data[0].length > maxLookupTableBase64Length) {
-      throw new Error("Address lookup table account data exceeds the maximum encoded size");
+    if (encodedData.length > maxLookupTableBase64Length ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encodedData)) {
+      throw new Error("Address lookup table account data exceeds limits or is not canonical base64");
     }
-    const data = Uint8Array.from(atob(account.data[0]), char => char.charCodeAt(0));
-    if (data.length < 56 || (data.length - 56) % 32 !== 0 ||
-        data.length > 56 + 256 * 32) {
-      throw new Error("Address lookup table account data length is invalid");
+    const data = Uint8Array.from(atob(encodedData), char => char.charCodeAt(0));
+    if (btoa(String.fromCharCode(...data)) !== encodedData) {
+      throw new Error("Address lookup table account data is not canonical base64");
     }
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    if (view.getUint32(0, true) !== 1) {
-      throw new Error("Address lookup table account state is not initialized");
-    }
-    const deactivationSlot = view.getBigUint64(4, true);
-    const lastExtendedSlot = view.getBigUint64(12, true);
-    const lastExtendedStartIndex = data[20];
-    const authorityOption = data[21];
-    if (authorityOption > 1 || data[54] !== 0 || data[55] !== 0 ||
-        (authorityOption === 0 && data.subarray(22, 54).some(byte => byte !== 0)) ||
-        lastExtendedStartIndex > (data.length - 56) / 32) {
-      throw new Error("Address lookup table metadata is invalid");
-    }
-    if (deactivationSlot !== ALT_DEACTIVATION_SLOT_NEVER) {
+    const decodedTable = decodeAddressLookupTableAccountData(data);
+    if (decodedTable.deactivationSlot !== ALT_DEACTIVATION_SLOT_NEVER) {
       throw new Error("Deactivated address lookup tables are not trusted");
     }
-    if (lastExtendedSlot > BigInt(contextSlot)) {
+    if (decodedTable.lastExtendedSlot > BigInt(contextSlot)) {
       throw new Error("Address lookup table extension slot is ahead of RPC context");
     }
-    const addresses = [];
-    for (let offset = 56; offset < data.length; offset += 32) {
-      addresses.push(encodeBase58(data.slice(offset, offset + 32)));
-    }
+    const addresses = decodedTable.addresses;
+    const lastExtendedStartIndex = decodedTable.lastExtendedSlotStartIndex;
     const table = lookups[i];
     const allIndexes = [...table.writableIndexes, ...table.readonlyIndexes];
     if (allIndexes.some(index => index >= addresses.length)) {
