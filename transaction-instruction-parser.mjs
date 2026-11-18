@@ -190,11 +190,20 @@ export function parseSupportedInstructionMessage(message) {
 
   let accountPrivilegeAnalysis = "not-provided";
   if (message.header !== undefined) {
+    const lookupTables = message.resolvedAddressTableLookups ?? [];
+    const staticAccountKeys = message.staticAccountKeys ?? accountKeys;
+    if (lookupTables.length > 0 && message.staticAccountKeys === undefined) {
+      throw new Error("Versioned message with address lookups must provide staticAccountKeys separately");
+    }
     const derived = deriveMessageAccountRoles({
-      staticAccountKeys: accountKeys,
+      staticAccountKeys,
       header: message.header,
-      resolvedAddressTableLookups: message.resolvedAddressTableLookups ?? []
+      resolvedAddressTableLookups: lookupTables
     });
+    if (derived.roles.length !== accountKeys.length ||
+        derived.roles.some((role, index) => role.publicKey !== accountKeys[index])) {
+      throw new Error("Resolved message account keys do not match static and lookup account ordering");
+    }
     for (const programIdIndex of programIdIndexes) {
       requireRole(derived.roles, programIdIndex, { readonly: true, nonSigner: true }, "Instruction program");
     }
