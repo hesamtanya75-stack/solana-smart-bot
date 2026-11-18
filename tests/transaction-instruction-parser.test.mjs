@@ -144,17 +144,15 @@ test("transaction parser rejects malformed System Program account layouts and un
   }], [SYSTEM, SOURCE, DESTINATION])), /variant is unsupported/);
 });
 
-test("transaction parser rejects unsupported classic Token variants and all Token-2022 instructions", () => {
+test("transaction parser rejects unsupported Classic Token and Token-2022 instruction variants", () => {
   const classicToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  assert.throws(() => parseSupportedInstructionMessage(
-    message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) }], [classicToken]),
-  ), /SPL Token instruction variant is unsupported/);
-  const transfer = Buffer.from([3, ...Array(8).fill(0)]).toString("base64");
-  assert.throws(() => parseSupportedInstructionMessage(
-    message([{ programIdIndex: 0, accountKeyIndexes: [], data: transfer }],
-      [token2022]),
-  ), /Instruction registry rejects an unsupported program ID/);
+  for (const tokenProgram of [classicToken, token2022]) {
+    assert.throws(() => parseSupportedInstructionMessage(
+      message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(99, 0) }],
+        [tokenProgram]),
+    ), /SPL Token instruction variant is unsupported/);
+  }
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
