@@ -32,18 +32,21 @@ function snapshotPlainArray(value, label, maxLength) {
     throw new Error(`${label} is malformed`);
   }
   const keys = Reflect.ownKeys(value);
+  const snapshot = [];
+  for (let i = 0; i < value.length; i++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+    if (!descriptor) {
+      throw new Error(`${label} contains sparse entries`);
+    }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(`${label} contains accessor-backed entries`);
+    }
+    snapshot.push(descriptor.value);
+  }
   if (keys.length !== value.length + 1 ||
       keys.some(key => key !== "length" &&
         (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) {
     throw new Error(`${label} has unsupported properties`);
-  }
-  const snapshot = [];
-  for (let i = 0; i < value.length; i++) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
-    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
-      throw new Error(`${label} contains sparse or accessor-backed entries`);
-    }
-    snapshot.push(descriptor.value);
   }
   return snapshot;
 }
