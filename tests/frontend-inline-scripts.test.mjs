@@ -43,3 +43,13 @@ test("Phantom SOL balance is read-only and ignores stale wallet responses", () =
   assert.match(source, /lamports \/ 1_000_000_000/);
   assert.doesNotMatch(source, /signTransaction|signAndSendTransaction|sendTransaction/);
 });
+
+test("demo trade mint is HTML-escaped before rendering", () => {
+  const start = html.indexOf("function makeCards(items)");
+  const end = html.indexOf("\n  const totalProfit", start);
+  assert.notEqual(start, -1, "demo trade card renderer should exist");
+  assert.notEqual(end, -1, "demo trade card renderer should have a stable boundary");
+  const renderer = html.slice(start, end);
+  assert.match(renderer, /safe\\(t\\.mint\\)/);
+  assert.doesNotMatch(renderer, /t\\.mint\\)\\.replace/);
+});
