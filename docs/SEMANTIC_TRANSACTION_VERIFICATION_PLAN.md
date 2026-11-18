@@ -1066,3 +1066,12 @@ is readonly and accept the structurally required writable signer roles while
 keeping the parse result analysis-only. This checks message-header structure;
 it does not verify account funding, runtime execution, ownership effects, or
 whole-transaction semantics.
+
+## Explicit address lookup authentication status
+
+The instruction parser now reports `lookupAddressAuthentication` as
+`not-performed` whenever caller-supplied resolved address lookup entries are
+present, and `not-applicable` when none are supplied. Matching the supplied
+static/loaded key ordering and deriving structural privileges does not prove
+which on-chain lookup table was read, its authority, or its state at execution.
+This status is diagnostic only and never enables signing or submission.
