@@ -69,8 +69,18 @@ export function deriveMessageAccountRoles({ staticAccountKeys, header, resolvedA
         MAX_ACCOUNT_KEYS - staticCount - writableLookupAddresses.length - readonlyLookupAddresses.length) {
       throw new Error("Resolved message account keys exceed parser limit");
     }
-    for (const publicKey of lookup.writableAddresses) writableLookupAddresses.push(publicKey);
-    for (const publicKey of lookup.readonlyAddresses) readonlyLookupAddresses.push(publicKey);
+    for (let index = 0; index < lookup.writableAddresses.length; index++) {
+      if (!Object.prototype.hasOwnProperty.call(lookup.writableAddresses, index)) {
+        throw new Error("Resolved lookup account key is invalid or duplicated");
+      }
+      writableLookupAddresses.push(lookup.writableAddresses[index]);
+    }
+    for (let index = 0; index < lookup.readonlyAddresses.length; index++) {
+      if (!Object.prototype.hasOwnProperty.call(lookup.readonlyAddresses, index)) {
+        throw new Error("Resolved lookup account key is invalid or duplicated");
+      }
+      readonlyLookupAddresses.push(lookup.readonlyAddresses[index]);
+    }
   }
   // Solana v0 account-key order is static keys, then ALL loaded writable
   // addresses, then ALL loaded readonly addresses (not per-table interleaving).
