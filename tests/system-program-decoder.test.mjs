@@ -38,6 +38,11 @@ test("rejects unsupported variants, malformed lengths, wrong accounts and forged
   assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(Buffer.from([0,0,0,0,...Array(48).fill(0)])), [2, 2]), /distinct account indexes/);
   assert.throws(() => decodeSystemProgramInstruction("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", encoded(Buffer.from([2,0,0,0,...Array(8).fill(0)])), [0,1]), /unknown program/);
   assert.throws(() => validateSystemProgramInstructionSet([{}]), /unreviewed/);
+  const valid = decodeSystemProgramInstruction(
+    SYSTEM, encoded(Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(7)])), [0, 1]
+  );
+  assert.throws(() => validateSystemProgramInstructionSet([{ ...valid }]), /unreviewed/);
+  assert.throws(() => validateSystemProgramInstructionSet([Object.freeze({ ...valid })]), /unreviewed/);
 });
 test("rejects sparse account indexes and sparse decoded instruction sets", () => {
   const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
