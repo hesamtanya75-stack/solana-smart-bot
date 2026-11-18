@@ -58,3 +58,31 @@ test("rejects aggregate costs outside the u64 range", () => {
     tipLamports: "1"
   })), /u64 range/);
 });
+
+
+test("rejects accessor-backed evidence without invoking its getter", () => {
+  const hostile = evidence();
+  let getterCalled = false;
+  Object.defineProperty(hostile, "baseFeeLamports", {
+    enumerable: true,
+    get() { getterCalled = true; return "0"; }
+  });
+  assert.throws(() => calculateVerifiedTransactionCosts(hostile), /accessor-backed/);
+  assert.equal(getterCalled, false);
+});
+
+test("rejects inherited, symbol, and unexpected evidence fields", () => {
+  assert.throws(() => calculateVerifiedTransactionCosts(
+    Object.assign(Object.create({ semanticInstructionVerification: true }), evidence())
+  ), /plain data record/);
+  const symbolEvidence = evidence();
+  symbolEvidence[Symbol("trusted")] = true;
+  assert.throws(() => calculateVerifiedTransactionCosts(symbolEvidence), /unsupported field/);
+  assert.throws(() => calculateVerifiedTransactionCosts(evidence({ approved: true })), /unsupported field/);
+});
+
+test("rejects evidence with a missing required own data field", () => {
+  const incomplete = evidence();
+  delete incomplete.otherOutflowLamports;
+  assert.throws(() => calculateVerifiedTransactionCosts(incomplete), /incomplete/);
+});
