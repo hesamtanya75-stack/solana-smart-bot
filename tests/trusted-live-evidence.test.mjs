@@ -115,7 +115,7 @@ test("raw Token-2022 mint TLV layout is validated and extensions remain unsafe",
     makeExtended(bytes => { bytes[165] = 2; }),
     makeExtended(bytes => { bytes[82] = 1; }),
     makeExtended(bytes => { bytes[168] = 0; bytes[169] = 0; }),
-    makeExtended(bytes => { bytes[170] = 7; bytes[171] = 1; })
+    Buffer.concat([Buffer.from(makeExtended(), "base64"), Buffer.from([1])]).toString("base64")
   ]) {
     assert.throws(() => parseTrustedMintAccount({
       value: { owner: token2022, data: [encoded, "base64"] }
