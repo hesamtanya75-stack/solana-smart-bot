@@ -913,3 +913,36 @@ for parsed or structurally resolved Jupiter transactions. The LiveTradeCoordinat
 continues to reject any route that does not carry a separately established
 `semantically-verified` result. This is an intentional safety block, not a
 completed semantic verifier.
+
+
+## Exact PR #43 head audit — 2026-11-19
+
+Reviewed against PR #43 head `609affa13c00ce957f40693bb3307b627808eddb`.
+
+### Current CI evidence for this exact head
+
+- Node tests: run `44409146208` — success. The job includes the safety and Durable Objects runtime tests and the workerd conditional-export check for the ATA SDK.
+- Cloudflare Worker build validation: run `44409146196` — success. Wrangler dry-run build only; no deployment.
+- Devnet read-only validation: run `44409146240` — success. The job completed unit/runtime tests and Devnet cluster identity/read-only RPC verification.
+- Funded Devnet lifecycle: skipped by the workflow because explicit opt-in was not supplied. This is not an on-chain buy/sell test.
+- The combined commit status still reports `deploy/hesamtanya75-stack/solana-smart-bot-17` as failure. This is separate from the passing Cloudflare Worker build and does not establish a successful deployment.
+
+### Additional source-level blockers confirmed at this head
+
+- `fetchTrustedSellRoute()` deliberately makes a Jupiter Swap API V2 quote-only request with no taker and requires `transaction: null`. It does not produce an executable build transaction or decoded route evidence.
+- `fetchTrustedLiveEvidence()` returns quote and risk evidence but does not produce a `costs` object. The isolated `LiveTradeCoordinator` requires trusted `computeUnitPriceMicroLamports`, `computeUnitLimit`, `maxPriorityFeeLamports`, `baseFeeLamports`, `tipLamports`, `rentLamports`, and `otherOutflowLamports`; missing evidence blocks reservation. Do not fill these fields with browser estimates or guessed constants.
+- The coordinator also requires `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"`. The current quote-only sell-route evidence explicitly reports semantic verification false, so reservation remains blocked before any signer action.
+- Token-2022 mint inspection is fail-closed: extension-bearing mints are not marked safe until every extension type has a dedicated reviewed policy. The current instruction decoder only recognizes base `Transfer` and `TransferChecked` layouts and rejects unsupported extra-account layouts.
+- The managed signer remains a plan only. No Turnkey/Keychain SDK, credentials, signer adapter, or signing route is installed.
+
+### Required next implementation sequence
+
+1. Implement a server-side Jupiter build/evidence path that binds the exact taker, intent, message digest, blockhash, and lookup-table context; keep the resulting evidence untrusted until every instruction is semantically decoded.
+2. Derive base network fee from the exact compiled message through trusted RPC; derive priority fee from the decoded Compute Budget instructions; derive rent and tips from decoded account-creation and transfer effects; reconcile every other SOL/token outflow. Reject incomplete or ambiguous evidence.
+3. Add reviewed Token-2022 extension parsing and explicit per-extension policy. Continue rejecting unknown, transfer-hook, fee-bearing, confidential, and other unsupported cases until their complete transfer effects and account layouts are independently covered.
+4. Complete Jupiter/router and CPI verification, immutable intent binding, and independent finalized settlement reconciliation.
+5. Only after the above, perform a provider-neutral mocked signer adapter compatibility test in workerd. Do not install real provider credentials or enable a real signer during this stage.
+
+### Safety disposition
+
+PR #43 remains open and Draft. These CI results do not mean the transaction verifier or live-trading system is complete. Keep semantic verification incomplete, reservation/signing/submission gates closed, and Mainnet trading disabled. No merge, production deployment, wallet signing, transaction submission, or funded Devnet lifecycle was performed as part of this audit.
