@@ -279,3 +279,10 @@ Parser output now reports `associatedAddressVerification: "not-performed"` whene
 The syntax-only ATA decoder now also rejects duplicate public-key strings across its six role accounts, even when the compiled account indexes differ. A regression test covers the duplicate-key substitution case. This is an additional structural guard, not PDA derivation.
 
 PDA verification remains intentionally unimplemented in this slice: the inspected Node package manifest has no Solana or audited Ed25519/PDA dependency and no lockfile was present at the inspected branch paths. Do not substitute a handwritten curve-point test or a length-only public-key parser. Before enabling canonical ATA verification, select and pin a maintained, audited Solana-compatible implementation, establish reproducible dependency locking for this repository, and add known-vector tests for owner/token-program/mint seeds, bump search, off-curve rejection, and wrong-address rejection. Until then the parser must continue to report `associatedAddressVerification: "not-performed"`.
+
+
+### Compute Budget policy-ceiling helper
+
+Added `validateComputeBudgetPolicy()` to the isolated Compute Budget decoder. It requires explicit caller-supplied ceilings for compute units, heap frame, loaded-account data, and priority fee. It calculates the priority fee conservatively with integer arithmetic and rounds micro-lamports up to the next lamport. Tests cover accepted values, each ceiling, missing/invalid policy, and fee calculation.
+
+This helper is not yet wired into transaction admission or the live-trade coordinator, and it does not infer Solana runtime defaults. The caller must supply a reviewed policy. It does not authorize semantic route verification, signing, or submission.
