@@ -1127,7 +1127,13 @@ export async function verifyFinalizedJupiterSettlement({
   }
 
   return Object.freeze({
+    // "verified" is deliberately scoped to the exact finalized, owner-scoped
+    // SPL balance deltas above. It is not whole-message semantic verification
+    // or an all-in native SOL cost attestation.
     verified: true,
+    proofScope: "finalized-owner-scoped-token-balance-deltas",
+    semanticInstructionVerification: false,
+    allInCostsVerified: false,
     signature,
     slot: transaction.slot,
     confirmationStatus: "finalized",
