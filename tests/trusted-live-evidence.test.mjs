@@ -1,8 +1,64 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+test("raw mint account parsing requires bounded canonical base64 encoding", () => {
+  const classic = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const baseMint = Buffer.alloc(82).toString("base64");
+
+  assert.deepEqual(parseTrustedMintAccount({
+    value: { owner: classic, data: [baseMint, "base64"] }
+  }), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.deepEqual(parseTrustedMintAccount({
+    value: { owner: token2022, data: [baseMint, "base64"] }
+  }), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+
+  for (const data of [
+    [baseMint, "base64url"],
+    [baseMint + " ", "base64"],
+    [baseMint.slice(0, -2) + "A=", "base64"],
+    [baseMint, "base64", "unexpected"],
+    ["A".repeat(17000), "base64"]
+  ]) {
+    assert.throws(() => parseTrustedMintAccount({
+      value: { owner: classic, data }
+    }), /encoding|canonical/);
+  }
+
+  const accessorBacked = [baseMint, "base64"];
+  let getterCalls = 0;
+  Object.defineProperty(accessorBacked, "0", {
+    get() { getterCalls++; return baseMint; }
+  });
+  assert.throws(() => parseTrustedMintAccount({
+    value: { owner: classic, data: accessorBacked }
+  }), /encoding/);
+  assert.equal(getterCalls, 0);
+});
+
+test("raw Token-2022 mint data with extension space remains unsafe", () => {
+  const extended = Buffer.alloc(166).toString("base64");
+  const result = parseTrustedMintAccount({
+    value: {
+      owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      data: [extended, "base64"]
+    }
+  });
+  assert.equal(result.mintAuthoritySafe, true);
+  assert.equal(result.freezeAuthoritySafe, true);
+  assert.equal(result.token2022ExtensionsSafe, false);
+});
+
 function decodeBase58(value) {
   let number = 0n;
   for (const char of value) number = number * 58n +
