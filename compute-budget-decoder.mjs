@@ -142,3 +142,51 @@ export function validateSupportedTransactionInstructionSet(instructions) {
   validateComputeBudgetInstructionSet(decoded);
   return Object.freeze([...instructions]);
 }
+
+
+/**
+ * Apply caller-supplied transaction policy ceilings to a reviewed Compute
+ * Budget instruction set. Priority fee is conservatively rounded up to the
+ * next lamport: ceil(microLamportsPerUnit * unitLimit / 1_000_000).
+ *
+ * This helper requires explicit finite policy limits and does not supply
+ * defaults, infer runtime defaults, or attest the rest of the transaction.
+ */
+export function validateComputeBudgetPolicy(instructions, limits) {
+  const reviewed = validateComputeBudgetInstructionSet(instructions);
+  if (!limits || typeof limits !== "object" || Array.isArray(limits) ||
+      !Number.isSafeInteger(limits.maxComputeUnitLimit) || limits.maxComputeUnitLimit < 1 ||
+      !Number.isSafeInteger(limits.maxHeapFrameBytes) || limits.maxHeapFrameBytes < 32768 ||
+      !Number.isSafeInteger(limits.maxLoadedAccountDataBytes) || limits.maxLoadedAccountDataBytes < 1 ||
+      (typeof limits.maxPriorityFeeLamports !== "bigint" && !Number.isSafeInteger(limits.maxPriorityFeeLamports)) ||
+      BigInt(limits.maxPriorityFeeLamports) < 0n) {
+    throw new Error("Compute Budget policy limits are invalid or incomplete");
+  }
+
+  const byVariant = new Map(reviewed.map(instruction => [instruction.variant, instruction]));
+  const unitLimit = byVariant.get("setComputeUnitLimit")?.units;
+  const heapFrameBytes = byVariant.get("requestHeapFrame")?.heapFrameBytes;
+  const loadedBytes = byVariant.get("setLoadedAccountsDataSizeLimit")?.bytes;
+  const microLamports = byVariant.get("setComputeUnitPrice")?.microLamports ?? 0n;
+
+  if (unitLimit !== undefined && unitLimit > limits.maxComputeUnitLimit) {
+    throw new Error("Compute Budget unit limit exceeds transaction policy");
+  }
+  if (heapFrameBytes !== undefined && heapFrameBytes > limits.maxHeapFrameBytes) {
+    throw new Error("Compute Budget heap-frame size exceeds transaction policy");
+  }
+  if (loadedBytes !== undefined && loadedBytes > limits.maxLoadedAccountDataBytes) {
+    throw new Error("Compute Budget loaded-account-data limit exceeds transaction policy");
+  }
+  const effectiveUnits = BigInt(unitLimit ?? limits.maxComputeUnitLimit);
+  const priorityFeeLamports = (microLamports * effectiveUnits + 999999n) / 1000000n;
+  if (priorityFeeLamports > BigInt(limits.maxPriorityFeeLamports)) {
+    throw new Error("Compute Budget priority fee exceeds transaction policy");
+  }
+  return Object.freeze({
+    unitLimit: unitLimit ?? null,
+    heapFrameBytes: heapFrameBytes ?? null,
+    loadedAccountDataBytes: loadedBytes ?? null,
+    priorityFeeLamports
+  });
+}
