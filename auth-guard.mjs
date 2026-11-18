@@ -318,6 +318,36 @@ export class AuthGuard {
     });
   }
 
+  async consumeRateLimit(scope, now = Date.now(), limit = 10, windowMs = 60000) {
+    if (!validScope(scope) || !Number.isSafeInteger(now) || now < 0 ||
+        !Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+        !Number.isSafeInteger(windowMs) || windowMs < 1000 || windowMs > 3600000) {
+      throw new Error("Invalid rate-limit request");
+    }
+    return this.withState(state => {
+      state.rateLimits ||= {};
+      for (const [key, entry] of Object.entries(state.rateLimits)) {
+        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) delete state.rateLimits[key];
+      }
+      const key = "scope:" + scope;
+      if (!Object.prototype.hasOwnProperty.call(state.rateLimits, key) &&
+          Object.keys(state.rateLimits).length >= MAX_FAILURE_BUCKETS) {
+        return { limited: true, remaining: 0, resetAt: now + windowMs };
+      }
+      const current = state.rateLimits[key];
+      const active = current && current.resetAt > now
+        ? current
+        : { count: 0, resetAt: now + windowMs };
+      if (!Number.isSafeInteger(active.count) || active.count < 0 || active.count >= limit) {
+        state.rateLimits[key] = active;
+        return { limited: true, remaining: 0, resetAt: active.resetAt };
+      }
+      active.count += 1;
+      state.rateLimits[key] = active;
+      return { limited: false, remaining: limit - active.count, resetAt: active.resetAt };
+    });
+  }
+
   async createMfaChallenge(challengeId, now = Date.now()) {
     if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) ||
         !Number.isSafeInteger(now) || now < 0) {
@@ -469,6 +499,7 @@ export class AuthGuard {
         imported: await this.importLegacyFailure(body.scope, body.count)
       });
       if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
+      if (body.operation === "consume-rate-limit") return json(await this.consumeRateLimit(body.scope));
       if (body.operation === "create-challenge") {
         return json({ created: await this.createMfaChallenge(body.challengeId) });
       }
