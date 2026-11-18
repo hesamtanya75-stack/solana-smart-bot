@@ -828,3 +828,18 @@ This remains structural input validation only. Supplied lookup addresses are
 still unauthenticated, the parser does not verify transaction signatures or RPC
 provenance, and `accountPrivilegeAnalysis` remains non-authoritative. Semantic
 verification remains incomplete; signing and submission remain disabled.
+
+
+## Direct SPL decoder input hardening (PR #43)
+
+The exported SPL Token decoder and instruction-set validator now independently
+snapshot only dense, plain arrays of own data properties before reading values.
+This closes a gap where callers bypassing the outer message parser could pass
+accessor-backed indexes or instruction collections and cause getters to run.
+Custom prototypes, symbol/extra properties, sparse entries, and accessors fail
+closed. Regression tests assert getters are not invoked.
+
+This hardens JavaScript input handling only. It does not authenticate account
+keys, transaction metadata, signatures, CPI execution, Token-2022 extension
+semantics, or balance deltas. Semantic verification remains incomplete and
+signing/submission remain disabled.
