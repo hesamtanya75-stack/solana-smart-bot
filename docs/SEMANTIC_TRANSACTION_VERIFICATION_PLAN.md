@@ -330,3 +330,12 @@ This is still structural-only validation. It does not derive or verify the ATA P
 When a message header is supplied, the structural parser now also checks every compiled instruction's program account index and requires that account to be readonly and a non-signer. This is separate from checking the instruction's operand accounts and closes a structural gap where a program account could otherwise be marked writable or signer while the parser still reported a privilege match. Regression tests cover both invalid privilege states.
 
 This remains a structural check over the caller-supplied, already-deserialized message and header. It does not authenticate the program executable, prove program identity beyond the account-key string, authenticate address lookup table contents, or establish instruction semantics. Signing and submission remain disabled.
+
+
+## Versioned-message static and lookup account ordering
+
+For structural privilege analysis of a v0 message, the parser now requires the caller to provide `staticAccountKeys` separately whenever resolved address lookup tables are present. The complete `accountKeys` list remains the index-addressable key list used by compiled instructions. The parser independently derives the canonical order (static keys, all loaded writable keys, then all loaded readonly keys) and requires an exact key-for-key match with `accountKeys` before checking any signer or writable privilege.
+
+This prevents the parser from treating the already-expanded key list as static keys and appending lookup addresses a second time, which could otherwise misalign privilege indexes. Regression tests cover a valid loaded writable destination, missing static-key metadata, and a mismatched expanded key order.
+
+This validates only the consistency of caller-supplied decoded inputs. It does not fetch or authenticate lookup-table accounts, verify their on-chain contents or slot state, or establish semantic transaction verification. Signing and submission remain disabled.
