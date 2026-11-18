@@ -128,6 +128,7 @@ export function parseSupportedInstructionMessage(message) {
   const systemProgramInstructions = [];
   const splTokenInstructions = [];
   const associatedTokenInstructions = [];
+  const programIdIndexes = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
         !Number.isInteger(instruction.programIdIndex) ||
@@ -147,6 +148,7 @@ export function parseSupportedInstructionMessage(message) {
     }
 
     const programId = accountKeys[instruction.programIdIndex];
+    programIdIndexes.push(instruction.programIdIndex);
     if (programId === SYSTEM_PROGRAM_ID) {
       const decoded = decodeSystemProgramInstruction(
         programId, instruction.data, instruction.accountKeyIndexes
@@ -193,6 +195,9 @@ export function parseSupportedInstructionMessage(message) {
       header: message.header,
       resolvedAddressTableLookups: message.resolvedAddressTableLookups ?? []
     });
+    for (const programIdIndex of programIdIndexes) {
+      requireRole(derived.roles, programIdIndex, { readonly: true, nonSigner: true }, "Instruction program");
+    }
     analyzeSystemInstructionPrivileges(systemProgramInstructions, derived.roles);
     analyzeSplTokenInstructionPrivileges(splTokenInstructions, derived.roles);
     analyzeAssociatedTokenInstructionPrivileges(associatedTokenInstructions, derived.roles);
