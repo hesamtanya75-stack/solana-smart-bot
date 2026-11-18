@@ -484,3 +484,53 @@ The Node 22 test job is above the candidate's stated floor. The Wrangler workflo
 Before adoption, make the Wrangler job's Node version explicit at 20.18.0 or newer (or align both workflows on Node 22 after confirming Wrangler compatibility), then run the dry-run build. Do not change the workflow as part of this documentation-only audit.
 
 No dependency or lockfile was added. No workflow, executable code, parser, UI, signing, transaction, or deployment behavior was changed.
+
+
+
+## Official ATA program test-fixture cross-check: 2026-11-18
+
+Inspected the upstream Associated Token Account program's pinned source revision
+`solana-program/associated-token-account@fbf5379`, specifically
+`pinocchio/program/tests/bump.rs` and `pinocchio/program/tests/common.rs`.
+
+The upstream tests provide independently sourced canonical-bump fixtures for the
+Classic Token program and explicitly exercise both Classic Token and Token-2022
+through a token-program test matrix:
+
+| Wallet | Mint | Token program | Expected canonical bump |
+|---|---|---|---:|
+| `1117mWrzzrZr312ebPDHu8tbfMwFNvCvMbr6WepCNG` | `8N6gdBxJaZUG9cBnSSaHDsx7vMeQ4VR1LmCmk9SCu38s` | Classic Token | 255 |
+| `111FJo4zLAGU9nzTWa6EnbV4VAmtG4FR8kcokrtZYr` | same mint | Classic Token | 254 |
+| `3zPynWFGj3nyJBtHhCy8UEJoGvbn1TmgHca2afHTSByQ` | same mint | Classic Token | 253 |
+| `931gKnvtYWR12hueG8Zb1yDigAntDghosriFUoK1Fr8P` | same mint | Classic Token | 253 |
+
+The upstream source also gives a negative fixture for the last wallet: bump 254
+produces the on-curve address
+`2XughgGgvRsf8VJiteF7ZEYF2jZbCTcTAFoEfrCfUXs7`, while the canonical bump is
+253. The upstream test asserts that the canonical result is off-curve and that
+the incorrect on-curve bump hint is rejected.
+
+Important limitation: these upstream tests expose the expected bump values and
+one deliberately incorrect on-curve candidate, but this inspection did not
+establish a fixed canonical ATA address string for each positive fixture.
+Therefore, do not copy a guessed address into JavaScript tests or claim the
+complete address+bump vector requirement is satisfied. The next test-authoring
+step must independently derive and cross-check the canonical address strings
+for these same fixtures, and add at least one Token-2022-specific address+bump
+pair from the official program or another independent trusted implementation.
+
+The upstream tests' Token-2022 matrix confirms that the canonical derivation
+path is exercised with both token program IDs, but it is not by itself a
+published fixed expected-address vector for the Token-2022 case. Keep
+`associatedAddressVerification: "not-performed"` until both program variants
+have fixed address+bump vectors and the repository's Node and Workers-runtime
+tests pass.
+
+Sources:
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/pinocchio/program/tests/bump.rs
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/pinocchio/program/tests/common.rs
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/interface/src/address.rs
+
+This source cross-check changes documentation only. No dependency, executable
+code, parser status, coordinator gate, signing, transaction submission, UI,
+deployment, or production data was changed.
