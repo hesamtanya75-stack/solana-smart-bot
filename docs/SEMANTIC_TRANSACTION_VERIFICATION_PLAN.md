@@ -184,3 +184,12 @@ Implement and test a canonical legacy/v0 message-header and static-key privilege
 Commit `952a6e48e2e6836b98a3914dbe77d8ecaaf8b4b1` completed the repository's Node tests, Cloudflare Worker build validation, and Devnet read-only validation successfully. The `devnet-read-only` job completed successfully, including unit/runtime tests and verification of Devnet cluster identity and read-only RPC methods. The `funded-devnet-lifecycle` job was skipped because explicit opt-in was not supplied; this is an intentional safety gate, not a passing funded lifecycle test.
 
 This CI result validates the current analysis-only parser and role-helper tests/build. It does not validate authenticated address lookup table resolution, full wire-message decoding, wallet enrollment, signing, transaction submission, or Mainnet readiness. PR #40 remains open and draft at this checkpoint.
+
+
+## API rate-limit boundary review: PR #40 head `2df430ba823fe004e2c18076c10adaf0832d335a`
+
+A source review of `auth-guard.mjs` and `worker.js` confirms that API throttling is enforced through the AuthGuard Durable Object's transactional state. The Worker derives per-route buckets from the Cloudflare `CF-Connecting-IP` value, hashes the address before using it in the bucket scope, and fails closed with HTTP 503 if the rate-limit service cannot be reached. Login, TOTP challenge, and TOTP setup/confirmation have explicit route-specific limits; remaining API routes use route-class limits. The AuthGuard bounds the number of retained rate-limit buckets at 1,000 and rejects new buckets when capacity is exhausted.
+
+Residual limitation: these buckets are per source IP and route scope, not a stable authenticated principal or wallet identity. Distributed requests from many distinct IPs can consume the bounded bucket capacity and cause new source IPs to be throttled until old windows expire. The existing tests cover atomic concurrent consumption, expiry, corrupted state, and capacity behavior, but do not establish resistance to distributed abuse or prove per-user fairness. Before enabling wallet enrollment or unattended trading, add a reviewed principal/session-aware layer in addition to IP throttling, and test capacity-exhaustion behavior under realistic multi-IP load. Do not weaken the current fail-closed behavior as a workaround.
+
+This is a source-review finding, not a confirmed exploit. It does not alter the transaction-verification blockers or authorize signing/submission.
