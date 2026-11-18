@@ -118,6 +118,14 @@ test("transaction parser rejects sparse compiled instruction arrays", () => {
     /sparse compiled instruction list/);
 });
 
+test("transaction parser rejects sparse compiled account index arrays", () => {
+  const sparseIndexes = new Array(2);
+  sparseIndexes[0] = 1;
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: sparseIndexes, data: transferData(1)
+  }], [SYSTEM, SOURCE, DESTINATION])), /sparse account indexes/);
+});
+
 test("transaction parser rejects sparse account-key arrays", () => {
   const sparseKeys = new Array(2);
   sparseKeys[0] = COMPUTE_BUDGET_PROGRAM;
