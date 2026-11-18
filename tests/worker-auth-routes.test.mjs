@@ -171,7 +171,8 @@ test("browser sessions use Secure HttpOnly SameSite cookies instead of JavaScrip
   assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Strict"));
   assert.ok(workerSource.includes('request.headers.get("Cookie")'));
   assert.ok(workerSource.includes('session.subject === "admin"'));
-  assert.equal(workerSource.includes('request.headers.get("Authorization")'), false);
+  assert.equal(workerSource.includes('const authorization = request.headers.get("Authorization")'), false,
+    "browser bearer authorization must not be accepted; internal AuthGuard authentication remains separate");
   assert.ok(dashboardSource.includes('credentials: "same-origin"'));
   assert.ok(dashboardSource.includes('localStorage.removeItem("solanaBotSession")'));
   assert.equal(dashboardSource.includes('localStorage.setItem("solanaBotSession"'), false);
