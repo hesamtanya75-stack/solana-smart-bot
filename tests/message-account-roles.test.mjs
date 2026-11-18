@@ -118,6 +118,30 @@ test("rejects malformed header counts, invalid keys, duplicates and unresolved l
     resolvedAddressTableLookups: [{ writableAddresses: [keys.b] }]
   }), /malformed/);
 });
+test("rejects duplicate loaded addresses across writable and readonly groups and tables", () => {
+  const header = {
+    numRequiredSignatures: 1,
+    numReadonlySignedAccounts: 0,
+    numReadonlyUnsignedAccounts: 0
+  };
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header,
+    resolvedAddressTableLookups: [{
+      writableAddresses: [keys.b],
+      readonlyAddresses: [keys.b]
+    }]
+  }), /invalid or duplicated/);
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header,
+    resolvedAddressTableLookups: [
+      { writableAddresses: [keys.b], readonlyAddresses: [] },
+      { writableAddresses: [], readonlyAddresses: [keys.b] }
+    ]
+  }), /invalid or duplicated/);
+});
+
 test("rejects sparse resolved writable and readonly lookup address arrays", () => {
   const sparseWritable = new Array(1);
   const sparseReadonly = new Array(1);
