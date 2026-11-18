@@ -267,3 +267,8 @@ Tests cover Create and CreateIdempotent, classic Token and Token-2022 program-ac
 ### ATA privilege hardening follow-up
 
 The parser's structural privilege cross-check now additionally requires the derived ATA destination to be writable and not a transaction signer, and requires the System Program and selected Token Program accounts to be readonly non-signers. Regression tests cover rejection of a signer-marked destination and a writable System Program account. This remains a structural check only; it does not prove the destination is the canonical PDA or that the on-chain account state is valid.
+
+
+### Explicit ATA address-verification status
+
+Parser output now reports `associatedAddressVerification: "not-performed"` whenever an ATA instruction is present, and `"not-applicable"` otherwise. This prevents downstream consumers from mistaking account-role/layout checks for cryptographic PDA verification. Regression tests assert both states. PDA derivation and authenticated account-state validation remain outstanding; signing and submission remain disabled.
