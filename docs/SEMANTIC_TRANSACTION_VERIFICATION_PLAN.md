@@ -469,3 +469,18 @@ The source audit supports keeping `@solana/addresses@8.6.0` as the leading SDK c
 7. Preserve `semanticInstructionVerification: false` and all coordinator fail-closed gates until the complete semantic-verification acceptance matrix is satisfied.
 
 No dependency was added by this audit. No executable source, parser behavior, signing, transaction submission, Worker routes, UI/design, deployment, or production data was changed.
+
+### Repository CI engine-floor cross-check: 2026-11-18
+
+The repository files were checked against the SDK's declared Node engine:
+
+- Root `package.json` declares `engines.node: >=20`.
+- `.github/workflows/test.yml` selects Node 22 for the Node test job.
+- `.github/workflows/cloudflare-worker-validation.yml` selects Node 20 for the Wrangler dry-run job.
+- The candidate `@solana/addresses@8.6.0` package declares `engines.node: >=20.18.0`.
+
+The Node 22 test job is above the candidate's stated floor. The Wrangler workflow requests the Node 20 major line, not an explicit patch/minor floor; the workflow currently uses the hosted setup-node Node 20 distribution, but the repository does not pin or assert Node >=20.18.0 in that job. Therefore the engine compatibility check is not fully deterministic from workflow configuration alone.
+
+Before adoption, make the Wrangler job's Node version explicit at 20.18.0 or newer (or align both workflows on Node 22 after confirming Wrangler compatibility), then run the dry-run build. Do not change the workflow as part of this documentation-only audit.
+
+No dependency or lockfile was added. No workflow, executable code, parser, UI, signing, transaction, or deployment behavior was changed.
