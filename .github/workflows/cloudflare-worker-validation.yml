@@ -11,6 +11,7 @@ on:
       - "live-trade-coordinator.mjs"
       - "wrangler.jsonc"
       - "package.json"
+      - "package-lock.json"
       - "tests/**"
       - "SECURITY_REVIEW.md"
       - ".github/workflows/cloudflare-worker-validation.yml"
@@ -34,7 +35,6 @@ jobs:
 
       - name: Install pinned project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-
 
       - name: Verify Wrangler targets the active Worker
         run: |
