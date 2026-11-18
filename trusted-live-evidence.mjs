@@ -1033,7 +1033,15 @@ function snapshotDenseAccountKeys(value) {
   const snapshot = [];
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    const key = descriptor?.value;
+    const entry = descriptor?.value;
+    let key = entry;
+    if (entry && typeof entry === "object" && Object.getPrototypeOf(entry) === Object.prototype) {
+      const pubkeyDescriptor = Object.getOwnPropertyDescriptor(entry, "pubkey");
+      key = pubkeyDescriptor?.value;
+      if (!pubkeyDescriptor || !Object.prototype.hasOwnProperty.call(pubkeyDescriptor, "value")) {
+        throw new Error("Finalized transaction account keys are malformed");
+      }
+    }
     if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
         typeof key !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(key) ||
         decodeBase58(key).length !== 32) {
