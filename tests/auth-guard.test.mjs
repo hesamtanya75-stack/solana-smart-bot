@@ -46,6 +46,32 @@ test("quote rate limit is atomic, bounded, and expires its window", async () => 
   await assert.rejects(() => guard.consumeRateLimit("quote:session-a", 62000, 0, 60000));
 });
 
+test("quote rate-limit buckets fail closed on corrupted state and at capacity", async () => {
+  const { guard, storage } = makeGuard();
+  const state = {
+    initialized: false, backupHash: null, lastTotpCounter: -1,
+    failures: {}, challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null,
+    rateLimits: Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [
+      "scope:quote:" + i, { count: 1, resetAt: 61000 }
+    ]))
+  };
+  storage.values.set("auth_guard_state", state);
+  const full = await guard.consumeRateLimit("quote:new-session", 1000, 10, 60000);
+  assert.deepEqual(full, { limited: true, remaining: 0, resetAt: 61000 });
+
+  state.rateLimits = { "scope:quote:corrupt": { count: "bad", resetAt: 61000 } };
+  storage.values.set("auth_guard_state", state);
+  const corrupt = await guard.consumeRateLimit("quote:corrupt", 1000, 10, 60000);
+  assert.equal(corrupt.limited, true);
+  assert.equal(corrupt.remaining, 0);
+  assert.equal(state.rateLimits["scope:quote:corrupt"].count, Number.MAX_SAFE_INTEGER);
+
+  state.rateLimits = [];
+  storage.values.set("auth_guard_state", state);
+  await assert.rejects(() => guard.consumeRateLimit("quote:session", 1000, 10, 60000));
+});
+
 test("only one concurrent request can consume a backup code", async () => {
   const { guard } = makeGuard();
   const hash = "a".repeat(64);
