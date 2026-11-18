@@ -394,3 +394,17 @@ References:
 - https://solana.com/docs/core/pda/pda-derivation
 - https://www.npmjs.com/package/@solana/kit
 - https://github.com/anza-xyz/kit/blob/main/packages/errors/CHANGELOG.md
+
+
+### Confirmed integration constraints from the current repository
+
+The current Worker entry point is `worker.js` and is an ES module importing local `.mjs` modules. `wrangler.jsonc` sets `compatibility_date` to `2026-11-06`; it does not declare an explicit `compatibility_flags` array. Cloudflare's current compatibility documentation states that dates on or after `2026-08-04` enable Node.js compatibility behavior by default. This is useful context, but the PDA implementation should still prefer SDK paths that run on standard Web APIs and should not depend on Node-only crypto or Buffer behavior.
+
+The repository currently has no `@solana/kit` dependency and no committed npm lockfile in this branch. `package.json` uses Node `>=20`, has a `test` script of `node --test`, and currently lists only `better-sqlite3` as a production dependency. The Worker validation workflow invokes Wrangler's `deploy --dry-run` when `package.json` or Worker/test paths change. Cloudflare documents that Wrangler uses esbuild, resolves npm dependencies, honors conditional package exports, and selects the `workerd` export condition when bundling for Workers.
+
+Implementation gate: when the SDK is introduced, verify the actual resolved `@solana/kit` dependency graph has a usable `workerd`/browser-compatible path (rather than assuming one transitive package's export is sufficient), run the existing Node test suite, run the repository's Wrangler dry-run build, and add a focused test in a real Workers-compatible runtime. Do not alter `compatibility_date` or enable new Node compatibility flags merely to make a dependency load without a documented need and a separate review.
+
+References:
+- https://developers.cloudflare.com/workers/wrangler/bundling/
+- https://developers.cloudflare.com/workers/configuration/compatibility-flags/
+- https://solana.com/docs/clients/official/javascript
