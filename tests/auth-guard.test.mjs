@@ -30,6 +30,22 @@ function makeGuard() {
   return { guard: new AuthGuard({ storage }, {}), storage };
 }
 
+test("quote rate limit is atomic, bounded, and expires its window", async () => {
+  const { guard, storage } = makeGuard();
+  const concurrent = await Promise.all(Array.from({ length: 20 }, () =>
+    guard.consumeRateLimit("quote:session-a", 1000, 5, 60000)
+  ));
+  assert.equal(concurrent.filter(result => !result.limited).length, 5);
+  assert.equal(concurrent.filter(result => result.limited).length, 15);
+  assert.equal(await guard.consumeRateLimit("quote:session-a", 60999, 5, 60000).then(result => result.limited), true);
+  assert.equal(await guard.consumeRateLimit("quote:session-a", 61000, 5, 60000).then(result => result.limited), false);
+  assert.equal(await guard.consumeRateLimit("quote:session-b", 61000, 5, 60000).then(result => result.limited), false);
+  const state = storage.values.get("auth_guard_state");
+  assert.equal(Object.keys(state.rateLimits).length, 2);
+  await assert.rejects(() => guard.consumeRateLimit("bad scope", 62000));
+  await assert.rejects(() => guard.consumeRateLimit("quote:session-a", 62000, 0, 60000));
+});
+
 test("only one concurrent request can consume a backup code", async () => {
   const { guard } = makeGuard();
   const hash = "a".repeat(64);
