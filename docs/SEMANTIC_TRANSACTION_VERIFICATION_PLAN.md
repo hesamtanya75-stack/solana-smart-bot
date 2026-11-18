@@ -781,3 +781,18 @@ any semantic status can advance.
 The parser continues to report semantic verification as incomplete, with
 signing and submission disabled.
 
+## Strict message input schema hardening (PR #43)
+
+The analysis-only instruction parser now accepts only a plain data record with
+the explicit fields `accountKeys`, `instructions`, optional `header`,
+`resolvedAddressTableLookups`, `staticAccountKeys`, and
+`computeBudgetPolicy`. It rejects unknown string fields (including alternate
+execution-metadata containers), symbol keys, custom prototypes, and accessor
+properties before reading the message values. The existing explicit rejection
+of known execution/CPI metadata remains in place.
+
+This narrows the parser's input contract and prevents unrecognized evidence
+containers or getters from being silently ignored/evaluated. It does not
+authenticate transaction metadata, verify signatures, validate RPC provenance,
+or establish CPI effects or settlement. Semantic verification remains
+incomplete; signing and submission remain disabled.
