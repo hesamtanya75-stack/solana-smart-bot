@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { createHash } from "node:crypto";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, fetchProgramAccountIdentityEvidence, verifyUpgradeableProgramDeploymentAllowlist, verifyReviewedNativeProgramIdentities, verifyCompleteOuterProgramIdentity, decodeReviewedSystemTransfers, decodeReviewedSplTokenTransfers, verifyComputeBudgetPriorityFee } from "../trusted-live-evidence.mjs";
 
-const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+const BOT_WALLET = "BbUEve9uvdrhG2oKq9VKP8xdEGwR8ZeimYHxBtvFRrh9";
 function decodeBase58(value) {
   let number = 0n;
   for (const char of value) number = number * 58n +
@@ -34,8 +35,8 @@ function mockLookupTableAccount({ owner = "AddressLookupTab1e1111111111111111111
   for (let i = 0; i < addressCount; i++) data.fill(i + 7, 56 + i * 32, 56 + (i + 1) * 32);
   return { owner, data: [data.toString("base64"), "base64"], executable: false, lamports: 1 };
 }
-function validUnsignedV0TransactionWithLookup() {
-  const signer = decodeBase58(BOT_WALLET);
+function validUnsignedV0TransactionWithLookup(signerAddress = BOT_WALLET) {
+  const signer = decodeBase58(signerAddress);
   const message = Uint8Array.from([
     0x80, 1, 0, 1,
     2, ...signer, ...new Array(32).fill(17),
@@ -49,8 +50,8 @@ function validUnsignedV0TransactionWithLookup() {
     1, ...new Array(64).fill(0), ...message
   ])).toString("base64");
 }
-function validUnsignedV1Transaction() {
-  const signer = decodeBase58(BOT_WALLET);
+function validUnsignedV1Transaction(signerAddress = BOT_WALLET) {
+  const signer = decodeBase58(signerAddress);
   const message = Uint8Array.from([
     0x81, // v1 version prefix
     1, 0, 1, // one required signer, writable signer, one readonly unsigned address
@@ -91,8 +92,8 @@ function unsignedV1TransactionWithPriorityFeeAndHeap(priorityFeeLamports, heapSi
   heap.writeUInt32LE(heapSize, 0);
   return Buffer.concat([bytes.subarray(0, 122), heap, bytes.subarray(122)]).toString("base64");
 }
-function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
-  const key = decodeBase58(BOT_WALLET);
+function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0, signerAddress = BOT_WALLET) {
+  const key = decodeBase58(signerAddress);
   const systemProgram = new Array(32).fill(0);
   const message = Uint8Array.from([
     1, 0, 1, 2, ...key, ...programIdBytes,
@@ -201,6 +202,21 @@ test("unknown instruction program is parsed structurally but never semantically 
     BOT_WALLET
   );
   assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.compiledInstructions.length, 1);
+  assert.equal(parsed.staticAccountKeys[parsed.compiledInstructions[0].programIdIndex],
+    encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(parsed.compiledInstructions[0].accountIndexes, [0]);
+  assert.equal(parsed.compiledInstructions[0].dataBase64, "");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("unsigned transaction parser accepts the explicitly approved Phantom wallet as fee payer", () => {
+  const phantomWallet = encodeBase58(new Uint8Array(32).fill(9));
+  const parsed = validateUnsignedJupiterTransaction(
+    validUnsignedTransaction(undefined, 0, phantomWallet),
+    phantomWallet
+  );
+  assert.equal(parsed.staticAccountKeys[0], phantomWallet);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
@@ -208,7 +224,7 @@ test("transaction pinned to a different wallet is rejected", () => {
   const differentWallet = "11111111111111111111111111111111";
   assert.throws(
     () => validateUnsignedJupiterTransaction(validUnsignedTransaction(), differentWallet),
-    /not pinned to the expected bot wallet/
+    /does not match the expected Phantom wallet/
   );
 });
 
@@ -253,6 +269,98 @@ test("malformed Jupiter instruction program index is rejected", () => {
   );
 });
 
+
+test("legacy outer instruction evidence resolves program, signer and writable account roles without semantic approval", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET
+  );
+  assert.equal(parsed.outerInstructionEvidence.length, 1);
+  assert.equal(parsed.outerInstructionEvidence[0].programId, encodeBase58(new Uint8Array(32)));
+  assert.deepEqual(parsed.outerInstructionEvidence[0].accounts, [{
+    accountIndex: 0,
+    messageKeyIndex: 0,
+    pubkey: BOT_WALLET,
+    isSigner: true,
+    isWritable: true
+  }]);
+  assert.equal(parsed.outerInstructionEvidence[0].dataBase64, "");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v0 outer instruction evidence resolves ALT-loaded writable and readonly account roles", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(), BOT_WALLET,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  const instruction = parsed.outerInstructionEvidence[0];
+  assert.equal(instruction.programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(instruction.accounts.map(account => ({
+    pubkey: account.pubkey, isSigner: account.isSigner, isWritable: account.isWritable
+  })), [{
+    pubkey: encodeBase58(new Uint8Array(32).fill(7)),
+    isSigner: false,
+    isWritable: true
+  }]);
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("v0 rejects an ALT-loaded address used as an instruction program", async () => {
+  const bytes = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  // The compiled instruction program index follows the message header, keys,
+  // blockhash, and instruction count; index 2 is the writable ALT-loaded key.
+  bytes[167] = 2;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      bytes.toString("base64"), BOT_WALLET,
+      async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+        context: { slot: 100 }, value: [mockLookupTableAccount()]
+      } })
+    ),
+    /program index is invalid/
+  );
+});
+
+test("legacy and v1 reject writable program accounts before exposing instruction evidence", async () => {
+  const legacy = Buffer.from(validUnsignedTransaction(), "base64");
+  // Message header starts after the one-byte signature count and 64-byte signature.
+  // The second static key is the instruction program; mark it writable.
+  legacy[67] = 0;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      legacy.toString("base64"), BOT_WALLET
+    ),
+    /program account must be readonly and non-signer/
+  );
+
+  const v1 = Buffer.from(validUnsignedV1Transaction(), "base64");
+  // V1's three-byte signer header begins immediately after the version prefix.
+  v1[3] = 0;
+  await assert.rejects(
+    () => validateAndResolveUnsignedJupiterTransaction(
+      v1.toString("base64"), BOT_WALLET
+    ),
+    /program account must be readonly and non-signer/
+  );
+});
+
+test("v1 outer instruction evidence preserves inline accounts and opaque instruction data", async () => {
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV1Transaction(), BOT_WALLET
+  );
+  const instruction = parsed.outerInstructionEvidence[0];
+  assert.equal(instruction.programId, encodeBase58(new Uint8Array(32).fill(17)));
+  assert.deepEqual(instruction.accounts[0], {
+    accountIndex: 0,
+    messageKeyIndex: 0,
+    pubkey: BOT_WALLET,
+    isSigner: true,
+    isWritable: true
+  });
+  assert.equal(instruction.dataBase64, "AA==");
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
 
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
@@ -867,6 +975,729 @@ test("Jupiter transaction requiring an additional signer is rejected", () => {
 });
 
 
+test("program identity evidence caps combined Program and ProgramData RPC snapshots at 100 accounts", async () => {
+  const instructions = Array.from({ length: 51 }, (_, index) => ({
+    programId: encodeBase58(new Uint8Array(32).fill(index + 1))
+  }));
+  let called = false;
+  await assert.rejects(
+    fetchProgramAccountIdentityEvidence(instructions, async () => {
+      called = true;
+      throw new Error("RPC must not be called for an oversized program set");
+    }),
+    /50-program RPC snapshot limit/
+  );
+  assert.equal(called, false);
+});
+
+test("program identity evidence resolves upgrade authority and hashes finalized deployed code", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(31));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(77));
+  const authority = encodeBase58(new Uint8Array(32).fill(88));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const programState = Buffer.alloc(36);
+  programState.writeUInt32LE(2, 0);
+  Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
+  const elf = Buffer.alloc(64, 0);
+  elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  elf.writeUInt16LE(3, 16);
+  elf[18] = 247;
+  elf.writeUInt32LE(1, 20);
+  elf.writeUInt16LE(64, 52);
+  const programDataState = Buffer.alloc(45 + elf.length);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1200n, 4);
+  programDataState[12] = 1;
+  Buffer.from(decodeBase58(authority)).copy(programDataState, 13);
+  elf.copy(programDataState, 45);
+  const requests = [];
+  const evidence = await fetchProgramAccountIdentityEvidence(
+    [{ programId }, { programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      requests.push(request);
+      const programAccount = {
+        owner: loaderOwner, executable: true, space: programState.length,
+        data: [programState.toString("base64"), "base64"]
+      };
+      const programDataAccount = {
+        owner: loaderOwner, executable: false, space: programDataState.length,
+        data: [programDataState.toString("base64"), "base64"]
+      };
+      const value = request.params[0].length === 1
+        ? [programAccount]
+        : [programAccount, programDataAccount];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: requests.length === 1 ? 1234 : 1235 }, value
+      } });
+    }
+  );
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].method, "getMultipleAccounts");
+  assert.deepEqual(requests[0].params[0], [programId]);
+  assert.deepEqual(requests[1].params[0], [programId, programDataAddress]);
+  assert.equal(requests[1].params[1].commitment, "finalized");
+  assert.equal(evidence.contextSlot, 1234);
+  assert.equal(evidence.programDataContextSlot, 1235);
+  assert.deepEqual(evidence.programs[0], {
+    programId, accountOwner: loaderOwner, loaderType: "upgradeable-bpf-loader",
+    executable: true, dataLength: 36, programDataAddress,
+    deploymentSlot: "1200", upgradeAuthority: authority, immutable: false,
+    deployedCodeLength: elf.length,
+    deployedCodeSha256: createHash("sha256").update(elf).digest("hex")
+  });
+  assert.equal(evidence.semanticInstructionVerification, false);
+  assert.equal(
+    evidence.verificationScope,
+    "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
+  );
+});
+
+test("reviewed deployment allowlist matches exact code hash and upgrade authority without promoting semantics", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(31));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(77));
+  const authority = encodeBase58(new Uint8Array(32).fill(88));
+  const codeHash = "ab".repeat(32);
+  const instructionPolicySha256 = "cd".repeat(32);
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111",
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      dataLength: 36,
+      programDataAddress,
+      deploymentSlot: "1200",
+      upgradeAuthority: authority,
+      immutable: false,
+      deployedCodeLength: 4096,
+      deployedCodeSha256: codeHash
+    }]
+  };
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false,
+    policyId: "jupiter-metis-route",
+    policyVersion: "v1.0.0",
+    instructionPolicySha256
+  };
+  const result = verifyUpgradeableProgramDeploymentAllowlist(identity, [policy]);
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.matchedPrograms, [{
+    programId,
+    policyId: "jupiter-metis-route",
+    policyVersion: "v1.0.0",
+    instructionPolicySha256,
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false
+  }]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "reviewed-upgradeable-deployment-allowlist-only");
+});
+
+test("reviewed deployment allowlist rejects any changed program hash, authority, loader, or missing policy", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(32));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(78));
+  const authority = encodeBase58(new Uint8Array(32).fill(89));
+  const codeHash = "12".repeat(32);
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111",
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      programDataAddress,
+      upgradeAuthority: authority,
+      immutable: false,
+      deployedCodeLength: 1024,
+      deployedCodeSha256: codeHash
+    }]
+  };
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: codeHash,
+    upgradeAuthority: authority,
+    immutable: false,
+    policyId: "router-policy",
+    policyVersion: "1.2.3",
+    instructionPolicySha256: "34".repeat(32)
+  };
+  const cases = [
+    { identity, allowlist: [{ ...policy, deployedCodeSha256: "56".repeat(32) }] },
+    { identity, allowlist: [{ ...policy, upgradeAuthority: encodeBase58(new Uint8Array(32).fill(90)) }] },
+    { identity, allowlist: [{ ...policy, loaderType: "native-loader" }] },
+    { identity, allowlist: [] },
+    { identity: { ...identity, semanticInstructionVerification: true }, allowlist: [policy] }
+  ];
+  for (const item of cases) {
+    assert.throws(
+      () => verifyUpgradeableProgramDeploymentAllowlist(item.identity, item.allowlist),
+      /does not match the reviewed allowlist|allowlist is incomplete|malformed or duplicated/
+    );
+  }
+});
+
+test("reviewed deployment allowlist rejects duplicate and malformed policy entries", () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(33));
+  const policy = {
+    programId,
+    loaderType: "upgradeable-bpf-loader",
+    deployedCodeSha256: "ab".repeat(32),
+    upgradeAuthority: null,
+    immutable: true,
+    policyId: "router-policy",
+    policyVersion: "1.0.0",
+    instructionPolicySha256: "cd".repeat(32)
+  };
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [{
+      programId,
+      loaderType: "upgradeable-bpf-loader",
+      executable: true,
+      programDataAddress: encodeBase58(new Uint8Array(32).fill(80)),
+      upgradeAuthority: null,
+      immutable: true,
+      deployedCodeLength: 128,
+      deployedCodeSha256: policy.deployedCodeSha256
+    }]
+  };
+  assert.throws(
+    () => verifyUpgradeableProgramDeploymentAllowlist(identity, [policy, policy]),
+    /malformed or duplicated/
+  );
+  assert.throws(
+    () => verifyUpgradeableProgramDeploymentAllowlist(identity, [{ ...policy, instructionPolicySha256: "not-a-hash" }]),
+    /malformed or duplicated/
+  );
+});
+
+test("native program identity allowlist accepts only reviewed built-ins without semantic approval", () => {
+  const nativeOwner = "NativeLoader1111111111111111111111111111111";
+  const identity = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [
+      {
+        programId: "11111111111111111111111111111111",
+        accountOwner: nativeOwner,
+        loaderType: "native-loader",
+        executable: true,
+        dataLength: 0
+      },
+      {
+        programId: "ComputeBudget111111111111111111111111111111",
+        accountOwner: nativeOwner,
+        loaderType: "native-loader",
+        executable: true,
+        dataLength: 0
+      }
+    ]
+  };
+  const result = verifyReviewedNativeProgramIdentities(identity);
+  assert.equal(result.matched, true);
+  assert.deepEqual(result.matchedPrograms, [
+    { programId: "11111111111111111111111111111111", policyId: "solana-system-program" },
+    { programId: "ComputeBudget111111111111111111111111111111", policyId: "solana-compute-budget" }
+  ]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "reviewed-native-program-identity-only");
+
+  const unknown = encodeBase58(new Uint8Array(32).fill(111));
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], programId: unknown }]
+  }), /not in the code-reviewed identity allowlist/);
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], accountOwner: "BPFLoaderUpgradeab1e11111111111111111111111" }]
+  }), /malformed or unsupported/);
+  assert.throws(() => verifyReviewedNativeProgramIdentities({
+    ...identity, programs: [{ ...identity.programs[0], dataLength: 1 }]
+  }), /malformed or unsupported/);
+});
+
+test("complete outer-program identity requires an exact reviewed set and never approves semantics", () => {
+  const nativeOwner = "NativeLoader1111111111111111111111111111111";
+  const system = {
+    programId: "11111111111111111111111111111111",
+    accountOwner: nativeOwner, loaderType: "native-loader",
+    executable: true, dataLength: 0
+  };
+  const compute = {
+    programId: "ComputeBudget111111111111111111111111111111",
+    accountOwner: nativeOwner, loaderType: "native-loader",
+    executable: true, dataLength: 0
+  };
+  const evidence = {
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only",
+    semanticInstructionVerification: false,
+    programs: [system, compute]
+  };
+  const outer = [{ programId: system.programId }, { programId: compute.programId }];
+  const result = verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: evidence
+  });
+  assert.equal(result.matched, true);
+  assert.equal(result.expectedProgramCount, 2);
+  assert.deepEqual(result.matchedPrograms.map(item => item.programId),
+    [system.programId, compute.programId]);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.verificationScope, "complete-outer-program-deployment-identity-only");
+
+  // Provider-supplied claims must never upgrade identity evidence into
+  // semantic approval, even if an untrusted evidence object says "true".
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: {
+      ...evidence,
+      semanticInstructionVerification: true,
+      verificationScope: "semantically-verified"
+    }
+  }), /Finalized native program identity evidence is incomplete/);
+
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system] }
+  }), /does not cover every outer program/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system, {
+      ...compute, programId: encodeBase58(new Uint8Array(32).fill(112))
+    }] }
+  }), /missing or unexpected programs/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: [...outer, { programId: system.programId }],
+    programIdentityEvidence: evidence
+  }), /duplicates or exceeds its limit/);
+  assert.throws(() => verifyCompleteOuterProgramIdentity({
+    outerInstructionEvidence: outer,
+    programIdentityEvidence: { ...evidence, programs: [system, {
+      ...compute, loaderType: "legacy-bpf-loader"
+    }] }
+  }), /unsupported or unreviewed loader type/);
+});
+
+test("System Program decoder accepts only correctly authorized native SOL transfers", () => {
+  const destination = encodeBase58(new Uint8Array(32).fill(9));
+  const encodeTransfer = (lamports = 12345n) => {
+    const data = Buffer.alloc(12);
+    data.writeUInt32LE(2, 0);
+    data.writeBigUInt64LE(lamports, 4);
+    return data.toString("base64");
+  };
+  const transfer = {
+    instructionIndex: 2,
+    programId: "11111111111111111111111111111111",
+    accounts: [
+      { pubkey: BOT_WALLET, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true }
+    ],
+    dataBase64: encodeTransfer()
+  };
+  const decoded = decodeReviewedSystemTransfers([transfer]);
+  assert.deepEqual(decoded, [{
+    instructionIndex: 2, source: BOT_WALLET, destination,
+    lamports: "12345",
+    verificationScope: "system-program-transfer-instruction-only"
+  }]);
+  assert.throws(() => decodeReviewedSystemTransfers([
+    transfer, { ...transfer, instructionIndex: 2 }
+  ]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, instructionIndex: 256
+  }]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, instructionIndex: undefined
+  }]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [transfer.accounts[0]]
+  }]), /accounts or data are malformed/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      { ...transfer.accounts[0], isSigner: false },
+      transfer.accounts[1]
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], { ...transfer.accounts[1], isWritable: false }
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, dataBase64: Buffer.from([3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]).toString("base64")
+  }]), /only Transfer is reviewed/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, dataBase64: encodeTransfer(0n)
+  }]), /amount must be positive/);
+  assert.throws(() => decodeReviewedSystemTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], { ...transfer.accounts[1], pubkey: BOT_WALLET }
+    ]
+  }]), /account roles are invalid/);
+});
+
+test("classic SPL Token decoder accepts only Transfer and TransferChecked with strict roles", () => {
+  const source = encodeBase58(new Uint8Array(32).fill(21));
+  const mint = encodeBase58(new Uint8Array(32).fill(22));
+  const destination = encodeBase58(new Uint8Array(32).fill(23));
+  const authority = encodeBase58(new Uint8Array(32).fill(24));
+  const transferData = Buffer.alloc(9);
+  transferData[0] = 3;
+  transferData.writeBigUInt64LE(987654321n, 1);
+  const transfer = {
+    instructionIndex: 4,
+    programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    accounts: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false }
+    ],
+    dataBase64: transferData.toString("base64")
+  };
+  assert.deepEqual(decodeReviewedSplTokenTransfers([transfer]), [{
+    instructionIndex: 4, transferType: "transfer", source, destination,
+    authority, amount: "987654321",
+    verificationScope: "classic-spl-token-transfer-instruction-only"
+  }]);
+  assert.throws(() => decodeReviewedSplTokenTransfers([
+    transfer, { ...transfer, instructionIndex: 4 }
+  ]), /invalid or duplicate index/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, programId: "not-a-canonical-program-id"
+  }]), /invalid or duplicate index/);
+
+  const checkedData = Buffer.alloc(10);
+  checkedData[0] = 12;
+  checkedData.writeBigUInt64LE(42n, 1);
+  checkedData[9] = 6;
+  const checked = {
+    ...transfer, instructionIndex: 5,
+    accounts: [
+      transfer.accounts[0],
+      { pubkey: mint, isSigner: false, isWritable: false },
+      transfer.accounts[1],
+      transfer.accounts[2]
+    ],
+    dataBase64: checkedData.toString("base64")
+  };
+  assert.deepEqual(decodeReviewedSplTokenTransfers([checked]), [{
+    instructionIndex: 5, transferType: "transfer-checked", source, mint,
+    decimals: 6, destination, authority, amount: "42",
+    verificationScope: "classic-spl-token-transfer-instruction-only"
+  }]);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, dataBase64: Buffer.from([9, ...transferData.subarray(1)]).toString("base64")
+  }]), /only Transfer and TransferChecked are reviewed/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, programId: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  }]), /Token-2022 instructions are unsupported/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, accounts: [
+      { ...transfer.accounts[0], isWritable: false },
+      transfer.accounts[1], transfer.accounts[2]
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, accounts: [
+      transfer.accounts[0], transfer.accounts[1],
+      { ...transfer.accounts[2], isSigner: false }
+    ]
+  }]), /account roles are invalid/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...transfer, dataBase64: Buffer.from([3, 0, 0, 0, 0, 0, 0, 0, 0]).toString("base64")
+  }]), /amount must be positive/);
+  assert.throws(() => decodeReviewedSplTokenTransfers([{
+    ...checked, accounts: checked.accounts.slice(0, 3)
+  }]), /invalid data or account length/);
+});
+
+test("compute-budget verifier decodes bounded legacy/v0 fees with ceiling rounding", () => {
+  const programId = "ComputeBudget111111111111111111111111111111";
+  const instruction = (variant, value, width = 4) => {
+    const payload = Buffer.alloc(1 + width);
+    payload[0] = variant;
+    if (width === 4) payload.writeUInt32LE(value, 1);
+    else payload.writeBigUInt64LE(BigInt(value), 1);
+    return { programId, accounts: [], dataBase64: payload.toString("base64") };
+  };
+  const evidence = [
+    instruction(2, 200000),
+    instruction(3, 6, 8),
+    instruction(1, 65536),
+    instruction(4, 1048576)
+  ];
+  const result = verifyComputeBudgetPriorityFee({
+    messageVersion: 0,
+    outerInstructionEvidence: evidence,
+    maxPriorityFeeLamports: "2"
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.computeUnitLimit, 200000);
+  assert.equal(result.computeUnitPriceMicroLamports, "6");
+  assert.equal(result.priorityFeeLamports, "2");
+  assert.equal(result.requestedHeapFrameBytes, 65536);
+  assert.equal(result.loadedAccountsDataSizeLimit, 1048576);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: 0,
+    outerInstructionEvidence: evidence,
+    maxPriorityFeeLamports: "1"
+  }), /exceeds the configured maximum/);
+});
+
+test("compute-budget verifier rejects duplicate, malformed, unknown, and unbounded instructions", () => {
+  const programId = "ComputeBudget111111111111111111111111111111";
+  const make = (variant, value, width = 4, accounts = []) => {
+    const bytes = Buffer.alloc(1 + width);
+    bytes[0] = variant;
+    if (width === 4) bytes.writeUInt32LE(value, 1);
+    else bytes.writeBigUInt64LE(BigInt(value), 1);
+    return { programId, accounts, dataBase64: bytes.toString("base64") };
+  };
+  const limit = make(2, 200000);
+  const price = make(3, 10, 8);
+  const cap = { messageVersion: "legacy", maxPriorityFeeLamports: "10" };
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit, limit, price]
+  }), /Duplicate Compute Budget/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [price]
+  }), /must explicitly set/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit, make(9, 0)]
+  }), /Unsupported Compute Budget/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [make(1, 1000), limit]
+  }), /RequestHeapFrame value/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [{ ...limit, accounts: [{ pubkey: BOT_WALLET, isSigner: false, isWritable: false }] }]
+  }), /accounts or data are malformed/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    ...cap, outerInstructionEvidence: [limit], maxPriorityFeeLamports: "not-a-number"
+  }), /Priority fee cap/);
+});
+
+test("v1 priority fee is read as absolute lamports from message config and bounded", () => {
+  const original = Buffer.from(validUnsignedV1Transaction(), "base64");
+  const fee = Buffer.alloc(8);
+  fee.writeBigUInt64LE(12n, 0);
+  const withFee = Buffer.concat([
+    original.subarray(0, 106),
+    fee,
+    original.subarray(106)
+  ]);
+  withFee[4] |= 0x03; // both priority-fee config bits
+  const parsed = validateUnsignedJupiterTransaction(withFee.toString("base64"), BOT_WALLET);
+  assert.equal(parsed.priorityFeeLamports, "12");
+  assert.equal(parsed.computeUnitLimit, 20000);
+  const result = verifyComputeBudgetPriorityFee({
+    messageVersion: parsed.messageVersion,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [],
+    maxPriorityFeeLamports: "12"
+  });
+  assert.equal(result.priorityFeeLamports, "12");
+  assert.equal(result.computeUnitPriceMicroLamports, "0");
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: parsed.messageVersion,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [],
+    maxPriorityFeeLamports: "11"
+  }), /exceeds the configured maximum/);
+  assert.throws(() => verifyComputeBudgetPriorityFee({
+    messageVersion: 1,
+    computeUnitLimit: parsed.computeUnitLimit,
+    priorityFeeLamports: parsed.priorityFeeLamports,
+    outerInstructionEvidence: [{
+      programId: "ComputeBudget111111111111111111111111111111",
+      accounts: [], dataBase64: "AA=="
+    }],
+    maxPriorityFeeLamports: "12"
+  }), /must use message config/);
+});
+
+test("upgradeable ProgramData evidence marks a no-authority deployment immutable", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(37));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(79));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const programState = Buffer.alloc(36);
+  programState.writeUInt32LE(2, 0);
+  Buffer.from(decodeBase58(programDataAddress)).copy(programState, 4);
+  const immutableElf = Buffer.alloc(64, 0);
+  immutableElf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  immutableElf.writeUInt16LE(3, 16);
+  immutableElf[18] = 247;
+  immutableElf.writeUInt32LE(1, 20);
+  immutableElf.writeUInt16LE(64, 52);
+  const programDataState = Buffer.alloc(13 + immutableElf.length);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1199n, 4);
+  programDataState[12] = 0;
+  immutableElf.copy(programDataState, 13);
+  let calls = 0;
+  const evidence = await fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const program = {
+        owner: loaderOwner, executable: true, space: 36,
+        data: [programState.toString("base64"), "base64"]
+      };
+      const programData = {
+        owner: loaderOwner, executable: false, space: programDataState.length,
+        data: [programDataState.toString("base64"), "base64"]
+      };
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1500 + calls },
+        value: calls === 1 ? [program] : [program, programData]
+      } });
+    }
+  );
+  assert.equal(evidence.programs[0].upgradeAuthority, null);
+  assert.equal(evidence.programs[0].immutable, true);
+  assert.equal(evidence.programs[0].deploymentSlot, "1199");
+});
+
+test("upgradeable ProgramData evidence fails closed on bad owner, state tag, or changed pointer", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(35));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(75));
+  const changedAddress = encodeBase58(new Uint8Array(32).fill(76));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const makeProgram = address => {
+    const data = Buffer.alloc(36);
+    data.writeUInt32LE(2, 0);
+    Buffer.from(decodeBase58(address)).copy(data, 4);
+    return {
+      owner: loaderOwner, executable: true, space: data.length,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  const makeProgramData = ({ owner = loaderOwner, tag = 3, authorityOption = 0, elfType = 3 } = {}) => {
+    const data = Buffer.alloc(77);
+    data.writeUInt32LE(tag, 0);
+    data.writeBigUInt64LE(1200n, 4);
+    data[12] = authorityOption;
+    data.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 13);
+    data.writeUInt16LE(elfType, 29);
+    data[31] = 247;
+    data.writeUInt32LE(1, 33);
+    data.writeUInt16LE(64, 65);
+    return {
+      owner, executable: false, space: data.length,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  for (const badData of [
+    null,
+    makeProgramData({ owner: encodeBase58(new Uint8Array(32).fill(90)) }),
+    makeProgramData({ tag: 9 }),
+    makeProgramData({ authorityOption: 2 }),
+    makeProgramData({ elfType: 2 })
+  ]) {
+    let calls = 0;
+    await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+      [{ programId }],
+      async (_url, options) => {
+        const request = JSON.parse(options.body);
+        calls++;
+        const value = calls === 1
+          ? [makeProgram(programDataAddress)]
+          : [makeProgram(programDataAddress), badData];
+        return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+          context: { slot: 1300 + calls }, value
+        } });
+      }
+    ), /ProgramData account is missing or has invalid owner or encoding|ProgramData account has an invalid state tag|ProgramData upgrade authority option is malformed|not a valid Solana SBF ELF64 payload/);
+  }
+
+  let calls = 0;
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const refreshedAddress = calls === 1 ? programDataAddress : changedAddress;
+      const value = calls === 1
+        ? [makeProgram(programDataAddress)]
+        : [makeProgram(refreshedAddress), makeProgramData()];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1400 + calls }, value
+      } });
+    }
+  ), /ProgramData pointer or account size changed during resolution/);
+});
+
+test("program identity evidence rejects non-executable or malformed program accounts", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(41));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1235 },
+      value: [{
+        owner: loaderOwner, executable: false, space: 0,
+        data: ["", "base64"]
+      }]
+    } })
+  ), /missing, non-executable, or has malformed identity data/);
+
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1235 },
+      value: [{
+        owner: loaderOwner, executable: true, space: 2,
+        data: [Buffer.from([1]).toString("base64"), "base64"]
+      }]
+    } })
+  ), /data size does not match RPC metadata/);
+});
+
+
+test("program identity evidence rejects executable accounts owned by unknown loaders", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(61));
+  const unknownOwner = encodeBase58(new Uint8Array(32).fill(62));
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1237 },
+      value: [{
+        owner: unknownOwner, executable: true, space: 0,
+        data: ["", "base64"]
+      }]
+    } })
+  ), /missing, non-executable, or has malformed identity data/);
+});
+
+test("program identity evidence rejects non-canonical base64 even when decoded size matches", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(51));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 1236 },
+      value: [{
+        owner: loaderOwner, executable: true, space: 1,
+        // AB== decodes permissively to one byte, but its padding bits are non-canonical.
+        data: ["AB==", "base64"]
+      }]
+    } })
+  ), /not valid canonical base64/);
+});
+
 test("settlement proof requires finalized status and exact owner-scoped balance deltas", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -878,23 +1709,31 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(21)), encodeBase58(new Uint8Array(32).fill(22))], instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] }
           },
           meta: {
+            innerInstructions: [],
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [89_995_000],
+            preBalances: [100_000_000, 1, 1],
+            postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{
+              accountIndex: 1,
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }, {
+              accountIndex: 2,
+              mint: outputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "0", decimals: 6 }
             }],
             postTokenBalances: [
               {
+                accountIndex: 1,
                 mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
+                accountIndex: 2,
                 mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
               }
@@ -910,11 +1749,231 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint,
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl);
   assert.equal(proof.verified, true);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
+
+  for (const corrupt of [
+    result => result.meta.postTokenBalances.push({ ...result.meta.postTokenBalances[0] }),
+    result => { result.meta.postTokenBalances[1].uiTokenAmount.decimals = 7; },
+    result => { result.meta.postTokenBalances[0].accountIndex = 99; },
+    // Token-balance rows must refer to a token account, never the wallet fee-payer key.
+    result => { result.meta.postTokenBalances[1].accountIndex = 0; }
+  ]) {
+    const malformedFetch = async (url, options) => {
+      const response = await fetchImpl(url, options);
+      const body = await response.json();
+      if (JSON.parse(options.body).method === "getTransaction") corrupt(body.result);
+      return Response.json(body);
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature,
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint,
+      inputAmount: "10000000",
+      outputAmount: "12345",
+      expectedOwner: BOT_WALLET
+    }, malformedFetch), /malformed or duplicate token balance metadata|inconsistent token decimals/);
+  }
+});
+
+
+test("settlement proof resolves finalized address-lookup-table account indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(33));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const loadedInputAccount = encodeBase58(new Uint8Array(32).fill(71));
+  const loadedOutputAccount = encodeBase58(new Uint8Array(32).fill(72));
+  const loadedProgramAccount = encodeBase58(new Uint8Array(32).fill(73));
+  const result = {
+    slot: 789,
+    version: 0,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(74))],
+        addressTableLookups: [{
+          accountKey: encodeBase58(new Uint8Array(32).fill(75)),
+          writableIndexes: [0, 1],
+          readonlyIndexes: [2]
+        }],
+        instructions: [{ programIdIndex: 1, accounts: [0, 2, 3], data: "1" }]
+      }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      loadedAddresses: { writable: [loadedInputAccount, loadedOutputAccount], readonly: [loadedProgramAccount] },
+      innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 4, accounts: [0, 2, 3], data: "1", stackHeight: 2 }]
+      }],
+      preBalances: [100_000_000, 1, 1, 1, 1],
+      postBalances: [89_995_000, 1, 1, 1, 1],
+      preTokenBalances: [{
+        accountIndex: 2, mint: inputMint, owner: BOT_WALLET,
+        uiTokenAmount: { amount: "10000000", decimals: 9 }
+      }],
+      postTokenBalances: [
+        {
+          accountIndex: 2, mint: inputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "0", decimals: 9 }
+        },
+        {
+          accountIndex: 3, mint: outputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "12345", decimals: 6 }
+        }
+      ]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    return Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: method === "getSignatureStatuses"
+        ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+        : result
+    });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint,
+    inputAmount: "10000000", outputAmount: "12345",
+    expectedOwner: BOT_WALLET
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.slot, 789);
+
+  for (const corrupt of [
+    value => { value.meta.loadedAddresses.writable = "not-an-address-array"; },
+    value => { delete value.meta.loadedAddresses; },
+    value => {
+      value.version = 0;
+      delete value.transaction.message.addressTableLookups;
+    },
+    value => { value.version = "legacy"; },
+    value => { value.meta.loadedAddresses.writable.pop(); },
+    value => { value.meta.loadedAddresses.readonly.push(loadedInputAccount); },
+    value => { value.transaction.message.addressTableLookups[0].writableIndexes = "invalid"; },
+    value => {
+      value.meta.loadedAddresses.writable = Array.from({ length: 255 }, (_, index) =>
+        encodeBase58(new Uint8Array(32).fill(index + 1)));
+    }
+  ]) {
+    const malformedFetch = async (_url, options) => {
+      const method = JSON.parse(options.body).method;
+      const value = structuredClone(result);
+      if (method === "getTransaction") corrupt(value);
+      return Response.json({
+        jsonrpc: "2.0", id: 1,
+        result: method === "getSignatureStatuses"
+          ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+          : value
+      });
+    };
+    await assert.rejects(() => verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint,
+      inputAmount: "10000000", outputAmount: "12345",
+      expectedOwner: BOT_WALLET
+    }, malformedFetch), /loaded-address metadata is malformed|missing loaded addresses|address-lookup metadata is malformed|missing address-lookup metadata|lookup tables require version 0|loaded-address counts do not match|account key count exceeds/);
+  }
+});
+
+test("settlement proof rejects absent and malformed finalized CPI execution metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(17));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const owner = BOT_WALLET;
+  const accountKeys = [owner, encodeBase58(new Uint8Array(32).fill(61)), encodeBase58(new Uint8Array(32).fill(62))];
+  const baseResult = {
+    slot: 456,
+    transaction: {
+      signatures: [signature],
+      message: { accountKeys, instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] }
+    },
+    meta: {
+      err: null, fee: 5000, innerInstructions: [],
+      preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
+      preTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner, uiTokenAmount: { amount: "10000000", decimals: 9 } }
+      ],
+      postTokenBalances: [
+        { accountIndex: 1, mint: inputMint, owner, uiTokenAmount: { amount: "0", decimals: 9 } },
+        { accountIndex: 2, mint: outputMint, owner, uiTokenAmount: { amount: "12345", decimals: 6 } }
+      ]
+    }
+  };
+  const makeFetch = result => async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    return Response.json({ jsonrpc: "2.0", id: 1, result: method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] } : result });
+  };
+  const args = { signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345", expectedOwner: owner };
+  const absent = structuredClone(baseResult);
+  delete absent.meta.innerInstructions;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(absent)), /CPI metadata is missing or malformed/);
+
+  for (const innerInstructions of [
+    [{ index: 4, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 99, accounts: [0], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [99], data: "1" }] }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "!" }] }],
+    [{ index: 0, instructions: [] }],
+    [
+      { index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] },
+      { index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1" }] }
+    ],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "1", stackHeight: 0 }] }],
+    [{ index: 0, instructions: Array.from({ length: 257 }, () => ({ programIdIndex: 1, accounts: [0], data: "1" })) }],
+    [{ index: 0, instructions: [{ programIdIndex: 1, accounts: Array(257).fill(0), data: "1" }] }]
+  ]) {
+    const malformed = structuredClone(baseResult);
+    malformed.meta.innerInstructions = innerInstructions;
+    await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(malformed)), /Finalized CPI metadata/);
+  }
+
+  const excessive = structuredClone(baseResult);
+  excessive.transaction.message.instructions = Array.from({ length: 5 }, () => ({
+    programIdIndex: 1, accounts: [0, 1], data: "1"
+  }));
+  excessive.meta.innerInstructions = Array.from({ length: 5 }, (_, index) => ({
+    index,
+    instructions: Array.from({ length: 205 }, () => ({
+      programIdIndex: 1, accounts: [0], data: "1", stackHeight: 1
+    }))
+  }));
+  await assert.rejects(() => verifyFinalizedJupiterSettlement(args, makeFetch(excessive)), /CPI metadata exceeds the supported instruction limit/);
+
+  for (const instructions of [
+    [{ programIdIndex: 99, accounts: [0], data: "1" }],
+    [{ programIdIndex: 1, accounts: [99], data: "1" }],
+    [{ programIdIndex: 1, accounts: [0], data: "!" }],
+    [{}]
+  ]) {
+    const malformedOuter = structuredClone(baseResult);
+    malformedOuter.transaction.message.instructions = instructions;
+    await assert.rejects(
+      () => verifyFinalizedJupiterSettlement(args, makeFetch(malformedOuter)),
+      /Finalized outer instruction metadata/
+    );
+  }
+});
+
+test("settlement proof requires the connected Phantom owner explicitly", async () => {
+  let rpcCalled = false;
+  await assert.rejects(() => verifyFinalizedJupiterSettlement({
+    signature: encodeBase58(new Uint8Array(64).fill(7)),
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "10000000",
+    outputAmount: "12345"
+  }, async () => {
+    rpcCalled = true;
+    throw new Error("RPC must not run without an explicit wallet owner");
+  }), /incomplete or invalid/);
+  assert.equal(rpcCalled, false);
 });
 
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
@@ -929,11 +1988,12 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(41)), encodeBase58(new Uint8Array(32).fill(42))], instructions: [{ programIdIndex: 0, accounts: [1, 2], data: "1" }] }
           },
           meta: {
+            innerInstructions: [],
             err: null, fee: 5000,
-            preBalances: [1, 100_000_000, 1, 1], postBalances: [1, 89_995_000, 1, 1],
+            preBalances: [5_000, 100_000_000, 1, 1], postBalances: [0, 89_995_000, 1, 1],
             preTokenBalances: [
               { accountIndex: 2, mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 } }
             ],
@@ -949,7 +2009,8 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
   };
   await assert.rejects(
     verifyFinalizedJupiterSettlement({
-      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
+      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345",
+      expectedOwner: BOT_WALLET
     }, fetchImpl),
     /not the finalized transaction fee payer/
   );
@@ -964,19 +2025,23 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, encodeBase58(new Uint8Array(32).fill(31)), encodeBase58(new Uint8Array(32).fill(32))], instructions: [{ programIdIndex: 1, accounts: [0, 1], data: "1" }] } },
           meta: {
-            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
+            innerInstructions: [],
+            err: null, fee: 5000, preBalances: [100_000_000, 1, 1], postBalances: [89_995_000, 1, 1],
             preTokenBalances: [{
+              accountIndex: 1,
               mint: "So11111111111111111111111111111111111111112",
               owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
               {
+                accountIndex: 1,
                 mint: "So11111111111111111111111111111111111111112",
                 owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
+                accountIndex: 2,
                 mint: outputMint, owner: BOT_WALLET,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
@@ -990,7 +2055,8 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint,
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl), /output token balance delta does not match/);
 });
 
@@ -1008,7 +2074,8 @@ test("settlement proof rejects confirmed but non-finalized signatures", async ()
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     inputAmount: "10000000",
-    outputAmount: "12345"
+    outputAmount: "12345",
+    expectedOwner: BOT_WALLET
   }, fetchImpl), /not successfully finalized/);
 });
 
@@ -1318,4 +2385,102 @@ test("trusted evidence rejects malformed UTF-8 provider responses", async () => 
     )),
     /not valid UTF-8/
   );
+});
+
+
+test("legacy, v0 and v1 structural validators bind to a caller-supplied Phantom public key without claiming semantic approval", async () => {
+  const phantomPublicKey = encodeBase58(new Uint8Array(32).fill(99));
+  const legacy = validateUnsignedJupiterTransaction(
+    validUnsignedTransaction(undefined, 0, phantomPublicKey), phantomPublicKey
+  );
+  assert.equal(legacy.messageVersion, "legacy");
+  assert.equal(legacy.semanticInstructionVerification, false);
+
+  const v0 = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(phantomPublicKey), phantomPublicKey,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  assert.equal(v0.messageVersion, 0);
+  assert.equal(v0.lookupTableResolution, "finalized-resolved");
+  assert.equal(v0.semanticInstructionVerification, false);
+
+  const v1 = validateUnsignedJupiterTransaction(
+    validUnsignedV1Transaction(phantomPublicKey), phantomPublicKey
+  );
+  assert.equal(v1.messageVersion, 1);
+  assert.equal(v1.semanticInstructionVerification, false);
+});
+
+
+test("upgradeable ProgramData resolution rejects refreshed Program account size mismatches", async () => {
+  const programId = encodeBase58(new Uint8Array(32).fill(37));
+  const programDataAddress = encodeBase58(new Uint8Array(32).fill(79));
+  const loaderOwner = "BPFLoaderUpgradeab1e11111111111111111111111";
+  const makeProgram = (spaceDelta = 0) => {
+    const data = Buffer.alloc(36);
+    data.writeUInt32LE(2, 0);
+    Buffer.from(decodeBase58(programDataAddress)).copy(data, 4);
+    return {
+      owner: loaderOwner,
+      executable: true,
+      space: data.length + spaceDelta,
+      data: [data.toString("base64"), "base64"]
+    };
+  };
+  const elf = Buffer.alloc(64, 0);
+  elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  elf.writeUInt16LE(3, 16);
+  elf[18] = 247;
+  elf.writeUInt32LE(1, 20);
+  elf.writeUInt16LE(64, 52);
+  const programDataState = Buffer.alloc(13 + elf.length);
+  programDataState.writeUInt32LE(3, 0);
+  programDataState.writeBigUInt64LE(1200n, 4);
+  programDataState[12] = 0;
+  elf.copy(programDataState, 13);
+  const programData = {
+    owner: loaderOwner,
+    executable: false,
+    space: programDataState.length,
+    data: [programDataState.toString("base64"), "base64"]
+  };
+  let calls = 0;
+  await assert.rejects(() => fetchProgramAccountIdentityEvidence(
+    [{ programId }],
+    async (_url, options) => {
+      const request = JSON.parse(options.body);
+      calls++;
+      const value = calls === 1
+        ? [makeProgram()]
+        : [makeProgram(1), programData];
+      return Response.json({ jsonrpc: "2.0", id: request.id, result: {
+        context: { slot: 1500 + calls }, value
+      } });
+    }
+  ), /ProgramData pointer or account size changed during resolution/);
+});
+
+
+test("priority-fee verifier rejects malformed outer evidence even for v1 message config", () => {
+  const valid = {
+    programId: "11111111111111111111111111111111",
+    accounts: [],
+    dataBase64: ""
+  };
+  const args = { messageVersion: 1, computeUnitLimit: 200000,
+    priorityFeeLamports: "1", maxPriorityFeeLamports: "2" };
+  assert.equal(verifyComputeBudgetPriorityFee({ ...args, outerInstructionEvidence: [valid] }).verified, true);
+  for (const invalid of [
+    null,
+    { ...valid, programId: "not-a-public-key" },
+    { programId: valid.programId, dataBase64: "" },
+    { ...valid, dataBase64: "!!!!" },
+    { ...valid, accounts: [{ pubkey: valid.programId, isSigner: "false", isWritable: false }] }
+  ]) {
+    assert.throws(() => verifyComputeBudgetPriorityFee({
+      ...args, outerInstructionEvidence: [invalid]
+    }), /Outer instruction/);
+  }
 });

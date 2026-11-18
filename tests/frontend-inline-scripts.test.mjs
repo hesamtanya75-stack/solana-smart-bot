@@ -28,6 +28,8 @@ test("Phantom connection remains read-only and clearly disclaims trading integra
   assert.match(source, /observePhantomProvider\(provider\)/);
   assert.doesNotMatch(source, /signTransaction|signAndSendTransaction|sendTransaction/);
   assert.match(html, /هێشتا بە ڕێڕەوی داواکاریی کڕینەوە نەبەستراوە/);
+  assert.match(html, /پەیوەندیی Phantom ئەگەر بەکارهێنرا، تەنها بۆ خوێندنەوەی ناونیشان و باڵانسە/);
+  assert.doesNotMatch(html, /هیچ مامەڵەی ڕاستەقینە یان پەیوەندیی Phantom ناکرێت/);
 });
 
 

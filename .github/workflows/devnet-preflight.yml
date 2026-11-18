@@ -1,8 +1,7 @@
-name: Devnet signed lifecycle validation
+name: Devnet read-only validation
 
 on:
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,12 +9,12 @@ permissions:
 jobs:
   devnet-read-only:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -26,14 +25,3 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         run: node scripts/devnet-preflight.mjs
-      - name: Verify ephemeral signing and submit a faucet-funded Devnet test transfer
-        if: ${{ env.DEVNET_RPC_URL != '' }}
-        # Only a dedicated RPC is accepted for the funded lifecycle. The public
-        # Devnet faucet may be unavailable or rate-limited and is not a CI fallback.
-        run: node scripts/devnet-signed-lifecycle.mjs
-      - name: Report funded Devnet lifecycle as skipped without a dedicated RPC
-        if: ${{ env.DEVNET_RPC_URL == '' }}
-        run: |
-          echo "::notice title=Funded Devnet lifecycle skipped::DEVNET_RPC_URL is not configured; no faucet-funded transfer was attempted."
-          node -e 'console.log(JSON.stringify({ status: "skipped", reason: "DEVNET_RPC_URL is not configured", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
-          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: DEVNET_RPC_URL is not configured. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"

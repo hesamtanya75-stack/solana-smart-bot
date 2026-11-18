@@ -2,13 +2,22 @@ import { readBoundedJsonResponse } from "./rpc-response.mjs";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const JUPITER_ORDER_URL = "https://api.jup.ag/swap/v2/order";
 const COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/SOL-USD/spot";
 const DEX_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/";
 const RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/";
 const DEVNET_OR_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 const EXPECTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
+const REVIEWED_NATIVE_PROGRAM_IDENTITIES = new Map([
+  ["11111111111111111111111111111111", "solana-system-program"],
+  ["ComputeBudget111111111111111111111111111111", "solana-compute-budget"]
+]);
+const SOLANA_PROGRAM_LOADER_TYPES = new Map([
+  ["BPFLoader1111111111111111111111111111111111", "legacy-bpf-loader"],
+  ["BPFLoader2111111111111111111111111111111111", "bpf-loader-v2"],
+  ["BPFLoaderUpgradeab1e11111111111111111111111", "upgradeable-bpf-loader"],
+  ["NativeLoader1111111111111111111111111111111", "native-loader"]
+]);
 
 function decodeBase58(value) {
   let number = 0n;
@@ -275,7 +284,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  // The pinned bot wallet is the sole signer and must be writable as fee payer.
+  // The connected Phantom wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || readonlySigned !== 0) {
     throw new Error("V1 Jupiter transaction signer header is inconsistent");
   }
@@ -306,7 +315,7 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   const expectedBytes = decodeBase58(expectedSigner);
   if (expectedBytes.length !== 32 ||
       bytes.slice(addressesStart, addressesStart + 32).some((byte, i) => byte !== expectedBytes[i])) {
-    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+    throw new Error("Jupiter transaction fee payer does not match the expected Phantom wallet");
   }
   const uniqueAddresses = new Set();
   for (let i = 0; i < addressCount; i++) {
@@ -328,6 +337,10 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   // Config values are encoded in ascending bit order: priority fee (u64),
   // compute-unit limit (u32), loaded-account data limit (u32), heap size (u32).
   let configOffset = cursor;
+  const priorityFeeLamports = (configMask & 0x3) !== 0
+    ? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      .getBigUint64(configOffset, true)
+    : 0n;
   if ((configMask & 0x3) !== 0) configOffset += 8;
   const computeUnitLimit = (configMask & 0x4) !== 0
     ? (bytes[configOffset] | (bytes[configOffset + 1] << 8) |
@@ -346,12 +359,14 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     throw new Error("V1 transaction loaded-data limit is outside the supported range");
   }
   // Solana requires a 1 KiB multiple in the inclusive 32–256 KiB range.
+  let requestedHeapFrameBytes = null;
   if ((configMask & 0x10) !== 0) {
-    const heapSize = (bytes[configOffset] |
+    requestedHeapFrameBytes = (bytes[configOffset] |
       (bytes[configOffset + 1] << 8) |
       (bytes[configOffset + 2] << 16) |
       (bytes[configOffset + 3] << 24)) >>> 0;
-    if (heapSize < 32768 || heapSize > 262144 || heapSize % 1024 !== 0) {
+    if (requestedHeapFrameBytes < 32768 || requestedHeapFrameBytes > 262144 ||
+        requestedHeapFrameBytes % 1024 !== 0) {
       throw new Error("V1 Jupiter transaction heap size is outside the valid range");
     }
   }
@@ -371,16 +386,28 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     headers.push({ programIdIndex, accountCount, dataLength });
   }
+  const compiledInstructions = [];
   for (const header of headers) {
     if (cursor + header.accountCount + header.dataLength > bytes.length) {
       throw new Error("V1 Jupiter instruction payload is truncated");
     }
-    for (let i = 0; i < header.accountCount; i++) {
-      if (bytes[cursor++] >= addressCount) {
-        throw new Error("V1 Jupiter instruction account index is invalid");
-      }
+    const accountIndexes = Array.from(bytes.slice(cursor, cursor + header.accountCount));
+    if (accountIndexes.some(index => index >= addressCount)) {
+      throw new Error("V1 Jupiter instruction account index is invalid");
     }
+    cursor += header.accountCount;
+    const data = bytes.slice(cursor, cursor + header.dataLength);
     cursor += header.dataLength;
+    compiledInstructions.push(Object.freeze({
+      programIdIndex: header.programIdIndex,
+      accountIndexes: Object.freeze(accountIndexes),
+      dataBase64: btoa(String.fromCharCode(...data))
+    }));
+  }
+  const staticAccountKeys = [];
+  for (let i = 0; i < addressCount; i++) {
+    const start = addressesStart + i * 32;
+    staticAccountKeys.push(encodeBase58(bytes.slice(start, start + 32)));
   }
   const signaturesLength = requiredSignatures * 64;
   if (cursor + signaturesLength !== bytes.length) {
@@ -391,10 +418,19 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   }
   return {
     signatureCount: requiredSignatures,
+    requiredSignatures,
+    readonlySigned,
+    readonlyUnsigned,
     staticAccountCount: addressCount,
+    staticAccountKeys: Object.freeze(staticAccountKeys),
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount: 0,
     messageVersion: 1,
+    computeUnitLimit,
+    loadedAccountsDataSizeLimit,
+    requestedHeapFrameBytes,
+    priorityFeeLamports: priorityFeeLamports.toString(),
     semanticInstructionVerification: false
   };
 }
@@ -440,9 +476,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const requiredSignatures = bytes[cursor++];
   const readonlySigned = bytes[cursor++];
   const readonlyUnsigned = bytes[cursor++];
-  // The coordinator pins exactly one signer: the dedicated bot wallet.
+  // The transaction is expected to have exactly one signer: the connected Phantom wallet.
   // Additional required signers are outside the reviewed authorization model.
-  // The pinned bot wallet is the sole signer and must be writable as fee payer.
+  // The connected Phantom wallet is the sole signer and must be writable as fee payer.
   if (requiredSignatures !== 1 || requiredSignatures !== signatureCount ||
       readonlySigned !== 0) {
     throw new Error("Jupiter transaction signer header is inconsistent");
@@ -459,7 +495,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const signerBytes = bytes.slice(cursor, cursor + 32);
   const expectedBytes = decodeBase58(expectedSigner);
   if (expectedBytes.length !== 32 || signerBytes.some((byte, i) => byte !== expectedBytes[i])) {
-    throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
+    throw new Error("Jupiter transaction fee payer does not match the expected Phantom wallet");
   }
   // Solana message account keys must be unique; reject ambiguous static-key layouts.
   const uniqueKeys = new Set();
@@ -480,6 +516,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
   const instructionAccountIndexes = [];
+  const compiledInstructions = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -495,15 +532,21 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
       throw new Error("Jupiter instruction account list is invalid");
     }
-    for (let j = 0; j < accountHeader.value; j++) {
-      instructionAccountIndexes.push(bytes[cursor++]);
-    }
+    const accountIndexes = Array.from(bytes.slice(cursor, cursor + accountHeader.value));
+    instructionAccountIndexes.push(...accountIndexes);
+    cursor += accountHeader.value;
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
     if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
       throw new Error("Jupiter instruction data is invalid");
     }
+    const data = bytes.slice(cursor, cursor + dataHeader.value);
     cursor += dataHeader.value;
+    compiledInstructions.push(Object.freeze({
+      programIdIndex,
+      accountIndexes: Object.freeze(accountIndexes),
+      dataBase64: btoa(String.fromCharCode(...data))
+    }));
   }
   let addressLookupCount = 0;
   let loadedAddressCount = 0;
@@ -544,8 +587,15 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
   return {
     signatureCount,
+    requiredSignatures,
+    readonlySigned,
+    readonlyUnsigned,
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
+    // Preserve every compiled instruction byte and account index so a later
+    // independent verifier can inspect exact program IDs, account roles and data.
+    // This is evidence capture only; it does not authorize any instruction.
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount,
     addressLookups,
@@ -814,6 +864,68 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
 }
 
 /**
+ * Expands compiled top-level instructions into their resolved message keys
+ * and signer/writable roles. This is structural evidence only: it does not
+ * decode program data, prove CPI behavior, or authorize signing.
+ */
+function buildOuterInstructionEvidence(parsed, writableLoaded = [], readonlyLoaded = []) {
+  if (!Array.isArray(parsed.staticAccountKeys) ||
+      !Array.isArray(parsed.compiledInstructions) ||
+      !Number.isInteger(parsed.requiredSignatures) ||
+      !Number.isInteger(parsed.readonlySigned) ||
+      !Number.isInteger(parsed.readonlyUnsigned)) {
+    throw new Error("Compiled instruction evidence is incomplete");
+  }
+  const keys = [
+    ...parsed.staticAccountKeys,
+    ...writableLoaded,
+    ...readonlyLoaded
+  ];
+  if (keys.length !== parsed.staticAccountCount + writableLoaded.length + readonlyLoaded.length ||
+      keys.length > 256) {
+    throw new Error("Resolved instruction account key space is invalid");
+  }
+  const isWritable = index => {
+    if (index < 0 || index >= keys.length) throw new Error("Instruction account index is outside the resolved key space");
+    if (index < parsed.requiredSignatures) {
+      return index < parsed.requiredSignatures - parsed.readonlySigned;
+    }
+    if (index < parsed.staticAccountCount) {
+      return index < parsed.staticAccountCount - parsed.readonlyUnsigned;
+    }
+    return index < parsed.staticAccountCount + writableLoaded.length;
+  };
+  return Object.freeze(parsed.compiledInstructions.map((instruction, instructionIndex) => {
+    const programIndex = instruction.programIdIndex;
+    const programId = keys[programIndex];
+    if (!programId || !Array.isArray(instruction.accountIndexes) ||
+        instruction.accountIndexes.some(index => !Number.isInteger(index) || index < 0 || index >= keys.length)) {
+      throw new Error("Compiled instruction references an invalid resolved account");
+    }
+    // Executable program accounts are never transaction signers or writable
+    // instruction accounts. Reject malformed layouts before exposing evidence.
+    if (programIndex < parsed.requiredSignatures || isWritable(programIndex)) {
+      throw new Error("Compiled instruction program account must be readonly and non-signer");
+    }
+    return Object.freeze({
+      instructionIndex,
+      programIdIndex: instruction.programIdIndex,
+      programId,
+      accounts: Object.freeze(instruction.accountIndexes.map((index, accountIndex) =>
+        Object.freeze({
+          accountIndex,
+          messageKeyIndex: index,
+          pubkey: keys[index],
+          isSigner: index < parsed.requiredSignatures,
+          isWritable: isWritable(index)
+        })
+      )),
+      dataBase64: instruction.dataBase64
+    });
+  }));
+}
+
+/**
  * Validates the unsigned message and resolves every v0 ALT against finalized
  * RPC state. The result remains structurally trusted only; instruction
  * semantics are deliberately never promoted by address resolution alone.
@@ -823,11 +935,16 @@ export async function validateAndResolveUnsignedJupiterTransaction(
 ) {
   const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
   if (parsed.addressLookupCount === 0) {
+    const resolvedWritableAddresses = Object.freeze([]);
+    const resolvedReadonlyAddresses = Object.freeze([]);
+    const outerInstructionEvidence = buildOuterInstructionEvidence(parsed);
     return Object.freeze({
       ...parsed,
       lookupTableResolution: "not-required",
-      resolvedWritableAddresses: Object.freeze([]),
-      resolvedReadonlyAddresses: Object.freeze([])
+      resolvedWritableAddresses,
+      resolvedReadonlyAddresses,
+      outerInstructionEvidence,
+      semanticInstructionVerification: false
     });
   }
   if (!Array.isArray(parsed.addressLookups) ||
@@ -844,13 +961,295 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (new Set(allMessageKeys).size !== allMessageKeys.length) {
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
+  const outerInstructionEvidence = buildOuterInstructionEvidence(
+    parsed, resolution.writableAddresses, resolution.readonlyAddresses
+  );
   return Object.freeze({
     ...parsed,
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
     resolvedReadonlyAddresses: resolution.readonlyAddresses,
+    outerInstructionEvidence,
     semanticInstructionVerification: false
+  });
+}
+
+
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * Decode the narrowly supported System Program transfer instruction.
+ * Any other System Program instruction is rejected until separately reviewed.
+ * This is a per-instruction semantic decoder, not whole-transaction approval.
+ */
+export function decodeReviewedSystemTransfers(outerInstructionEvidence) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length < 1 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("System transfer instruction evidence is missing or invalid");
+  }
+  const seenInstructionIndexes = new Set();
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.instructionIndex) ||
+        instruction.instructionIndex < 0 || instruction.instructionIndex >= 256 ||
+        seenInstructionIndexes.has(instruction.instructionIndex) ||
+        !isCanonicalPublicKey(instruction.programId)) {
+      throw new Error("Outer instruction evidence has an invalid or duplicate index/program identity");
+    }
+    seenInstructionIndexes.add(instruction.instructionIndex);
+  }
+  const transfers = [];
+  for (const instruction of outerInstructionEvidence) {
+    if (instruction.programId !== SYSTEM_PROGRAM_ID) continue;
+    if (!Array.isArray(instruction.accounts) || instruction.accounts.length !== 2 ||
+        typeof instruction.dataBase64 !== "string" ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("System transfer accounts or data are malformed");
+    }
+    const binary = atob(instruction.dataBase64);
+    const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+    if (btoa(binary) !== instruction.dataBase64 || data.length !== 12) {
+      throw new Error("System transfer data is not canonical or has an invalid length");
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (view.getUint32(0, true) !== 2) {
+      throw new Error("Unsupported System Program instruction; only Transfer is reviewed");
+    }
+    const [source, destination] = instruction.accounts;
+    if (!source || !destination ||
+        !isCanonicalPublicKey(source.pubkey) ||
+        !isCanonicalPublicKey(destination.pubkey) ||
+        source.pubkey === destination.pubkey ||
+        source.isSigner !== true || source.isWritable !== true ||
+        destination.isSigner !== false || destination.isWritable !== true) {
+      throw new Error("System transfer source or destination account roles are invalid");
+    }
+    const lamports = view.getBigUint64(4, true);
+    if (lamports < 1n) throw new Error("System transfer amount must be positive");
+    transfers.push(Object.freeze({
+      instructionIndex: instruction.instructionIndex,
+      source: source.pubkey,
+      destination: destination.pubkey,
+      lamports: lamports.toString(),
+      verificationScope: "system-program-transfer-instruction-only"
+    }));
+  }
+  return Object.freeze(transfers);
+}
+
+/**
+ * Decode only classic SPL Token Transfer and TransferChecked instructions.
+ * Token-2022, multisig authorities, and every other token opcode remain
+ * unsupported until their account and extension semantics are reviewed.
+ */
+export function decodeReviewedSplTokenTransfers(outerInstructionEvidence) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length < 1 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("SPL Token transfer instruction evidence is missing or invalid");
+  }
+  const seenInstructionIndexes = new Set();
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.instructionIndex) ||
+        instruction.instructionIndex < 0 || instruction.instructionIndex >= 256 ||
+        seenInstructionIndexes.has(instruction.instructionIndex) ||
+        !isCanonicalPublicKey(instruction.programId)) {
+      throw new Error("Outer instruction evidence has an invalid or duplicate index/program identity");
+    }
+    seenInstructionIndexes.add(instruction.instructionIndex);
+  }
+  const transfers = [];
+  for (const instruction of outerInstructionEvidence) {
+    if (instruction.programId === TOKEN_2022_PROGRAM_ID) {
+      throw new Error("Token-2022 instructions are unsupported by the classic SPL Token decoder");
+    }
+    if (instruction.programId !== TOKEN_PROGRAM_ID) continue;
+    if (!Array.isArray(instruction.accounts) ||
+        typeof instruction.dataBase64 !== "string" ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("SPL Token transfer accounts or data are malformed");
+    }
+    const binary = atob(instruction.dataBase64);
+    const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+    if (btoa(binary) !== instruction.dataBase64 || data.length < 1) {
+      throw new Error("SPL Token transfer data is not canonical");
+    }
+    const opcode = data[0];
+    const checked = opcode === 12;
+    if (opcode !== 3 && !checked) {
+      throw new Error("Unsupported SPL Token instruction; only Transfer and TransferChecked are reviewed");
+    }
+    if (data.length !== (checked ? 10 : 9) ||
+        instruction.accounts.length !== (checked ? 4 : 3)) {
+      throw new Error("SPL Token transfer has an invalid data or account length");
+    }
+    const source = instruction.accounts[0];
+    const mint = checked ? instruction.accounts[1] : null;
+    const destination = instruction.accounts[checked ? 2 : 1];
+    const authority = instruction.accounts[checked ? 3 : 2];
+    const accountKeys = [source, ...(mint ? [mint] : []), destination, authority];
+    if (accountKeys.some(account => !account ||
+        !isCanonicalPublicKey(account.pubkey) ||
+        typeof account.isSigner !== "boolean" ||
+        typeof account.isWritable !== "boolean") ||
+        source.pubkey === destination.pubkey ||
+        (mint && (mint.pubkey === source.pubkey || mint.pubkey === destination.pubkey)) ||
+        source.isSigner !== false || source.isWritable !== true ||
+        destination.isSigner !== false || destination.isWritable !== true ||
+        authority.isSigner !== true || authority.isWritable !== false ||
+        (mint && (mint.isSigner !== false || mint.isWritable !== false))) {
+      throw new Error("SPL Token transfer account roles are invalid");
+    }
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const amount = view.getBigUint64(1, true);
+    if (amount < 1n) throw new Error("SPL Token transfer amount must be positive");
+    transfers.push(Object.freeze({
+      instructionIndex: instruction.instructionIndex,
+      transferType: checked ? "transfer-checked" : "transfer",
+      source: source.pubkey,
+      ...(mint ? { mint: mint.pubkey, decimals: data[9] } : {}),
+      destination: destination.pubkey,
+      authority: authority.pubkey,
+      amount: amount.toString(),
+      verificationScope: "classic-spl-token-transfer-instruction-only"
+    }));
+  }
+  return Object.freeze(transfers);
+}
+
+const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+
+/**
+ * Decodes and caps the explicit priority fee component. Legacy/v0 use
+ * Compute Budget instructions; v1 stores the absolute fee in message config.
+ * This is a fee sub-check only, not complete all-in outflow verification.
+ */
+export function verifyComputeBudgetPriorityFee({
+  messageVersion, outerInstructionEvidence = [],
+  computeUnitLimit: v1ComputeUnitLimit = null,
+  priorityFeeLamports: v1PriorityFeeLamports = "0",
+  maxPriorityFeeLamports
+}) {
+  if (!isU64DecimalString(String(maxPriorityFeeLamports), true) ||
+      !Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("Priority fee cap or instruction evidence is invalid");
+  }
+  // Validate the complete outer evidence envelope before inspecting only the
+  // Compute Budget subset. A fee sub-check must not report verified when the
+  // transaction evidence contains null, malformed, or unbound instructions.
+  for (const instruction of outerInstructionEvidence) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !isCanonicalPublicKey(instruction.programId) ||
+        !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+        typeof instruction.dataBase64 !== "string" || instruction.dataBase64.length > 16384 ||
+        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+      throw new Error("Outer instruction evidence is malformed for priority-fee verification");
+    }
+    const binary = atob(instruction.dataBase64);
+    if (btoa(binary) !== instruction.dataBase64) {
+      throw new Error("Outer instruction data is non-canonical for priority-fee verification");
+    }
+    for (const account of instruction.accounts) {
+      if (!account || typeof account !== "object" || Array.isArray(account) ||
+          !isCanonicalPublicKey(account.pubkey) ||
+          typeof account.isSigner !== "boolean" || typeof account.isWritable !== "boolean") {
+        throw new Error("Outer instruction account evidence is malformed for priority-fee verification");
+      }
+    }
+  }
+  const maximumPriorityFee = BigInt(maxPriorityFeeLamports);
+  let computeUnitLimit = null;
+  let computeUnitPriceMicroLamports = 0n;
+  let requestedHeapFrameBytes = null;
+  let loadedAccountsDataSizeLimit = null;
+  let priorityFee;
+
+  if (messageVersion === 1) {
+    if (outerInstructionEvidence.some(instruction =>
+      instruction?.programId === COMPUTE_BUDGET_PROGRAM_ID)) {
+      throw new Error("V1 transaction must use message config, not Compute Budget instructions");
+    }
+    if (!Number.isInteger(v1ComputeUnitLimit) ||
+        v1ComputeUnitLimit < 1 || v1ComputeUnitLimit > 1400000 ||
+        !isU64DecimalString(String(v1PriorityFeeLamports), true)) {
+      throw new Error("V1 message compute budget or priority fee is invalid");
+    }
+    computeUnitLimit = v1ComputeUnitLimit;
+    priorityFee = BigInt(v1PriorityFeeLamports);
+  } else if (messageVersion === 0 || messageVersion === "legacy") {
+    const seen = new Set();
+    for (const instruction of outerInstructionEvidence) {
+      if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+        throw new Error("Outer instruction evidence contains a malformed entry");
+      }
+      if (instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID) continue;
+      if (!Array.isArray(instruction.accounts) || instruction.accounts.length !== 0 ||
+          typeof instruction.dataBase64 !== "string" ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.dataBase64)) {
+        throw new Error("Compute Budget instruction accounts or data are malformed");
+      }
+      const binary = atob(instruction.dataBase64);
+      const data = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== instruction.dataBase64 || data.length < 1) {
+        throw new Error("Compute Budget instruction data is not canonical");
+      }
+      const variant = data[0];
+      const key = String(variant);
+      if (seen.has(key)) throw new Error("Duplicate Compute Budget instruction variant");
+      seen.add(key);
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      if (variant === 1) {
+        if (data.length !== 5) throw new Error("RequestHeapFrame instruction has invalid data length");
+        requestedHeapFrameBytes = view.getUint32(1, true);
+        if (requestedHeapFrameBytes < 32768 || requestedHeapFrameBytes > 262144 ||
+            requestedHeapFrameBytes % 1024 !== 0) {
+          throw new Error("RequestHeapFrame value is outside the supported range");
+        }
+      } else if (variant === 2) {
+        if (data.length !== 5) throw new Error("SetComputeUnitLimit instruction has invalid data length");
+        computeUnitLimit = view.getUint32(1, true);
+        if (computeUnitLimit < 1 || computeUnitLimit > 1400000) {
+          throw new Error("SetComputeUnitLimit value is outside the supported range");
+        }
+      } else if (variant === 3) {
+        if (data.length !== 9) throw new Error("SetComputeUnitPrice instruction has invalid data length");
+        computeUnitPriceMicroLamports = view.getBigUint64(1, true);
+      } else if (variant === 4) {
+        if (data.length !== 5) throw new Error("SetLoadedAccountsDataSizeLimit instruction has invalid data length");
+        loadedAccountsDataSizeLimit = view.getUint32(1, true);
+        if (loadedAccountsDataSizeLimit < 1 || loadedAccountsDataSizeLimit > 64 * 1024 * 1024) {
+          throw new Error("SetLoadedAccountsDataSizeLimit value is outside the supported range");
+        }
+      } else {
+        throw new Error("Unsupported Compute Budget instruction variant");
+      }
+    }
+    if (computeUnitLimit === null) {
+      throw new Error("Legacy/v0 transaction must explicitly set a bounded compute-unit limit");
+    }
+    priorityFee =
+      (computeUnitPriceMicroLamports * BigInt(computeUnitLimit) + 999999n) / 1000000n;
+  } else {
+    throw new Error("Transaction message version is unsupported for priority-fee verification");
+  }
+
+  if (priorityFee > maximumPriorityFee) {
+    throw new Error("Transaction priority fee exceeds the configured maximum");
+  }
+  return Object.freeze({
+    verified: true,
+    messageVersion,
+    computeUnitLimit,
+    computeUnitPriceMicroLamports: computeUnitPriceMicroLamports.toString(),
+    priorityFeeLamports: priorityFee.toString(),
+    maxPriorityFeeLamports: maximumPriorityFee.toString(),
+    requestedHeapFrameBytes,
+    loadedAccountsDataSizeLimit,
+    verificationScope: "explicit-compute-budget-and-priority-fee-only"
   });
 }
 
@@ -868,36 +1267,532 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
-function sumOwnedTokenBalance(rows, mint, owner) {
-  if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
-  let total = 0n;
-  for (const row of rows) {
-    if (row?.mint !== mint || row?.owner !== owner) continue;
-    const amount = row?.uiTokenAmount?.amount;
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
-      throw new Error("Finalized transaction contains an invalid owned token balance");
+/**
+ * Decodes the upgradeable BPF loader's Program account state.
+ * Bincode enum tag 2 is Program; the following 32 bytes are ProgramData.
+ */
+function decodeUpgradeableProgramAccount(data) {
+  if (!(data instanceof Uint8Array) || data.length !== 36 ||
+      new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0, true) !== 2) {
+    throw new Error("Upgradeable program account has an invalid Program state layout");
+  }
+  return encodeBase58(data.subarray(4, 36));
+}
+
+/**
+ * Decodes ProgramData state (enum tag 3, deployment slot, Option<Pubkey>,
+ * followed by the deployed ELF bytes) and hashes only the ELF payload.
+ */
+async function decodeUpgradeableProgramData(data) {
+  if (!(data instanceof Uint8Array) || data.length < 14 ||
+      data.length > 10 * 1024 * 1024) {
+    throw new Error("ProgramData account size is outside the supported bounds");
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(0, true) !== 3) {
+    throw new Error("ProgramData account has an invalid state tag");
+  }
+  const deploymentSlot = view.getBigUint64(4, true);
+  const authorityOption = data[12];
+  let upgradeAuthority = null;
+  let elfOffset = 13;
+  if (authorityOption === 1) {
+    if (data.length < 46) throw new Error("ProgramData upgrade authority is truncated");
+    upgradeAuthority = encodeBase58(data.subarray(13, 45));
+    elfOffset = 45;
+  } else if (authorityOption !== 0) {
+    throw new Error("ProgramData upgrade authority option is malformed");
+  }
+  const elfBytes = data.subarray(elfOffset);
+  // Solana SBF deployments use ELF64, little-endian, EM_BPF (247).
+  // Validate the fixed ELF identification/header fields before hashing.
+  if (elfBytes.length < 64 ||
+      elfBytes[0] !== 0x7f || elfBytes[1] !== 0x45 ||
+      elfBytes[2] !== 0x4c || elfBytes[3] !== 0x46 ||
+      elfBytes[4] !== 2 || elfBytes[5] !== 1 || elfBytes[6] !== 1 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint16(16, true) !== 3 ||
+      elfBytes[18] !== 247 || elfBytes[19] !== 0 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint32(20, true) !== 1 ||
+      new DataView(elfBytes.buffer, elfBytes.byteOffset, elfBytes.byteLength).getUint16(52, true) !== 64) {
+    throw new Error("ProgramData deployed code is not a valid Solana SBF ELF64 payload");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", elfBytes);
+  const codeHash = [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, "0")).join("");
+  return Object.freeze({
+    deploymentSlot: deploymentSlot.toString(),
+    upgradeAuthority,
+    immutable: upgradeAuthority === null,
+    deployedCodeLength: elfBytes.length,
+    deployedCodeSha256: codeHash
+  });
+}
+
+/**
+ * Fetches finalized identity evidence for every outer-instruction program.
+ * Upgradeable-loader programs additionally resolve ProgramData, extracting
+ * the upgrade authority and a SHA-256 hash of deployed code. This remains
+ * provenance evidence only, not instruction-semantic or CPI verification.
+ */
+export async function fetchProgramAccountIdentityEvidence(
+  outerInstructionEvidence, fetchImpl = fetch
+) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length === 0 ||
+      outerInstructionEvidence.length > 256) {
+    throw new Error("Outer instruction evidence is missing or exceeds the account limit");
+  }
+  const programIds = [...new Set(outerInstructionEvidence.map(item => item?.programId))];
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  // The upgradeable-loader path re-reads program accounts alongside
+  // ProgramData accounts. Keep the combined getMultipleAccounts request
+  // within the RPC 100-account ceiling (at most 50 of each).
+  if (programIds.length === 0 || programIds.length > 50 ||
+      programIds.some(programId => !validAddress(programId))) {
+    throw new Error("Outer instruction program identities are invalid or exceed the 50-program RPC snapshot limit");
+  }
+
+  const result = await rpc(fetchImpl, "getMultipleAccounts", [
+    programIds, { commitment: "finalized", encoding: "base64" }
+  ]);
+  const contextSlot = result?.context?.slot;
+  const accounts = result?.value;
+  if (!Number.isSafeInteger(contextSlot) || contextSlot < 1 ||
+      !Array.isArray(accounts) || accounts.length !== programIds.length) {
+    throw new Error("Program identity RPC context or account count is invalid");
+  }
+  const programs = accounts.map((account, index) => {
+    if (!account || account.executable !== true ||
+        !validAddress(account.owner) ||
+        !SOLANA_PROGRAM_LOADER_TYPES.has(account.owner) ||
+        !Number.isSafeInteger(account.space) || account.space < 0 ||
+        account.space > 1024 * 1024 ||
+        !Array.isArray(account.data) ||
+        typeof account.data[0] !== "string" || account.data[1] !== "base64" ||
+        account.data[0].length > 4 * Math.ceil((1024 * 1024) / 3)) {
+      throw new Error("Referenced program is missing, non-executable, or has malformed identity data");
     }
-    total += BigInt(amount);
+    let decoded;
+    try {
+      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+        throw new Error("non-canonical base64");
+      }
+      const binary = atob(account.data[0]);
+      decoded = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== account.data[0]) {
+        throw new Error("non-canonical base64");
+      }
+    } catch {
+      throw new Error("Referenced program account data is not valid canonical base64");
+    }
+    if (decoded.length !== account.space) {
+      throw new Error("Referenced program account data size does not match RPC metadata");
+    }
+    return Object.freeze({
+      programId: programIds[index],
+      accountOwner: account.owner,
+      loaderType: SOLANA_PROGRAM_LOADER_TYPES.get(account.owner),
+      executable: true,
+      dataLength: account.space
+    });
+  });
+  const upgradeablePrograms = programs.filter(program =>
+    program.loaderType === "upgradeable-bpf-loader"
+  );
+  let programDataContextSlot = null;
+  if (upgradeablePrograms.length > 0) {
+    const programDataAddresses = upgradeablePrograms.map(program => {
+      const account = accounts[programIds.indexOf(program.programId)];
+      const encoded = account.data[0];
+      const binary = atob(encoded);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      return decodeUpgradeableProgramAccount(bytes);
+    });
+    const uniqueProgramDataAddresses = [...new Set(programDataAddresses)];
+    // Re-read the Program accounts in the same RPC snapshot as ProgramData.
+    // This detects a changed ProgramData pointer between the two lookups.
+    const programDataResult = await rpc(fetchImpl, "getMultipleAccounts", [
+      [...programIds, ...uniqueProgramDataAddresses],
+      { commitment: "finalized", encoding: "base64" }
+    ]);
+    programDataContextSlot = programDataResult?.context?.slot;
+    const combinedAccounts = programDataResult?.value;
+    if (!Number.isSafeInteger(programDataContextSlot) || programDataContextSlot < contextSlot ||
+        !Array.isArray(combinedAccounts) ||
+        combinedAccounts.length !== programIds.length + uniqueProgramDataAddresses.length) {
+      throw new Error("ProgramData RPC context or account count is invalid");
+    }
+    for (const program of upgradeablePrograms) {
+      const refreshedProgram = combinedAccounts[programIds.indexOf(program.programId)];
+      if (!refreshedProgram || refreshedProgram.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
+          refreshedProgram.executable !== true || !Number.isSafeInteger(refreshedProgram.space) ||
+          refreshedProgram.space < 36 || refreshedProgram.space > 1024 * 1024 ||
+          !Array.isArray(refreshedProgram.data) ||
+          typeof refreshedProgram.data[0] !== "string" ||
+          refreshedProgram.data[0].length > 4 * Math.ceil((1024 * 1024) / 3) ||
+          refreshedProgram.data[1] !== "base64") {
+        throw new Error("Upgradeable program identity changed during ProgramData resolution");
+      }
+      const refreshedBinary = atob(refreshedProgram.data[0]);
+      const refreshedBytes = Uint8Array.from(refreshedBinary, character => character.charCodeAt(0));
+      if (btoa(refreshedBinary) !== refreshedProgram.data[0] ||
+          refreshedBytes.length !== refreshedProgram.space ||
+          decodeUpgradeableProgramAccount(refreshedBytes) !==
+            programDataAddresses[upgradeablePrograms.indexOf(program)]) {
+        throw new Error("Upgradeable program ProgramData pointer or account size changed during resolution");
+      }
+    }
+    const programDataAccounts = combinedAccounts.slice(programIds.length);
+    const decodedProgramData = await Promise.all(programDataAccounts.map(async account => {
+      if (!account || account.executable !== false ||
+          account.owner !== "BPFLoaderUpgradeab1e11111111111111111111111" ||
+          !Number.isSafeInteger(account.space) || account.space < 14 ||
+          account.space > 10 * 1024 * 1024 ||
+          !Array.isArray(account.data) || typeof account.data[0] !== "string" ||
+          account.data[1] !== "base64" ||
+          account.data[0].length > 4 * Math.ceil((10 * 1024 * 1024) / 3) ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(account.data[0])) {
+        throw new Error("ProgramData account is missing or has invalid owner or encoding");
+      }
+      const binary = atob(account.data[0]);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      if (btoa(binary) !== account.data[0] || bytes.length !== account.space) {
+        throw new Error("ProgramData bytes do not match canonical base64 or RPC size");
+      }
+      return decodeUpgradeableProgramData(bytes);
+    }));
+    for (const program of programs) {
+      if (program.loaderType !== "upgradeable-bpf-loader") continue;
+      const originalIndex = programIds.indexOf(program.programId);
+      const programDataAddress = programDataAddresses[upgradeablePrograms.indexOf(program)];
+      const dataIndex = uniqueProgramDataAddresses.indexOf(programDataAddress);
+      programs[originalIndex] = Object.freeze({
+        ...program,
+        programDataAddress,
+        ...decodedProgramData[dataIndex]
+      });
+    }
+  }
+  return Object.freeze({
+    contextSlot,
+    programDataContextSlot,
+    programs: Object.freeze(programs),
+    semanticInstructionVerification: false,
+    verificationScope: "finalized-program-identity-and-upgradeable-code-hash-evidence-only"
+  });
+}
+
+
+/**
+ * Matches finalized upgradeable-program provenance against a separately
+ * reviewed, versioned allowlist. The allowlist must be a code-owned constant,
+ * never request/browser input. A match binds only deployment identity; it
+ * deliberately does not authorize instruction semantics or CPI behavior.
+ */
+export function verifyUpgradeableProgramDeploymentAllowlist(
+  programIdentityEvidence, reviewedAllowlist
+) {
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  const validDigest = value => typeof value === "string" &&
+    /^[a-f0-9]{64}$/.test(value);
+
+  if (!programIdentityEvidence ||
+      programIdentityEvidence.verificationScope !==
+        "finalized-program-identity-and-upgradeable-code-hash-evidence-only" ||
+      programIdentityEvidence.semanticInstructionVerification !== false ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length === 0 ||
+      programIdentityEvidence.programs.length > 50 ||
+      !Array.isArray(reviewedAllowlist) ||
+      reviewedAllowlist.length === 0 ||
+      reviewedAllowlist.length > 50) {
+    throw new Error("Reviewed program deployment evidence or allowlist is incomplete");
+  }
+
+  const policyByProgram = new Map();
+  for (const policy of reviewedAllowlist) {
+    if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+        !validAddress(policy.programId) ||
+        policy.loaderType !== "upgradeable-bpf-loader" ||
+        !validDigest(policy.deployedCodeSha256) ||
+        !(policy.upgradeAuthority === null || validAddress(policy.upgradeAuthority)) ||
+        typeof policy.immutable !== "boolean" ||
+        policy.immutable !== (policy.upgradeAuthority === null) ||
+        typeof policy.policyId !== "string" ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(policy.policyId) ||
+        typeof policy.policyVersion !== "string" ||
+        !/^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(policy.policyVersion) ||
+        !validDigest(policy.instructionPolicySha256) ||
+        policyByProgram.has(policy.programId)) {
+      throw new Error("Reviewed program deployment allowlist entry is malformed or duplicated");
+    }
+    policyByProgram.set(policy.programId, policy);
+  }
+
+  const seenPrograms = new Set();
+  const matchedPrograms = programIdentityEvidence.programs.map(program => {
+    if (!program || typeof program !== "object" || Array.isArray(program) ||
+        !validAddress(program.programId) ||
+        seenPrograms.has(program.programId) ||
+        !validAddress(program.accountOwner) ||
+        SOLANA_PROGRAM_LOADER_TYPES.get(program.accountOwner) !== program.loaderType ||
+        program.loaderType !== "upgradeable-bpf-loader" ||
+        program.executable !== true ||
+        !validAddress(program.programDataAddress) ||
+        !validDigest(program.deployedCodeSha256) ||
+        !Number.isSafeInteger(program.deployedCodeLength) ||
+        program.deployedCodeLength < 64 ||
+        !(program.upgradeAuthority === null || validAddress(program.upgradeAuthority)) ||
+        typeof program.immutable !== "boolean" ||
+        program.immutable !== (program.upgradeAuthority === null)) {
+      throw new Error("Finalized upgradeable program identity evidence is malformed or unsupported");
+    }
+    seenPrograms.add(program.programId);
+    const policy = policyByProgram.get(program.programId);
+    if (!policy ||
+        policy.loaderType !== program.loaderType ||
+        policy.deployedCodeSha256 !== program.deployedCodeSha256 ||
+        policy.upgradeAuthority !== program.upgradeAuthority ||
+        policy.immutable !== program.immutable) {
+      throw new Error("Finalized program deployment does not match the reviewed allowlist");
+    }
+    return Object.freeze({
+      programId: program.programId,
+      policyId: policy.policyId,
+      policyVersion: policy.policyVersion,
+      instructionPolicySha256: policy.instructionPolicySha256,
+      deployedCodeSha256: program.deployedCodeSha256,
+      upgradeAuthority: program.upgradeAuthority,
+      immutable: program.immutable
+    });
+  });
+
+  return Object.freeze({
+    matched: true,
+    matchedPrograms: Object.freeze(matchedPrograms),
+    semanticInstructionVerification: false,
+    verificationScope: "reviewed-upgradeable-deployment-allowlist-only"
+  });
+}
+
+/**
+ * Matches only the small, code-owned set of native built-in programs whose
+ * identity can be established from the finalized account owner. This is
+ * identity evidence only: it does not decode or approve their instructions.
+ */
+export function verifyReviewedNativeProgramIdentities(programIdentityEvidence) {
+  const validAddress = value => typeof value === "string" &&
+    /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) &&
+    decodeBase58(value).length === 32;
+  if (!programIdentityEvidence ||
+      programIdentityEvidence.verificationScope !==
+        "finalized-program-identity-and-upgradeable-code-hash-evidence-only" ||
+      programIdentityEvidence.semanticInstructionVerification !== false ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length === 0 ||
+      programIdentityEvidence.programs.length > 50) {
+    throw new Error("Finalized native program identity evidence is incomplete");
+  }
+  const seen = new Set();
+  const matchedPrograms = programIdentityEvidence.programs.map(program => {
+    if (!program || typeof program !== "object" || Array.isArray(program) ||
+        !validAddress(program.programId) || seen.has(program.programId) ||
+        program.accountOwner !== "NativeLoader1111111111111111111111111111111" ||
+        program.loaderType !== "native-loader" ||
+        program.executable !== true || program.dataLength !== 0) {
+      throw new Error("Native program identity is malformed or unsupported");
+    }
+    seen.add(program.programId);
+    const policyId = REVIEWED_NATIVE_PROGRAM_IDENTITIES.get(program.programId);
+    if (!policyId) {
+      throw new Error("Native program is not in the code-reviewed identity allowlist");
+    }
+    return Object.freeze({ programId: program.programId, policyId });
+  });
+  return Object.freeze({
+    matched: true,
+    matchedPrograms: Object.freeze(matchedPrograms),
+    semanticInstructionVerification: false,
+    verificationScope: "reviewed-native-program-identity-only"
+  });
+}
+
+/**
+ * Requires finalized identity evidence for the exact set of outer programs.
+ * Native and upgradeable programs are matched by their separate reviewed
+ * identity policies. This is still identity-only evidence, never semantic
+ * instruction or CPI approval.
+ */
+export function verifyCompleteOuterProgramIdentity({
+  outerInstructionEvidence, programIdentityEvidence, reviewedUpgradeableAllowlist = []
+}) {
+  if (!Array.isArray(outerInstructionEvidence) ||
+      outerInstructionEvidence.length === 0 ||
+      outerInstructionEvidence.length > 256 ||
+      outerInstructionEvidence.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.programId !== "string")) {
+    throw new Error("Outer instruction program set is incomplete or malformed");
+  }
+  const expected = outerInstructionEvidence.map(item => item.programId);
+  const expectedSet = new Set(expected);
+  if (expectedSet.size !== expected.length || expectedSet.size > 50) {
+    throw new Error("Outer instruction program set contains duplicates or exceeds its limit");
+  }
+  if (!programIdentityEvidence ||
+      !Array.isArray(programIdentityEvidence.programs) ||
+      programIdentityEvidence.programs.length !== expectedSet.size) {
+    throw new Error("Finalized program identity evidence does not cover every outer program");
+  }
+  const evidenceIds = programIdentityEvidence.programs.map(item => item?.programId);
+  if (new Set(evidenceIds).size !== evidenceIds.length ||
+      evidenceIds.some(id => !expectedSet.has(id)) ||
+      expected.some(id => !evidenceIds.includes(id))) {
+    throw new Error("Finalized program identity evidence contains missing or unexpected programs");
+  }
+
+  const nativePrograms = programIdentityEvidence.programs.filter(program =>
+    program?.loaderType === "native-loader"
+  );
+  const upgradeablePrograms = programIdentityEvidence.programs.filter(program =>
+    program?.loaderType === "upgradeable-bpf-loader"
+  );
+  if (nativePrograms.length + upgradeablePrograms.length !==
+      programIdentityEvidence.programs.length) {
+    throw new Error("Outer program uses an unsupported or unreviewed loader type");
+  }
+  const base = {
+    ...programIdentityEvidence,
+    programs: nativePrograms
+  };
+  const native = nativePrograms.length
+    ? verifyReviewedNativeProgramIdentities(base)
+    : { matchedPrograms: [] };
+  const upgradeable = upgradeablePrograms.length
+    ? verifyUpgradeableProgramDeploymentAllowlist({
+        ...programIdentityEvidence,
+        programs: upgradeablePrograms
+      }, reviewedUpgradeableAllowlist)
+    : { matchedPrograms: [] };
+
+  return Object.freeze({
+    matched: true,
+    expectedProgramCount: expectedSet.size,
+    matchedPrograms: Object.freeze([
+      ...native.matchedPrograms,
+      ...upgradeable.matchedPrograms
+    ]),
+    semanticInstructionVerification: false,
+    verificationScope: "complete-outer-program-deployment-identity-only"
+  });
+}
+
+function sumOwnedTokenBalance(rows, mint, owner, accountKeys, decimalsByMint = new Map()) {
+  if (!Array.isArray(rows) || !Array.isArray(accountKeys) || accountKeys.length < 1 ||
+      !(decimalsByMint instanceof Map)) {
+    throw new Error("Finalized transaction token balance metadata is unavailable");
+  }
+  let total = 0n;
+  const seenAccountIndexes = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row) ||
+        !Number.isInteger(row.accountIndex) || row.accountIndex < 0 ||
+        row.accountIndex >= accountKeys.length || accountKeys[row.accountIndex] === owner ||
+        !isCanonicalPublicKey(row.mint) || !isCanonicalPublicKey(row.owner) ||
+        !row.uiTokenAmount || typeof row.uiTokenAmount !== "object" ||
+        !isU64DecimalString(row.uiTokenAmount.amount, true) ||
+        !Number.isInteger(row.uiTokenAmount.decimals) ||
+        row.uiTokenAmount.decimals < 0 || row.uiTokenAmount.decimals > 255 ||
+        seenAccountIndexes.has(row.accountIndex)) {
+      throw new Error("Finalized transaction contains malformed or duplicate token balance metadata");
+    }
+    const priorDecimals = decimalsByMint.get(row.mint);
+    if (priorDecimals != null && priorDecimals !== row.uiTokenAmount.decimals) {
+      throw new Error("Finalized transaction contains inconsistent token decimals for one mint");
+    }
+    decimalsByMint.set(row.mint, row.uiTokenAmount.decimals);
+    seenAccountIndexes.add(row.accountIndex);
+    if (row.mint === mint && row.owner === owner) total += BigInt(row.uiTokenAmount.amount);
   }
   return total;
 }
-
 /**
  * Independently verifies a finalized swap using signature status and the
  * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
  * success flags. All input and output mints, including wrapped SOL, are
  * verified through exact owner-scoped SPL token balance deltas.
  */
+function validateFinalizedInnerInstructionMetadata(innerInstructions, outerInstructions, accountKeyCount) {
+  // RPC execution metadata is separate from the unsigned message. Missing
+  // metadata must never be treated as proof that a transaction had no CPIs.
+  if (!Array.isArray(innerInstructions) || !Array.isArray(outerInstructions) ||
+      outerInstructions.length < 1 || outerInstructions.length > 256 ||
+      innerInstructions.length > outerInstructions.length) {
+    throw new Error("Finalized CPI metadata is missing or malformed");
+  }
+  for (const instruction of outerInstructions) {
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+        !Number.isInteger(instruction.programIdIndex) ||
+        instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeyCount ||
+        !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+        instruction.accounts.some(index => !Number.isInteger(index) || index < 0 || index >= accountKeyCount) ||
+        typeof instruction.data !== "string" || instruction.data.length > 16384) {
+      throw new Error("Finalized outer instruction metadata is malformed");
+    }
+    try {
+      decodeBase58(instruction.data);
+    } catch {
+      throw new Error("Finalized outer instruction metadata contains invalid instruction data");
+    }
+  }
+  const seenOuterIndexes = new Set();
+  let totalInnerInstructions = 0;
+  for (const group of innerInstructions) {
+    if (!group || !Number.isInteger(group.index) || group.index < 0 ||
+        group.index >= outerInstructions.length || seenOuterIndexes.has(group.index) ||
+        !Array.isArray(group.instructions) || group.instructions.length < 1 ||
+        group.instructions.length > 256) {
+      throw new Error("Finalized CPI metadata group is incomplete or malformed");
+    }
+    seenOuterIndexes.add(group.index);
+    totalInnerInstructions += group.instructions.length;
+    if (totalInnerInstructions > 1024) {
+      throw new Error("Finalized CPI metadata exceeds the supported instruction limit");
+    }
+    for (const instruction of group.instructions) {
+      if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+          instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeyCount ||
+          !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
+          instruction.accounts.some(index => !Number.isInteger(index) || index < 0 || index >= accountKeyCount) ||
+          typeof instruction.data !== "string" ||
+          (instruction.stackHeight != null &&
+            (!Number.isInteger(instruction.stackHeight) || instruction.stackHeight < 1))) {
+        throw new Error("Finalized CPI metadata contains an invalid inner instruction");
+      }
+      try {
+        decodeBase58(instruction.data);
+      } catch {
+        throw new Error("Finalized CPI metadata contains invalid instruction data");
+      }
+    }
+  }
+  return totalInnerInstructions;
+}
+
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
-  expectedOwner = EXPECTED_BOT_WALLET
+  expectedOwner
 }, fetchImpl = fetch) {
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
   const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
   if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
       !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
-      !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
+      !validAddress(expectedOwner) ||
       !validAmount(inputAmount) || !validAmount(outputAmount)) {
     throw new Error("Settlement proof request is incomplete or invalid");
   }
@@ -923,20 +1818,84 @@ export async function verifyFinalizedJupiterSettlement({
   const accountKeys = message?.accountKeys;
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
-      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
-      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
-      meta.postBalances.length !== accountKeys.length ||
+      !Array.isArray(accountKeys) || !Array.isArray(message?.instructions) ||
+      !Array.isArray(meta.preBalances) || !Array.isArray(meta.postBalances) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
-  const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  if (transaction.version !== undefined && transaction.version !== "legacy" &&
+      transaction.version !== 0) {
+    throw new Error("Finalized transaction version is unsupported");
+  }
+  const lookupTables = message.addressTableLookups;
+  if (transaction.version === 0 && !Array.isArray(lookupTables)) {
+    throw new Error("Versioned finalized transaction is missing address-lookup metadata");
+  }
+  if (lookupTables != null && (!Array.isArray(lookupTables) ||
+      lookupTables.length > 256 || lookupTables.some(lookup =>
+        !lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+        !isCanonicalPublicKey(lookup.accountKey) ||
+        !Array.isArray(lookup.writableIndexes) ||
+        !Array.isArray(lookup.readonlyIndexes) ||
+        lookup.writableIndexes.length > 256 || lookup.readonlyIndexes.length > 256 ||
+        [...lookup.writableIndexes, ...lookup.readonlyIndexes].some(index =>
+          !Number.isInteger(index) || index < 0 || index > 255)))) {
+    throw new Error("Finalized transaction address-lookup metadata is malformed");
+  }
+  if (lookupTables?.length && transaction.version !== 0) {
+    throw new Error("Finalized transaction lookup tables require version 0 metadata");
+  }
+  const loadedAddresses = meta.loadedAddresses;
+  if (lookupTables?.length && (!loadedAddresses || typeof loadedAddresses !== "object")) {
+    throw new Error("Finalized transaction is missing loaded addresses for declared lookup tables");
+  }
+  const loadedWritable = loadedAddresses == null ? [] : loadedAddresses.writable;
+  const loadedReadonly = loadedAddresses == null ? [] : loadedAddresses.readonly;
+  if (!Array.isArray(loadedWritable) || !Array.isArray(loadedReadonly)) {
+    throw new Error("Finalized transaction loaded-address metadata is malformed");
+  }
+  const expectedWritableCount = (lookupTables ?? []).reduce(
+    (total, lookup) => total + lookup.writableIndexes.length, 0
+  );
+  const expectedReadonlyCount = (lookupTables ?? []).reduce(
+    (total, lookup) => total + lookup.readonlyIndexes.length, 0
+  );
+  if (loadedWritable.length !== expectedWritableCount ||
+      loadedReadonly.length !== expectedReadonlyCount) {
+    throw new Error("Finalized loaded-address counts do not match declared lookup indexes");
+  }
+  if (meta.preBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.postBalances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      meta.fee > meta.preBalances[0]) {
+    throw new Error("Finalized transaction contains malformed native lamport balance metadata");
+  }
+  const keyStrings = [
+    ...accountKeys.map(key => typeof key === "string" ? key : key?.pubkey),
+    ...loadedWritable,
+    ...loadedReadonly
+  ];
+  if (keyStrings.length === 0 || keyStrings.length > 256) {
+    throw new Error("Finalized transaction account key count exceeds the Solana message limit");
+  }
+  if (meta.preBalances.length !== keyStrings.length ||
+      meta.postBalances.length !== keyStrings.length) {
+    throw new Error("Finalized transaction balance arrays do not cover static and loaded account keys");
+  }
+  validateFinalizedInnerInstructionMetadata(meta.innerInstructions, message.instructions, keyStrings.length);
+  if (keyStrings.some(key => !isCanonicalPublicKey(key)) ||
+      new Set(keyStrings).size !== keyStrings.length) {
+    throw new Error("Finalized transaction account keys are malformed or duplicated");
+  }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
-  // Solana's first required signer is the fee payer. Require the pinned bot
-  // wallet in that position so a third-party transaction cannot settle an order.
-  if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
+  // Solana's first required signer is the fee payer. The caller must bind
+  // expectedOwner to the wallet that received the quote and approved the order.
+  if (ownerIndex !== 0) throw new Error("Expected owner is not the finalized transaction fee payer");
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  // Mint decimals are immutable; reconcile them across both snapshots and
+  // both swap mints rather than validating each pre/post array in isolation.
+  const decimalsByMint = new Map();
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings, decimalsByMint);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings, decimalsByMint);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -944,8 +1903,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings, decimalsByMint);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings, decimalsByMint);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
@@ -1114,6 +2073,8 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
     passed: Object.values(checks).every(value => value === true)
   });
 }
+
+export { isCanonicalPublicKey };
 
 export async function fetchTrustedLiveEvidence(mint, fetchImpl = fetch, alchemyApiKey = "", jupiterApiKey = "") {
   const [quote, risk] = await Promise.all([

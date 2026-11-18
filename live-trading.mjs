@@ -3,9 +3,8 @@
  * Server-side Jupiter V2 order retrieval only; no signing or submission.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-import { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
+import { isCanonicalPublicKey, validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
 
 function finitePositive(value, name) {
@@ -21,11 +20,6 @@ function readLivePolicy(env = {}) {
   if (env.LIVE_TRADING_KILL_SWITCH !== "false") {
     return Object.freeze({ enabled: false, reason: "Emergency kill switch is active" });
   }
-  const configuredWallet = String(env.BOT_WALLET_PUBLIC_KEY || "").trim();
-  if (configuredWallet !== EXPECTED_BOT_WALLET) {
-    throw new Error("Configured bot wallet does not match the pinned dedicated wallet");
-  }
-
   const maxTradeLamports = Number(env.LIVE_MAX_TRADE_LAMPORTS);
   const maxDailyLamports = Number(env.LIVE_MAX_DAILY_LAMPORTS);
   const maxSlippageBps = Number(env.LIVE_MAX_SLIPPAGE_BPS);
@@ -42,7 +36,7 @@ function readLivePolicy(env = {}) {
   if (!String(env.JUPITER_API_KEY || "").trim()) throw new Error("JUPITER_API_KEY is required");
 
   return Object.freeze({
-    enabled: true, wallet: EXPECTED_BOT_WALLET, maxTradeLamports,
+    enabled: true, maxTradeLamports,
     maxDailyLamports, maxSlippageBps, minLiquidityUsd, minVolume24hUsd,
     maxOpenPositions
   });
@@ -90,22 +84,23 @@ function evaluateLiveTradeEligibility({
  */
 async function getJupiterOrder({
   env, inputMint = SOL_MINT, outputMint, amountLamports, eligibility,
-  fetchImpl = fetch
+  takerWallet, fetchImpl = fetch
 }) {
   const policy = readLivePolicy(env);
   if (!policy.enabled) throw new Error(policy.reason || "Live trading is disabled");
   evaluateLiveTradeEligibility({ ...(eligibility || {}), policy, amountLamports });
 
+  if (!isCanonicalPublicKey(takerWallet)) throw new Error("A valid connected Phantom public key is required");
   if (!BASE58.test(String(inputMint)) || !BASE58.test(String(outputMint))) throw new Error("Invalid token mint");
   if (inputMint === outputMint) throw new Error("Input and output mints must differ");
 
-  // Do not set receiver: Jupiter requires it to differ from taker, while this
-  // single-wallet flow pins both signing and settlement to the bot wallet.
+  // The connected Phantom wallet is the taker and sole expected signer.
+  // The public key is not signing material; Phantom retains custody of the key.
   // Exclude JupiterZ and accept only an explicitly returned Metis order below;
   // every other router remains fail-closed.
   const params = new URLSearchParams({
     inputMint, outputMint, amount: String(amountLamports),
-    taker: policy.wallet,
+    taker: takerWallet,
     excludeRouters: "jupiterz",
     slippageBps: String(policy.maxSlippageBps)
   });
@@ -134,7 +129,7 @@ async function getJupiterOrder({
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
-    order.transaction, policy.wallet, fetchImpl
+    order.transaction, takerWallet, fetchImpl
   );
   return Object.freeze({
     requestId: order.requestId, transaction: order.transaction,
@@ -153,6 +148,6 @@ async function executeLiveOrder() {
 }
 
 export {
-  SOL_MINT, EXPECTED_BOT_WALLET, readLivePolicy,
+  SOL_MINT, readLivePolicy,
   evaluateLiveTradeEligibility, getJupiterOrder, executeLiveOrder
 };
