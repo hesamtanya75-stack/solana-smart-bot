@@ -112,7 +112,7 @@ function validateAllInCostEvidence(costs, amountLamports, configuredPriorityFeeC
     throw new Error("Trusted all-in transaction cost evidence is missing; reservation blocked");
   }
   const priceText = String(costs.computeUnitPriceMicroLamports);
-  if (!/^\d{1,20}$/.test(priceText) ||
+  if (!/^\d{1,20}$/.test(priceText) || BigInt(priceText) > 18_446_744_073_709_551_615n ||
       !Number.isSafeInteger(costs.computeUnitLimit) || costs.computeUnitLimit < 1 ||
       costs.computeUnitLimit > 1_400_000) {
     throw new Error("Trusted compute budget evidence is invalid");
