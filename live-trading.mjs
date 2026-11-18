@@ -143,8 +143,13 @@ async function getJupiterOrder({
     transactionVersion: transactionEvidence.messageVersion,
     feeBps: order.feeBps != null && Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
     transactionEvidence,
+    // An unsigned Jupiter payload is inspection evidence only. It is never
+    // approval to sign or submit, even when structural/ALT checks pass.
+    analysisOnly: true,
     semanticInstructionVerification: false,
-    routeVerification: "unsigned-structure-and-alt-only"
+    routeVerification: "unsigned-structure-and-alt-only",
+    signingPermitted: false,
+    submissionPermitted: false
   });
 }
 
