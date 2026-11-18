@@ -796,3 +796,10 @@ containers or getters from being silently ignored/evaluated. It does not
 authenticate transaction metadata, verify signatures, validate RPC provenance,
 or establish CPI effects or settlement. Semantic verification remains
 incomplete; signing and submission remain disabled.
+
+Compiled instruction records are subject to the same fail-closed boundary:
+only `programIdIndex`, `accountKeyIndexes`, and `data` are accepted.
+Unknown or symbol fields, custom prototypes, accessors, and sparse or
+non-data account-index arrays are rejected. This prevents execution evidence
+from being smuggled into nested instruction objects while the parser only
+inspects the outer message.
