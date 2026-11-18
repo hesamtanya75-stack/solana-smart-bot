@@ -1250,6 +1250,16 @@ test("settlement proof rejects accessor-backed and sparse finalized account keys
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /account keys are malformed/);
+
+  responseResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [...baseResult.meta.preTokenBalances, null]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /token balance metadata is malformed/);
 });
 
 test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
