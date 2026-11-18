@@ -80,8 +80,13 @@ test("rejects unsupported variants, multisig layouts, duplicate accounts and mal
   assert.throws(() => decodeSplTokenInstruction(TOKEN, "not-base64", [0, 1, 2]), /canonical base64/);
 });
 
-test("rejects forged and sparse decoded instruction collections", () => {
+test("rejects forged, cloned, and sparse decoded instruction collections", () => {
   assert.throws(() => validateSplTokenInstructionSet([{}]), /unreviewed/);
+  const original = decodeSplTokenInstruction(
+    TOKEN, encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2]
+  );
+  assert.throws(() => validateSplTokenInstructionSet([{ ...original }]), /unreviewed/);
+  assert.throws(() => validateSplTokenInstructionSet([Object.freeze({ ...original })]), /unreviewed/);
   const sparse = new Array(1);
   assert.throws(() => validateSplTokenInstructionSet(sparse), /unreviewed/);
 });
