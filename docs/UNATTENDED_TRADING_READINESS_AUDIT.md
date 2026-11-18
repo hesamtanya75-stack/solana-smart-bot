@@ -294,3 +294,22 @@ Verified against this exact head on 2026-11-18:
 - Deno deployment status context still reports failure for the existing Deno project. This is separate from the successful Cloudflare Worker build validation and does not mean the Worker was deployed.
 
 These results confirm tests/build/read-only Devnet checks only. They do not remove any unattended-trading blocker listed above: transaction semantics are not fully verified, dedicated wallet enrollment and isolated signer are not implemented, the Worker has no live coordinator execution route, and settlement is incomplete. Mainnet remains disabled.
+
+
+## Latest PR #40 head: Compute Budget parser policy integration — `d34996108351d323edb482e3272cdcb49e714d28`
+
+Verified on 2026-11-18:
+
+- PR #40 remains open and Draft; not merged.
+- Node tests passed (workflow run 44318654693; job `test` completed successfully).
+- Cloudflare Worker build validation passed (workflow run 44318654794; job `validate-new-worker` completed successfully; build validation does not deploy).
+- The parser now optionally accepts a complete, explicit `computeBudgetPolicy` and rejects incomplete or exceeded ceilings. When no policy is supplied, it reports `not-provided` rather than assuming defaults. Tests cover accepted policy, compute-unit ceiling breach, and incomplete policy.
+- This integration only evaluates decoded Compute Budget instructions. It does not prove payer affordability, reconstruct every transaction outflow, or make transaction semantics trusted. Parser output remains analysis-only, with signing and submission disabled.
+
+Dependency review for the next ATA-PDA step:
+
+- The current `package.json` has only `better-sqlite3` as a declared dependency.
+- No committed `package-lock.json` exists at the branch root. The current test workflow creates a temporary lockfile for its isolated Miniflare runtime, rather than using a repository-pinned dependency lock.
+- Therefore, do not add a PDA/Ed25519 dependency ad hoc or write a homegrown curve/PDA implementation. First establish and review a reproducible repository dependency-locking policy, then pin a maintained Solana-compatible library and add canonical ATA known-vector tests.
+
+The existing release blockers remain: canonical ATA PDA verification, complete semantic verification across all supported transaction instructions and funds flows, dedicated wallet enrollment, isolated signer, Worker live-route integration, and complete settlement. Mainnet remains disabled; no merge, deployment, or transaction was performed.
