@@ -151,6 +151,7 @@ test("Jupiter live quote preview is authenticated, bounded, and quote-only", () 
   assert.ok(source.includes('order.slippageBps != null'));
   assert.ok(source.includes('order.feeBps != null'), "missing Jupiter fees must remain unknown, not become zero");
   assert.ok(source.includes('outUsdValue:'));
+  assert.ok(source.includes('priceImpactPct: order.priceImpactPct != null'), "Jupiter price impact percentage must be mapped from the documented field");
   assert.ok(source.includes('slippageBps:'));
   assert.ok(source.includes('platformFeeAmount:'));
   assert.equal(source.includes('taker:'), false, "preview must not request an assembled transaction");
