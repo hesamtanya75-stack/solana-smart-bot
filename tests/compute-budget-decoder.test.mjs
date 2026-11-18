@@ -6,7 +6,8 @@ import {
   validateComputeBudgetInstructionSet,
   INSTRUCTION_DECODER_REGISTRY_VERSION,
   decodeSupportedTransactionInstruction,
-  validateSupportedTransactionInstructionSet
+  validateSupportedTransactionInstructionSet,
+  validateComputeBudgetPolicy
 } from "../compute-budget-decoder.mjs";
 
 function data(tag, value, width = 4) {
@@ -117,4 +118,47 @@ test("versioned instruction registry rejects forged, mutated and duplicate recor
   assert.throws(() => validateSupportedTransactionInstructionSet([limit, limit]), /duplicate variant/);
   assert.equal(validateSupportedTransactionInstructionSet([limit, price]).length, 2);
   assert.throws(() => validateSupportedTransactionInstructionSet(new Array(65)), /collection is invalid/);
+});
+
+
+test("Compute Budget policy enforces explicit compute and priority-fee ceilings", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  const price = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(3, 250000, 8));
+  const heap = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(1, 65536));
+  const loaded = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(4, 1048576));
+  const limits = {
+    maxComputeUnitLimit: 300000,
+    maxPriorityFeeLamports: 100n,
+    maxHeapFrameBytes: 131072,
+    maxLoadedAccountDataBytes: 2097152
+  };
+  const result = validateComputeBudgetPolicy([limit, price, heap, loaded], limits);
+  assert.equal(result.unitLimit, 200000);
+  assert.equal(result.priorityFeeLamports, 50n);
+  assert.equal(result.heapFrameBytes, 65536);
+  assert.equal(result.loadedAccountDataBytes, 1048576);
+  assert.ok(Object.isFrozen(result));
+  assert.throws(() => validateComputeBudgetPolicy([limit, price], {
+    ...limits, maxPriorityFeeLamports: 49n
+  }), /priority fee exceeds transaction policy/);
+  assert.throws(() => validateComputeBudgetPolicy([limit], {
+    ...limits, maxComputeUnitLimit: 199999
+  }), /unit limit exceeds transaction policy/);
+  assert.throws(() => validateComputeBudgetPolicy([heap], {
+    ...limits, maxHeapFrameBytes: 32768
+  }), /heap-frame size exceeds transaction policy/);
+  assert.throws(() => validateComputeBudgetPolicy([loaded], {
+    ...limits, maxLoadedAccountDataBytes: 1024
+  }), /loaded-account-data limit exceeds transaction policy/);
+});
+
+test("Compute Budget policy rejects missing or malformed policy ceilings", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  assert.throws(() => validateComputeBudgetPolicy([limit], null), /invalid or incomplete/);
+  assert.throws(() => validateComputeBudgetPolicy([limit], {
+    maxComputeUnitLimit: 200000,
+    maxPriorityFeeLamports: -1n,
+    maxHeapFrameBytes: 65536,
+    maxLoadedAccountDataBytes: 1000000
+  }), /invalid or incomplete/);
 });
