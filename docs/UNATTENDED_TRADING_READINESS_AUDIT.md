@@ -220,3 +220,20 @@ The following gates must be completed in order before a separate Mainnet release
 10. Run the complete buy and sell lifecycle on a disposable funded Devnet wallet only after explicit opt-in. Then conduct a separate Mainnet readiness review and require explicit release authorization.
 
 Until every gate is independently verified, keep live trading disabled, the coordinator disconnected from Worker execution routes, and the existing paper-trading path unchanged. Do not merge PR #40, deploy to production, fund a wallet for testing, or submit any Mainnet transaction as part of this preparation.
+
+
+## Follow-up review: API throttling and exact-head CI evidence
+
+At commit `2b1684224bbc31e6db3f0b266b8ccc7061b21181`, the API rate-limit implementation was reviewed in `worker.js` and `auth-guard.mjs`. Route-class and authentication-specific limits are enforced through transactional Durable Object state; IP addresses are hashed into bucket scopes; unavailable rate-limit enforcement fails closed; and the number of retained rate-limit buckets is bounded at 1,000. The corresponding tests cover concurrent consumption, expiry, malformed persisted state, and capacity exhaustion.
+
+**Residual operational risk:** throttling is still primarily IP-and-route scoped rather than principal/session scoped. A distributed source-IP population can consume the bounded bucket capacity and throttle new sources. This is not a confirmed exploit, but it is an unresolved resilience/fairness concern before wallet enrollment or unattended trading. Preserve fail-closed behavior; add a separately reviewed principal/session-aware layer and multi-IP load tests before considering this gate complete.
+
+### CI evidence for exact reviewed commit
+
+- Node tests: success (run 44310212630).
+- Cloudflare Worker build validation: success (run 44310212665); build only, no deployment.
+- Devnet read-only validation: success (run 44310212609).
+- Funded Devnet lifecycle: skipped because explicit opt-in was not supplied; no funded signing or transfer was performed.
+- PR #40: open, Draft, not merged.
+
+These checks do not validate full transaction semantics, wallet enrollment, isolated signing, submission, or Mainnet readiness. Keep live execution disabled and paper trading unchanged.
