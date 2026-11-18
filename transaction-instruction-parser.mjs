@@ -45,11 +45,16 @@ function isCanonicalPublicKey(value) {
 function assertDensePlainArray(value, maximum, label, minimum = 0) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
       value.length < minimum || value.length > maximum) {
-    throw new Error(label + " must be a bounded plain array");
+    throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
   const keys = Reflect.ownKeys(value);
-  if (keys.length !== value.length + 1) {
-    throw new Error(label + " contains sparse indexes or unsupported properties");
+  if (keys.length < value.length + 1) {
+    throw new Error(label === "Transaction compiled instructions"
+      ? "Transaction message contains a sparse compiled instruction list"
+      : "Transaction message contains an invalid account key");
+  }
+  if (keys.length > value.length + 1) {
+    throw new Error(label + " contains unsupported properties");
   }
   for (const key of keys) {
     if (key === "length") continue;
