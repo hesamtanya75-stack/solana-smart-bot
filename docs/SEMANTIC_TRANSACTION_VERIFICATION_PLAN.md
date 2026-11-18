@@ -1093,3 +1093,14 @@ frozen clone, or caller-constructed lookalike is rejected before index
 resolution. Regression tests cover both forged forms and the valid decoder
 record. This is an in-process provenance boundary only: it does not authenticate
 RPC origin, account ownership, finalized bank context, or SlotHashes ancestry.
+
+## Lookup resolver input snapshot hardening
+
+The lookup index resolver now snapshots its top-level input, index list, and
+SlotHashes list as plain data before using them. It rejects inherited/custom
+prototypes, unexpected properties, sparse arrays, accessor-backed fields or
+entries, out-of-range bank slots, and non-u64 SlotHashes values. Regression
+tests assert that getters are not invoked. This prevents caller-controlled
+JavaScript object behavior from changing validation while it runs; it does
+not authenticate the supplied SlotHashes or establish a same-bank finalized
+RPC context.
