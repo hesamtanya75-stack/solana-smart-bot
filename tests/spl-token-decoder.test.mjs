@@ -95,3 +95,54 @@ test("rejects sparse account index arrays instead of skipping missing entries", 
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), sparse),
     /account indexes are invalid/);
 });
+
+
+test("decoder rejects accessor-backed account indexes without invoking getters", () => {
+  let getterCalled = false;
+  const indexes = [0, 1, 2];
+  Object.defineProperty(indexes, "1", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      getterCalled = true;
+      return 1;
+    }
+  });
+  const transfer = Buffer.from([3, ...Array(8).fill(0)]);
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), indexes),
+    /accessor-backed/);
+  assert.equal(getterCalled, false);
+});
+
+test("decoder rejects custom-prototype and decorated account index arrays", () => {
+  const transfer = Buffer.from([3, ...Array(8).fill(0)]);
+  const customPrototype = [0, 1, 2];
+  Object.setPrototypeOf(customPrototype, { inherited: true });
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), customPrototype),
+    /account indexes are invalid/);
+  const decorated = [0, 1, 2];
+  decorated.extra = true;
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), decorated),
+    /unsupported properties/);
+  const symbolDecorated = [0, 1, 2];
+  symbolDecorated[Symbol("extra")] = true;
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), symbolDecorated),
+    /unsupported properties/);
+});
+
+test("validator rejects accessor-backed instruction collections without invoking getters", () => {
+  const data = Buffer.from([3, ...Array(8).fill(0)]);
+  const decoded = decodeSplTokenInstruction(TOKEN, encoded(data), [0, 1, 2]);
+  let getterCalled = false;
+  const records = [decoded];
+  Object.defineProperty(records, "0", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      getterCalled = true;
+      return decoded;
+    }
+  });
+  assert.throws(() => validateSplTokenInstructionSet(records), /invalid/);
+  assert.equal(getterCalled, false);
+});
