@@ -43,6 +43,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Emit generated lockfile for repository commit
+        run: |
+          echo 'PACKAGE_LOCK_BASE64_BEGIN'
+          base64 -w0 package-lock.json
+          echo
+          echo 'PACKAGE_LOCK_BASE64_END'
+
       - name: Verify Wrangler targets the active Worker
         run: |
           node --input-type=module <<'NODE'
