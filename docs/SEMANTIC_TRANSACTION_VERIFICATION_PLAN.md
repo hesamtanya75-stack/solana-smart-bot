@@ -276,7 +276,7 @@ Parser output now reports `associatedAddressVerification: "not-performed"` whene
 
 ### ATA role-key distinctness and PDA boundary
 
-The syntax-only ATA decoder now also rejects duplicate public-key strings across its six role accounts, even when the compiled account indexes differ. A regression test covers the duplicate-key substitution case. This is an additional structural guard, not PDA derivation.
+The ATA role-layout check rejects unsupported account-index aliasing while recognizing the canonical compiled-message representation of `payer === owner`: both roles use the same account index because message account keys are deduplicated. A repeated index is permitted only for the payer/owner pair; other role-index collisions remain rejected. When payer and owner share the index, the global message privilege is signer+writable (the union of both roles), so the parser does not incorrectly require that shared account to be readonly/non-signer. For distinct payer and owner indexes, owner and mint must be readonly non-signers. Regression tests cover the valid shared-index case and reject a distinct owner marked as signer.
 
 PDA verification remains intentionally unimplemented in this slice: the inspected Node package manifest has no Solana or audited Ed25519/PDA dependency and no lockfile was present at the inspected branch paths. Do not substitute a handwritten curve-point test or a length-only public-key parser. Before enabling canonical ATA verification, select and pin a maintained, audited Solana-compatible implementation, establish reproducible dependency locking for this repository, and add known-vector tests for owner/token-program/mint seeds, bump search, off-curve rejection, and wrong-address rejection. Until then the parser must continue to report `associatedAddressVerification: "not-performed"`.
 
@@ -314,3 +314,12 @@ This hardens configuration validation only; it does not expand semantic coverage
 The syntax decoder now distinguishes account-index uniqueness from public-key equality. The six compiled account indexes must remain distinct, but the public keys at different role indexes are not required to be distinct: in a normal ATA creation flow the payer and token-account owner may be the same wallet. The previous blanket public-key uniqueness check rejected this valid layout. Regression coverage now accepts payer = owner while continuing to reject repeated account indexes.
 
 This remains syntax/structure analysis only. It does not derive or authenticate the ATA PDA, inspect on-chain account state, or establish transaction semantics.
+
+
+## Canonical ATA payer-owner compiled-index correction — PR #40 follow-up
+
+A deeper review identified that the prior alias test modeled payer and owner as the same public key at two different indexes. That is not the canonical compiled-message representation because transaction account keys are deduplicated. When payer and owner are the same wallet, both instruction roles must reference the same account index.
+
+The ATA decoder now permits exactly this one index alias (payer/owner) and rejects collisions among all other role pairs. The parser's structural privilege check accounts for Solana's message-wide privilege union: the shared payer/owner index remains signer+writable; for distinct roles, owner and mint must be readonly non-signers. Tests cover successful shared-index parsing and rejection of a distinct signer owner.
+
+This is still structural-only validation. It does not derive or verify the ATA PDA, authenticate lookup tables or account state, or prove transaction semantics. The parser continues to report `associatedAddressVerification: "not-performed"`, `semanticVerification: "incomplete"`, and both signing/submission permissions false.
