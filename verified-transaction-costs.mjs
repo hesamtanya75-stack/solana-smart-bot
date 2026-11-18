@@ -77,6 +77,11 @@ export function calculateVerifiedTransactionCosts(evidence) {
   }
 
   return Object.freeze({
+    // Cost arithmetic is evidence output, never transaction authorization.
+    analysisOnly: true,
+    semanticVerification: "incomplete",
+    signingPermitted: false,
+    submissionPermitted: false,
     messageDigest: snapshot.messageDigest,
     computeUnitPriceMicroLamports: computeUnitPriceMicroLamports.toString(),
     computeUnitLimit: computeUnitLimit.toString(),
