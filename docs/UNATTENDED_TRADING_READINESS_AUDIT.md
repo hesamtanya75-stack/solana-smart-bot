@@ -116,3 +116,29 @@ A source review of `trusted-live-evidence.mjs`, `live-trading.mjs`, and `tests/t
 The live execution function still throws that execution is not implemented. The pinned wallet constant remains in the live-trading module; per-user dedicated-wallet enrollment and signer isolation are not implemented. Do not describe these controls as complete.
 
 Next safe engineering stage: add a versioned instruction decoder registry that defaults to reject-all, then implement and test one instruction family at a time against the immutable transaction intent. Keep semantic trust false, coordinator gates closed, and live execution non-executing until the full acceptance gate in the semantic verification plan is met.
+
+
+## Latest PR #40 head verification: `d15f81a0d843f5227e35d4b4995106f9c63f4e2e`
+
+PR metadata and workflow runs were checked against the current head:
+
+- PR #40 remains open and Draft, not merged; head is `d15f81a0d843f5227e35d4b4995106f9c63f4e2e`, base is `security/pr26-clean-main`.
+- Node tests: success (run 44291821525; test job passed).
+- Cloudflare Worker build validation: success (run 44291821402; validation/build job passed; no deployment).
+- Devnet workflow: read-only job success (run 44291821573).
+- Funded Devnet lifecycle: skipped. No funded signing or transfer was run.
+
+## Remaining work — readiness checklist
+
+The following are still blockers for unattended live trading; passing CI does not complete them:
+
+1. **Semantic transaction verification:** implement reviewed, versioned decoders for each explicitly supported instruction family (System, Compute Budget, SPL Token/Token-2022, Associated Token Account, and Jupiter/router paths); reconstruct all-in funds flow and bind the complete message to immutable server-side intent. Unknown or unsupported instructions must remain rejected.
+2. **Dedicated wallet enrollment:** replace the single hardcoded wallet assumption with an authenticated per-user enrollment model for a separate trading wallet. Establish proof-of-control without collecting seed phrases/private keys; do not migrate production sessions/KV without a separate migration plan and approval.
+3. **Isolated signer:** implement a separately secured signer service that independently revalidates the exact transaction, wallet, cluster, intent, limits, and expiry before signing. Phantom browser connection alone is read-only and is not unattended signing.
+4. **Worker integration and identity:** add stable authenticated principal identity and scoped wallet/policy ownership; wire a live coordinator route only after the verifier and signer exist. Currently the Worker session stores only `expiresAt`, and exporting the Durable Object class does not itself wire a live route.
+5. **Complete lifecycle and settlement:** safely handle submit, timeout/ambiguous result, finalized confirmation, failure, cancellation/expiry, close/exit, reconciliation, and idempotent replay. The current coordinator's confirmation path expects finalized proof; the other transitions are not a complete trading lifecycle.
+6. **Trading policy:** define explicit entry/exit strategy and enforce per-order/daily spend, total exposure, open positions, daily loss, slippage, price impact, quote freshness, liquidity/volume, token authority/extensions, holder concentration, and sell-route rules.
+7. **Operational controls:** add emergency stop, monitoring/alerts, durable audit trail, signer key rotation/recovery, incident response, and independent security review.
+8. **Release validation:** only after the above, run isolated disposable-wallet Devnet signing/transfer tests with explicit authorization, then a separate Mainnet readiness/security review and explicit release approval.
+
+Current safe status remains paper-trading / no real transaction submission. Do not merge, deploy, enable Mainnet, or run funded Devnet as part of this audit.
