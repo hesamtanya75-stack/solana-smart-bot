@@ -44,22 +44,17 @@ export async function deriveAssociatedTokenAddress({ owner, mint, tokenProgramId
  * A successful result verifies only the PDA relationship, not on-chain
  * existence, ownership, initialization, balances, or transaction validity.
  */
-export async function verifyAssociatedTokenInstructionPda(record, accountKeys) {
+export async function verifyAssociatedTokenInstructionPda(record) {
   if (!isDecodedAssociatedTokenInstruction(record)) {
     throw new Error("ATA PDA verification requires a trusted decoded instruction record");
   }
-  if (!Array.isArray(accountKeys)) {
-    throw new Error("ATA PDA verification requires the expanded message account keys");
-  }
 
-  const owner = accountKeys[record.ownerAccountIndex];
-  const mint = accountKeys[record.mintAccountIndex];
-  const actualAddress = accountKeys[record.associatedAccountIndex];
   const { address: expectedAddress, bump } = await deriveAssociatedTokenAddress({
-    owner,
-    mint,
+    owner: record.ownerAddress,
+    mint: record.mintAddress,
     tokenProgramId: record.tokenProgramId
   });
+  const actualAddress = record.associatedAccountAddress;
 
   return Object.freeze({
     performed: true,
