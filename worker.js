@@ -148,18 +148,26 @@ function constantTimeTextEqual(left, right) {
   return difference === 0;
 }
 
-async function authorized(request, env) {
-  const authorization = request.headers.get("Authorization") || "";
-  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+function sessionTokenFromCookie(request) {
+  const cookie = request.headers.get("Cookie") || "";
+  const match = /(?:^|;\\s*)__Host-solana_bot_session=([0-9a-f-]{36})(?:;|$)/i.exec(cookie);
   const token = match ? match[1] : "";
-  // Session identifiers are minted with crypto.randomUUID(); require the
-  // exact Bearer scheme and reject malformed or oversized values before KV.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
-    return false;
-  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)
+    ? token : "";
+}
+function sessionCookieResponse(data, token, maxAge = Math.ceil(SESSION_MS / 1000)) {
+  const response = json(data);
+  const headers = new Headers(response.headers);
+  const value = token
+    ? `__Host-solana_bot_session=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`
+    : `__Host-solana_bot_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
+  headers.append("Set-Cookie", value);
+  return new Response(response.body, { status: response.status, headers });
+}
+async function authorized(request, env) {
+  const token = sessionTokenFromCookie(request);
+  if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  // Bind every bearer credential to the single supported administrator
-  // principal; malformed or legacy unbound sessions fail closed.
   return !!session && session.subject === "admin" &&
     Number.isSafeInteger(session.expiresAt) && session.expiresAt > Date.now();
 }
@@ -772,7 +780,7 @@ export default {
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
+        return sessionCookieResponse({ ok: true });
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
@@ -805,7 +813,7 @@ export default {
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
+        return sessionCookieResponse({ ok: true });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
     if (url.pathname.startsWith("/api/")) {
@@ -822,10 +830,10 @@ export default {
       const limited = await enforceApiRateLimit(env, request, ratePolicy.scope, ratePolicy.limit, ratePolicy.windowMs);
       if (limited) return limited;
       if (url.pathname === "/api/logout" && request.method === "POST") {
-        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const token = sessionTokenFromCookie(request);
         if (!token) return json({ error: "Unauthorized" }, 401);
         await env.BOT_STATE.delete("session:" + token);
-        return json({ ok: true, message: "Session revoked" });
+        return sessionCookieResponse({ ok: true, message: "Session revoked" }, "", 0);
       }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
