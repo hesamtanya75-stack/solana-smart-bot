@@ -386,7 +386,7 @@ test("ALT resolver rejects executable accounts and noncanonical base64", async (
   } })), /executable/);
 
   const malformedBase64 = mockLookupTableAccount();
-  malformedBase64.data = [malformedBase64.data[0].replace(/=$/, " "), "base64"];
+  malformedBase64.data = [malformedBase64.data[0] + " ", "base64"];
   await assert.rejects(resolveJupiterAddressLookupTables([{
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
