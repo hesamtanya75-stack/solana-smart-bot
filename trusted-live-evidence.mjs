@@ -1074,7 +1074,7 @@ export async function verifyFinalizedJupiterSettlement({
 }
 
 
-function parseMintAccount(account) {
+export function parseTrustedMintAccount(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account is unavailable");
   const parsed = value.data?.parsed?.info;
@@ -1097,10 +1097,27 @@ function parseMintAccount(account) {
     throw new Error("Mint account is owned by an unsupported token program");
   }
   const raw = value.data;
-  if (!Array.isArray(raw) || typeof raw[0] !== "string") {
+  if (!Array.isArray(raw) || Object.getPrototypeOf(raw) !== Array.prototype ||
+      raw.length !== 2 || Reflect.ownKeys(raw).length !== 3 ||
+      !Object.prototype.hasOwnProperty.call(raw, "0") ||
+      !Object.prototype.hasOwnProperty.call(raw, "1")) {
     throw new Error("Mint account encoding is unsupported");
   }
-  const bytes = Uint8Array.from(atob(raw[0]), char => char.charCodeAt(0));
+  const encoded = Object.getOwnPropertyDescriptor(raw, "0");
+  const encoding = Object.getOwnPropertyDescriptor(raw, "1");
+  if (!encoded || !Object.prototype.hasOwnProperty.call(encoded, "value") ||
+      !encoding || !Object.prototype.hasOwnProperty.call(encoding, "value") ||
+      encoding.value !== "base64" || typeof encoded.value !== "string" ||
+      encoded.value.length === 0 || encoded.value.length > 16384 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded.value)) {
+    throw new Error("Mint account encoding is unsupported");
+  }
+  const decoded = atob(encoded.value);
+  const canonical = btoa(decoded);
+  if (canonical !== encoded.value) {
+    throw new Error("Mint account data is not canonical base64");
+  }
+  const bytes = Uint8Array.from(decoded, character => character.charCodeAt(0));
   if (bytes.length < 82) throw new Error("Mint account data is truncated");
   const u32 = offset => (bytes[offset] | (bytes[offset + 1] << 8) |
     (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
@@ -1164,7 +1181,7 @@ export async function fetchTrustedTokenRisk(mint, fetchImpl = fetch, alchemyApiK
   if (rug?.score == null || !Number.isFinite(Number(rug.score))) {
     throw new Error("RugCheck score is unavailable");
   }
-  const mintSafety = parseMintAccount(mintAccount);
+  const mintSafety = parseTrustedMintAccount(mintAccount);
   const rawSupplyAmount = String(supply?.value?.amount ?? "");
   if (!/^\d+$/.test(rawSupplyAmount) || BigInt(rawSupplyAmount) <= 0n || holderAccounts.length === 0) {
     throw new Error("Holder account data is incomplete");
