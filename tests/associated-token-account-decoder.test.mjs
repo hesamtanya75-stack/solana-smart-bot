@@ -39,7 +39,7 @@ test("rejects unsupported variants, malformed layouts, bad program accounts and 
   assert.throws(() => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,3,5], keys), /distinct/);
   assert.throws(() => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], [...keys.slice(0,4), "11111111111111111111111111111116", TOKEN]), /system or token program/);
   assert.throws(() => decodeAssociatedTokenInstruction("11111111111111111111111111111111", encoded(0), [0,1,2,3,4,5], keys), /unknown program/);
-  assert.throws(() => decodeAssociatedTokenInstruction(ATA, "AA==", [0,1,2,3,4,5], keys), /canonical one-byte/);
+  assert.throws(() => decodeAssociatedTokenInstruction(ATA, "AAA=", [0,1,2,3,4,5], keys), /canonical one-byte/);
 });
 
 test("rejects forged and sparse records", () => {
