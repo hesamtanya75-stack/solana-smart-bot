@@ -98,3 +98,21 @@ All workflows for this exact commit completed successfully:
 - Funded Devnet lifecycle: skipped. The workflow explicitly reported it as skipped without opt-in; no funded transaction or signing test was performed.
 
 The new test confirms the current /build envelope validator does not promote any of the six instruction slots (compute budget, setup, swap, cleanup, other, tip) to semantic trust merely because an instruction is present or uses a familiar program ID. It does not implement semantic decoding.
+
+
+## CI confirmation for audit head `066f9ac13bb499b7143be86668bb70acd0cd8227`
+
+All workflows associated with this exact commit completed:
+
+- Node tests: success (run 44291592659); the safety and Durable Objects runtime test step passed.
+- Cloudflare Worker build validation: success (run 44291592761); Wrangler target verification passed and the Worker was built without deploying.
+- Devnet read-only job: success (run 44291592972); cluster identity and read-only RPC checks passed.
+- Funded Devnet lifecycle: skipped. The workflow explicitly reported that funded lifecycle was skipped without opt-in. No funded signing or transfer test was run.
+
+## Decoder implementation boundary
+
+A source review of `trusted-live-evidence.mjs`, `live-trading.mjs`, and `tests/trusted-live-evidence.test.mjs` confirms the parser still performs structural transaction parsing and ALT resolution only. The tests cover malformed encodings, duplicate keys, lookup-table integrity, signer/account-index constraints, and explicit non-trust for unknown programs and all six Jupiter build instruction slots. They do not yet decode and semantically verify System, Compute Budget, SPL Token/Token-2022, Associated Token Account, or Jupiter router instructions.
+
+The live execution function still throws that execution is not implemented. The pinned wallet constant remains in the live-trading module; per-user dedicated-wallet enrollment and signer isolation are not implemented. Do not describe these controls as complete.
+
+Next safe engineering stage: add a versioned instruction decoder registry that defaults to reject-all, then implement and test one instruction family at a time against the immutable transaction intent. Keep semantic trust false, coordinator gates closed, and live execution non-executing until the full acceptance gate in the semantic verification plan is met.
