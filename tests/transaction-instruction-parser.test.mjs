@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COMPUTE_BUDGET_PROGRAM } from "../compute-budget-decoder.mjs";
-import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
+import {
+  parseSupportedInstructionMessage,
+  parseAndVerifySupportedInstructionMessage
+} from "../transaction-instruction-parser.mjs";
 
 function data(tag, value) {
   const bytes = Buffer.alloc(5);
@@ -721,4 +724,71 @@ test("parser rejects v0 account keys that disagree with canonical static and loo
       data: transferData(25)
     }]
   }), /do not match static and lookup account ordering/);
+});
+
+
+const PDA_OWNER = "CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY";
+const PDA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const PDA_CLASSIC_ATA = "3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b";
+const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const CLASSIC_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+function ataMessageWithAddress(associatedAddress) {
+  const payer = "11111111111111111111111111111112";
+  const system = "11111111111111111111111111111111";
+  const accountKeys = [
+    payer,
+    associatedAddress,
+    PDA_OWNER,
+    PDA_MINT,
+    system,
+    CLASSIC_TOKEN_PROGRAM,
+    ATA_PROGRAM
+  ];
+  return {
+    accountKeys,
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  };
+}
+
+test("async parser integrates a successful ATA PDA-only verification without granting semantic trust", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress(PDA_CLASSIC_ATA)
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-verified");
+  assert.equal(parsed.associatedAddressPdaChecks.length, 1);
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, true);
+  assert.equal(parsed.associatedAddressPdaChecks[0].scope, "pda-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+  assert.ok(Object.isFrozen(parsed));
+  assert.ok(Object.isFrozen(parsed.associatedAddressPdaChecks));
+});
+
+test("async parser reports an ATA PDA mismatch and never promotes it to approval", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress("11111111111111111111111111111113")
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-mismatch");
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, false);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("async parser marks ATA PDA verification not applicable when no ATA instruction exists", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]));
+  assert.equal(parsed.associatedAddressVerification, "not-applicable");
+  assert.deepEqual(parsed.associatedAddressPdaChecks, []);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
 });
