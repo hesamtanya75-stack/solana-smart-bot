@@ -33,7 +33,7 @@ test("decodes exact classic SPL Token TransferChecked", () => {
 
 test("rejects unsupported variants, multisig layouts, duplicate accounts and malformed data", () => {
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([9])), [0, 1, 2]), /variant is unsupported/);
-  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.alloc(9)), [0, 1, 2]), /payload or account layout/);
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(7).fill(0)])), [0, 1, 2]), /payload or account layout/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2, 3]), /payload or account layout/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 0, 2]), /payload or account layout/);
   assert.throws(() => decodeSplTokenInstruction("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2]), /unknown program/);
