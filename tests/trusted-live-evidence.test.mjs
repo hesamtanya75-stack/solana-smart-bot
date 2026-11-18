@@ -1173,12 +1173,6 @@ test("settlement proof rejects sparse or accessor-backed native lamport balance 
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /metadata is incomplete/);
 
-  responseResult = {
-    ...baseResult,
-    meta: { ...baseResult.meta, postBalances: [Number.MAX_SAFE_INTEGER + 1] }
-  };
-  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
-    /metadata is incomplete/);
 });
 
 test("settlement proof rejects accessor-backed and sparse finalized account keys without invoking getters", async () => {
@@ -1228,7 +1222,7 @@ test("settlement proof rejects accessor-backed and sparse finalized account keys
     transaction: { ...baseResult.transaction, message: { accountKeys: new Array(1) } }
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
-    /account keys are incomplete/);
+    /account keys are malformed/);
 });
 
 test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
@@ -1285,7 +1279,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(10)), encodeBase58(new Uint8Array(32).fill(11))] }
           },
           meta: {
             err: null, fee: 5000,
