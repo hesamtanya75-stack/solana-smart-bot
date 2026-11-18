@@ -843,3 +843,19 @@ This hardens JavaScript input handling only. It does not authenticate account
 keys, transaction metadata, signatures, CPI execution, Token-2022 extension
 semantics, or balance deltas. Semantic verification remains incomplete and
 signing/submission remain disabled.
+
+
+## ATA instruction-set validation hardening (PR #43)
+
+The exported Associated Token instruction-set validator now independently
+requires a bounded plain array and snapshots own data-property entries before
+returning the validated records. Sparse entries, accessor-backed entries,
+custom prototypes, symbol keys, and extra properties fail closed. Regression
+tests verify that accessor getters are not invoked and that ordinary
+decoder-issued records continue to validate.
+
+This protects direct callers of the exported validator that bypass the
+transaction message parser. It remains JavaScript collection-shape validation
+only; it does not establish instruction execution, authenticated transaction
+metadata, CPI effects, account state, or settlement. Semantic verification
+remains incomplete and signing/submission remain disabled.
