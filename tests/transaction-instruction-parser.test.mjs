@@ -50,7 +50,8 @@ test("transaction parser rejects malformed compiled instruction indexes and keys
   }])), /invalid compiled layout/);
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 0, accountKeyIndexes: [1], data: data(2, 200000)
-  }])), /account-role schema/);
+  }], [COMPUTE_BUDGET_PROGRAM, "So11111111111111111111111111111111111111112"])),
+  /account-role schema/);
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
   }], ["not-a-public-key"])), /invalid account key/);
