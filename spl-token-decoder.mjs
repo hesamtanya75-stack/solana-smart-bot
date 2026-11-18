@@ -10,16 +10,19 @@ function readDensePlainArray(value, maximum, label) {
     throw new Error(label + " are invalid");
   }
   const keys = Reflect.ownKeys(value);
-  if (keys.length !== value.length + 1) {
-    throw new Error(label + " contain sparse or unsupported properties");
-  }
   const snapshot = [];
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
-      throw new Error(label + " contain sparse or accessor-backed entries");
+    if (!descriptor) {
+      throw new Error(label + " are invalid");
+    }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contain accessor-backed entries");
     }
     snapshot.push(descriptor.value);
+  }
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " contain unsupported properties");
   }
   for (const key of keys) {
     if (key === "length") continue;
@@ -121,16 +124,31 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
 }
 
 export function validateSplTokenInstructionSet(instructions) {
-  let snapshot;
-  try {
-    snapshot = readDensePlainArray(instructions, 64, "SPL Token instruction set");
-  } catch {
+  if (!Array.isArray(instructions) ||
+      Object.getPrototypeOf(instructions) !== Array.prototype ||
+      instructions.length > 64) {
     throw new Error("SPL Token instruction set is invalid");
   }
-  for (const instruction of snapshot) {
-    if (!instruction || !decodedRecords.has(instruction)) {
+  const keys = Reflect.ownKeys(instructions);
+  const snapshot = [];
+  for (let index = 0; index < instructions.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(instructions, String(index));
+    if (!descriptor) {
       throw new Error("SPL Token instruction set contains an unreviewed record");
     }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("SPL Token instruction set is invalid");
+    }
+    if (!descriptor.value || !decodedRecords.has(descriptor.value)) {
+      throw new Error("SPL Token instruction set contains an unreviewed record");
+    }
+    snapshot.push(descriptor.value);
+  }
+  if (keys.length !== instructions.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+         Number(key) >= instructions.length))) {
+    throw new Error("SPL Token instruction set is invalid");
   }
   return Object.freeze(snapshot);
 }
