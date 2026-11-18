@@ -286,3 +286,10 @@ PDA verification remains intentionally unimplemented in this slice: the inspecte
 Added `validateComputeBudgetPolicy()` to the isolated Compute Budget decoder. It requires explicit caller-supplied ceilings for compute units, heap frame, loaded-account data, and priority fee. It calculates the priority fee conservatively with integer arithmetic and rounds micro-lamports up to the next lamport. Tests cover accepted values, each ceiling, missing/invalid policy, and fee calculation.
 
 This helper is not yet wired into transaction admission or the live-trade coordinator, and it does not infer Solana runtime defaults. The caller must supply a reviewed policy. It does not authorize semantic route verification, signing, or submission.
+
+
+### Coordinator fail-closed regression coverage
+
+Added coordinator tests proving that unsigned-structure-only evidence, build-envelope-only evidence, a contradictory semantic boolean, or missing sell-route evidence cannot create a reservation. The test asserts HTTP 409 and an unchanged empty reservation ledger for each case.
+
+This is policy-gate regression coverage using mocked evidence. It does not implement a production semantic verifier or prove a real Jupiter transaction safe. Production evidence remains unverified and the coordinator must continue to block reservations until a complete reviewed verifier exists.
