@@ -10,6 +10,13 @@ function data(tag, value) {
   return bytes.toString("base64");
 }
 
+function priorityPriceData(microLamports) {
+  const bytes = Buffer.alloc(9);
+  bytes[0] = 3;
+  bytes.writeBigUInt64LE(BigInt(microLamports), 1);
+  return bytes.toString("base64");
+}
+
 const SYSTEM = "11111111111111111111111111111111";
 const SOURCE = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const DESTINATION = "So11111111111111111111111111111111111111112";
@@ -63,7 +70,7 @@ test("transaction parser preserves original order across Compute Budget and Syst
   const parsed = parseSupportedInstructionMessage(message([
     { programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) },
     { programIdIndex: 1, accountKeyIndexes: [2, 3], data: transferData(42) },
-    { programIdIndex: 0, accountKeyIndexes: [], data: data(3, 1) }
+    { programIdIndex: 0, accountKeyIndexes: [], data: priorityPriceData(1) }
   ], [COMPUTE_BUDGET_PROGRAM, SYSTEM, SOURCE, DESTINATION]));
   assert.deepEqual(parsed.instructions.map(instruction => instruction.variant), [
     "setComputeUnitLimit",
