@@ -225,3 +225,18 @@ The parser fails closed when a supplied header proves a required privilege is ab
 Tests cover a valid Transfer role layout, a readonly source rejection, and the no-header path. All results remain analysis-only: `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`.
 
 Important limitation: this is not authenticated transaction evidence. The parser still accepts already-deserialized input, does not verify signatures or message bytes, and does not authenticate caller-supplied lookup-table addresses. The structural role match does not prove wallet ownership, approved destinations, runtime effects, rent, CPI behavior, or transaction-wide funds flow. Do not use this result as signer authorization.
+
+
+## Classic SPL Token transfer decoder slice: PR #40 head `78cc3b95712afaa6694b7a20be07c2cae5769127`
+
+Added `spl-token-decoder.mjs` and focused tests for the classic SPL Token program only.
+
+Supported syntax variants:
+- `Transfer` (tag 3): exact 9-byte payload and exact three-account single-authority layout.
+- `TransferChecked` (tag 12): exact 10-byte payload and exact four-account single-authority layout; amount is retained as BigInt and decimals are decoded.
+
+Multisig layouts and all other token instructions are rejected. Token-2022 is not treated as the classic Token program and remains unsupported. The transaction parser now routes the exact classic Token program ID to this decoder and, when a message header is supplied, structurally checks source/destination writable privileges, authority signer privilege, and readonly mint privilege for TransferChecked.
+
+The parser remains explicitly analysis-only. This decoder does not authenticate token account ownership, mint state, decimals against on-chain mint data, delegate/close authority state, transfer-fee or other Token-2022 extensions, CPI effects, or actual token balance deltas. The caller-supplied account keys and header are not cryptographically authenticated here. Successful structural role checks do not authorize signing or submission; semantic verification remains incomplete and both permissions remain false.
+
+Tests added for exact Transfer and TransferChecked payload decoding, malformed/unsupported layouts, forged/sparse records, parser integration, and rejection when the authority is not a signer. CI must run against the resulting PR head before this slice is considered validated.
