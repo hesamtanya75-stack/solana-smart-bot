@@ -251,3 +251,17 @@ Reviewed `worker.js` session authorization, login/MFA completion, logout, same-o
 **Required before wallet enrollment or unattended trading:** introduce a reviewed server-managed session design (Secure, HttpOnly, SameSite cookie with explicit CSRF protection, or an equivalently hardened approach), stable principal/session identifiers and revocation/versioning, short-lived step-up authorization for wallet/policy changes, and explicit binding to a separately enrolled trading wallet. The isolated signer must independently verify those bindings on every intent. Preserve current fail-closed route behavior; do not add a signing or submission route as part of this hardening checkpoint.
 
 This is a source-review gap, not a confirmed account compromise. Keep Phantom read-only, primary wallet separate, live execution disabled, and paper trading unchanged.
+
+
+## Follow-up review: TOTP enrollment, MFA challenges, and recovery code
+
+Reviewed the exact PR head `7b06a5a094d80bc8e87bd558e9fb457fe1e437d9` in `worker.js`, `auth-guard.mjs`, `tests/worker-auth-routes.test.mjs`, and `tests/auth-guard.test.mjs`.
+
+- TOTP setup and confirmation are inside the shared authenticated private API router. Setup additionally requires the current admin password, applies route-specific and failure-scope limits, and stores the pending secret through the transactional AuthGuard. Confirmation is separately rate-limited and checks a six-digit code against a pending secret whose lifetime is limited to ten minutes.
+- AuthGuard confirmation checks the pending timestamp again inside its transaction, enforces the failure threshold atomically, stores the accepted TOTP counter, enables TOTP, and clears the pending secret. This prevents a stale/future pending timestamp or replayed counter from being accepted by the state transition.
+- MFA login challenges expire after five minutes, are bounded in number, and have atomic attempt limits. Successful TOTP completion advances the accepted counter; successful backup-code completion consumes the one stored backup hash and deletes the challenge. Tests cover expiry, concurrent attempts, replay/counter acceptance, and one-time backup consumption.
+- The backup code is generated at confirmation and returned once; only its hash is retained in AuthGuard state. The reviewed implementation stores a single recovery code, not a multi-code recovery set.
+
+**Remaining hardening before unattended trading:** retain the separate session-identity gap documented above; add integration-level tests for the complete Worker routes (not only AuthGuard unit tests), explicit logout/session revocation and session expiry tests, and a recovery procedure for loss of the sole backup code that does not weaken authentication. Ensure operational recovery cannot silently disable MFA or rebind the trading wallet. No confirmed TOTP bypass was identified in this source review.
+
+This checkpoint is documentation-only. Do not change the UI, enable wallet signing, or add transaction submission.
