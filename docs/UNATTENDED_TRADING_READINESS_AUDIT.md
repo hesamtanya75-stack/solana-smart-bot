@@ -280,3 +280,17 @@ A source review of `transaction-instruction-parser.mjs`, `system-program-decoder
 **Security boundary:** these modules provide syntax and structural validation only. They are not yet composed into a complete authenticated wire-message verifier, and no semantic approval or signing authority follows from their outputs. In particular, the System decoder's role labels are not privilege checks, and caller-supplied resolved lookup addresses are not trusted merely because the role helper accepts them.
 
 **Next safe implementation stage:** build an independently authenticated legacy/v0 message and lookup-table resolution layer, then bind derived account privileges to each decoded instruction before adding SPL Token, Token-2022, ATA, and exact router/CPI decoders. Keep unknown instructions rejected and all semantic/signing/submission gates closed until whole-transaction intent and funds-flow verification is complete.
+
+
+## Latest PR #40 verification: `eaad3c1bdd4ec874fd2dd25941437cc08638347b`
+
+Verified against this exact head on 2026-11-18:
+
+- PR #40 remains open and Draft; it is not merged.
+- Node tests: success (workflow run 44318306603; test job completed successfully).
+- Cloudflare Worker build validation: success (workflow run 44318306781; build completed without deployment).
+- Devnet signed-lifecycle workflow: read-only job completed successfully (run 44318308752). Unit tests, real Durable Objects runtime tests, Devnet cluster identity/read-only RPC checks all passed.
+- Funded Devnet lifecycle: skipped because the workflow requires explicit `workflow_dispatch` opt-in. No signing or transaction submission was attempted; this is not a funded end-to-end trading test.
+- Deno deployment status context still reports failure for the existing Deno project. This is separate from the successful Cloudflare Worker build validation and does not mean the Worker was deployed.
+
+These results confirm tests/build/read-only Devnet checks only. They do not remove any unattended-trading blocker listed above: transaction semantics are not fully verified, dedicated wallet enrollment and isolated signer are not implemented, the Worker has no live coordinator execution route, and settlement is incomplete. Mainnet remains disabled.
