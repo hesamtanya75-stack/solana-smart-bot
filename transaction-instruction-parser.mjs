@@ -321,6 +321,11 @@ export function parseSupportedInstructionMessage(message) {
       ? "not-provided"
       : Object.freeze({ status: "validated", ...computeBudgetPolicy }),
     accountPrivilegeAnalysis,
+    // Caller-supplied lookup addresses are only structurally cross-checked;
+    // this parser does not authenticate their table account or on-chain state.
+    lookupAddressAuthentication: message.resolvedAddressTableLookups?.length
+      ? "not-performed"
+      : "not-applicable",
     associatedAddressVerification: associatedTokenInstructions.length
       ? "not-performed"
       : "not-applicable",
