@@ -284,7 +284,7 @@ test("parser cross-checks System Transfer signer and writable privileges when a 
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
-      numReadonlyUnsignedAccounts: 0
+      numReadonlyUnsignedAccounts: 1
     },
     instructions: [{
       programIdIndex: 1,
