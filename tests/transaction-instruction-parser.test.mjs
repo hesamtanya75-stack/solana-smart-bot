@@ -598,3 +598,58 @@ test("parser rejects a distinct ATA owner that is marked as a signer", () => {
     }]
   }), /ATA owner account privilege requirements are not satisfied/);
 });
+
+
+test("parser rejects an instruction program account marked writable", () => {
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const ataProgram = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const accountKeys = [
+    "11111111111111111111111111111112",
+    ataProgram,
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    tokenProgram
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 4
+    },
+    instructions: [{
+      programIdIndex: 1,
+      accountKeyIndexes: [0, 2, 3, 4, 5, 6],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  }), /Instruction program account privilege requirements are not satisfied/);
+});
+
+test("parser rejects an instruction program account marked as a signer", () => {
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const ataProgram = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const accountKeys = [
+    "11111111111111111111111111111112",
+    ataProgram,
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    tokenProgram
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 4
+    },
+    instructions: [{
+      programIdIndex: 1,
+      accountKeyIndexes: [0, 2, 3, 4, 5, 6],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  }), /Instruction program account privilege requirements are not satisfied/);
+});
