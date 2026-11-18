@@ -105,3 +105,24 @@ CI for this exact head completed:
 - Funded Devnet lifecycle: skipped (job 134767019986).
 
 These results validate repository CI for the isolated decoder addition, not full semantic transaction verification or live trading readiness.
+
+
+## Analysis-only transaction parser slice: PR #40 head `3a6bb7769d93a9b6dfe41e0da31142c12c4a899b`
+
+Added `transaction-instruction-parser.mjs` and `tests/transaction-instruction-parser.test.mjs`.
+
+The new bounded parser accepts an already-deserialized account-key list and compiled-instruction list, checks message and instruction bounds, validates base58-shaped account keys and compiled account indexes, then delegates each instruction to the versioned reject-by-default decoder registry. It currently recognizes only the registered Compute Budget family. System Program, SPL Token, Token-2022, Associated Token Account, and Jupiter/router instructions remain rejected as unsupported.
+
+The parser's output is explicitly analysis-only: `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`. It is not a wire-format transaction parser, does not verify signatures or address lookup table contents, and does not establish CPI effects, token balance deltas, or complete transaction semantics.
+
+Tests cover the supported Compute Budget path, rejection of unregistered System/Token programs, malformed program/account indexes, invalid account keys, malformed instruction data, duplicate variants, and parser bounds.
+
+### Remaining work
+
+1. Implement and independently review System Program instruction decoding and exact lamport/account-creation effects.
+2. Add transaction wire-format and address lookup table resolution binding; this parser currently accepts an already-deserialized message only.
+3. Add reviewed SPL Token, Token-2022, Associated Token Account, and Jupiter/router decoders one family at a time.
+4. Reconstruct all-in SOL/token funds flow and bind every decoded instruction to the immutable server-side order intent.
+5. Keep semantic attestation false and all coordinator/signing/submission gates closed until the full acceptance gate above is satisfied.
+
+This slice does not change the semantic trust flags in the existing Jupiter parser, does not enable the LiveTradeCoordinator, and does not add signing, submission, Worker execution routes, deployment, or production data operations.
