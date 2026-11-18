@@ -162,3 +162,12 @@ test("Jupiter live quote preview is authenticated, bounded, and quote-only", () 
   assert.ok(source.includes('BigInt(amountLamports) > 18446744073709551615n'));
   assert.ok(workerSource.includes('https://api.jup.ag; img-src'), "CSP must permit the Jupiter API");
 });
+
+test("quote preview extracts the exact Bearer session token without excluding the letter s", () => {
+  const line = workerSource.split("\n").find(value => value.includes("const sessionMatch ="));
+  assert.ok(line);
+  assert.ok(line.includes(String.raw\`/^Bearer ([^\s]+)$/i\`));
+  const match = /^Bearer ([^\s]+)$/i.exec("Bearer 12345678-1234-4234-8234-123456789abc");
+  assert.equal(match?.[1], "12345678-1234-4234-8234-123456789abc");
+  assert.equal(/^Bearer ([^\s]+)$/i.test("Bearer token with-space"), false);
+});
