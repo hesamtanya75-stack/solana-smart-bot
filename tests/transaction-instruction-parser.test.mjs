@@ -539,6 +539,7 @@ test("parser leaves System account privilege analysis explicitly absent without 
     data: transferData(10)
   }], [SYSTEM, SOURCE, DESTINATION]));
   assert.equal(parsed.accountPrivilegeAnalysis, "not-provided");
+  assert.equal(parsed.lookupAddressAuthentication, "not-applicable");
   assert.equal(parsed.semanticVerification, "incomplete");
   assert.equal(parsed.signingPermitted, false);
 });
@@ -987,6 +988,7 @@ test("parser validates complete v0 account ordering before checking loaded writa
     }]
   });
   assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.lookupAddressAuthentication, "not-performed");
   assert.equal(parsed.instructions[0].lamports, 25n);
   assert.equal(parsed.signingPermitted, false);
   assert.equal(parsed.submissionPermitted, false);
