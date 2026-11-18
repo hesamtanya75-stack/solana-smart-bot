@@ -36,9 +36,14 @@ function toHex(bytes) {
  */
 export function decodeSystemProgramInstruction(programId, encodedData, accountIndexes) {
   if (programId !== SYSTEM_PROGRAM_ID) throw new Error("System decoder rejects unknown program IDs");
-  if (!Array.isArray(accountIndexes) || accountIndexes.some(index =>
-    !Number.isInteger(index) || index < 0 || index > 255)) {
+  if (!Array.isArray(accountIndexes) || accountIndexes.length > 64) {
     throw new Error("System instruction account indexes are invalid");
+  }
+  for (let index = 0; index < accountIndexes.length; index++) {
+    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
+        !Number.isInteger(accountIndexes[index]) || accountIndexes[index] < 0 || accountIndexes[index] > 255) {
+      throw new Error("System instruction account indexes are invalid");
+    }
   }
   if (accountIndexes.length === 2 && accountIndexes[0] === accountIndexes[1]) {
     throw new Error("System instruction requires distinct account indexes");
@@ -78,9 +83,17 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
 }
 
 export function validateSystemProgramInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64 ||
-      instructions.some(instruction => !instruction || !decodedRecords.has(instruction))) {
+  if (!Array.isArray(instructions) || instructions.length > 64) {
     throw new Error("System instruction set contains an unreviewed record");
   }
-  return Object.freeze([...instructions]);
+  const validated = [];
+  for (let index = 0; index < instructions.length; index++) {
+    const instruction = instructions[index];
+    if (!Object.prototype.hasOwnProperty.call(instructions, index) ||
+        !instruction || !decodedRecords.has(instruction)) {
+      throw new Error("System instruction set contains an unreviewed record");
+    }
+    validated.push(instruction);
+  }
+  return Object.freeze(validated);
 }
