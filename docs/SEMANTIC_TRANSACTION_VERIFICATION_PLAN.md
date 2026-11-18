@@ -803,3 +803,7 @@ Unknown or symbol fields, custom prototypes, accessors, and sparse or
 non-data account-index arrays are rejected. This prevents execution evidence
 from being smuggled into nested instruction objects while the parser only
 inspects the outer message.
+Account-index arrays are inspected through own property descriptors before any
+index value is read, so accessor-backed indexes are rejected without invoking
+their getters. The parser also rejects sparse arrays and non-index own
+properties on these arrays.
