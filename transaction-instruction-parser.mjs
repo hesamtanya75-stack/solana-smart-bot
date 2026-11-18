@@ -160,7 +160,8 @@ export function parseSupportedInstructionMessage(message) {
       systemProgramInstructions.push(decoded);
       return decoded;
     }
-    if (programId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
+    if (programId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" ||
+        programId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") {
       const decoded = decodeSplTokenInstruction(programId, instruction.data, instruction.accountKeyIndexes);
       splTokenInstructions.push(decoded);
       return decoded;
