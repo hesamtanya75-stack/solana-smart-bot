@@ -1084,3 +1084,12 @@ when it is repeated across separate lookup-table entries. This protects the
 flattened v0 account-key list from ambiguous duplicate positions. It remains
 structural validation of caller-provided resolved addresses, not proof that
 those addresses were authenticated from on-chain lookup-table state.
+
+## Lookup-table decoder provenance boundary
+
+`resolveAddressLookupTableIndexes` now accepts only the exact immutable record
+instances produced by `decodeAddressLookupTableAccountData`. A shallow clone,
+frozen clone, or caller-constructed lookalike is rejected before index
+resolution. Regression tests cover both forged forms and the valid decoder
+record. This is an in-process provenance boundary only: it does not authenticate
+RPC origin, account ownership, finalized bank context, or SlotHashes ancestry.
