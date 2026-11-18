@@ -1032,3 +1032,41 @@ test("transaction parser rejects an unreviewed program even when its data mimics
     }]
   }), /Instruction registry rejects an unsupported program ID/);
 });
+
+
+test("parser rejects caller-supplied claims that could impersonate semantic approval", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  for (const field of [
+    "semanticVerification",
+    "semanticInstructionVerification",
+    "signingPermitted",
+    "submissionPermitted",
+    "routeVerification",
+    "messageAccountEffectsVerified"
+  ]) {
+    assert.throws(
+      () => parseSupportedInstructionMessage({ ...valid, [field]: true }),
+      /unsupported|not allowed|unexpected/i,
+      "must reject untrusted caller field " + field
+    );
+  }
+});
+
+test("parsed instruction evidence is permanently analysis-only even with decoded instructions", () => {
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]));
+  assert.equal(parsed.analysisOnly, true);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.accountPrivilegeAnalysis, "not-provided");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+  assert.ok(Object.isFrozen(parsed));
+  assert.ok(Object.isFrozen(parsed.instructions));
+});
