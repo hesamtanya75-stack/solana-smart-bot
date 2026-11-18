@@ -1065,3 +1065,21 @@ test("reservation fails closed unless trusted evidence attests complete semantic
     assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 0);
   }
 });
+
+test("coordinator rejects non-SOL input mints before requesting trusted evidence", async () => {
+  let evidenceCalls = 0;
+  const { coordinator } = makeCoordinator(async () => {
+    evidenceCalls += 1;
+    return trustedEvidence();
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+
+  const result = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-non-sol-input",
+    inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  }));
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /Complete immutable order intent/);
+  assert.equal(evidenceCalls, 0);
+});
