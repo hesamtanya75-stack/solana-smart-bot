@@ -38,7 +38,7 @@ jobs:
         run: |
           echo "::notice title=Funded Devnet lifecycle skipped::explicit workflow_dispatch opt-in is required; no faucet-funded transfer was attempted."
           node -e 'console.log(JSON.stringify({ status: "skipped", reason: "explicit workflow_dispatch opt-in is required", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
-          printf '%s\\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
 
   funded-devnet-lifecycle:
     # This isolated job is never part of pull_request runs. The secret is not
