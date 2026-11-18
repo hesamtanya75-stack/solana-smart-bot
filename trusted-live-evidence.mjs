@@ -1033,19 +1033,47 @@ async function rpc(fetchImpl, method, params) {
 }
 
 function sumOwnedTokenBalance(rows, mint, owner) {
-  if (!Array.isArray(rows)) throw new Error("Finalized transaction token balance metadata is unavailable");
+  if (!Array.isArray(rows) || Object.getPrototypeOf(rows) !== Array.prototype) {
+    throw new Error("Finalized transaction token balance metadata is unavailable");
+  }
+  const keys = Reflect.ownKeys(rows);
+  if (keys.length !== rows.length + 1 || !keys.includes("length")) {
+    throw new Error("Finalized transaction token balance metadata is malformed");
+  }
   let total = 0n;
-  for (const row of rows) {
-    if (row?.mint !== mint || row?.owner !== owner) continue;
-    const amount = row?.uiTokenAmount?.amount;
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
+  for (let index = 0; index < rows.length; index++) {
+    const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(index));
+    const row = rowDescriptor?.value;
+    if (!rowDescriptor || !Object.prototype.hasOwnProperty.call(rowDescriptor, "value") ||
+        !row || typeof row !== "object" ||
+        (Object.getPrototypeOf(row) !== Object.prototype && Object.getPrototypeOf(row) !== null)) {
+      throw new Error("Finalized transaction token balance metadata is malformed");
+    }
+    const mintDescriptor = Object.getOwnPropertyDescriptor(row, "mint");
+    const ownerDescriptor = Object.getOwnPropertyDescriptor(row, "owner");
+    const amountRecordDescriptor = Object.getOwnPropertyDescriptor(row, "uiTokenAmount");
+    if (!mintDescriptor || !Object.prototype.hasOwnProperty.call(mintDescriptor, "value") ||
+        !ownerDescriptor || !Object.prototype.hasOwnProperty.call(ownerDescriptor, "value") ||
+        !amountRecordDescriptor || !Object.prototype.hasOwnProperty.call(amountRecordDescriptor, "value") ||
+        typeof mintDescriptor.value !== "string" || typeof ownerDescriptor.value !== "string") {
+      throw new Error("Finalized transaction token balance metadata is malformed");
+    }
+    if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
+    const amountRecord = amountRecordDescriptor.value;
+    if (!amountRecord || typeof amountRecord !== "object" ||
+        (Object.getPrototypeOf(amountRecord) !== Object.prototype && Object.getPrototypeOf(amountRecord) !== null)) {
+      throw new Error("Finalized transaction contains an invalid owned token balance");
+    }
+    const amountDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "amount");
+    const amount = amountDescriptor?.value;
+    if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
+        typeof amount !== "string" || !/^(0|[1-9]\\d*)$/.test(amount)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
     total += BigInt(amount);
   }
   return total;
 }
-
 /**
  * Independently verifies a finalized swap using signature status and the
  * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
