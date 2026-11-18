@@ -12,6 +12,10 @@ import {
   decodeSplTokenInstruction,
   validateSplTokenInstructionSet
 } from "./spl-token-decoder.mjs";
+import {
+  decodeAssociatedTokenInstruction,
+  validateAssociatedTokenInstructionSet
+} from "./associated-token-account-decoder.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
@@ -67,6 +71,17 @@ function analyzeSplTokenInstructionPrivileges(instructions, roles) {
   }
 }
 
+function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
+  for (const instruction of instructions) {
+    requireRole(roles, instruction.payerAccountIndex, { signer: true, writable: true }, "ATA payer");
+    requireRole(roles, instruction.associatedAccountIndex, { writable: true }, "ATA destination");
+    requireRole(roles, instruction.ownerAccountIndex, { readonly: true }, "ATA owner");
+    requireRole(roles, instruction.mintAccountIndex, { readonly: true }, "ATA mint");
+    requireRole(roles, instruction.systemProgramAccountIndex, { readonly: true }, "ATA System Program");
+    requireRole(roles, instruction.tokenProgramAccountIndex, { readonly: true }, "ATA Token Program");
+  }
+}
+
 /**
  * Parse a bounded, already-deserialized message instruction list for analysis.
  * Optional header/lookup inputs enable a structural signer/writable cross-check.
@@ -105,6 +120,7 @@ export function parseSupportedInstructionMessage(message) {
   const computeBudgetInstructions = [];
   const systemProgramInstructions = [];
   const splTokenInstructions = [];
+  const associatedTokenInstructions = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
         !Number.isInteger(instruction.programIdIndex) ||
@@ -136,6 +152,13 @@ export function parseSupportedInstructionMessage(message) {
       splTokenInstructions.push(decoded);
       return decoded;
     }
+    if (programId === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL") {
+      const decoded = decodeAssociatedTokenInstruction(
+        programId, instruction.data, instruction.accountKeyIndexes, accountKeys
+      );
+      associatedTokenInstructions.push(decoded);
+      return decoded;
+    }
     const decoded = decodeSupportedTransactionInstruction({
       programId,
       data: instruction.data,
@@ -148,6 +171,7 @@ export function parseSupportedInstructionMessage(message) {
   validateSupportedTransactionInstructionSet(computeBudgetInstructions);
   validateSystemProgramInstructionSet(systemProgramInstructions);
   validateSplTokenInstructionSet(splTokenInstructions);
+  validateAssociatedTokenInstructionSet(associatedTokenInstructions);
 
   let accountPrivilegeAnalysis = "not-provided";
   if (message.header !== undefined) {
@@ -158,6 +182,7 @@ export function parseSupportedInstructionMessage(message) {
     });
     analyzeSystemInstructionPrivileges(systemProgramInstructions, derived.roles);
     analyzeSplTokenInstructionPrivileges(splTokenInstructions, derived.roles);
+    analyzeAssociatedTokenInstructionPrivileges(associatedTokenInstructions, derived.roles);
     accountPrivilegeAnalysis = "structural-match-only";
   }
 
