@@ -1,5 +1,6 @@
 const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 const decodedInstructionRecords = new WeakSet();
+const decodedTransactionInstructionRecords = new WeakSet();
 
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 32 ||
@@ -88,3 +89,56 @@ export function validateComputeBudgetInstructionSet(instructions) {
 }
 
 export const COMPUTE_BUDGET_PROGRAM = COMPUTE_BUDGET_PROGRAM_ID;
+
+/**
+ * Versioned, reject-by-default transaction instruction decoder registry.
+ *
+ * Registry v1 intentionally supports only Compute Budget instructions, which
+ * have no account metas. Every other program is rejected until a separately
+ * reviewed decoder and account-role schema are added. This registry does not
+ * establish whole-transaction semantics or authorize signing/submission.
+ */
+export const INSTRUCTION_DECODER_REGISTRY_VERSION = 1;
+
+export function decodeSupportedTransactionInstruction({ programId, data, accountIndexes }) {
+  if (typeof programId !== "string" || !Array.isArray(accountIndexes) ||
+      accountIndexes.length !== 0 || accountIndexes.some(index =>
+        !Number.isInteger(index) || index < 0 || index > 255)) {
+    throw new Error("Instruction does not match a reviewed account-role schema");
+  }
+  if (programId !== COMPUTE_BUDGET_PROGRAM_ID) {
+    throw new Error("Instruction registry rejects an unsupported program ID");
+  }
+  const decoded = decodeComputeBudgetInstruction(programId, data);
+  const record = Object.freeze({
+    registryVersion: INSTRUCTION_DECODER_REGISTRY_VERSION,
+    programId,
+    decoderVersion: decoded.decoderVersion,
+    variant: decoded.variant,
+    accountRoles: Object.freeze([]),
+    decoded
+  });
+  decodedTransactionInstructionRecords.add(record);
+  return record;
+}
+
+export function validateSupportedTransactionInstructionSet(instructions) {
+  if (!Array.isArray(instructions) || instructions.length > 64) {
+    throw new Error("Supported transaction instruction collection is invalid");
+  }
+  const decoded = [];
+  for (const instruction of instructions) {
+    if (!instruction || !decodedTransactionInstructionRecords.has(instruction) ||
+        instruction.registryVersion !== INSTRUCTION_DECODER_REGISTRY_VERSION ||
+        instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID ||
+        instruction.decoderVersion !== 1 ||
+        !Array.isArray(instruction.accountRoles) || instruction.accountRoles.length !== 0 ||
+        !decodedInstructionRecords.has(instruction.decoded) ||
+        instruction.decoded.variant !== instruction.variant) {
+      throw new Error("Instruction registry rejected an unknown, forged, or unsupported record");
+    }
+    decoded.push(instruction.decoded);
+  }
+  validateComputeBudgetInstructionSet(decoded);
+  return Object.freeze([...instructions]);
+}
