@@ -104,3 +104,14 @@ Test principal substitution, legacy-session denial, missing/unknown schema versi
 ## Explicit safety boundary
 
 Do not merge PR #40, deploy to production, enable Mainnet, submit real transactions, or change production KV/DO data as part of this design stage. Do not change the dashboard design. The current executable trading mode remains paper trading only.
+
+### Verified Worker identity audit (2026-11-18)
+
+The following observations were verified in `worker.js` at the current PR branch revision:
+
+- Both password-only login and completed TOTP login create the same legacy session shape: `{ expiresAt }`. No principal identifier or session schema version is persisted.
+- `authorized()` validates the bearer token, loads that record, checks expiry, and returns a boolean. It does not resolve a typed principal or distinguish a paper-only legacy session from a future trading identity.
+- The profile endpoint reads and writes the single `admin_profile` record. Email and phone values in that profile are not a stable authenticated principal and must not be used as one.
+- TOTP/login failure scopes are derived from the connecting IP. This is rate-limit context, not an account or principal identity.
+
+Consequently, do not build wallet-binding or order-intent authorization on top of the current bearer-session boolean or profile fields. First introduce and test a separately versioned principal-bound session, while explicitly rejecting legacy sessions at any future trading-identity boundary. This audit is documentation only; no session records, routes, production data, or dashboard code were changed.
