@@ -4,6 +4,24 @@ const CLASSIC_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const decodedRecords = new WeakSet();
 
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function isCanonicalPublicKey(value) {
+  // A 32-byte value has a canonical base58 representation of 32–44 chars.
+  // Bound input before BigInt conversion to avoid attacker-controlled CPU work.
+  if (typeof value !== "string" || value.length < 32 || value.length > 44) return false;
+  let decoded = 0n;
+  for (const char of value) {
+    const digit = BASE58_ALPHABET.indexOf(char);
+    if (digit < 0) return false;
+    decoded = decoded * 58n + BigInt(digit);
+  }
+  let byteLength = 0;
+  for (let remaining = decoded; remaining > 0n; remaining >>= 8n) byteLength++;
+  const leadingZeroBytes = value.match(/^1*/)[0].length;
+  return byteLength + leadingZeroBytes === 32;
+}
+
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length !== 4 ||
       !/^[A-Za-z0-9+/]{2}==$/.test(value)) {
@@ -49,8 +67,19 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
     }
   }
   const roleKeys = accountIndexes.map(index => accountKeys[index]);
-  if (roleKeys.some(key => typeof key !== "string" || key.length === 0)) {
-    throw new Error("Associated Token role accounts must contain valid key strings");
+  if (roleKeys.some(key => !isCanonicalPublicKey(key))) {
+    throw new Error("Associated Token role accounts must be canonical 32-byte public keys");
+  }
+  // Compiled message account keys are deduplicated by public key as well as
+  // index. Reject a repeated key under different indexes; only payer/owner
+  // may share the exact same index.
+  for (let left = 0; left < roleKeys.length; left++) {
+    for (let right = left + 1; right < roleKeys.length; right++) {
+      if (roleKeys[left] === roleKeys[right] &&
+          !(left === 0 && right === 2 && roleIndexes[left] === roleIndexes[right])) {
+        throw new Error("Associated Token role accounts contain a duplicate public key");
+      }
+    }
   }
   // The only supported role alias is payer === owner, represented by one
   // shared compiled account index. The message-level key list is deduplicated.
