@@ -208,10 +208,10 @@ test("System Transfer account indexes can be cross-checked against derived privi
 });
 
 test("System Transfer with a readonly source remains analysis-only and is not promoted to approval", () => {
-  const accountKeys = [SOURCE, SYSTEM, DESTINATION];
+  const accountKeys = [SYSTEM, SOURCE, DESTINATION];
   const parsed = parseSupportedInstructionMessage(message([{
-    programIdIndex: 1,
-    accountKeyIndexes: [0, 2],
+    programIdIndex: 0,
+    accountKeyIndexes: [1, 2],
     data: transferData(123)
   }], accountKeys));
   const roles = deriveMessageAccountRoles({
