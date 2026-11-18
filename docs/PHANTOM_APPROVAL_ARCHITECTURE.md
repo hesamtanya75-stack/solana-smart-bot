@@ -100,3 +100,20 @@ A wallet-binding challenge is a one-time proof of control, not a transaction app
 - The wallet public key is not a secret. Never store a wallet private key, seed phrase, or reusable transaction-signing capability on the Worker.
 
 Before implementation, add tests for signature tampering, wrong key, wrong domain, wrong cluster, expired nonce, replay, concurrent replay, account switching, disconnect/rebind, and stale order-intent invalidation. Review this binding protocol independently before it can authorize any order flow.
+
+### Versioned identity rollout plan (no live-data migration in this stage)
+
+The current login flow issues a random bearer token and stores only `{ expiresAt }` under `session:<token>`. The authorization helper returns a boolean and does not expose a principal identifier. Do not retrofit trading identity into these existing records or infer identity from the profile endpoint, IP address, email text, or a browser-supplied value.
+
+A future implementation should be isolated behind a new, versioned session namespace and capability gate:
+
+1. **Define the principal source first.** Decide and document whether this installation is single-operator or multi-user. The stable principal ID must be provisioned or resolved by the server from an authenticated account registry; it must never be accepted from the request body or wallet message as an authority.
+2. **Issue a new session version only after successful authentication.** A new session record should contain a schema version, opaque stable principal ID, creation and expiry times, revocation state, and the authentication assurance level. Store it under a distinct versioned key prefix. Do not rewrite, upgrade, or delete existing `session:<token>` records as part of rollout.
+3. **Keep legacy sessions paper-only.** Existing sessions continue to authorize only the currently supported application features. They must not be interpreted as live-trading eligible, even if a wallet happens to be connected in the browser.
+4. **Resolve identity through one server-side helper.** Replace boolean-only authorization only in a separately reviewed change with a helper that returns a typed principal/session object or denies access. Existing routes must preserve their current behavior until regression tests prove otherwise.
+5. **Bind one or more explicitly approved wallet keys to the principal.** Each binding has a version, cluster, status, created/verified timestamps, and revocation metadata. The default should be one active wallet per principal unless a reviewed product requirement establishes otherwise.
+6. **Require fresh step-up authentication for sensitive wallet changes.** Wallet binding/rebinding and future order creation must check the current session, required MFA assurance, wallet proof, and CSRF/origin protections independently.
+7. **Keep live capability disabled by default.** A versioned identity record or valid wallet binding alone must never enable trading. A separate server-side release gate, per-order policy evaluation, reviewed instruction decoder, explicit Phantom approval, and settlement verification are all independently required.
+8. **Roll out without touching production data.** First add pure schema/validation tests and isolated Worker tests with in-memory KV. Then exercise the new versioned flow in a disposable non-production environment. Any later production migration requires its own explicit authorization, backup/rollback plan, and review; it is not part of this PR task.
+
+Required negative tests include legacy-session denial for any future live capability, missing/unknown schema version, principal substitution, expired/revoked session, MFA downgrade, wallet-binding revocation, and attempts to enable live capability by setting only a client-side flag. No route or session record is changed by this plan.
