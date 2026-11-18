@@ -967,3 +967,30 @@ Implement a separate, server-side Jupiter build-evidence function and keep it di
 6. Return evidence marked semantic only after every instruction and account effect is verified. Until then, the coordinator's reservation gate must continue to reject it.
 
 No production integration, key material, signer, transaction submission, or live-trading enablement is authorized by this plan.
+
+## Verified transaction-cost arithmetic helper (PR #43 follow-up)
+
+The branch now includes `verified-transaction-costs.mjs` and
+`tests/verified-transaction-costs.test.mjs`. The helper performs exact
+`BigInt` arithmetic for the compute-unit priority fee (rounding upward) and
+sums base fee, priority fee, tip, rent, and other outflows. It rejects values
+outside the canonical unsigned u64 representation and requires all three
+explicit evidence gates: semantic instruction verification, message-account
+effects verification, and a fee quote bound to the exact compiled-message
+digest.
+
+**Integration status: not integrated and not an authorization source.** The
+helper does not parse Jupiter instructions, resolve account privileges, prove
+recipient or token-account effects, authenticate a fee quote, or verify a
+compiled-message digest. Those proofs must be produced by the independent
+semantic verifier before this helper can be called. The current runtime route
+still reports `quote-only-no-transaction`; it must not set any of the helper's
+verification flags. The live-trade coordinator's existing trusted-cost
+validation remains unchanged. Do not adapt helper output into coordinator
+evidence until the verifier and message-bound fee source exist and are tested
+end-to-end.
+
+The new unit tests cover ceiling arithmetic, missing verification gates,
+non-canonical/negative/overflowing values, malformed message digests, and
+aggregate u64 overflow. These tests have been added to the Node test suite;
+their execution on the current PR head remains pending CI confirmation.
