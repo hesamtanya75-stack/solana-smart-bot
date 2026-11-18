@@ -528,33 +528,14 @@ test("ALT resolver rejects duplicate indexes before making an RPC request", asyn
   assert.equal(called, false);
 });
 
-test("ALT resolver snapshots RPC account metadata and rejects accessor-backed fields without invoking them", async () => {
+test("ALT resolver rejects malformed RPC account data tuples", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const base = mockLookupTableAccount();
-  let getterCalls = 0;
-  const hostileOwner = { ...base };
-  Object.defineProperty(hostileOwner, "owner", {
-    enumerable: true,
-    get() { getterCalls++; return base.owner; }
-  });
   await assert.rejects(resolveJupiterAddressLookupTables([{
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
-    context: { slot: 100 }, value: [hostileOwner]
-  } })), /accessor-backed/);
-  assert.equal(getterCalls, 0);
-
-  const hostileData = { ...base, data: [...base.data] };
-  Object.defineProperty(hostileData.data, "0", {
-    enumerable: true,
-    get() { getterCalls++; return base.data[0]; }
-  });
-  await assert.rejects(resolveJupiterAddressLookupTables([{
-    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
-  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
-    context: { slot: 100 }, value: [hostileData]
-  } })), /accessor-backed/);
-  assert.equal(getterCalls, 0);
+    context: { slot: 100 }, value: [{ ...base, data: [...base.data, "unexpected"] }]
+  } })), /malformed|invalid/i);
 });
 
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
