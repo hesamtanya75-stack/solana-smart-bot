@@ -375,6 +375,25 @@ test("ALT resolver rejects tables not owned by the Address Lookup Table program"
   } })), /unexpected program/);
 });
 
+test("ALT resolver rejects executable accounts and noncanonical base64", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const executable = mockLookupTableAccount();
+  executable.executable = true;
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [executable]
+  } })), /executable/);
+
+  const malformedBase64 = mockLookupTableAccount();
+  malformedBase64.data = [malformedBase64.data[0].replace(/=$/, " "), "base64"];
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [malformedBase64]
+  } })), /canonical base64/);
+});
+
 test("ALT resolver rejects oversized encoded account data before decoding", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const oversized = mockLookupTableAccount();
