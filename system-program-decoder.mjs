@@ -76,6 +76,7 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
     decoderVersion: 1,
     analysisOnly: true,
     ...decoded,
+    accountIndexes: Object.freeze([...accountIndexes]),
     accountRoles: Object.freeze(decoded.accountRoles)
   });
   decodedRecords.add(record);
