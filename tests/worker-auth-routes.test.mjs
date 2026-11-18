@@ -19,6 +19,12 @@ test("worker session authorization parses only a bounded UUID from the HttpOnly 
   assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Lax"));
 });
 
+test("both password-only and MFA login paths issue the generated session token only as an HttpOnly cookie", () => {
+  assert.equal(workerSource.split('return sessionCookieResponse({ ok: true }, token);').length - 1, 2);
+  assert.equal(workerSource.includes('return json({ ok: true, token });'), false);
+  assert.ok(workerSource.includes('return sessionCookieResponse({ ok: true, message: "Session revoked" }, "", 0);'));
+});
+
 test("private API authentication guard precedes private route handlers", () => {
   assert.notEqual(privateApiStart, -1, "private API router must exist");
   assert.ok(authGuard > privateApiStart, "session guard must be inside the private API router");
