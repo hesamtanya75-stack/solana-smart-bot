@@ -390,16 +390,37 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
 });
 
 
-test("parser keeps Token-2022 fail-closed until its extension semantics are reviewed", () => {
+test("parser decodes bounded Token-2022 TransferChecked but never grants semantic trust", () => {
   const token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  assert.throws(() => parseSupportedInstructionMessage({
-    accountKeys: [token2022Program],
+  const authority = "11111111111111111111111111111112";
+  const source = "11111111111111111111111111111113";
+  const destination = "11111111111111111111111111111114";
+  const mint = "11111111111111111111111111111115";
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(250n, 1);
+  tokenData[9] = 6;
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: [authority, source, destination, mint, token2022Program],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 2
+    },
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [],
-      data: Buffer.from([3, ...Array(8).fill(0)]).toString("base64")
+      programIdIndex: 4,
+      accountKeyIndexes: [1, 3, 2, 0],
+      data: tokenData.toString("base64")
     }]
-  }), /unsupported program ID/);
+  });
+  assert.equal(parsed.instructions[0].programId, token2022Program);
+  assert.equal(parsed.instructions[0].variant, "transferChecked");
+  assert.equal(parsed.instructions[0].amount, 250n);
+  assert.equal(parsed.instructions[0].decimals, 6);
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
 });
 
 
