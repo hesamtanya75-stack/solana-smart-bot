@@ -208,7 +208,7 @@ export function parseSupportedInstructionMessage(message) {
 
     const indexArrayKeys = Reflect.ownKeys(instruction.accountKeyIndexes);
     if (indexArrayKeys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
          Number(key) >= instruction.accountKeyIndexes.length))) {
       throw new Error("Transaction instruction " + position + " account indexes contain unsupported properties");
     }
