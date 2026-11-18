@@ -169,8 +169,8 @@ async function main() {
     );
   } catch (error) {
     const message = String(error?.message || error);
-    if (!message.includes("HTTP 429")) throw error;
-    holderDataWarning = "Devnet public RPC rate-limited holder enumeration; holder concentration was not validated.";
+    if (!/HTTP\\s*429/.test(message)) throw error;
+    holderDataWarning = "Devnet RPC rate-limited holder enumeration; holder concentration was not validated.";
   }
 
   const quote = await fetchSolUsdSpot();
