@@ -307,3 +307,10 @@ This is a bounded policy check for the decoded Compute Budget instruction family
 The caller-supplied policy ceilings are now themselves constrained to the decoder's supported protocol ranges: compute units 1–1,400,000; heap frame 32,768–262,144 bytes in 1,024-byte increments; loaded account data 1–64 MiB. Invalid policy configuration is rejected before comparing decoded instruction values. Regression tests cover over-limit compute units, misaligned and oversized heap ceilings, and loaded-data ceilings above 64 MiB.
 
 This hardens configuration validation only; it does not expand semantic coverage or authorize signing/submission.
+
+
+### Associated Token account role alias correction
+
+The syntax decoder now distinguishes account-index uniqueness from public-key equality. The six compiled account indexes must remain distinct, but the public keys at different role indexes are not required to be distinct: in a normal ATA creation flow the payer and token-account owner may be the same wallet. The previous blanket public-key uniqueness check rejected this valid layout. Regression coverage now accepts payer = owner while continuing to reject repeated account indexes.
+
+This remains syntax/structure analysis only. It does not derive or authenticate the ATA PDA, inspect on-chain account state, or establish transaction semantics.
