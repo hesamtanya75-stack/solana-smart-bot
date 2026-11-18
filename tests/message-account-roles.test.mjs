@@ -89,6 +89,15 @@ test("rejects static and resolved lookup account lists above the 256-key bound",
   }), /exceed parser limit/);
 });
 
+test("rejects sparse static account key arrays", () => {
+  const sparseKeys = new Array(2);
+  sparseKeys[0] = keys.a;
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: sparseKeys,
+    header: { numRequiredSignatures: 1, numReadonlySignedAccounts: 0, numReadonlyUnsignedAccounts: 1 }
+  }), /invalid or duplicated/);
+});
+
 test("rejects malformed header counts, invalid keys, duplicates and unresolved lookup shapes", () => {
   assert.throws(() => deriveMessageAccountRoles({
     staticAccountKeys: [keys.a],
