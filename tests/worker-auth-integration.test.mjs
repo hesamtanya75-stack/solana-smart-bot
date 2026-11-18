@@ -351,8 +351,8 @@ test("Worker dashboard CSP nonce is unique for each HTML response", async () => 
   const firstNonce = firstPolicy.match(/script-src 'nonce-([^']+)'/)[1];
   const secondNonce = secondPolicy.match(/script-src 'nonce-([^']+)'/)[1];
   assert.notEqual(firstNonce, secondNonce, "separate responses must not reuse a CSP nonce");
-  assert.match(await first.text(), new RegExp('<script nonce="' + firstNonce + '">'));
-  assert.match(await second.text(), new RegExp('<script nonce="' + secondNonce + '">'));
+  assert.ok((await first.text()).includes('<script nonce="' + firstNonce + '">'));
+  assert.ok((await second.text()).includes('<script nonce="' + secondNonce + '">'));
 });
 
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
