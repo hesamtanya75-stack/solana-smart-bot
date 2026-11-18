@@ -49,6 +49,27 @@ test("appends resolved v0 lookup writable then readonly addresses as non-signers
   ]);
 });
 
+test("keeps all writable lookup keys before readonly keys across multiple tables", () => {
+  const result = deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 0
+    },
+    resolvedAddressTableLookups: [
+      { writableAddresses: [keys.b], readonlyAddresses: [keys.c] },
+      { writableAddresses: [keys.d], readonlyAddresses: [keys.e] }
+    ]
+  });
+  assert.deepEqual(result.roles.slice(1).map(({ publicKey, writable }) => [publicKey, writable]), [
+    [keys.b, true],
+    [keys.d, true],
+    [keys.c, false],
+    [keys.e, false]
+  ]);
+});
+
 test("rejects malformed header counts, invalid keys, duplicates and unresolved lookup shapes", () => {
   assert.throws(() => deriveMessageAccountRoles({
     staticAccountKeys: [keys.a],
