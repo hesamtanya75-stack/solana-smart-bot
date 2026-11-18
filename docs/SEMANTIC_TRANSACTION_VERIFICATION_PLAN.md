@@ -249,3 +249,16 @@ The classic SPL Token decoder now rejects sparse account-index arrays explicitly
 Token-2022 is intentionally still unsupported. Its extension instructions and transfer behavior (including transfer fees and transfer hooks) require a separate, versioned decoder and transaction-level account/effect model. Reusing the classic Token decoder would be unsafe because matching a base discriminator does not establish the semantics of extension accounts or CPI effects.
 
 No Token-2022 instruction is accepted, and no semantic trust, signing, or submission permission is granted by this work.
+
+
+## Associated Token Account decoder slice: PR #40 follow-up
+
+Added an analysis-only decoder for the Associated Token Account program's `Create` (tag 0) and `CreateIdempotent` (tag 1) instructions, with an exact one-byte payload and exact six-account layout. The decoder validates distinct, in-range account indexes and requires the System Program plus either the classic SPL Token or Token-2022 program in the expected account positions. The parser integrates this decoder and structurally checks payer signer+writable, associated account writable, and owner/mint/system/token program readonly privileges when a message header is supplied.
+
+Important limitations:
+- The decoder does not derive or authenticate the associated token account PDA from owner, mint, token program, and the canonical associated-token program seeds.
+- It does not fetch or verify account existence, ownership, initialization, mint state, rent funding, or Token-2022 extension state.
+- The presence of a Token-2022 program account in an ATA Create instruction does not mean Token-2022 token instructions are supported.
+- Account privilege checks use caller-supplied, already-deserialized message/header data and are structural only.
+
+Tests cover Create and CreateIdempotent, classic Token and Token-2022 program-account selection, malformed layouts, duplicate indexes, forged/sparse records, parser integration, and a non-signer payer rejection. Semantic verification remains incomplete; signing and submission remain disabled.
