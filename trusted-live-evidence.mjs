@@ -101,16 +101,16 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
 
 function snapshotPlainRecord(value, allowedKeys, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(malformedMessage);
+    throw new Error(label + " is malformed");
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    throw new Error(malformedMessage);
+    throw new Error(label + " is malformed");
   }
   const snapshot = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string" || !allowedKeys.includes(key)) {
-      throw new Error(malformedMessage);
+      throw new Error(label + " is malformed");
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
