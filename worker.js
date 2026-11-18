@@ -780,7 +780,7 @@ export default {
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return sessionCookieResponse({ ok: true });
+        return sessionCookieResponse({ ok: true }, token);
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
@@ -813,7 +813,7 @@ export default {
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return sessionCookieResponse({ ok: true });
+        return sessionCookieResponse({ ok: true }, token);
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
     if (url.pathname.startsWith("/api/")) {
