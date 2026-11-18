@@ -879,3 +879,18 @@ These checks harden JavaScript input handling only. They do not authenticate
 transaction signatures or metadata, prove CPI execution, establish account
 state or balance deltas, or authorize signing/submission. Semantic verification
 remains incomplete and signing/submission remain disabled.
+
+
+## Message account-role input hardening (PR #43)
+
+The structural account-role helper now snapshots static account keys, the
+resolved lookup-table list, each lookup record, and writable/readonly address
+lists through own data-property descriptors. It rejects sparse arrays,
+accessor-backed entries or fields, custom prototypes, symbol keys, and
+unexpected properties before deriving signer/writable roles.
+
+This protects the local analysis boundary against hostile JavaScript objects.
+It does not authenticate the source of resolved lookup addresses, prove
+finalized lookup-table state, verify signatures, or establish execution or
+settlement. A caller-provided lookup result remains untrusted evidence until a
+separate trusted RPC resolver verifies its provenance and context.
