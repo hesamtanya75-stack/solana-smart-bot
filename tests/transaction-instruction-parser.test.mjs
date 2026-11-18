@@ -280,15 +280,15 @@ test("System Transfer with a readonly source remains analysis-only and is not pr
 
 test("parser cross-checks System Transfer signer and writable privileges when a message header is supplied", () => {
   const parsed = parseSupportedInstructionMessage({
-    accountKeys: [SOURCE, SYSTEM, DESTINATION],
+    accountKeys: [SOURCE, DESTINATION, SYSTEM],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
       numReadonlyUnsignedAccounts: 1
     },
     instructions: [{
-      programIdIndex: 1,
-      accountKeyIndexes: [0, 2],
+      programIdIndex: 2,
+      accountKeyIndexes: [0, 1],
       data: transferData(500)
     }]
   });
