@@ -119,7 +119,7 @@ Tests cover the supported Compute Budget path, rejection of unregistered System/
 
 ### Remaining work
 
-1. Implement and independently review System Program instruction decoding and exact lamport/account-creation effects.
+1. Extend the message model to preserve the legacy/v0 message header, static-key signer/writable roles, and resolved address-lookup-table key roles. Only then integrate the isolated System Program syntax decoder into a reject-by-default registry with explicit privilege validation and exact lamport/account-creation effect tests. The current isolated decoder is not a semantic trust source.
 2. Add transaction wire-format and address lookup table resolution binding; this parser currently accepts an already-deserialized message only.
 3. Add reviewed SPL Token, Token-2022, Associated Token Account, and Jupiter/router decoders one family at a time.
 4. Reconstruct all-in SOL/token funds flow and bind every decoded instruction to the immutable server-side order intent.
