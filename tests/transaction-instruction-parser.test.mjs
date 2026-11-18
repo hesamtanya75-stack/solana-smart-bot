@@ -105,6 +105,52 @@ test("transaction parser rejects unknown metadata fields and non-plain message r
   assert.equal(getterCalled, false);
 });
 
+test("transaction parser rejects metadata and accessor fields nested in compiled instructions", () => {
+  const validInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  };
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([{
+      ...validInstruction,
+      executionEvidence: { innerInstructions: [] }
+    }])),
+    /unsupported field/
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([{
+      ...validInstruction,
+      [Symbol("meta")]: {}
+    }])),
+    /unsupported field/
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([
+      Object.assign(Object.create({ innerInstructions: [] }), validInstruction)
+    ])),
+    /plain data record/
+  );
+
+  let getterCalled = false;
+  const accessorInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: []
+  };
+  Object.defineProperty(accessorInstruction, "data", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return data(2, 200000);
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([accessorInstruction])),
+    /plain data properties/
+  );
+  assert.equal(getterCalled, false);
+});
+
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
