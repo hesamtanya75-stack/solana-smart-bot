@@ -300,3 +300,10 @@ This is policy-gate regression coverage using mocked evidence. It does not imple
 The analysis-only transaction parser now accepts an optional explicit `computeBudgetPolicy` object on its message input. When supplied, it applies the caller's complete set of required ceilings to the decoded Compute Budget instructions and returns a frozen `computeBudgetPolicy` result with status `validated`. A missing policy is explicitly reported as `not-provided`; invalid or exceeded limits reject parsing. Regression tests cover successful policy application, a compute-unit ceiling breach, and incomplete policy input.
 
 This is a bounded policy check for the decoded Compute Budget instruction family only. It does not infer runtime defaults, prove fee payer balance, validate all transaction costs, or establish transaction/route semantic trust. The parser continues to return `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`.
+
+
+### Compute Budget policy ceiling bounds
+
+The caller-supplied policy ceilings are now themselves constrained to the decoder's supported protocol ranges: compute units 1–1,400,000; heap frame 32,768–262,144 bytes in 1,024-byte increments; loaded account data 1–64 MiB. Invalid policy configuration is rejected before comparing decoded instruction values. Regression tests cover over-limit compute units, misaligned and oversized heap ceilings, and loaded-data ceilings above 64 MiB.
+
+This hardens configuration validation only; it does not expand semantic coverage or authorize signing/submission.
