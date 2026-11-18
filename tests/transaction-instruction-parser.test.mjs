@@ -50,6 +50,51 @@ test("transaction parser returns analysis-only result for registered Compute Bud
   assert.ok(Object.isFrozen(parsed.instructions));
 });
 
+test("transaction parser applies explicit Compute Budget ceilings to the decoded transaction", () => {
+  const parsed = parseSupportedInstructionMessage({
+    ...message([
+      { programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) },
+      { programIdIndex: 0, accountKeyIndexes: [], data: priorityPriceData(1) }
+    ]),
+    computeBudgetPolicy: {
+      maxComputeUnitLimit: 300000,
+      maxHeapFrameBytes: 65536,
+      maxLoadedAccountDataBytes: 1024 * 1024,
+      maxPriorityFeeLamports: 1n
+    }
+  });
+  assert.deepEqual(parsed.computeBudgetPolicy, {
+    status: "validated",
+    unitLimit: 200000,
+    heapFrameBytes: null,
+    loadedAccountDataBytes: null,
+    priorityFeeLamports: 1n
+  });
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("transaction parser rejects Compute Budget policy breaches and incomplete policy", () => {
+  const instructions = [
+    { programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) },
+    { programIdIndex: 0, accountKeyIndexes: [], data: priorityPriceData(1) }
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...message(instructions),
+    computeBudgetPolicy: {
+      maxComputeUnitLimit: 199999,
+      maxHeapFrameBytes: 65536,
+      maxLoadedAccountDataBytes: 1024 * 1024,
+      maxPriorityFeeLamports: 1n
+    }
+  }), /unit limit exceeds transaction policy/);
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...message(instructions),
+    computeBudgetPolicy: { maxComputeUnitLimit: 300000 }
+  }), /policy limits are invalid or incomplete/);
+});
+
 test("transaction parser integrates the syntax-only System Program transfer decoder", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
