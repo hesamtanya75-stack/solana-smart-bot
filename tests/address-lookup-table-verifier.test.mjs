@@ -105,6 +105,38 @@ test("lookup resolution enforces deactivation and same-slot warmup visibility", 
   );
 });
 
+test("lookup resolution snapshots plain inputs and rejects accessor-backed or sparse values", () => {
+  const table = decodeAddressLookupTableAccountData(fixture({ addresses: [keyA] }));
+  const base = { table, indexes: [0], bankSlot: 11n, slotHashes: [] };
+  let getterCalled = false;
+  const accessorInput = { ...base };
+  Object.defineProperty(accessorInput, "bankSlot", {
+    enumerable: true,
+    get() { getterCalled = true; return 11n; }
+  });
+  assert.throws(() => resolveAddressLookupTableIndexes(accessorInput), /accessor-backed/);
+  assert.equal(getterCalled, false);
+
+  const sparseIndexes = new Array(1);
+  assert.throws(() => resolveAddressLookupTableIndexes({
+    ...base, indexes: sparseIndexes
+  }), /sparse/);
+
+  const accessorIndexes = [0];
+  Object.defineProperty(accessorIndexes, "0", {
+    enumerable: true,
+    get() { getterCalled = true; return 0; }
+  });
+  assert.throws(() => resolveAddressLookupTableIndexes({
+    ...base, indexes: accessorIndexes
+  }), /accessor-backed/);
+  assert.equal(getterCalled, false);
+
+  assert.throws(() => resolveAddressLookupTableIndexes({
+    ...base, slotHashes: [Number(10)]
+  }), /malformed/);
+});
+
 test("lookup resolution rejects invalid and repeated indexes", () => {
   const table = decodeAddressLookupTableAccountData(fixture({ addresses: [keyA, keyB] }));
   const base = { table, bankSlot: 11n, slotHashes: [] };
