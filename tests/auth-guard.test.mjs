@@ -393,3 +393,37 @@ test("malformed persisted MFA attempt counters fail closed and invalidate the ch
   }), { ok: false, reason: "invalid-state" });
   assert.equal(storage.values.get("auth_guard_state").challenges[id], undefined);
 });
+
+
+test("internal consume-rate-limit operation honors route-specific limits and windows", async () => {
+  const token = "r".repeat(40);
+  const guard = new AuthGuard({ storage: new TransactionalStorage() }, {
+    AUTH_GUARD_INTERNAL_TOKEN: token
+  });
+  const call = async (now) => {
+    const response = await guard.fetch(new Request("https://internal.invalid/", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "consume-rate-limit",
+        scope: "api:paper-buy:ip-hash",
+        now,
+        limit: 2,
+        windowMs: 60000
+      })
+    }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.deepEqual(await call(1000), {
+    status: 200, body: { limited: false, remaining: 1, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(1001), {
+    status: 200, body: { limited: false, remaining: 0, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(1002), {
+    status: 200, body: { limited: true, remaining: 0, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(61000), {
+    status: 200, body: { limited: false, remaining: 1, resetAt: 121000 }
+  });
+});
