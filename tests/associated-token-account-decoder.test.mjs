@@ -46,3 +46,13 @@ test("rejects forged and sparse records", () => {
   assert.throws(() => validateAssociatedTokenInstructionSet([{}]), /unreviewed/);
   assert.throws(() => validateAssociatedTokenInstructionSet(new Array(1)), /unreviewed/);
 });
+
+
+test("rejects duplicate public keys across distinct ATA role indexes", () => {
+  const duplicateRoleKeys = [...keys];
+  duplicateRoleKeys[2] = duplicateRoleKeys[0];
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], duplicateRoleKeys),
+    /role accounts must be distinct/
+  );
+});
