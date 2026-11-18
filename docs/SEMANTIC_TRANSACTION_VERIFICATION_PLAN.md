@@ -1075,3 +1075,12 @@ present, and `not-applicable` when none are supplied. Matching the supplied
 static/loaded key ordering and deriving structural privileges does not prove
 which on-chain lookup table was read, its authority, or its state at execution.
 This status is diagnostic only and never enables signing or submission.
+
+## Duplicate loaded lookup-address regression
+
+The account-role helper test suite now rejects duplicate resolved addresses
+when the same key appears in both writable and readonly loaded groups, and
+when it is repeated across separate lookup-table entries. This protects the
+flattened v0 account-key list from ambiguous duplicate positions. It remains
+structural validation of caller-provided resolved addresses, not proof that
+those addresses were authenticated from on-chain lookup-table state.
