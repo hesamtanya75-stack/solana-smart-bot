@@ -156,3 +156,12 @@ test("login, TOTP, and TOTP enrollment have dedicated request throttles", () => 
   assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-confirm", 5, 900000)'));
   assert.ok(workerSource.includes("Rate limiting is a security boundary: fail closed"));
 });
+
+test("sessions are bound to the administrator principal and reject unbound or malformed expiry state", () => {
+  assert.ok(workerSource.includes('session.subject === "admin"'));
+  assert.ok(workerSource.includes("Number.isSafeInteger(session.expiresAt) && session.expiresAt > Date.now()"));
+  assert.equal(workerSource.split('JSON.stringify({ subject: "admin", expiresAt })').length - 1, 2,
+    "password-only and MFA-completed login must issue identically bound sessions");
+  assert.equal(workerSource.includes("return !!session && session.expiresAt > Date.now();"), false,
+    "legacy sessions without an explicit principal must fail closed");
+});
