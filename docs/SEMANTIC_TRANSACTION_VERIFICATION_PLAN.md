@@ -262,3 +262,8 @@ Important limitations:
 - Account privilege checks use caller-supplied, already-deserialized message/header data and are structural only.
 
 Tests cover Create and CreateIdempotent, classic Token and Token-2022 program-account selection, malformed layouts, duplicate indexes, forged/sparse records, parser integration, and a non-signer payer rejection. Semantic verification remains incomplete; signing and submission remain disabled.
+
+
+### ATA privilege hardening follow-up
+
+The parser's structural privilege cross-check now additionally requires the derived ATA destination to be writable and not a transaction signer, and requires the System Program and selected Token Program accounts to be readonly non-signers. Regression tests cover rejection of a signer-marked destination and a writable System Program account. This remains a structural check only; it does not prove the destination is the canonical PDA or that the on-chain account state is valid.
