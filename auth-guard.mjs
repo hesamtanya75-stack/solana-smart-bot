@@ -325,9 +325,22 @@ export class AuthGuard {
       throw new Error("Invalid rate-limit request");
     }
     return this.withState(state => {
-      state.rateLimits ||= {};
+      if (state.rateLimits == null) {
+        state.rateLimits = {};
+      } else if (typeof state.rateLimits !== "object" || Array.isArray(state.rateLimits) ||
+          (Object.getPrototypeOf(state.rateLimits) !== Object.prototype &&
+           Object.getPrototypeOf(state.rateLimits) !== null)) {
+        throw new Error("Invalid persisted rate-limit state");
+      }
       for (const [key, entry] of Object.entries(state.rateLimits)) {
-        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) delete state.rateLimits[key];
+        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) {
+          delete state.rateLimits[key];
+          continue;
+        }
+        if (!Number.isSafeInteger(entry.count) || entry.count < 0) {
+          // Corrupted active buckets remain blocked until their window expires.
+          entry.count = Number.MAX_SAFE_INTEGER;
+        }
       }
       const key = "scope:" + scope;
       if (!Object.prototype.hasOwnProperty.call(state.rateLimits, key) &&
