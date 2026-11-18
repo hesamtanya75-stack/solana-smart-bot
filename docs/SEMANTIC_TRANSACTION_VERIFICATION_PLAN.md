@@ -272,3 +272,10 @@ The parser's structural privilege cross-check now additionally requires the deri
 ### Explicit ATA address-verification status
 
 Parser output now reports `associatedAddressVerification: "not-performed"` whenever an ATA instruction is present, and `"not-applicable"` otherwise. This prevents downstream consumers from mistaking account-role/layout checks for cryptographic PDA verification. Regression tests assert both states. PDA derivation and authenticated account-state validation remain outstanding; signing and submission remain disabled.
+
+
+### ATA role-key distinctness and PDA boundary
+
+The syntax-only ATA decoder now also rejects duplicate public-key strings across its six role accounts, even when the compiled account indexes differ. A regression test covers the duplicate-key substitution case. This is an additional structural guard, not PDA derivation.
+
+PDA verification remains intentionally unimplemented in this slice: the inspected Node package manifest has no Solana or audited Ed25519/PDA dependency and no lockfile was present at the inspected branch paths. Do not substitute a handwritten curve-point test or a length-only public-key parser. Before enabling canonical ATA verification, select and pin a maintained, audited Solana-compatible implementation, establish reproducible dependency locking for this repository, and add known-vector tests for owner/token-program/mint seeds, bump search, off-curve rejection, and wrong-address rejection. Until then the parser must continue to report `associatedAddressVerification: "not-performed"`.
