@@ -17,11 +17,16 @@ function readDensePlainArray(value, maximum, label) {
     }
     snapshot.push(descriptor.value);
   }
-  if (keys.length !== value.length + 1 ||
-      keys.some(key => key !== "length" &&
-        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
-         Number(key) >= value.length))) {
+  if (keys.length !== value.length + 1) {
     throw new Error(label + " contain unsupported properties");
+  }
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const key = keys[keyIndex];
+    if (key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= value.length)) {
+      throw new Error(label + " contain unsupported properties");
+    }
   }
   return snapshot;
 }
