@@ -484,6 +484,40 @@ test("ALT resolver rejects sparse lookup descriptor arrays before RPC", async ()
   assert.equal(called, false);
 });
 
+test("ALT resolver rejects accessor-backed descriptors and index arrays without invoking getters", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  let getterCalls = 0;
+  const descriptor = {
+    accountKey: tableKey,
+    writableIndexes: [0],
+    readonlyIndexes: []
+  };
+  Object.defineProperty(descriptor, "accountKey", {
+    enumerable: true,
+    get() { getterCalls++; return tableKey; }
+  });
+  let rpcCalled = false;
+  await assert.rejects(resolveJupiterAddressLookupTables([descriptor], async () => {
+    rpcCalled = true;
+    throw new Error("RPC should not be called");
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+  assert.equal(rpcCalled, false);
+
+  const accessorIndexes = [0];
+  Object.defineProperty(accessorIndexes, "0", {
+    get() { getterCalls++; return 0; }
+  });
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: accessorIndexes, readonlyIndexes: []
+  }], async () => {
+    rpcCalled = true;
+    throw new Error("RPC should not be called");
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+  assert.equal(rpcCalled, false);
+});
+
 test("ALT resolver rejects duplicate indexes before making an RPC request", async () => {
   let called = false;
   await assert.rejects(resolveJupiterAddressLookupTables([{
