@@ -362,12 +362,11 @@ References:
 
 ### SDK candidate — not yet installed
 
-Solana's current JavaScript documentation recommends `@solana/kit` for new TypeScript development and documents `getProgramDerivedAddress`. The current `@solana/web3.js` v3 line is also maintained by the Solana Foundation; its v3 API exposes asynchronous `PublicKey.findProgramAddress`. The legacy v1 line is maintenance-only.
+Solana's current JavaScript documentation recommends `@solana/kit` for new TypeScript development and documents the `getProgramDerivedAddress` API. This is the preferred candidate for evaluation in this project. Do not assume that legacy `@solana/web3.js` v1 examples or APIs are interchangeable with the current Kit API.
 
 References:
 - https://solana.com/docs/clients/official/javascript
-- https://solana-foundation.github.io/solana-web3.js/classes/PublicKey.html
-- https://www.npmjs.com/package/@solana/web3.js
+- https://solana.com/docs/core/pda/pda-derivation
 
 No dependency is added in this documentation-only step. The SDK choice must be validated against this repository's Node test runner and Cloudflare Worker bundling/runtime before installation. Then pin an exact version, generate and commit the repository's lockfile using the matching package manager, and require clean-lockfile installation in CI. Do not use a floating version or hand-authored lock metadata.
 
