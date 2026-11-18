@@ -45,3 +45,13 @@ test("rejects forged and sparse decoded instruction collections", () => {
   const sparse = new Array(1);
   assert.throws(() => validateSplTokenInstructionSet(sparse), /unreviewed/);
 });
+
+
+test("rejects sparse account index arrays instead of skipping missing entries", () => {
+  const sparse = new Array(3);
+  sparse[0] = 0;
+  sparse[2] = 2;
+  const transfer = Buffer.from([3, ...Array(8).fill(0)]);
+  assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(transfer), sparse),
+    /account indexes are invalid/);
+});
