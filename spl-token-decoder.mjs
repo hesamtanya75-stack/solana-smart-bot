@@ -86,6 +86,7 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
     programId,
     decoderVersion: 1,
     analysisOnly: true,
+    extensionSemantics: programId === TOKEN_2022_PROGRAM_ID ? "not-inspected" : "not-applicable",
     ...decoded,
     accountIndexes: Object.freeze([...accountIndexes]),
     accountRoles: Object.freeze(decoded.accountRoles)
