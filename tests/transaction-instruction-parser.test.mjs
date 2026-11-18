@@ -659,11 +659,11 @@ test("parser validates complete v0 account ordering before checking loaded writa
   const staticAccountKeys = [SYSTEM, SOURCE];
   const resolvedAddressTableLookups = [{
     writableAddresses: [DESTINATION],
-    readonlyAddresses: ["SysvarRent111111111111111111111111111111"]
+    readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
   }];
   const parsed = parseSupportedInstructionMessage({
     staticAccountKeys,
-    accountKeys: [...staticAccountKeys, DESTINATION, "SysvarRent111111111111111111111111111111"],
+    accountKeys: [...staticAccountKeys, DESTINATION, COMPUTE_BUDGET_PROGRAM],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
@@ -705,7 +705,7 @@ test("parser rejects v0 lookup inputs without explicit static keys", () => {
 test("parser rejects v0 account keys that disagree with canonical static and lookup ordering", () => {
   assert.throws(() => parseSupportedInstructionMessage({
     staticAccountKeys: [SYSTEM, SOURCE],
-    accountKeys: [SYSTEM, SOURCE, "SysvarRent111111111111111111111111111111"],
+    accountKeys: [SYSTEM, SOURCE, COMPUTE_BUDGET_PROGRAM],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
@@ -713,7 +713,7 @@ test("parser rejects v0 account keys that disagree with canonical static and loo
     },
     resolvedAddressTableLookups: [{
       writableAddresses: [DESTINATION],
-      readonlyAddresses: ["SysvarRent111111111111111111111111111111"]
+      readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
     }],
     instructions: [{
       programIdIndex: 0,
