@@ -4,6 +4,33 @@ const SUPPORTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_I
 const MAX_DATA_LENGTH = 16;
 const decodedRecords = new WeakSet();
 
+function readDensePlainArray(value, maximum, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum) {
+    throw new Error(label + " are invalid");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " contain sparse or unsupported properties");
+  }
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contain sparse or accessor-backed entries");
+    }
+    snapshot.push(descriptor.value);
+  }
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        Number(key) >= value.length) {
+      throw new Error(label + " contain unsupported properties");
+    }
+  }
+  return snapshot;
+}
+
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_DATA_LENGTH ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
@@ -36,13 +63,11 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
   if (!SUPPORTED_TOKEN_PROGRAMS.has(programId)) {
     throw new Error("SPL Token decoder rejects unknown program IDs");
   }
-  if (!Array.isArray(accountIndexes) || accountIndexes.length > 64) {
-    throw new Error("SPL Token account indexes are invalid");
-  }
-  for (let index = 0; index < accountIndexes.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
-        !Number.isInteger(accountIndexes[index]) ||
-        accountIndexes[index] < 0 || accountIndexes[index] > 255) {
+  const indexes = readDensePlainArray(
+    accountIndexes, 64, "SPL Token account indexes"
+  );
+  for (const accountIndex of indexes) {
+    if (!Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex > 255) {
       throw new Error("SPL Token account indexes are invalid");
     }
   }
@@ -51,21 +76,21 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
   const tag = bytes[0];
   let decoded;
   if (tag === 3) {
-    if (bytes.length !== 9 || accountIndexes.length !== 3 ||
-        new Set(accountIndexes).size !== 3) {
+    if (bytes.length !== 9 || indexes.length !== 3 ||
+        new Set(indexes).size !== 3) {
       throw new Error("SPL Token Transfer payload or account layout is unsupported");
     }
     decoded = {
       variant: "transfer",
       amount: readU64LE(bytes, 1),
       accountRoles: ["source", "destination", "authority"],
-      sourceAccountIndex: accountIndexes[0],
-      destinationAccountIndex: accountIndexes[1],
-      authorityAccountIndex: accountIndexes[2]
+      sourceAccountIndex: indexes[0],
+      destinationAccountIndex: indexes[1],
+      authorityAccountIndex: indexes[2]
     };
   } else if (tag === 12) {
-    if (bytes.length !== 10 || accountIndexes.length !== 4 ||
-        new Set(accountIndexes).size !== 4) {
+    if (bytes.length !== 10 || indexes.length !== 4 ||
+        new Set(indexes).size !== 4) {
       throw new Error("SPL Token TransferChecked payload or account layout is unsupported");
     }
     decoded = {
@@ -73,10 +98,10 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
       amount: readU64LE(bytes, 1),
       decimals: bytes[9],
       accountRoles: ["source", "mint", "destination", "authority"],
-      sourceAccountIndex: accountIndexes[0],
-      mintAccountIndex: accountIndexes[1],
-      destinationAccountIndex: accountIndexes[2],
-      authorityAccountIndex: accountIndexes[3]
+      sourceAccountIndex: indexes[0],
+      mintAccountIndex: indexes[1],
+      destinationAccountIndex: indexes[2],
+      authorityAccountIndex: indexes[3]
     };
   } else {
     throw new Error("SPL Token instruction variant is unsupported");
@@ -88,7 +113,7 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
     analysisOnly: true,
     extensionSemantics: programId === TOKEN_2022_PROGRAM_ID ? "not-inspected" : "not-applicable",
     ...decoded,
-    accountIndexes: Object.freeze([...accountIndexes]),
+    accountIndexes: Object.freeze(indexes),
     accountRoles: Object.freeze(decoded.accountRoles)
   });
   decodedRecords.add(record);
@@ -96,14 +121,16 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
 }
 
 export function validateSplTokenInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
+  let snapshot;
+  try {
+    snapshot = readDensePlainArray(instructions, 64, "SPL Token instruction set");
+  } catch {
     throw new Error("SPL Token instruction set is invalid");
   }
-  for (let index = 0; index < instructions.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(instructions, index) ||
-        !instructions[index] || !decodedRecords.has(instructions[index])) {
+  for (const instruction of snapshot) {
+    if (!instruction || !decodedRecords.has(instruction)) {
       throw new Error("SPL Token instruction set contains an unreviewed record");
     }
   }
-  return Object.freeze([...instructions]);
+  return Object.freeze(snapshot);
 }
