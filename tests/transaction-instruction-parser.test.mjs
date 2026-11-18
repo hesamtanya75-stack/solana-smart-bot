@@ -178,18 +178,18 @@ test("transaction parser rejects malformed data, duplicate variants and oversize
 import { deriveMessageAccountRoles } from "../message-account-roles.mjs";
 
 test("System Transfer account indexes can be cross-checked against derived privileges without granting semantic trust", () => {
-  const accountKeys = [SYSTEM, SOURCE, DESTINATION];
+  const accountKeys = [SOURCE, SYSTEM, DESTINATION];
   const parsed = parseSupportedInstructionMessage(message([{
-    programIdIndex: 0,
-    accountKeyIndexes: [1, 2],
+    programIdIndex: 1,
+    accountKeyIndexes: [0, 2],
     data: transferData(123)
   }], accountKeys));
   const roles = deriveMessageAccountRoles({
     staticAccountKeys: accountKeys,
     header: {
-      numRequiredSignatures: 1,
+      numRequiredSignatures: 2,
       numReadonlySignedAccounts: 0,
-      numReadonlyUnsignedAccounts: 1
+      numReadonlyUnsignedAccounts: 0
     }
   });
   const transfer = parsed.instructions[0];
@@ -208,18 +208,18 @@ test("System Transfer account indexes can be cross-checked against derived privi
 });
 
 test("System Transfer with a readonly source remains analysis-only and is not promoted to approval", () => {
-  const accountKeys = [SYSTEM, SOURCE, DESTINATION];
+  const accountKeys = [SOURCE, SYSTEM, DESTINATION];
   const parsed = parseSupportedInstructionMessage(message([{
-    programIdIndex: 0,
-    accountKeyIndexes: [1, 2],
+    programIdIndex: 1,
+    accountKeyIndexes: [0, 2],
     data: transferData(123)
   }], accountKeys));
   const roles = deriveMessageAccountRoles({
     staticAccountKeys: accountKeys,
     header: {
-      numRequiredSignatures: 1,
+      numRequiredSignatures: 2,
       numReadonlySignedAccounts: 1,
-      numReadonlyUnsignedAccounts: 1
+      numReadonlyUnsignedAccounts: 0
     }
   });
   const sourceRole = roles.roles[parsed.instructions[0].accountIndexes[0]];
