@@ -249,10 +249,17 @@ test("legacy authenticated sessions contain no trading principal or wallet autho
   assert.equal(record.walletPublicKey, undefined);
   assert.equal(record.walletBindingVersion, undefined);
 
-  // The legacy session can still reach its existing profile route, but must
-  // not make an unimplemented live-trading endpoint appear.
-  const live = await get("/api/live", env, token);
-  assert.equal(live.status, 404);
+  // The legacy session can still reach its existing profile route, but
+  // must not expose any future wallet-binding or order-intent capability.
+  for (const route of [
+    "/api/live",
+    "/api/wallet/enroll",
+    "/api/wallet/bindings",
+    "/api/order-intents"
+  ]) {
+    const response = await get(route, env, token);
+    assert.equal(response.status, 404, `future trading route ${route} must remain absent`);
+  }
 });
 
 test("Worker logout revokes the bearer session immediately", async () => {
