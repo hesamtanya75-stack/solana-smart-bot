@@ -35,17 +35,25 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
       throw new Error("Associated Token account indexes are invalid");
     }
   }
-  if (new Set(accountIndexes).size !== accountIndexes.length) {
-    throw new Error("Associated Token account indexes must be distinct");
-  }
   const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = accountIndexes;
+  // Compiled message account keys are deduplicated. Solana therefore encodes
+  // payer === owner as the SAME account index, not as duplicate key entries.
+  // Permit only this documented role alias; every other role index is distinct.
+  const roleIndexes = [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex];
+  for (let left = 0; left < roleIndexes.length; left++) {
+    for (let right = left + 1; right < roleIndexes.length; right++) {
+      if (roleIndexes[left] === roleIndexes[right] &&
+          !(left === 0 && right === 2)) {
+        throw new Error("Associated Token account indexes contain an unsupported role alias");
+      }
+    }
+  }
   const roleKeys = accountIndexes.map(index => accountKeys[index]);
   if (roleKeys.some(key => typeof key !== "string" || key.length === 0)) {
     throw new Error("Associated Token role accounts must contain valid key strings");
   }
-  // Different instruction account indexes may legitimately resolve to the
-  // same public key (most commonly payer === owner). Validate index uniqueness
-  // above; do not incorrectly reject valid role aliases here.
+  // The only supported role alias is payer === owner, represented by one
+  // shared compiled account index. The message-level key list is deduplicated.
   if (accountKeys[systemIndex] !== SYSTEM_PROGRAM_ID ||
       ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(accountKeys[tokenProgramIndex])) {
     throw new Error("Associated Token system or token program account is invalid");
