@@ -333,7 +333,18 @@ export class AuthGuard {
         throw new Error("Invalid persisted rate-limit state");
       }
       for (const [key, entry] of Object.entries(state.rateLimits)) {
-        if (!Number.isSafeInteger(entry?.resetAt) || entry.resetAt <= now) {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          // Unknown persisted bucket shapes are treated as active and blocked.
+          state.rateLimits[key] = { count: Number.MAX_SAFE_INTEGER, resetAt: now + windowMs };
+          continue;
+        }
+        if (!Number.isSafeInteger(entry.resetAt)) {
+          // An invalid expiry cannot be used to erase a possibly active limit.
+          entry.count = Number.MAX_SAFE_INTEGER;
+          entry.resetAt = now + windowMs;
+          continue;
+        }
+        if (entry.resetAt <= now) {
           delete state.rateLimits[key];
           continue;
         }
