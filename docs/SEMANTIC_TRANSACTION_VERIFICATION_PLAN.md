@@ -1116,3 +1116,40 @@ unsigned program account; the fixtures now place the program key after the two
 signer accounts and mark it readonly. These are test-fixture/validation
 corrections, not a change to UI or transaction execution. CI must be rerun on
 the updated head before these fixes can be considered verified.
+
+
+## Parser and ATA PDA boundary checkpoint — 2026-11-19
+
+The current parser implementation was re-reviewed at PR #43 head
+`3733ff0054cceb8090582661c36342719941d316`.
+
+- `parseSupportedInstructionMessage()` accepts only the currently registered
+  Compute Budget, System Program, SPL Token / Token-2022, and Associated Token
+  instruction decoders. Unsupported program IDs fail closed.
+- Header-derived account roles are structural checks only. Supplied address
+  lookup entries are explicitly marked `lookupAddressAuthentication:
+  "not-performed"`; they are not proof of authenticated on-chain lookup state.
+- `parseAndVerifySupportedInstructionMessage()` adds an ATA derivation/PDA
+  match only. Even a successful PDA match leaves
+  `semanticVerification: "incomplete"`, `signingPermitted: false`, and
+  `submissionPermitted: false`.
+- The parser rejects execution metadata and CPI evidence rather than
+  pretending to validate them. It does not decode arbitrary Jupiter route
+  programs, verify CPI/inner-instruction effects, authenticate token-account
+  state, or derive finalized balance deltas.
+
+A regression test was added to assert that `executeLiveOrder()` always
+throws and cannot sign or submit. On this head, Node tests and Cloudflare
+Worker build validation passed. Devnet read-only validation remains in
+progress at the time of this note. No funded Devnet lifecycle, merge, deploy,
+wallet enrollment, signing, or transaction submission was performed.
+
+### Next safe implementation unit
+
+Do not add a permissive fallback for unknown Jupiter programs. The next
+meaningful implementation must be a separately reviewed, version-pinned
+decoder/semantic verifier for a narrowly supported Jupiter route set, with
+exact program IDs, instruction layouts, account-role constraints, CPI
+expectations, token-program/extension behavior, and negative fixtures. Until
+that evidence is independently bound to the exact unsigned message and
+finalized execution, parser output must remain analysis-only.
