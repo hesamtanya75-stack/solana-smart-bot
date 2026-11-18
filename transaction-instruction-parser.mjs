@@ -101,6 +101,18 @@ function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
  * This is not a wire-format parser, does not verify signatures, lookup-table
  * contents, CPI effects, token deltas, or whole-transaction semantics.
  */
+const UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS = Object.freeze([
+  "meta",
+  "innerInstructions",
+  "logs",
+  "preTokenBalances",
+  "postTokenBalances",
+  "preBalances",
+  "postBalances",
+  "signature",
+  "signatures"
+]);
+
 export function parseSupportedInstructionMessage(message) {
   if (!message || typeof message !== "object" || Array.isArray(message) ||
       !Array.isArray(message.accountKeys) ||
@@ -108,6 +120,12 @@ export function parseSupportedInstructionMessage(message) {
       !Array.isArray(message.instructions) ||
       message.instructions.length < 1 || message.instructions.length > MAX_INSTRUCTIONS) {
     throw new Error("Transaction message shape is invalid or exceeds parser limits");
+  }
+
+  if (UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS.some(field =>
+    Object.prototype.hasOwnProperty.call(message, field)
+  )) {
+    throw new Error("Transaction message parser does not accept execution metadata or CPI evidence");
   }
 
   for (let index = 0; index < message.instructions.length; index++) {
