@@ -407,3 +407,54 @@ test("parser rejects ATA creation when payer is not a signer", () => {
     }]
   }), /ATA payer account privilege requirements are not satisfied/);
 });
+
+
+test("parser rejects ATA destination marked as a signer", () => {
+  const keys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: keys,
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 5
+    },
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  }), /ATA destination account privilege requirements are not satisfied/);
+});
+
+test("parser rejects ATA program account marked writable", () => {
+  const keys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: keys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 4
+    },
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  }), /ATA System Program account privilege requirements are not satisfied/);
+});
