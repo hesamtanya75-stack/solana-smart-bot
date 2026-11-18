@@ -529,6 +529,28 @@ test("concurrent identical confirmations are idempotent after finalized settleme
   assert.equal((await coordinator.status()).openPositions, 1);
 });
 
+test("coordinator rejects finalized token settlement without independently verified all-in costs", async () => {
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized"
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "9".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /lacks matching independently verified all-in cost evidence/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
 test("mismatched settlement proof cannot confirm a reservation", async () => {
   const verifier = async args => ({
     verified: true, signature: args.signature, inputMint: args.inputMint,
