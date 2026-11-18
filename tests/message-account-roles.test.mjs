@@ -137,3 +137,15 @@ test("rejects sparse resolved writable and readonly lookup address arrays", () =
     resolvedAddressTableLookups: [{ writableAddresses: [], readonlyAddresses: sparseReadonly }]
   }), /invalid or duplicated/);
 });
+test("rejects sparse resolved lookup table lists", () => {
+  const sparseTables = new Array(1);
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 0
+    },
+    resolvedAddressTableLookups: sparseTables
+  }), /malformed/);
+});
