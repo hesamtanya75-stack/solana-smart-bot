@@ -16,7 +16,7 @@ test("worker session authorization parses only a bounded UUID from the HttpOnly 
   assert.ok(workerSource.includes('request.headers.get("Cookie")'));
   assert.ok(workerSource.includes('const token = match ? match[1] : ""'));
   assert.ok(workerSource.includes("function sessionCookieResponse(data, token"));
-  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Strict"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Lax"));
 });
 
 test("private API authentication guard precedes private route handlers", () => {
