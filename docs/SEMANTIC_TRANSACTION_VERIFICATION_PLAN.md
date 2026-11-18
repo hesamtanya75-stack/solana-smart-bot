@@ -567,3 +567,26 @@ Pinned upstream source:
 
 No executable code, dependency, parser status, coordinator gate, signing,
 transaction submission, UI, deployment, or production data was changed.
+
+
+### Clarification: scope of the upstream Token-2022 matrix
+
+The `pinocchio/program/tests/bump.rs` source was re-read in full to avoid
+overstating what its Token-2022 matrix proves. The fixed wallet/mint/bump cases
+listed above are Classic Token fixtures. The Token-2022 matrix at the end of
+that test file uses a dynamically constructed harness wallet and mint and checks
+acceptance of an existing ATA using a bump computed at runtime; it does not
+publish a fixed Token-2022 address+bump pair.
+
+Accordingly, the upstream source currently gives:
+- Fixed Classic Token wallet/mint/bump fixtures, plus negative bump/address cases.
+- Runtime-derived Token-2022 acceptance coverage in a program test matrix.
+- No fixed Token-2022 address+bump fixture in the inspected test file.
+
+This distinction is mandatory in any implementation report. A future fixed
+Token-2022 vector must be independently generated and verified against the
+official helper using the explicit Token-2022 program ID; a runtime-computed
+expected value inside the same test is not an independent fixed vector.
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
