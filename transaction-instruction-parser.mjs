@@ -40,6 +40,7 @@ function isCanonicalPublicKey(value) {
 function requireRole(roles, index, expected, label) {
   const role = roles[index];
   if (!role || (expected.signer && !role.signer) ||
+      (expected.nonSigner && role.signer) ||
       (expected.writable && !role.writable) ||
       (expected.readonly && role.writable)) {
     throw new Error(label + " account privilege requirements are not satisfied");
@@ -74,11 +75,11 @@ function analyzeSplTokenInstructionPrivileges(instructions, roles) {
 function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
   for (const instruction of instructions) {
     requireRole(roles, instruction.payerAccountIndex, { signer: true, writable: true }, "ATA payer");
-    requireRole(roles, instruction.associatedAccountIndex, { writable: true }, "ATA destination");
+    requireRole(roles, instruction.associatedAccountIndex, { writable: true, nonSigner: true }, "ATA destination");
     requireRole(roles, instruction.ownerAccountIndex, { readonly: true }, "ATA owner");
     requireRole(roles, instruction.mintAccountIndex, { readonly: true }, "ATA mint");
-    requireRole(roles, instruction.systemProgramAccountIndex, { readonly: true }, "ATA System Program");
-    requireRole(roles, instruction.tokenProgramAccountIndex, { readonly: true }, "ATA Token Program");
+    requireRole(roles, instruction.systemProgramAccountIndex, { readonly: true, nonSigner: true }, "ATA System Program");
+    requireRole(roles, instruction.tokenProgramAccountIndex, { readonly: true, nonSigner: true }, "ATA Token Program");
   }
 }
 
