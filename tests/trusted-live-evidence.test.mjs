@@ -1212,7 +1212,7 @@ test("Jupiter /build rejects sparse and accessor-backed route and blockhash arra
   });
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     blockhashWithMetadata: { blockhash, lastValidBlockHeight: 123456 }
-  })), /(?:response envelope|blockhash metadata).*malformed/);
+  })), /response envelope|blockhash metadata.*malformed/);
   assert.equal(byteGetterCalls, 0);
 });
 
@@ -1248,10 +1248,10 @@ test("Jupiter /build v1 requires inline-account response shape and compute unit 
 test("Jupiter /build rejects oversized route, instruction, account, and lookup-table collections", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     routePlan: new Array(65).fill(validBuildResponse().routePlan[0])
-  })), /(?:response envelope|blockhash metadata).*malformed/);
+  })), /response envelope|blockhash metadata.*malformed/);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     otherInstructions: new Array(65).fill(validBuildResponse().swapInstruction)
-  })), /(?:response envelope|blockhash metadata).*malformed/);
+  })), /response envelope|blockhash metadata.*malformed/);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: {
       ...validBuildResponse().swapInstruction,
@@ -1280,10 +1280,10 @@ test("Jupiter /build rejects token amounts outside the Solana u64 range", () => 
   for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "18446744073709551616"
-    })), /(?:response envelope|blockhash metadata).*malformed/);
+    })), /response envelope|blockhash metadata.*malformed/);
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "9".repeat(100000)
-    })), /(?:response envelope|blockhash metadata).*malformed/);
+    })), /response envelope|blockhash metadata.*malformed/);
   }
 });
 
@@ -1292,10 +1292,10 @@ test("Jupiter /build rejects numeric or non-canonical amount values without coer
   for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: 9007199254740992
-    })), /(?:response envelope|blockhash metadata).*malformed/);
+    })), /response envelope|blockhash metadata.*malformed/);
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "01"
-    })), /(?:response envelope|blockhash metadata).*malformed/);
+    })), /response envelope|blockhash metadata.*malformed/);
   }
 });
 
@@ -1325,7 +1325,7 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
       /routePlan\[0\] is malformed/);
   }
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ swapMode: "Unknown" })),
-    /(?:response envelope|blockhash metadata).*malformed/);
+    /response envelope|blockhash metadata.*malformed/);
 });
 
 test("Jupiter /build rejects sparse route and instruction collections", () => {
@@ -1355,7 +1355,7 @@ test("Jupiter /build rejects array-shaped blockhash metadata", () => {
   metadata.lastValidBlockHeight = 123456;
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     blockhashWithMetadata: metadata
-  })), /(?:response envelope|blockhash metadata).*malformed/);
+  })), /response envelope|blockhash metadata.*malformed/);
 });
 
 test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
@@ -1363,7 +1363,7 @@ test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
   delete sparseBlockhash[7];
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     blockhashWithMetadata: { blockhash: sparseBlockhash, lastValidBlockHeight: 123456 }
-  })), /(?:response envelope|blockhash metadata).*malformed/);
+  })), /response envelope|blockhash metadata.*malformed/);
 
   const sparseAddresses = new Array(2);
   sparseAddresses[0] = "11111111111111111111111111111111";
