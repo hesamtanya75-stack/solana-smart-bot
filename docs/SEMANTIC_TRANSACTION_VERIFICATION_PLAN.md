@@ -1153,3 +1153,14 @@ exact program IDs, instruction layouts, account-role constraints, CPI
 expectations, token-program/extension behavior, and negative fixtures. Until
 that evidence is independently bound to the exact unsigned message and
 finalized execution, parser output must remain analysis-only.
+
+
+## Jupiter unsigned-order evidence cannot authorize execution — 2026-11-19
+
+The live-order response now explicitly carries `analysisOnly: true`,
+`signingPermitted: false`, and `submissionPermitted: false`, in addition to
+`semanticInstructionVerification: false` and
+`routeVerification: "unsigned-structure-and-alt-only"`. Regression coverage
+asserts all five properties for a structurally accepted unsigned Jupiter order.
+This is a fail-closed output contract; it does not implement route semantics,
+signing, or transaction submission.
