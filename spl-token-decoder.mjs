@@ -30,10 +30,15 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
   if (programId !== TOKEN_PROGRAM_ID) {
     throw new Error("SPL Token decoder rejects unknown program IDs");
   }
-  if (!Array.isArray(accountIndexes) ||
-      accountIndexes.some((value, index) => !Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
-        !Number.isInteger(value) || value < 0 || value > 255)) {
+  if (!Array.isArray(accountIndexes) || accountIndexes.length > 64) {
     throw new Error("SPL Token account indexes are invalid");
+  }
+  for (let index = 0; index < accountIndexes.length; index++) {
+    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
+        !Number.isInteger(accountIndexes[index]) ||
+        accountIndexes[index] < 0 || accountIndexes[index] > 255) {
+      throw new Error("SPL Token account indexes are invalid");
+    }
   }
 
   const bytes = decodeCanonicalBase64(encodedData);
