@@ -11,11 +11,36 @@ const SUPPORTED_TOKEN_PROGRAMS = new Set([
 ]);
 const encodeAddress = getAddressEncoder();
 
+function snapshotDerivationInput(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("ATA derivation input must be a plain data record");
+  }
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("ATA derivation input must be a plain data record");
+  }
+  const allowed = new Set(["owner", "mint", "tokenProgramId"]);
+  const keys = Reflect.ownKeys(input);
+  if (keys.length !== allowed.size || keys.some(key => typeof key !== "string" || !allowed.has(key))) {
+    throw new Error("ATA derivation input contains unsupported or missing fields");
+  }
+  const snapshot = Object.create(null);
+  for (const key of allowed) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("ATA derivation input must contain own data properties");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
 /**
  * Derive the canonical Associated Token Account address and bump.
  * This uses Solana's SDK implementation; it does not inspect chain state.
  */
-export async function deriveAssociatedTokenAddress({ owner, mint, tokenProgramId }) {
+export async function deriveAssociatedTokenAddress(input) {
+  const { owner, mint, tokenProgramId } = snapshotDerivationInput(input);
   if (!SUPPORTED_TOKEN_PROGRAMS.has(tokenProgramId)) {
     throw new Error("Unsupported token program for ATA derivation");
   }
