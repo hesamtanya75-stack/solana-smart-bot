@@ -1616,7 +1616,7 @@ jupiterQuoteButton.addEventListener("click", async () => {
     if (quote.quoteOnly !== true || quote.transactionAvailable !== false) {
       throw new Error("وەڵامی Quote تەنها پشتڕاست نەکرایەوە.");
     }
-    const impact = quote.priceImpact == null ? "بەردەست نییە" : String(quote.priceImpact);
+    const impact = quote.priceImpactPct == null ? "بەردەست نییە" : (Number(quote.priceImpactPct) * 100).toFixed(4) + "%";
     const fee = quote.feeBps == null ? "بەردەست نییە" : String(quote.feeBps) + " bps";
     const minOut = quote.otherAmountThreshold || "بەردەست نییە";
     const usd = quote.outUsdValue == null ? "بەردەست نییە" : "$" + Number(quote.outUsdValue).toFixed(4);
