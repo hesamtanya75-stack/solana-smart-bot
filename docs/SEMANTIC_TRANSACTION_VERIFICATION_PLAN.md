@@ -859,3 +859,23 @@ transaction message parser. It remains JavaScript collection-shape validation
 only; it does not establish instruction execution, authenticated transaction
 metadata, CPI effects, account state, or settlement. Semantic verification
 remains incomplete and signing/submission remain disabled.
+
+
+## System and Compute Budget decoder collection hardening (PR #43)
+
+The exported System Program decoder now snapshots bounded, dense plain account
+index arrays through own data-property descriptors before reading indexes.
+Its instruction-set validator applies the same collection boundary to decoded
+records. Accessors, sparse entries, custom prototypes, symbols, and extra
+properties are rejected without invoking getters.
+
+The Compute Budget instruction-set validators now use the same bounded
+snapshot rule. The transaction decoder registry also requires a plain empty
+account-index array for the currently reviewed no-account Compute Budget
+instruction family. Regression tests cover accessor-backed collections,
+decorated arrays, and custom prototypes.
+
+These checks harden JavaScript input handling only. They do not authenticate
+transaction signatures or metadata, prove CPI execution, establish account
+state or balance deltas, or authorize signing/submission. Semantic verification
+remains incomplete and signing/submission remain disabled.
