@@ -104,9 +104,9 @@ test("transaction parser rejects unsupported classic Token variants and all Toke
   ), /SPL Token instruction variant is unsupported/);
   const transfer = Buffer.from([3, ...Array(8).fill(0)]).toString("base64");
   assert.throws(() => parseSupportedInstructionMessage(
-    message([{ programIdIndex: 0, accountKeyIndexes: [1, 2, 3], data: transfer }],
-      [token2022, SOURCE, DESTINATION, SYSTEM]),
-  ), /unsupported program ID/);
+    message([{ programIdIndex: 0, accountKeyIndexes: [], data: transfer }],
+      [token2022]),
+  ), /reviewed account-role schema/);
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
@@ -405,7 +405,7 @@ test("parser rejects ATA creation when payer is not a signer", () => {
       numReadonlyUnsignedAccounts: 6
     },
     instructions: [{
-      programIdIndex: 6,
+      programIdIndex: 7,
       accountKeyIndexes: [1, 2, 3, 4, 5, 6],
       data: Buffer.from([0]).toString("base64")
     }]
@@ -457,7 +457,7 @@ test("parser rejects ATA program account marked writable", () => {
       numReadonlyUnsignedAccounts: 5
     },
     instructions: [{
-      programIdIndex: 6,
+      programIdIndex: 7,
       accountKeyIndexes: [0, 1, 5, 6, 2, 4],
       data: Buffer.from([1]).toString("base64")
     }]
