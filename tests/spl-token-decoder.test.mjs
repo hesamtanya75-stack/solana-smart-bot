@@ -39,6 +39,7 @@ test("decodes only base TransferChecked under Token-2022 and preserves its progr
   data[9] = 9;
   const result = decodeSplTokenInstruction(TOKEN_2022, encoded(data), [4, 5, 6, 7]);
   assert.equal(result.programId, TOKEN_2022);
+  assert.equal(result.extensionSemantics, "not-inspected");
   assert.equal(result.variant, "transferChecked");
   assert.equal(result.amount, 123456n);
   assert.equal(result.decimals, 9);
