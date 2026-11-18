@@ -193,3 +193,21 @@ A source review of `auth-guard.mjs` and `worker.js` confirms that API throttling
 Residual limitation: these buckets are per source IP and route scope, not a stable authenticated principal or wallet identity. Distributed requests from many distinct IPs can consume the bounded bucket capacity and cause new source IPs to be throttled until old windows expire. The existing tests cover atomic concurrent consumption, expiry, corrupted state, and capacity behavior, but do not establish resistance to distributed abuse or prove per-user fairness. Before enabling wallet enrollment or unattended trading, add a reviewed principal/session-aware layer in addition to IP throttling, and test capacity-exhaustion behavior under realistic multi-IP load. Do not weaken the current fail-closed behavior as a workaround.
 
 This is a source-review finding, not a confirmed exploit. It does not alter the transaction-verification blockers or authorize signing/submission.
+
+## ALT trust-boundary review at `af5d488cf0a10f930385666cebcc30b2463e781d`
+
+The current `deriveMessageAccountRoles()` helper accepts caller-supplied `writableAddresses` and `readonlyAddresses`. It validates public-key encoding, duplicate keys, array density, and the aggregate 256-account bound, then appends loaded addresses in Solana v0 order (all writable before all readonly). These checks protect the helper's input shape; they do **not** authenticate the source or freshness of those addresses.
+
+Before ALT-derived keys can be used as semantic or signing evidence, a separate resolver must, at minimum:
+
+1. Parse the exact v0 message lookup descriptors and bind each table account key and writable/readonly index list to the message digest.
+2. Fetch each lookup-table account from a trusted Solana RPC with an explicit commitment and record the RPC context slot; require finalized state for the verification decision.
+3. Verify the account exists, is owned by the Address Lookup Table Program, and its serialized metadata and address vector parse canonically with no trailing or malformed data.
+4. Enforce deactivation and extension warmup rules against the relevant finalized bank/slot; reject deactivated, not-yet-active, or otherwise unusable tables.
+5. Resolve every requested index against the authenticated address vector; reject out-of-range indexes, duplicate table descriptors, duplicate loaded addresses, and collisions with static keys.
+6. Reconstruct the complete key order exactly: static keys, then all loaded writable keys across descriptors, then all loaded readonly keys. Bind the immutable result and context evidence to the exact message digest.
+7. Fail closed on RPC disagreement, stale/inconsistent context, missing tables, malformed metadata, or any unresolved index. Do not fall back to caller-provided addresses or a weaker commitment.
+
+### Current status
+
+This is a source-review checklist, not an implementation. The repository helper does not perform RPC retrieval, ALT program-owner or metadata verification, deactivation/warmup checks, or message-to-lookup-descriptor binding. The transaction parser does not currently consume authenticated ALT evidence. Therefore ALT-derived account roles remain untrusted for semantic approval; `semanticVerification` remains `incomplete`, and signing/submission must remain disabled. No live route, signer, or transaction-submission behavior is authorized by this review.
