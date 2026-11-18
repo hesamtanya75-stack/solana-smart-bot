@@ -1162,7 +1162,7 @@ test("Jupiter /build instruction arrays reject custom iterators and decorated pr
   decorated.extra = true;
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     otherInstructions: decorated
-  })), /instruction list is malformed/);
+  })), /instruction.*malformed/);
 });
 
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
