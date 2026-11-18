@@ -47,7 +47,7 @@ test("Devnet preflight retries transient network failures without exposing the R
   assert.match(script, /const DEVNET_RPCS = \[\.\.\.new Set\(\[/);
   assert.match(script, /"https:\/\/api\.devnet\.solana\.com"/);
   assert.match(script, /for \(const endpoint of DEVNET_RPCS\)/);
-  assert.match(script, /error\?\.cause\?\.code/);
+  assert.match(script, /lastError\?\.cause\?\.code/);
   assert.match(script, /replace\(\/\[\^A-Za-z0-9_-\]\/g, ""\)/);
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
