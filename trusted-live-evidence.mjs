@@ -822,6 +822,30 @@ const ALT_DEACTIVATION_SLOT_NEVER = 18446744073709551615n;
  * Any missing, malformed, foreign-owned, deactivated, or not-yet-warmed table
  * fails closed. This establishes address resolution only, not instruction safety.
  */
+function snapshotLookupRpcAccount(account) {
+  if (!account || typeof account !== "object" || Array.isArray(account) ||
+      (Object.getPrototypeOf(account) !== Object.prototype && Object.getPrototypeOf(account) !== null)) {
+    throw new Error("Address lookup table RPC account is malformed");
+  }
+  const readOwnData = (record, key, label) => {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains missing or accessor-backed fields");
+    }
+    return descriptor.value;
+  };
+  const owner = readOwnData(account, "owner", "Address lookup table RPC account");
+  const executable = readOwnData(account, "executable", "Address lookup table RPC account");
+  const rawData = readOwnData(account, "data", "Address lookup table RPC account");
+  if (!Array.isArray(rawData) || Object.getPrototypeOf(rawData) !== Array.prototype ||
+      rawData.length !== 2 || Reflect.ownKeys(rawData).length !== 3) {
+    throw new Error("Address lookup table RPC account data is malformed");
+  }
+  const encoded = readOwnData(rawData, "0", "Address lookup table RPC account data");
+  const encoding = readOwnData(rawData, "1", "Address lookup table RPC account data");
+  return Object.freeze({ owner, executable, data: Object.freeze([encoded, encoding]) });
+}
+
 export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fetch) {
   const lookupSnapshot = snapshotDensePlainArray(
     lookups, 64, "Jupiter address lookup descriptors",
@@ -877,10 +901,10 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
   }
   const resolved = [];
   for (let i = 0; i < lookups.length; i++) {
-    const account = accounts[i];
-    if (!account || account.owner !== ADDRESS_LOOKUP_TABLE_PROGRAM_ID ||
+    const account = snapshotLookupRpcAccount(accounts[i]);
+    if (account.owner !== ADDRESS_LOOKUP_TABLE_PROGRAM_ID ||
         account.executable !== false ||
-        !Array.isArray(account.data) || typeof account.data[0] !== "string" ||
+        typeof account.data[0] !== "string" ||
         account.data[1] !== "base64") {
       throw new Error("Address lookup table is missing, malformed, executable, or owned by an unexpected program");
     }
