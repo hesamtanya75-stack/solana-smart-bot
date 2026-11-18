@@ -26,6 +26,7 @@ function isCanonicalPublicKey(value) {
  */
 export function deriveMessageAccountRoles({ staticAccountKeys, header, resolvedAddressTableLookups = [] }) {
   if (!Array.isArray(staticAccountKeys) || staticAccountKeys.length < 1 ||
+      staticAccountKeys.length > MAX_ACCOUNT_KEYS ||
       !Array.isArray(resolvedAddressTableLookups) || !header || typeof header !== "object" ||
       Array.isArray(header)) {
     throw new Error("Message account-role input is malformed");
@@ -61,8 +62,12 @@ export function deriveMessageAccountRoles({ staticAccountKeys, header, resolvedA
         !Array.isArray(lookup.writableAddresses) || !Array.isArray(lookup.readonlyAddresses)) {
       throw new Error("Resolved address lookup table entry is malformed");
     }
-    writableLookupAddresses.push(...lookup.writableAddresses);
-    readonlyLookupAddresses.push(...lookup.readonlyAddresses);
+    if (lookup.writableAddresses.length + lookup.readonlyAddresses.length >
+        MAX_ACCOUNT_KEYS - staticCount - writableLookupAddresses.length - readonlyLookupAddresses.length) {
+      throw new Error("Resolved message account keys exceed parser limit");
+    }
+    for (const publicKey of lookup.writableAddresses) writableLookupAddresses.push(publicKey);
+    for (const publicKey of lookup.readonlyAddresses) readonlyLookupAddresses.push(publicKey);
   }
   // Solana v0 account-key order is static keys, then ALL loaded writable
   // addresses, then ALL loaded readonly addresses (not per-table interleaving).
