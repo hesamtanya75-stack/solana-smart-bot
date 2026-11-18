@@ -86,3 +86,15 @@ All three workflow runs for this exact commit have now completed:
 ## Scope decision
 
 No transaction-decoder implementation was added in this follow-up. The existing parser remains structural-only and explicitly marks semantic verification false; unknown instruction programs are structurally parsed but are never semantically trusted. The next implementation must begin with a versioned, exact instruction/program allowlist and reviewed decoders, then prove account/value matching and full funds-flow reconstruction with negative tests. Do not relax coordinator gates to make mocked fixtures pass as production evidence.
+
+
+## CI verification for instruction-slot fail-closed test commit `bf269296ad893fb5211b3c6acabec93744ba23e9`
+
+All workflows for this exact commit completed successfully:
+
+- Node tests: success (run 44291310641), including the safety and Durable Objects runtime test suite containing the new Jupiter instruction-slot test.
+- Cloudflare Worker build validation: success (run 44291310708); Wrangler target verification passed and the Worker was built without deployment.
+- Devnet workflow: read-only job success (run 44291310800).
+- Funded Devnet lifecycle: skipped. The workflow explicitly reported it as skipped without opt-in; no funded transaction or signing test was performed.
+
+The new test confirms the current /build envelope validator does not promote any of the six instruction slots (compute budget, setup, swap, cleanup, other, tip) to semantic trust merely because an instruction is present or uses a familiar program ID. It does not implement semantic decoding.
