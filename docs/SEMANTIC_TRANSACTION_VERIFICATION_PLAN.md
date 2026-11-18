@@ -624,3 +624,44 @@ Sources:
 This is documentation-only evidence collection. No executable code,
 dependency, parser status, coordinator gate, signing, transaction submission,
 UI, deployment, or production data was changed.
+
+
+### Official Solana Foundation cross-check for paired ATA addresses: 2026-11-18
+
+The Token-2022 address-only candidate above is now corroborated by the
+Solana Foundation's own `pay-kit` repository at pinned revision
+`86400da56a35705516f166394a026ea32e8356fb`, file
+`lua/tests/methods_solana_ata_spec.lua`.
+
+That test uses the same owner and USDC mainnet mint for both token programs
+and explicitly says the expected addresses are cross-checked against the
+Ruby reference implementation and `spl-token` CLI:
+
+| Owner | Mint | Token program | Expected ATA address |
+|---|---|---|---|
+| `CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | Classic Token (`TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`) | `3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b` |
+| same | same | Token-2022 (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`) | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` |
+
+This establishes a strong, pinned, cross-implementation pair of expected
+addresses for one owner/mint tuple and demonstrates that changing only the
+token program changes the ATA. The upstream test still does not publish the
+canonical bump for either result. Therefore these are verified address
+fixtures, but not yet the required address+bump vectors. The bump must be
+derived and cross-checked independently before claiming the full vector
+requirement is satisfied.
+
+An additional independent SDK implementation was inspected in
+`metaplex-foundation/mpl-token-metadata` at pinned revision
+`7ce760f9e010cb9819ffd7dd86986a44691bd1f8`,
+`clients/js-kit/src/hooked/pdas.ts`. Its `findAssociatedTokenPda`
+returns the SDK's `ProgramDerivedAddress` tuple using the same three seed
+components (owner, selected token program, mint) and ATA program ID. This is
+a suitable independent implementation to use when obtaining the bump, but
+no runtime execution of that SDK has been performed in this repository.
+
+Source:
+- https://github.com/solana-foundation/pay-kit/blob/86400da56a35705516f166394a026ea32e8356fb/lua/tests/methods_solana_ata_spec.lua
+- https://github.com/metaplex-foundation/mpl-token-metadata/blob/7ce760f9e010cb9819ffd7dd86986a44691bd1f8/clients/js-kit/src/hooked/pdas.ts
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
