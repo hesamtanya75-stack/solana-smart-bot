@@ -1,0 +1,69 @@
+# Semantic transaction verification implementation plan
+
+## Audit baseline
+
+Reviewed against PR #40 head `e1466c33687b4a1798f01ecf3c84b21a456c1d2f`.
+
+The current transaction parser performs structural validation and address lookup table resolution, but its own evidence deliberately returns:
+
+- `semanticInstructionVerification: false`
+- `routeVerification: "build-envelope-only"` or `"unsigned-structure-and-alt-only"`
+
+The LiveTradeCoordinator explicitly rejects reservations unless semantic verification is true and the route status is exactly `semantically-verified`. This is the correct fail-closed behavior and must remain in place until the verifier below is independently implemented and tested.
+
+This document is a plan only. It does not change parser behavior, coordinator gates, live routes, signing, submission, deployment, or production data.
+
+## Required verifier output
+
+A verifier may attest a transaction only when it has decoded and validated the complete message and all resolved account keys. Its output must be immutable and bound to:
+
+- Exact serialized message digest and transaction version.
+- Expected enrolled wallet, fee payer, signer set, and cluster.
+- Recent blockhash and validity/expiry context.
+- Every instruction in original order, with program ID, decoded instruction type, exact account roles/privileges, and decoded arguments.
+- All address lookup tables, their finalized context, and resolved writable/readonly addresses.
+- Expected input/output mints, exact input amount, minimum output, fee ceiling, tip policy, and destination accounts.
+- A short-lived immutable order intent and idempotency key.
+
+Do not derive a trusted attestation from Jupiter's route-plan JSON, an allowlisted program ID, or a client-supplied boolean alone.
+
+## Verification stages
+
+1. **Message integrity:** retain strict size, canonical encoding, signature-count, header, account-index, duplicate-key, and transaction-version validation. Reject malformed or unsupported message formats.
+2. **Lookup tables:** resolve every referenced lookup table from a trusted RPC at finalized commitment; verify owner, metadata, deactivation/warmup state, index bounds, duplicate addresses, and complete key ordering. Fail closed on missing or inconsistent data.
+3. **Program and instruction allowlist:** define a versioned allowlist of exact supported program IDs and instruction variants. Initially reject all programs and variants not explicitly covered by reviewed decoders.
+4. **System Program:** decode each permitted transfer/create/allocate/assign variant and validate exact source, destination, owner, lamports, account creation, and rent effects. Reject authority or arbitrary transfer patterns outside the approved swap envelope.
+5. **Compute Budget:** decode compute-unit limit, unit price/priority fee, loaded-account-data limit, and heap-frame settings. Enforce configured ceilings and reject duplicate, conflicting, malformed, or unsupported settings.
+6. **Token and Token-2022:** decode only explicitly supported transfer, transfer-checked, sync-native, initialize-account/associated-account, close-account, and other individually reviewed variants. Validate mint, token program, source/destination owner, authority, decimals, amount, delegate, close authority, extensions, and exact balance effects. Reject approve/revoke, authority changes, confidential or unsupported extension instructions unless separately reviewed.
+7. **Associated Token Account:** validate the canonical associated address derivation, owner, mint, token program, payer, and idempotent/non-idempotent creation semantics. Reject unexpected owners or account substitutions.
+8. **Jupiter router and route CPIs:** decode the exact supported router instruction versions and validate route accounts and amounts. Where inner CPI effects cannot be independently established from the transaction message and a trusted, version-pinned program interface, do not claim semantic verification. Reject unknown route programs and opaque/unverifiable paths.
+9. **All-in funds-flow reconstruction:** reconstruct all SOL, WSOL, SPL and Token-2022 debits/credits, rent, network fee, priority fee, platform fee, and tips. Prove no unapproved destination or excess debit is possible.
+10. **Intent binding:** compare the decoded transaction against the immutable server-side intent and reject any mismatch in wallet, cluster, mints, amounts, minimum output, slippage, fees, recipients, expiry, or digest.
+11. **Independent signer enforcement:** the isolated signer repeats verification and policy checks itself. It must not trust a Worker-provided attestation without independently validating its authenticated provenance and exact message digest.
+12. **Settlement:** after one submission, independently verify finalized transaction execution and owner-scoped pre/post balances against the same intent before ledger mutation.
+
+## Required negative tests
+
+- Unknown program ID, unknown instruction discriminator, unknown instruction variant, malformed instruction data, truncated/oversized data.
+- Wrong fee payer, extra signer, signer substitution, unexpected writable account, unexpected executable/program account.
+- Lookup table missing, wrong owner, deactivated, not finalized, warmup slot, invalid index, duplicate address, changed table contents, stale context.
+- Duplicate/conflicting Compute Budget instructions, excessive compute limit, priority fee, heap size, or loaded-account-data limit.
+- System transfer to an unapproved destination, excess lamports, unexpected account creation/assignment/close.
+- Token transfer from wrong owner, wrong mint, wrong token program, wrong amount/decimals, delegate authority, close authority, mint/freeze authority mutation, unsupported Token-2022 extension.
+- ATA for wrong owner/mint/program, substituted token account, unexpected payer.
+- Jupiter route-plan/message mismatch, unapproved router, unknown CPI route, unexpected intermediate token account, unexpected SOL/token outflow, hidden/unsupported tip or fee.
+- Expired quote/intent/blockhash, altered message after approval, wrong wallet/cluster/principal, replayed or duplicate idempotency key.
+- RPC disagreement, stale lookup data, partial/ambiguous submission, duplicate cron execution, signer outage, failed or non-finalized settlement.
+- Fuzz/property tests for all decoders and malformed transaction encodings.
+
+## Acceptance gate
+
+The verifier may set `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"` only after every supported instruction in the complete transaction has a reviewed decoder, every decoded account and value matches the immutable intent, all unsupported instructions fail closed, the independent signer repeats the checks, and the complete positive/negative test matrix passes.
+
+Until then:
+- Keep coordinator reservations blocked.
+- Keep `executeLiveOrder()` non-executing.
+- Keep the Worker without a live execution route.
+- Keep Mainnet trading disabled.
+- Do not run a funded Devnet transfer without a separately approved disposable-wallet test plan.
+- Do not merge PR #40 or deploy to production as part of this plan.
