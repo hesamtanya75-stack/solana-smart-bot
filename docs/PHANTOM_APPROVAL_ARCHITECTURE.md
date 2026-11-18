@@ -126,3 +126,12 @@ Consequently, do not build wallet-binding or order-intent authorization on top o
 - Before any future wallet enrollment or live-trading boundary, require an explicit MFA-enforced state and step-up proof for enrollment, rebinding, revocation, and policy changes. Do not treat the current optional bootstrap flow as sufficient proof.
 
 This is a source audit only. It does not change MFA configuration, sessions, routes, production data, or the dashboard.
+
+### Browser bearer-token storage audit (2026-11-18)
+
+- The dashboard reads the administrator bearer session from `localStorage` under `solanaBotSession`, attaches it to API requests as an Authorization Bearer token, and removes it during logout.
+- A bearer token readable by page JavaScript is exposed to any successful same-origin script injection. The current audit did not establish an exploitable XSS, but localStorage is not an HttpOnly session boundary.
+- Before any wallet enrollment or live-trading capability, replace this browser-readable bearer pattern with a reviewed server-managed session design (for example, Secure, HttpOnly, SameSite cookies plus appropriate CSRF defenses), and test login, MFA challenge, expiry, logout, and cross-origin behavior end-to-end.
+- Do not simply move the token to sessionStorage; JavaScript can still read it. Do not change the existing dashboard or authentication flow as part of this documentation-only audit.
+
+This records an architectural risk, not a confirmed exploit. No browser token, session, route, production configuration, or UI was changed.
