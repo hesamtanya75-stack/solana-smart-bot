@@ -72,6 +72,30 @@ test("quote rate-limit buckets fail closed on corrupted state and at capacity", 
   await assert.rejects(() => guard.consumeRateLimit("quote:session", 1000, 10, 60000));
 });
 
+test("rate-limit buckets with malformed expiry or entry shape fail closed", async () => {
+  const { guard, storage } = makeGuard();
+  const state = {
+    initialized: false, backupHash: null, lastTotpCounter: -1,
+    failures: {}, challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null,
+    rateLimits: {
+      "scope:bad-expiry": { count: 0, resetAt: "later" },
+      "scope:null-entry": null
+    }
+  };
+  storage.values.set("auth_guard_state", state);
+
+  const badExpiry = await guard.consumeRateLimit("bad-expiry", 1000, 10, 60000);
+  assert.equal(badExpiry.limited, true);
+  assert.equal(state.rateLimits["scope:bad-expiry"].count, Number.MAX_SAFE_INTEGER);
+  assert.equal(state.rateLimits["scope:bad-expiry"].resetAt, 61000);
+
+  const nullEntry = await guard.consumeRateLimit("null-entry", 1000, 10, 60000);
+  assert.equal(nullEntry.limited, true);
+  assert.equal(state.rateLimits["scope:null-entry"].count, Number.MAX_SAFE_INTEGER);
+  assert.equal(state.rateLimits["scope:null-entry"].resetAt, 61000);
+});
+
 test("only one concurrent request can consume a backup code", async () => {
   const { guard } = makeGuard();
   const hash = "a".repeat(64);
