@@ -158,7 +158,10 @@ async function authorized(request, env) {
     return false;
   }
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  // Bind every bearer credential to the single supported administrator
+  // principal; malformed or legacy unbound sessions fail closed.
+  return !!session && session.subject === "admin" &&
+    Number.isSafeInteger(session.expiresAt) && session.expiresAt > Date.now();
 }
 function sameOriginApiRequest(request, url) {
   if (!url.pathname.startsWith("/api/") ||
@@ -768,7 +771,7 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
@@ -801,7 +804,7 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
