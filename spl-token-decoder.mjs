@@ -1,4 +1,6 @@
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const SUPPORTED_TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
 const MAX_DATA_LENGTH = 16;
 const decodedRecords = new WeakSet();
 
@@ -23,11 +25,15 @@ function readU64LE(bytes, offset) {
 }
 
 /**
- * Syntax-only decoder for exact single-authority classic SPL Token transfers.
- * Multisig layouts and every other instruction variant intentionally fail closed.
+ * Syntax-only decoder for exact single-authority base Transfer and
+ * TransferChecked layouts under Classic SPL Token and Token-2022.
+ *
+ * Token-2022 extension semantics (including transfer fees and transfer hooks)
+ * are NOT decoded here. Extra-account layouts and all other variants fail closed;
+ * this record is never a semantic approval or proof of actual token deltas.
  */
 export function decodeSplTokenInstruction(programId, encodedData, accountIndexes) {
-  if (programId !== TOKEN_PROGRAM_ID) {
+  if (!SUPPORTED_TOKEN_PROGRAMS.has(programId)) {
     throw new Error("SPL Token decoder rejects unknown program IDs");
   }
   if (!Array.isArray(accountIndexes) || accountIndexes.length > 64) {
@@ -77,7 +83,7 @@ export function decodeSplTokenInstruction(programId, encodedData, accountIndexes
   }
 
   const record = Object.freeze({
-    programId: TOKEN_PROGRAM_ID,
+    programId,
     decoderVersion: 1,
     analysisOnly: true,
     ...decoded,
