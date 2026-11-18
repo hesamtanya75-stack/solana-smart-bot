@@ -17,6 +17,10 @@ import {
   decodeAssociatedTokenInstruction,
   validateAssociatedTokenInstructionSet
 } from "./associated-token-account-decoder.mjs";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  verifyAssociatedTokenInstructionPda
+} from "./associated-token-account-pda.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
@@ -230,5 +234,34 @@ export function parseSupportedInstructionMessage(message) {
     semanticVerification: "incomplete",
     signingPermitted: false,
     submissionPermitted: false
+  });
+}
+
+
+/**
+ * Async additive parser API. Preserves the synchronous syntax parser and adds
+ * an explicit ATA PDA-only check. A PDA match is not transaction approval.
+ */
+export async function parseAndVerifySupportedInstructionMessage(message) {
+  const parsed = parseSupportedInstructionMessage(message);
+  const ataInstructions = parsed.instructions.filter(instruction =>
+    instruction?.programId === ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  if (ataInstructions.length === 0) {
+    return Object.freeze({
+      ...parsed,
+      associatedAddressVerification: "not-applicable",
+      associatedAddressPdaChecks: Object.freeze([])
+    });
+  }
+
+  const checks = await Promise.all(
+    ataInstructions.map(instruction => verifyAssociatedTokenInstructionPda(instruction))
+  );
+  const allMatch = checks.every(check => check.performed === true && check.verified === true);
+  return Object.freeze({
+    ...parsed,
+    associatedAddressVerification: allMatch ? "pda-verified" : "pda-mismatch",
+    associatedAddressPdaChecks: Object.freeze(checks)
   });
 }
