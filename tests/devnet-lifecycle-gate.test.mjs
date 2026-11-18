@@ -52,6 +52,8 @@ test("Devnet preflight retries transient network failures without exposing the R
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
   assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
+  assert.match(script, /!\/HTTP\\\\s\*429\/\.test\(message\)/);
+  assert.match(script, /holder concentration was not validated/);
   assert.doesNotMatch(script, /console\.(?:log|error)\([^\n]*DEVNET_RPC/);
 });
 
