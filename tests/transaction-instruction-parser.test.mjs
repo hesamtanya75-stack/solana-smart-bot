@@ -169,7 +169,7 @@ test("transaction parser rejects accessor-backed compiled account indexes withou
   };
   assert.throws(
     () => parseSupportedInstructionMessage(message([instruction])),
-    /sparse or accessor-backed account indexes/
+    /sparse account indexes or accessor-backed entries/
   );
   assert.equal(getterCalled, false);
 });
