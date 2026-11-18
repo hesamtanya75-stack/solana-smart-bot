@@ -1022,6 +1022,28 @@ function sumOwnedTokenBalance(rows, mint, owner) {
  * success flags. All input and output mints, including wrapped SOL, are
  * verified through exact owner-scoped SPL token balance deltas.
  */
+function snapshotDenseAccountKeys(value) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new Error("Finalized transaction account keys are invalid");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1 || !keys.includes("length")) {
+    throw new Error("Finalized transaction account keys are incomplete");
+  }
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    const key = descriptor?.value;
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+        typeof key !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(key) ||
+        decodeBase58(key).length !== 32) {
+      throw new Error("Finalized transaction account keys are malformed");
+    }
+    snapshot.push(key);
+  }
+  return Object.freeze(snapshot);
+}
+
 function validateDenseLamportBalances(value, expectedLength) {
   if (!Array.isArray(value) || value.length !== expectedLength) return false;
   const keys = Reflect.ownKeys(value);
@@ -1075,7 +1097,7 @@ export async function verifyFinalizedJupiterSettlement({
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
-  const keyStrings = accountKeys.map(key => typeof key === "string" ? key : key?.pubkey);
+  const keyStrings = snapshotDenseAccountKeys(accountKeys);
   const ownerIndex = keyStrings.indexOf(expectedOwner);
   // Solana's first required signer is the fee payer. Require the pinned bot
   // wallet in that position so a third-party transaction cannot settle an order.
