@@ -8,6 +8,10 @@ import {
   validateSystemProgramInstructionSet
 } from "./system-program-decoder.mjs";
 import { deriveMessageAccountRoles } from "./message-account-roles.mjs";
+import {
+  decodeSplTokenInstruction,
+  validateSplTokenInstructionSet
+} from "./spl-token-decoder.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
@@ -29,6 +33,15 @@ function isCanonicalPublicKey(value) {
   return leadingZeroBytes + significantBytes === 32;
 }
 
+function requireRole(roles, index, expected, label) {
+  const role = roles[index];
+  if (!role || (expected.signer && !role.signer) ||
+      (expected.writable && !role.writable) ||
+      (expected.readonly && role.writable)) {
+    throw new Error(label + " account privilege requirements are not satisfied");
+  }
+}
+
 function analyzeSystemInstructionPrivileges(instructions, roles) {
   for (const instruction of instructions) {
     const required = instruction.variant === "transfer"
@@ -38,11 +51,18 @@ function analyzeSystemInstructionPrivileges(instructions, roles) {
       throw new Error("System instruction account-role analysis found an invalid account layout");
     }
     for (let position = 0; position < required.length; position++) {
-      const role = roles[instruction.accountIndexes[position]];
-      const expected = required[position];
-      if (!role || (expected.signer && !role.signer) || (expected.writable && !role.writable)) {
-        throw new Error("System instruction account privilege requirements are not satisfied");
-      }
+      requireRole(roles, instruction.accountIndexes[position], required[position], "System instruction");
+    }
+  }
+}
+
+function analyzeSplTokenInstructionPrivileges(instructions, roles) {
+  for (const instruction of instructions) {
+    requireRole(roles, instruction.sourceAccountIndex, { writable: true }, "SPL Token source");
+    requireRole(roles, instruction.destinationAccountIndex, { writable: true }, "SPL Token destination");
+    requireRole(roles, instruction.authorityAccountIndex, { signer: true }, "SPL Token authority");
+    if (instruction.variant === "transferChecked") {
+      requireRole(roles, instruction.mintAccountIndex, { readonly: true }, "SPL Token mint");
     }
   }
 }
@@ -84,6 +104,7 @@ export function parseSupportedInstructionMessage(message) {
 
   const computeBudgetInstructions = [];
   const systemProgramInstructions = [];
+  const splTokenInstructions = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
         !Number.isInteger(instruction.programIdIndex) ||
@@ -110,6 +131,11 @@ export function parseSupportedInstructionMessage(message) {
       systemProgramInstructions.push(decoded);
       return decoded;
     }
+    if (programId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
+      const decoded = decodeSplTokenInstruction(programId, instruction.data, instruction.accountKeyIndexes);
+      splTokenInstructions.push(decoded);
+      return decoded;
+    }
     const decoded = decodeSupportedTransactionInstruction({
       programId,
       data: instruction.data,
@@ -121,6 +147,7 @@ export function parseSupportedInstructionMessage(message) {
 
   validateSupportedTransactionInstructionSet(computeBudgetInstructions);
   validateSystemProgramInstructionSet(systemProgramInstructions);
+  validateSplTokenInstructionSet(splTokenInstructions);
 
   let accountPrivilegeAnalysis = "not-provided";
   if (message.header !== undefined) {
@@ -130,6 +157,7 @@ export function parseSupportedInstructionMessage(message) {
       resolvedAddressTableLookups: message.resolvedAddressTableLookups ?? []
     });
     analyzeSystemInstructionPrivileges(systemProgramInstructions, derived.roles);
+    analyzeSplTokenInstructionPrivileges(splTokenInstructions, derived.roles);
     accountPrivilegeAnalysis = "structural-match-only";
   }
 
