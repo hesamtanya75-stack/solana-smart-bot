@@ -42,8 +42,11 @@ test("rejects unsupported variants, malformed layouts, bad program accounts and 
   assert.throws(() => decodeAssociatedTokenInstruction(ATA, "AAA=", [0,1,2,3,4,5], keys), /canonical one-byte/);
 });
 
-test("rejects forged and sparse records", () => {
+test("rejects forged, cloned, and sparse records", () => {
   assert.throws(() => validateAssociatedTokenInstructionSet([{}]), /unreviewed/);
+  const valid = decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], keys);
+  assert.throws(() => validateAssociatedTokenInstructionSet([{ ...valid }]), /unreviewed/);
+  assert.throws(() => validateAssociatedTokenInstructionSet([Object.freeze({ ...valid })]), /unreviewed/);
   assert.throws(() => validateAssociatedTokenInstructionSet(new Array(1)), /unreviewed/);
 });
 
