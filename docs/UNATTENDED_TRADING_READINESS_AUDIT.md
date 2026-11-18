@@ -52,3 +52,23 @@ The following workflows completed successfully for this exact commit:
 Important test-coverage limitation: coordinator unit tests can supply a mocked trusted-evidence fixture with `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"` to exercise downstream reservation policy. This does not implement or prove a real transaction semantic decoder. The actual Jupiter transaction parser tests continue to assert `semanticInstructionVerification: false`, including for structurally parsed unknown programs. The coordinator's production gate remains fail-closed.
 
 The README also confirms that the Worker has no live-trading route invoking the coordinator and that the current Worker does not submit real transactions.
+
+
+## Latest CI verification: commit `6ba96b3ad3bc2166ab944d3dc2a7e20e741309a5`
+
+The latest PR head was rechecked. The following results are confirmed for this exact commit:
+
+- Node tests: success (workflow run 44289753571).
+- Cloudflare Worker build validation: success (workflow run 44289753686); the job explicitly ran a build without deploying.
+- Devnet read-only validation: success (job 134751587594).
+- Funded Devnet lifecycle: skipped (job 134752045402); no funded signing or transfer occurred.
+
+## Latest source-level fail-closed confirmation
+
+- `live-trading.mjs` returns `semanticInstructionVerification: false` and `routeVerification: "unsigned-structure-and-alt-only"` for the currently parsed transaction evidence.
+- `executeLiveOrder()` throws `Live execution is not implemented; no transaction was signed or submitted`.
+- `trusted-live-evidence.mjs` returns `semanticInstructionVerification: false` and `routeVerification: "build-envelope-only"` for build-envelope evidence.
+- `live-trade-coordinator.mjs` blocks reservation unless the risk evidence explicitly carries `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"`.
+- The coordinator still pins a hardcoded bot wallet, and the Worker has no live execution route invoking it.
+
+These are intentional blockers, not successful live-trading functionality. The latest CI validates the current tests and build, not semantic transaction verification, unattended signing, or live execution.
