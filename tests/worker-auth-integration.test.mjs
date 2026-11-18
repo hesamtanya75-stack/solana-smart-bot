@@ -236,6 +236,25 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await nextLogin.json()).mfaRequired, true);
 });
 
+test("legacy authenticated sessions contain no trading principal or wallet authority", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const record = await env.BOT_STATE.get("session:" + token, "json");
+
+  assert.deepEqual(Object.keys(record).sort(), ["expiresAt"]);
+  assert.equal(Number.isFinite(record.expiresAt), true);
+  assert.equal(record.principalId, undefined);
+  assert.equal(record.walletPublicKey, undefined);
+  assert.equal(record.walletBindingVersion, undefined);
+
+  // The legacy session can still reach its existing profile route, but must
+  // not make an unimplemented live-trading endpoint appear.
+  const live = await get("/api/live", env, token);
+  assert.equal(live.status, 404);
+});
+
 test("Worker logout revokes the bearer session immediately", async () => {
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
