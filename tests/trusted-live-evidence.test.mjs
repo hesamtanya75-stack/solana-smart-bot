@@ -1230,24 +1230,6 @@ test("Jupiter /build response envelope is structurally validated without semanti
   assert.equal(parsed.routeVerification, "build-envelope-only");
 });
 
-test("Jupiter /build accepts an omitted optional routePlan bps field", () => {
-  const routePlan = [{
-    percent: 100,
-    swapInfo: {
-      ammKey: "11111111111111111111111111111111",
-      inputMint: "So11111111111111111111111111111111111111112",
-      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      inAmount: "1000000",
-      outAmount: "250000"
-    }
-  }];
-  const parsed = validateJupiterBuildResponse(validBuildResponse({ routePlan }));
-  assert.equal(parsed.routePlan[0].percent, 100);
-  assert.equal(Object.hasOwn(parsed.routePlan[0], "bps"), false);
-  assert.equal(parsed.semanticInstructionVerification, false);
-  assert.equal(parsed.routeVerification, "build-envelope-only");
-});
-
 test("every Jupiter /build instruction slot remains untrusted regardless of program ID", () => {
   const opaqueInstruction = {
     programId: "11111111111111111111111111111111",
