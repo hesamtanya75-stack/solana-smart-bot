@@ -577,10 +577,9 @@ test("parser rejects a distinct ATA owner that is marked as a signer", () => {
   const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const accountKeys = [
     "11111111111111111111111111111112",
-    "11111111111111111111111111111113",
     "11111111111111111111111111111114",
+    "11111111111111111111111111111113",
     "11111111111111111111111111111115",
-    "11111111111111111111111111111116",
     SYSTEM,
     tokenProgram,
     ataProgram
@@ -590,11 +589,11 @@ test("parser rejects a distinct ATA owner that is marked as a signer", () => {
     header: {
       numRequiredSignatures: 2,
       numReadonlySignedAccounts: 1,
-      numReadonlyUnsignedAccounts: 5
+      numReadonlyUnsignedAccounts: 4
     },
     instructions: [{
-      programIdIndex: 7,
-      accountKeyIndexes: [0, 1, 2, 3, 5, 6],
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 2, 1, 3, 4, 5],
       data: Buffer.from([0]).toString("base64")
     }]
   }), /ATA owner account privilege requirements are not satisfied/);
