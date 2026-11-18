@@ -812,8 +812,11 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
     signatureCount: null,
     staticAccountCount: null,
     messageVersion: null,
+    analysisOnly: true,
     semanticInstructionVerification: false,
-    routeVerification: "quote-only-no-transaction"
+    routeVerification: "quote-only-no-transaction",
+    signingPermitted: false,
+    submissionPermitted: false
   });
 }
 
