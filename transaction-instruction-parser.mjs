@@ -77,8 +77,13 @@ function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
   for (const instruction of instructions) {
     requireRole(roles, instruction.payerAccountIndex, { signer: true, writable: true }, "ATA payer");
     requireRole(roles, instruction.associatedAccountIndex, { writable: true, nonSigner: true }, "ATA destination");
-    requireRole(roles, instruction.ownerAccountIndex, { readonly: true }, "ATA owner");
-    requireRole(roles, instruction.mintAccountIndex, { readonly: true }, "ATA mint");
+    // When payer and owner are the same compiled account, the global message
+    // privileges are the union of both roles: payer signer+writable wins.
+    // Otherwise owner and mint must be readonly non-signers.
+    if (instruction.payerAccountIndex !== instruction.ownerAccountIndex) {
+      requireRole(roles, instruction.ownerAccountIndex, { readonly: true, nonSigner: true }, "ATA owner");
+    }
+    requireRole(roles, instruction.mintAccountIndex, { readonly: true, nonSigner: true }, "ATA mint");
     requireRole(roles, instruction.systemProgramAccountIndex, { readonly: true, nonSigner: true }, "ATA System Program");
     requireRole(roles, instruction.tokenProgramAccountIndex, { readonly: true, nonSigner: true }, "ATA Token Program");
   }
