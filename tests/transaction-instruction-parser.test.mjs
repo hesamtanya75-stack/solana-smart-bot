@@ -44,6 +44,16 @@ test("transaction parser rejects unregistered System Program and token instructi
   }
 });
 
+test("transaction parser rejects sparse account-key arrays", () => {
+  const sparseKeys = new Array(2);
+  sparseKeys[0] = COMPUTE_BUDGET_PROGRAM;
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }], sparseKeys)), /invalid account key/);
+});
+
 test("transaction parser rejects malformed compiled instruction indexes and keys", () => {
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 2, accountKeyIndexes: [], data: data(2, 200000)
