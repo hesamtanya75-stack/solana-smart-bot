@@ -200,8 +200,6 @@ export function parseSupportedInstructionMessage(message) {
         !Array.isArray(instruction.accountKeyIndexes) ||
         Object.getPrototypeOf(instruction.accountKeyIndexes) !== Array.prototype ||
         instruction.accountKeyIndexes.length > MAX_ACCOUNT_KEYS ||
-        instruction.accountKeyIndexes.some(index =>
-          !Number.isInteger(index) || index < 0 || index >= accountKeys.length) ||
         typeof instruction.data !== "string") {
       throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
     }
@@ -216,6 +214,10 @@ export function parseSupportedInstructionMessage(message) {
       const descriptor = Object.getOwnPropertyDescriptor(instruction.accountKeyIndexes, String(index));
       if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
         throw new Error("Transaction instruction " + position + " contains sparse or accessor-backed account indexes");
+      }
+      const accountIndex = descriptor.value;
+      if (!Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex >= accountKeys.length) {
+        throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
       }
     }
 
