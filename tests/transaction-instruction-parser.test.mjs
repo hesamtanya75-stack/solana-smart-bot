@@ -72,6 +72,39 @@ test("transaction message parser rejects unverified execution metadata and CPI e
   );
 });
 
+test("transaction parser rejects unknown metadata fields and non-plain message records", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  assert.throws(
+    () => parseSupportedInstructionMessage({ ...valid, transactionMeta: { innerInstructions: [] } }),
+    /unsupported field/
+  );
+  const symbolField = { ...valid, [Symbol("executionEvidence")]: {} };
+  assert.throws(() => parseSupportedInstructionMessage(symbolField), /unsupported field/);
+  assert.throws(
+    () => parseSupportedInstructionMessage(Object.assign(Object.create({ inheritedExtra: true }), valid)),
+    /plain data record/
+  );
+  let getterCalled = false;
+  const accessorMessage = {};
+  Object.defineProperty(accessorMessage, "accountKeys", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return valid.accountKeys;
+    }
+  });
+  Object.defineProperty(accessorMessage, "instructions", {
+    enumerable: true,
+    value: valid.instructions
+  });
+  assert.throws(() => parseSupportedInstructionMessage(accessorMessage), /plain data properties/);
+  assert.equal(getterCalled, false);
+});
+
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
