@@ -128,18 +128,18 @@ test("Compute Budget policy enforces explicit compute and priority-fee ceilings"
   const loaded = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(4, 1048576));
   const limits = {
     maxComputeUnitLimit: 300000,
-    maxPriorityFeeLamports: 100n,
+    maxPriorityFeeLamports: 50000n,
     maxHeapFrameBytes: 131072,
     maxLoadedAccountDataBytes: 2097152
   };
   const result = validateComputeBudgetPolicy([limit, price, heap, loaded], limits);
   assert.equal(result.unitLimit, 200000);
-  assert.equal(result.priorityFeeLamports, 50n);
+  assert.equal(result.priorityFeeLamports, 50000n);
   assert.equal(result.heapFrameBytes, 65536);
   assert.equal(result.loadedAccountDataBytes, 1048576);
   assert.ok(Object.isFrozen(result));
   assert.throws(() => validateComputeBudgetPolicy([limit, price], {
-    ...limits, maxPriorityFeeLamports: 49n
+    ...limits, maxPriorityFeeLamports: 49999n
   }), /priority fee exceeds transaction policy/);
   assert.throws(() => validateComputeBudgetPolicy([limit], {
     ...limits, maxComputeUnitLimit: 199999
