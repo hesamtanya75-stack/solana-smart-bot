@@ -22,7 +22,7 @@ function snapshotPlainArray(value, maximum, label) {
   }
   for (const key of keys) {
     if (key === "length") continue;
-    if (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
         Number(key) >= value.length) {
       throw new Error(label + " contains unsupported properties");
     }
