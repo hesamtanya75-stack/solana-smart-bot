@@ -931,7 +931,7 @@ export default {
             slippageBps: order.slippageBps != null && Number.isSafeInteger(Number(order.slippageBps)) ? Number(order.slippageBps) : null,
             router: typeof order.router === "string" ? order.router : "unknown",
             priceImpact: Number.isFinite(Number(order.priceImpact)) ? Number(order.priceImpact) : null,
-            feeBps: Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
+            feeBps: order.feeBps != null && Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
             feeMint: typeof order.feeMint === "string" ? order.feeMint : null,
             platformFeeAmount: /^\d+$/.test(String(order.platformFee?.amount || "")) ? String(order.platformFee.amount) : null,
             platformFeeBps: order.platformFee?.feeBps != null && Number.isFinite(Number(order.platformFee.feeBps)) ? Number(order.platformFee.feeBps) : null,
