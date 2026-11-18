@@ -115,3 +115,14 @@ The following observations were verified in `worker.js` at the current PR branch
 - TOTP/login failure scopes are derived from the connecting IP. This is rate-limit context, not an account or principal identity.
 
 Consequently, do not build wallet-binding or order-intent authorization on top of the current bearer-session boolean or profile fields. First introduce and test a separately versioned principal-bound session, while explicitly rejecting legacy sessions at any future trading-identity boundary. This audit is documentation only; no session records, routes, production data, or dashboard code were changed.
+
+### Verified MFA enrollment audit (2026-11-18)
+
+- Password-only login creates a normal bearer session whenever the administrator TOTP flag is not enabled. MFA is therefore optional until the operator completes TOTP setup; this is not equivalent to an installation-wide enforced-MFA policy.
+- The TOTP setup route requires an already authenticated session and re-entry of the configured admin password, applies an IP-scoped failure limit, and refuses setup if TOTP is already enabled.
+- TOTP confirmation is bound to the authenticated session and a pending secret with a ten-minute expiry. The AuthGuard atomically verifies the code, enforces monotonic TOTP counters, and stores a one-time backup-code hash.
+- Once enabled, password login returns an MFA challenge and the TOTP/backup-code challenge is consumed on successful completion. The integration tests cover TOTP replay and backup-code reuse rejection.
+- No TOTP disable, reset, or recovery/rebinding route was found in the audited Worker route section. Recovery and secure operator lockout handling therefore remain an operational design gap; do not add a bypass or weaken MFA to recover access.
+- Before any future wallet enrollment or live-trading boundary, require an explicit MFA-enforced state and step-up proof for enrollment, rebinding, revocation, and policy changes. Do not treat the current optional bootstrap flow as sufficient proof.
+
+This is a source audit only. It does not change MFA configuration, sessions, routes, production data, or the dashboard.
