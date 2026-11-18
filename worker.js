@@ -871,87 +871,6 @@ export default {
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 503); }
       }
-      if (url.pathname === "/api/live/quote-preview" && request.method === "POST") {
-        try {
-          const body = await readBoundedJson(request, 4096);
-          const allowedKeys = new Set(["outputMint", "amountLamports"]);
-          const outputMint = String(body.outputMint || "");
-          const amountLamports = String(body.amountLamports || "");
-          const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-          if (Object.keys(body).length !== 2 ||
-              Object.keys(body).some(key => !allowedKeys.has(key)) ||
-              !base58.test(outputMint) ||
-              !/^\d{1,20}$/.test(amountLamports) ||
-              BigInt(amountLamports) <= 0n ||
-              BigInt(amountLamports) > 18446744073709551615n) {
-            return json({ error: "Invalid quote-preview request" }, 400);
-          }
-          const apiKey = String(env.JUPITER_API_KEY || "").trim();
-          if (!apiKey) return json({ error: "Jupiter API key is not configured; quote preview is unavailable" }, 503);
-          const authorization = request.headers.get("Authorization") || "";
-          const sessionMatch = /^Bearer ([^\s]+)$/i.exec(authorization);
-          if (!sessionMatch) return json({ error: "Unauthorized" }, 401);
-          const quoteScope = "quote:" + (await hashText(sessionMatch[1])).slice(0, 48);
-          const rate = await authGuardCall(env, {
-            operation: "consume-rate-limit",
-            scope: quoteScope
-          });
-          if (rate.limited) {
-            return json({ error: "Quote preview rate limit exceeded; try again later" }, 429);
-          }
-          const params = new URLSearchParams({
-            inputMint: "So11111111111111111111111111111111111111112",
-            outputMint,
-            amount: amountLamports
-          });
-          const response = await fetch("https://api.jup.ag/swap/v2/order?" + params.toString(), {
-            headers: { "x-api-key": apiKey, "Accept": "application/json" },
-            signal: AbortSignal.timeout(12000)
-          });
-          if (!response.ok) {
-            return json({ error: "Jupiter quote request failed", providerStatus: response.status }, 503);
-          }
-          const order = await readBoundedJsonResponse(response);
-          // This endpoint is deliberately quote-only: no taker is supplied and
-          // no unsigned transaction or signing payload is ever returned.
-          if (!order || typeof order !== "object" ||
-              order.transaction !== null ||
-              order.inputMint !== "So11111111111111111111111111111111111111112" ||
-              order.outputMint !== outputMint ||
-              String(order.inAmount) !== amountLamports ||
-              !/^\d+$/.test(String(order.outAmount || "")) ||
-              BigInt(order.outAmount) <= 0n ||
-              typeof order.requestId !== "string" || !order.requestId ||
-              !Array.isArray(order.routePlan) || order.routePlan.length === 0 ||
-              order.errorCode != null) {
-            return json({ error: "Jupiter did not return a valid quote-only response" }, 502);
-          }
-          return json({
-            ok: true,
-            quoteOnly: true,
-            transactionAvailable: false,
-            requestId: order.requestId,
-            inputMint: order.inputMint,
-            outputMint: order.outputMint,
-            inAmount: String(order.inAmount),
-            outAmount: String(order.outAmount),
-            otherAmountThreshold: /^\d+$/.test(String(order.otherAmountThreshold || "")) ? String(order.otherAmountThreshold) : null,
-            inUsdValue: Number.isFinite(Number(order.inUsdValue)) ? Number(order.inUsdValue) : null,
-            outUsdValue: Number.isFinite(Number(order.outUsdValue)) ? Number(order.outUsdValue) : null,
-            swapUsdValue: Number.isFinite(Number(order.swapUsdValue)) ? Number(order.swapUsdValue) : null,
-            slippageBps: order.slippageBps != null && Number.isSafeInteger(Number(order.slippageBps)) ? Number(order.slippageBps) : null,
-            router: typeof order.router === "string" ? order.router : "unknown",
-            priceImpactPct: order.priceImpactPct != null && Number.isFinite(Number(order.priceImpactPct)) ? Number(order.priceImpactPct) : null,
-            feeBps: order.feeBps != null && Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
-            feeMint: typeof order.feeMint === "string" ? order.feeMint : null,
-            platformFeeAmount: /^\d+$/.test(String(order.platformFee?.amount || "")) ? String(order.platformFee.amount) : null,
-            platformFeeBps: order.platformFee?.feeBps != null && Number.isFinite(Number(order.platformFee.feeBps)) ? Number(order.platformFee.feeBps) : null,
-            routePlanCount: order.routePlan.length
-          });
-        } catch (error) {
-          return json({ error: "Could not prepare a Jupiter quote preview" }, 503);
-        }
-      }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
           const state = await readState(env);
@@ -1094,7 +1013,7 @@ export default {
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "strict-origin-when-cross-origin",
           "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-          "Content-Security-Policy": `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic' 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://solana.drpc.org https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://api.dexscreener.com https://api.rugcheck.xyz https://api.jup.ag; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:`,
+          "Content-Security-Policy": `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic' 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; connect-src 'self' https://solana.drpc.org https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://api.dexscreener.com https://api.rugcheck.xyz; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:`,
           "X-Solana-Smart-Bot-Build": build
         }
       });
