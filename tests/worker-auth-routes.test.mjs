@@ -131,3 +131,28 @@ test("live coordinator remains isolated until semantic verification and all-in c
   assert.equal(workerSource.includes('url.pathname === "/api/live"'), false);
   assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
 });
+
+
+test("all private API routes consume a transactional per-IP rate limit after session authentication", () => {
+  const router = workerSource.indexOf('if (url.pathname.startsWith("/api/"))');
+  const sessionGuard = workerSource.indexOf('if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);', router);
+  const rateLimit = workerSource.indexOf("const ratePolicy =", router);
+  const routeHandler = workerSource.indexOf('if (url.pathname === "/api/logout"', router);
+  assert.ok(sessionGuard > router);
+  assert.ok(rateLimit > sessionGuard, "rate limit must run after authentication");
+  assert.ok(routeHandler > rateLimit, "rate limit must run before route handlers");
+  assert.ok(workerSource.includes('scope: "api-paper-buy", limit: 5, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-market-prices", limit: 20, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-automation", limit: 10, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-write", limit: 30, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-read", limit: 120, windowMs: 60000'));
+  assert.ok(workerSource.includes('operation: "consume-rate-limit", scope: bucket, limit, windowMs'));
+});
+
+test("login, TOTP, and TOTP enrollment have dedicated request throttles", () => {
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "login-request", 8, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-request", 8, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-setup", 3, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-confirm", 5, 900000)'));
+  assert.ok(workerSource.includes("Rate limiting is a security boundary: fail closed"));
+});
