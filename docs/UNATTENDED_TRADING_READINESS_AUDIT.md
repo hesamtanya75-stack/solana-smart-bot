@@ -72,3 +72,17 @@ The latest PR head was rechecked. The following results are confirmed for this e
 - The coordinator still pins a hardcoded bot wallet, and the Worker has no live execution route invoking it.
 
 These are intentional blockers, not successful live-trading functionality. The latest CI validates the current tests and build, not semantic transaction verification, unattended signing, or live execution.
+
+
+## Follow-up CI result for audit commit `bd23ea165788d673355c39796d833aaec225dcce`
+
+All three workflow runs for this exact commit have now completed:
+
+- Node tests: success (run 44290014681; safety and Durable Objects runtime test step passed).
+- Cloudflare Worker build validation: success (run 44290014476; Wrangler target verification and "Build Worker without deploying" passed).
+- Devnet workflow: success (run 44290014811), consisting of the read-only Devnet job only.
+- Funded Devnet lifecycle: skipped (job 134752045402). No funded transfer or signing test was performed.
+
+## Scope decision
+
+No transaction-decoder implementation was added in this follow-up. The existing parser remains structural-only and explicitly marks semantic verification false; unknown instruction programs are structurally parsed but are never semantically trusted. The next implementation must begin with a versioned, exact instruction/program allowlist and reviewed decoders, then prove account/value matching and full funds-flow reconstruction with negative tests. Do not relax coordinator gates to make mocked fixtures pass as production evidence.
