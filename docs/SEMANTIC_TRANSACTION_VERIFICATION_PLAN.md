@@ -339,3 +339,46 @@ For structural privilege analysis of a v0 message, the parser now requires the c
 This prevents the parser from treating the already-expanded key list as static keys and appending lookup addresses a second time, which could otherwise misalign privilege indexes. Regression tests cover a valid loaded writable destination, missing static-key metadata, and a mismatched expanded key order.
 
 This validates only the consistency of caller-supplied decoded inputs. It does not fetch or authenticate lookup-table accounts, verify their on-chain contents or slot state, or establish semantic transaction verification. Signing and submission remain disabled.
+
+
+## ATA PDA SDK selection research — follow-up to PR #41
+
+The ATA decoder must not implement Ed25519 point validation or PDA bump search by hand. The current project manifest targets Node.js >=20 and currently declares no Solana SDK dependency. The inspected PR #41 branch also has no npm, pnpm, Yarn, or Bun lockfile.
+
+### Protocol inputs confirmed from Solana documentation
+
+The canonical ATA PDA uses the Associated Token Account Program as the deriving program and the ordered seeds:
+
+1. wallet/owner public-key bytes;
+2. selected token-program public-key bytes (classic Token or Token-2022);
+3. mint public-key bytes.
+
+The token-program ID is part of the seeds, so the classic Token and Token-2022 addresses must be derived independently. The payer is not a PDA seed. The canonical bump is found using Solana's PDA derivation algorithm, which hashes the seeds, program ID, and `ProgramDerivedAddress` marker, rejecting on-curve results.
+
+References:
+- https://solana.com/docs/tokens/basics/create-token-account
+- https://solana.com/docs/core/pda/pda-derivation
+- https://github.com/solana-program/associated-token-account/blob/main/interface/src/address.rs
+
+### SDK candidate — not yet installed
+
+Solana's current JavaScript documentation recommends `@solana/kit` for new TypeScript development and documents `getProgramDerivedAddress`. The current `@solana/web3.js` v3 line is also maintained by the Solana Foundation; its v3 API exposes asynchronous `PublicKey.findProgramAddress`. The legacy v1 line is maintenance-only.
+
+References:
+- https://solana.com/docs/clients/official/javascript
+- https://solana-foundation.github.io/solana-web3.js/classes/PublicKey.html
+- https://www.npmjs.com/package/@solana/web3.js
+
+No dependency is added in this documentation-only step. The SDK choice must be validated against this repository's Node test runner and Cloudflare Worker bundling/runtime before installation. Then pin an exact version, generate and commit the repository's lockfile using the matching package manager, and require clean-lockfile installation in CI. Do not use a floating version or hand-authored lock metadata.
+
+### Required implementation and tests before changing the parser status
+
+- Use the selected SDK's canonical PDA derivation API; do not write a custom curve test, SHA-256 derivation, or bump loop.
+- Derive with both classic Token and Token-2022 program IDs and prove they yield different addresses for the same owner and mint.
+- Add fixed expected-address and bump vectors independently cross-checked against the official Associated Token Account implementation or a trusted Solana SDK.
+- Reject malformed owner, mint, token-program, and ATA program IDs before derivation.
+- Test wrong owner, wrong mint, wrong token program, wrong ATA program, wrong bump/address, and on-curve candidate rejection using SDK-supported primitives and fixed vectors.
+- Keep `associatedAddressVerification: "not-performed"` until the new derivation is integrated into the parser and all tests pass.
+- Keep authenticated on-chain account-state checks as a separate later requirement; deriving the expected address alone does not prove an account exists or is correctly initialized.
+
+This research note changes no executable code, parser trust flags, coordinator gates, wallet signing, transaction submission, deployment, or production data. Mainnet trading remains disabled.
