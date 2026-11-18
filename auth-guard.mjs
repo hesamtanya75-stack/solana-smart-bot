@@ -512,7 +512,12 @@ export class AuthGuard {
         imported: await this.importLegacyFailure(body.scope, body.count)
       });
       if (body.operation === "is-rate-limited") return json({ limited: await this.isRateLimited(body.scope) });
-      if (body.operation === "consume-rate-limit") return json(await this.consumeRateLimit(body.scope));
+      if (body.operation === "consume-rate-limit") return json(await this.consumeRateLimit(
+        body.scope,
+        body.now ?? Date.now(),
+        body.limit ?? 10,
+        body.windowMs ?? 60000
+      ));
       if (body.operation === "create-challenge") {
         return json({ created: await this.createMfaChallenge(body.challengeId) });
       }
