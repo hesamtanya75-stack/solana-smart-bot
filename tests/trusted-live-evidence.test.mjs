@@ -1130,7 +1130,14 @@ test("settlement proof rejects sparse or accessor-backed native lamport balance 
     transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
     meta: {
       err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
-      preTokenBalances: [], postTokenBalances: []
+      preTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } }
+      ],
+      postTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } }
+      ]
     }
   };
   let responseResult = baseResult;
