@@ -66,3 +66,16 @@ The coordinator requires `LIVE_MAX_PRIORITY_FEE_LAMPORTS` to be explicitly confi
 ### Test-fixture limitation: settlement cost fallback
 
 The coordinator unit-test helper in `tests/live-trade-coordinator.test.mjs` wraps its injected settlement verifier and, when that verifier omits a `costs` property, synthesizes a cost breakdown from the test fixture. This convenience is test-only and must not be interpreted as production settlement evidence. In particular, a passing coordinator confirmation test that uses this helper does not prove that `verifyFinalizedJupiterSettlement()` derives or verifies fees and native SOL outflows. The direct verifier test in `tests/trusted-live-evidence.test.mjs` currently asserts that the returned proof has no `costs`, `allInCosts`, native SOL outflow, base fee, priority fee, rent, tip, or total-lamport fields. Keep production settlement blocked until those values are independently derived from finalized transaction metadata and checked against the reserved all-in cost breakdown. Any future test of the production settlement path must inject the real verifier without a synthetic-cost adapter.
+
+
+## Readiness checkpoint — 2026-11-18, PR #43 head `7e5261bf4f5d7955c359b0d0f66720d4f82b7b95`
+
+The exact head passed:
+- Node tests: run `44395541512` — success.
+- Cloudflare Worker build validation: run `44395541434` — success.
+- Devnet read-only validation: run `44395541377` — success.
+- Funded Devnet lifecycle: skipped (job `135124792134`).
+
+The successful CI result does not establish a signed buy/sell lifecycle. The funded Devnet job was skipped, and no signer or submission flow exists. The Worker entry point remains the paper-trading Worker; `live-trading.mjs` only retrieves and structurally validates an unsigned Jupiter order, while `executeLiveOrder()` intentionally throws without signing or submitting. The coordinator is not wired to a live Worker route.
+
+The user has authorized preparation for future real-money trading, not funding, signing, submission, production deployment, PR merge, or Mainnet activation. Keep all those actions disabled until the acceptance gates and a separate explicit release approval are complete. Do not change UI/design.
