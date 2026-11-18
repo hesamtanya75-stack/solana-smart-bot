@@ -7,6 +7,7 @@ import {
   decodeSystemProgramInstruction,
   validateSystemProgramInstructionSet
 } from "./system-program-decoder.mjs";
+import { deriveMessageAccountRoles } from "./message-account-roles.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
@@ -28,13 +29,31 @@ function isCanonicalPublicKey(value) {
   return leadingZeroBytes + significantBytes === 32;
 }
 
+function analyzeSystemInstructionPrivileges(instructions, roles) {
+  for (const instruction of instructions) {
+    const required = instruction.variant === "transfer"
+      ? [{ signer: true, writable: true }, { signer: false, writable: true }]
+      : [{ signer: true, writable: true }, { signer: true, writable: true }];
+    if (!Array.isArray(instruction.accountIndexes) || instruction.accountIndexes.length !== 2) {
+      throw new Error("System instruction account-role analysis found an invalid account layout");
+    }
+    for (let position = 0; position < required.length; position++) {
+      const role = roles[instruction.accountIndexes[position]];
+      const expected = required[position];
+      if (!role || (expected.signer && !role.signer) || (expected.writable && !role.writable)) {
+        throw new Error("System instruction account privilege requirements are not satisfied");
+      }
+    }
+  }
+}
+
 /**
  * Parse a bounded, already-deserialized message instruction list for analysis.
+ * Optional header/lookup inputs enable a structural signer/writable cross-check.
+ * Lookup addresses are caller-supplied and are NOT authenticated by this parser.
  *
- * This deliberately supports only instruction programs registered by the
- * versioned decoder registry. It is not a Solana wire-format parser, does not
- * verify signatures, address lookup table contents, CPI effects, token deltas,
- * or whole-transaction semantics. Any unsupported program fails closed.
+ * This is not a wire-format parser, does not verify signatures, lookup-table
+ * contents, CPI effects, token deltas, or whole-transaction semantics.
  */
 export function parseSupportedInstructionMessage(message) {
   if (!message || typeof message !== "object" || Array.isArray(message) ||
@@ -102,12 +121,25 @@ export function parseSupportedInstructionMessage(message) {
 
   validateSupportedTransactionInstructionSet(computeBudgetInstructions);
   validateSystemProgramInstructionSet(systemProgramInstructions);
+
+  let accountPrivilegeAnalysis = "not-provided";
+  if (message.header !== undefined) {
+    const derived = deriveMessageAccountRoles({
+      staticAccountKeys: accountKeys,
+      header: message.header,
+      resolvedAddressTableLookups: message.resolvedAddressTableLookups ?? []
+    });
+    analyzeSystemInstructionPrivileges(systemProgramInstructions, derived.roles);
+    accountPrivilegeAnalysis = "structural-match-only";
+  }
+
   const validated = Object.freeze([...decodedInstructions]);
   return Object.freeze({
     parserVersion: 1,
     decoderRegistryVersion: INSTRUCTION_DECODER_REGISTRY_VERSION,
     instructionCount: validated.length,
     instructions: validated,
+    accountPrivilegeAnalysis,
     analysisOnly: true,
     semanticVerification: "incomplete",
     signingPermitted: false,
