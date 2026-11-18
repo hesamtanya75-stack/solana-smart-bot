@@ -930,7 +930,7 @@ export default {
             swapUsdValue: Number.isFinite(Number(order.swapUsdValue)) ? Number(order.swapUsdValue) : null,
             slippageBps: order.slippageBps != null && Number.isSafeInteger(Number(order.slippageBps)) ? Number(order.slippageBps) : null,
             router: typeof order.router === "string" ? order.router : "unknown",
-            priceImpact: Number.isFinite(Number(order.priceImpact)) ? Number(order.priceImpact) : null,
+            priceImpactPct: order.priceImpactPct != null && Number.isFinite(Number(order.priceImpactPct)) ? Number(order.priceImpactPct) : null,
             feeBps: order.feeBps != null && Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
             feeMint: typeof order.feeMint === "string" ? order.feeMint : null,
             platformFeeAmount: /^\d+$/.test(String(order.platformFee?.amount || "")) ? String(order.platformFee.amount) : null,
