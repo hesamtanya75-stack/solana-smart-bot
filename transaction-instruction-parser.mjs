@@ -213,7 +213,7 @@ export function parseSupportedInstructionMessage(message) {
     for (let index = 0; index < instruction.accountKeyIndexes.length; index++) {
       const descriptor = Object.getOwnPropertyDescriptor(instruction.accountKeyIndexes, String(index));
       if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
-        throw new Error("Transaction instruction " + position + " contains sparse or accessor-backed account indexes");
+        throw new Error("Transaction instruction " + position + " contains sparse account indexes or accessor-backed entries");
       }
       const accountIndex = descriptor.value;
       if (!Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex >= accountKeys.length) {
