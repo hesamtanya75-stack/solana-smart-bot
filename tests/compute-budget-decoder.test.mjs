@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import {
   COMPUTE_BUDGET_PROGRAM,
   decodeComputeBudgetInstruction,
-  validateComputeBudgetInstructionSet
+  validateComputeBudgetInstructionSet,
+  INSTRUCTION_DECODER_REGISTRY_VERSION,
+  decodeSupportedTransactionInstruction,
+  validateSupportedTransactionInstructionSet
 } from "../compute-budget-decoder.mjs";
 
 function data(tag, value, width = 4) {
@@ -69,9 +72,49 @@ test("Compute Budget instruction set rejects duplicate variants and malformed en
   const price = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(3, 10, 8));
   assert.equal(validateComputeBudgetInstructionSet([limit, price]).length, 2);
   assert.throws(() => validateComputeBudgetInstructionSet([limit, limit]), /unknown or duplicate variant/);
-  assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit, decoderVersion: 2 }]),
-    /unknown or duplicate variant/);
-  assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit }]),
-    /unknown or duplicate variant/);
+  assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit, decoderVersion: 2 }]), /unknown or duplicate variant/);
+  assert.throws(() => validateComputeBudgetInstructionSet([{ ...limit }]), /unknown or duplicate variant/);
   assert.throws(() => validateComputeBudgetInstructionSet(new Array(65)), /collection is invalid/);
+});
+
+test("versioned instruction registry accepts only reviewed Compute Budget instructions", () => {
+  assert.equal(INSTRUCTION_DECODER_REGISTRY_VERSION, 1);
+  const limit = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(2, 200000), accountIndexes: []
+  });
+  const price = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(3, 10, 8), accountIndexes: []
+  });
+  assert.equal(limit.registryVersion, 1);
+  assert.equal(limit.accountRoles.length, 0);
+  assert.equal(limit.variant, "setComputeUnitLimit");
+  assert.equal(validateSupportedTransactionInstructionSet([limit, price]).length, 2);
+});
+
+test("versioned instruction registry rejects unknown programs and unsupported account layouts", () => {
+  assert.throws(() => decodeSupportedTransactionInstruction({
+    programId: "11111111111111111111111111111111", data: data(2, 200000), accountIndexes: []
+  }), /unsupported program ID/);
+  assert.throws(() => decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(2, 200000), accountIndexes: [0]
+  }), /account-role schema/);
+  assert.throws(() => decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(2, 200000), accountIndexes: null
+  }), /account-role schema/);
+});
+
+test("versioned instruction registry rejects forged, mutated and duplicate records", () => {
+  const limit = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(2, 200000), accountIndexes: []
+  });
+  const price = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM, data: data(3, 10, 8), accountIndexes: []
+  });
+  assert.throws(() => validateSupportedTransactionInstructionSet([{ ...limit }]), /forged/);
+  assert.throws(() => validateSupportedTransactionInstructionSet([{
+    ...limit, registryVersion: 2
+  }]), /forged/);
+  assert.throws(() => validateSupportedTransactionInstructionSet([limit, limit]), /duplicate variant/);
+  assert.equal(validateSupportedTransactionInstructionSet([limit, price]).length, 2);
+  assert.throws(() => validateSupportedTransactionInstructionSet(new Array(65)), /collection is invalid/);
 });
