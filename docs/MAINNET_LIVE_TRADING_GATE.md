@@ -107,3 +107,22 @@ The latest ATA PDA hardening changes also passed Node tests and the Worker build
 Until these are complete, keep the coordinator reservation gate closed, keep `executeLiveOrder()` non-executing, and keep Mainnet trading disabled. The passing checks establish code/test/build and read-only Devnet status only; they do not establish live-trading readiness.
 
 No UI/design changes, merge, production deployment, wallet enrollment, signing, transaction submission, or funded Devnet operation occurred in this checkpoint.
+
+
+## Readiness checkpoint — 2026-11-19, PR #43 head `2b393c61ffe0c6513bd5d58d98c166981ce16aca`
+
+The exact PR head completed all three configured CI workflows successfully:
+- Node tests: run `44416739801` — success.
+- Cloudflare Worker build validation: run `44416739659` — success.
+- Devnet read-only validation: run `44416739657` — success. This job ran unit tests, real Durable Objects runtime tests, and Devnet cluster identity/read-only RPC checks.
+- Funded Devnet lifecycle: skipped by the explicit opt-in gate; no funded transaction or signing test was performed.
+
+The Jupiter unsigned-order response now explicitly reports `analysisOnly: true`,
+`signingPermitted: false`, and `submissionPermitted: false`; its semantic
+verification flag remains false. Regression tests assert this non-authorizing
+contract. These checks do not complete Jupiter route semantics or make live
+execution available.
+
+PR #43 remains open and Draft. No merge, production deployment, wallet
+signing, transaction submission, or Mainnet activation occurred. The UI and
+design remain unchanged.
