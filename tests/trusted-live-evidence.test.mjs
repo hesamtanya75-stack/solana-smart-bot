@@ -1112,6 +1112,59 @@ test("every Jupiter /build instruction slot remains untrusted regardless of prog
   assert.equal(parsed.tipInstruction.programId, opaqueInstruction.programId);
 });
 
+test("Jupiter /build instruction validator rejects getters without invoking them", () => {
+  let instructionGetterCalls = 0;
+  const accessorInstruction = {
+    accounts: [],
+    data: ""
+  };
+  Object.defineProperty(accessorInstruction, "programId", {
+    enumerable: true,
+    get() { instructionGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: accessorInstruction
+  })), /instruction contains accessor-backed properties/);
+  assert.equal(instructionGetterCalls, 0);
+
+  let accountGetterCalls = 0;
+  const accessorAccount = { isSigner: false, isWritable: false };
+  Object.defineProperty(accessorAccount, "pubkey", {
+    enumerable: true,
+    get() { accountGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      programId: "11111111111111111111111111111111",
+      accounts: [accessorAccount],
+      data: ""
+    }
+  })), /instruction account contains accessor-backed properties/);
+  assert.equal(accountGetterCalls, 0);
+});
+
+test("Jupiter /build instruction arrays reject custom iterators and decorated prototypes", () => {
+  let iteratorCalls = 0;
+  const accounts = [];
+  Object.defineProperty(accounts, Symbol.iterator, {
+    value() { iteratorCalls++; return [][Symbol.iterator](); }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      programId: "11111111111111111111111111111111",
+      accounts,
+      data: ""
+    }
+  })), /instruction account list is malformed/);
+  assert.equal(iteratorCalls, 0);
+
+  const decorated = [];
+  decorated.extra = true;
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    otherInstructions: decorated
+  })), /instruction list is malformed/);
+});
+
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
   const parsed = validateJupiterBuildResponse(validBuildResponse({
     transactionVersion: 1,
