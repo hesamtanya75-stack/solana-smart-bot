@@ -301,7 +301,7 @@ test("ALT resolver rejects more than 256 aggregate loaded addresses", async () =
     data.writeBigUInt64LE(90n, 12);
     data[20] = 129;
     for (let i = 0; i < 129; i++) data.fill(start + i, 56 + i * 32, 56 + (i + 1) * 32);
-    return { owner: "AddressLookupTab1e1111111111111111111111111", data: [data.toString("base64"), "base64"] };
+    return { owner: "AddressLookupTab1e1111111111111111111111111", executable: false, data: [data.toString("base64"), "base64"] };
   };
   await assert.rejects(resolveJupiterAddressLookupTables(tableKeys.map(accountKey => ({
     accountKey,
@@ -402,7 +402,7 @@ test("ALT resolver rejects oversized encoded account data before decoding", asyn
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
     context: { slot: 100 }, value: [oversized]
-  } })), /exceeds the maximum encoded size/);
+  } })), /exceeds limits or is not canonical base64/);
 });
 
 
@@ -416,7 +416,7 @@ test("ALT resolver rejects nonzero reserved authority bytes when authority is ab
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
     context: { slot: 100 }, value: [malformed]
-  } })), /metadata is invalid/);
+  } })), /reserved authority bytes/);
 });
 
 test("ALT resolver rejects deactivated lookup tables", async () => {
