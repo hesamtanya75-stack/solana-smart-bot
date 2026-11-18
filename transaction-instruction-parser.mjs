@@ -3,9 +3,14 @@ import {
   validateSupportedTransactionInstructionSet,
   INSTRUCTION_DECODER_REGISTRY_VERSION
 } from "./compute-budget-decoder.mjs";
+import {
+  decodeSystemProgramInstruction,
+  validateSystemProgramInstructionSet
+} from "./system-program-decoder.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
 const BASE58_PUBLIC_KEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -58,6 +63,8 @@ export function parseSupportedInstructionMessage(message) {
     seenAccountKeys.add(key);
   }
 
+  const computeBudgetInstructions = [];
+  const systemProgramInstructions = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
     if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
         !Number.isInteger(instruction.programIdIndex) ||
@@ -71,14 +78,25 @@ export function parseSupportedInstructionMessage(message) {
     }
 
     const programId = accountKeys[instruction.programIdIndex];
-    return decodeSupportedTransactionInstruction({
+    if (programId === SYSTEM_PROGRAM_ID) {
+      const decoded = decodeSystemProgramInstruction(
+        programId, instruction.data, instruction.accountKeyIndexes
+      );
+      systemProgramInstructions.push(decoded);
+      return decoded;
+    }
+    const decoded = decodeSupportedTransactionInstruction({
       programId,
       data: instruction.data,
       accountIndexes: instruction.accountKeyIndexes
     });
+    computeBudgetInstructions.push(decoded);
+    return decoded;
   });
 
-  const validated = validateSupportedTransactionInstructionSet(decodedInstructions);
+  validateSupportedTransactionInstructionSet(computeBudgetInstructions);
+  validateSystemProgramInstructionSet(systemProgramInstructions);
+  const validated = Object.freeze([...decodedInstructions]);
   return Object.freeze({
     parserVersion: 1,
     decoderRegistryVersion: INSTRUCTION_DECODER_REGISTRY_VERSION,
