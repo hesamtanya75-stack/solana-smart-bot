@@ -196,3 +196,31 @@ test("ATA instruction-set validator rejects sparse, decorated and custom-prototy
 
   assert.deepEqual(validateAssociatedTokenInstructionSet([record]), [record]);
 });
+
+
+test("derivation input rejects accessors without invoking getters", async () => {
+  let getterCalled = false;
+  const input = { mint: MINT, tokenProgramId: CLASSIC_TOKEN_PROGRAM_ID };
+  Object.defineProperty(input, "owner", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return OWNER;
+    }
+  });
+  await assert.rejects(
+    deriveAssociatedTokenAddress(input),
+    /own data properties/
+  );
+  assert.equal(getterCalled, false);
+});
+
+test("derivation input rejects inherited and unexpected fields", async () => {
+  const inherited = Object.assign(Object.create({ extra: true }), {
+    owner: OWNER, mint: MINT, tokenProgramId: CLASSIC_TOKEN_PROGRAM_ID
+  });
+  await assert.rejects(deriveAssociatedTokenAddress(inherited), /plain data record/);
+  await assert.rejects(deriveAssociatedTokenAddress({
+    owner: OWNER, mint: MINT, tokenProgramId: CLASSIC_TOKEN_PROGRAM_ID, extra: true
+  }), /unsupported or missing fields/);
+});
