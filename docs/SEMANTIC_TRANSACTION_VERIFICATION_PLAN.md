@@ -240,3 +240,12 @@ Multisig layouts and all other token instructions are rejected. Token-2022 is no
 The parser remains explicitly analysis-only. This decoder does not authenticate token account ownership, mint state, decimals against on-chain mint data, delegate/close authority state, transfer-fee or other Token-2022 extensions, CPI effects, or actual token balance deltas. The caller-supplied account keys and header are not cryptographically authenticated here. Successful structural role checks do not authorize signing or submission; semantic verification remains incomplete and both permissions remain false.
 
 Tests added for exact Transfer and TransferChecked payload decoding, malformed/unsupported layouts, forged/sparse records, parser integration, and rejection when the authority is not a signer. CI must run against the resulting PR head before this slice is considered validated.
+
+
+## Token-2022 boundary and decoder hardening: PR #40 follow-up
+
+The classic SPL Token decoder now rejects sparse account-index arrays explicitly; a negative test covers this malformed input. The parser also has a regression test proving that the Token-2022 program ID remains rejected by the registry rather than being routed through the classic Token decoder.
+
+Token-2022 is intentionally still unsupported. Its extension instructions and transfer behavior (including transfer fees and transfer hooks) require a separate, versioned decoder and transaction-level account/effect model. Reusing the classic Token decoder would be unsafe because matching a base discriminator does not establish the semantics of extension accounts or CPI effects.
+
+No Token-2022 instruction is accepted, and no semantic trust, signing, or submission permission is granted by this work.
