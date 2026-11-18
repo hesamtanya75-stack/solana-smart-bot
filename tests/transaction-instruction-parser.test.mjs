@@ -61,6 +61,9 @@ test("transaction parser rejects malformed compiled instruction indexes and keys
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
   }], ["zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"])), /invalid account key/);
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
+  }], [COMPUTE_BUDGET_PROGRAM, COMPUTE_BUDGET_PROGRAM])), /duplicate account keys/);
 });
 
 test("transaction parser rejects malformed data, duplicate variants and oversized messages", () => {
