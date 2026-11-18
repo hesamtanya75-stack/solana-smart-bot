@@ -1022,6 +1022,18 @@ function sumOwnedTokenBalance(rows, mint, owner) {
  * success flags. All input and output mints, including wrapped SOL, are
  * verified through exact owner-scoped SPL token balance deltas.
  */
+function validateDenseLamportBalances(value, expectedLength) {
+  if (!Array.isArray(value) || value.length !== expectedLength) return false;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== expectedLength + 1 || !keys.includes("length")) return false;
+  for (let index = 0; index < expectedLength; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+        !Number.isSafeInteger(descriptor.value) || descriptor.value < 0) return false;
+  }
+  return true;
+}
+
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner = EXPECTED_BOT_WALLET
@@ -1057,9 +1069,9 @@ export async function verifyFinalizedJupiterSettlement({
   const accountKeys = message?.accountKeys;
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || signatures[0] !== signature ||
-      !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
-      !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
-      meta.postBalances.length !== accountKeys.length ||
+      !Array.isArray(accountKeys) ||
+      !validateDenseLamportBalances(meta.preBalances, accountKeys.length) ||
+      !validateDenseLamportBalances(meta.postBalances, accountKeys.length) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
