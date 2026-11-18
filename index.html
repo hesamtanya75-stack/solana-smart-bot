@@ -1544,7 +1544,8 @@ setInterval(() => {
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
 let serverStateRevision = null;
-// Session credentials are held only in an HttpOnly server cookie. Remove any legacy browser token.\nlocalStorage.removeItem("solanaBotSession");
+// Session credentials are held only in an HttpOnly server cookie. Remove any legacy browser token.
+localStorage.removeItem("solanaBotSession");
 let serverSaveTimer = null;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
