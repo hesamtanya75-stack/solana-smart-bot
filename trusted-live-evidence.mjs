@@ -101,16 +101,16 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
 
 function snapshotPlainRecord(value, allowedKeys, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(label + " is malformed");
+    throw new Error(malformedMessage);
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    throw new Error(label + " is malformed");
+    throw new Error(malformedMessage);
   }
   const snapshot = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string" || !allowedKeys.includes(key)) {
-      throw new Error(label + " is malformed");
+      throw new Error(malformedMessage);
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
@@ -121,19 +121,19 @@ function snapshotPlainRecord(value, allowedKeys, label) {
   return snapshot;
 }
 
-function snapshotDensePlainArray(value, maximum, label) {
+function snapshotDensePlainArray(value, maximum, label, malformedMessage = label + " is malformed") {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
       value.length > maximum) {
-    throw new Error(label + " is malformed");
+    throw new Error(malformedMessage);
   }
   const keys = Reflect.ownKeys(value);
   if (keys.length !== value.length + 1) {
-    throw new Error(label + " is malformed");
+    throw new Error(malformedMessage);
   }
   const snapshot = [];
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!descriptor) throw new Error(label + " is malformed");
+    if (!descriptor) throw new Error(malformedMessage);
     if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
       throw new Error(label + " contains accessor-backed entries");
     }
@@ -143,7 +143,7 @@ function snapshotDensePlainArray(value, maximum, label) {
     if (key === "length") continue;
     if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
         Number(key) >= value.length) {
-      throw new Error(label + " is malformed");
+      throw new Error(malformedMessage);
     }
   }
   return snapshot;
@@ -155,14 +155,18 @@ function validateBuildInstruction(instruction, name) {
   if (!isCanonicalPublicKey(record.programId) ||
       typeof record.data !== "string" || record.data.length > 16384 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.data)) {
-    throw new Error(label + " is malformed");
+    throw new Error(malformedMessage);
   }
   const data = Uint8Array.from(atob(record.data), char => char.charCodeAt(0));
   if (btoa(String.fromCharCode(...data)) !== record.data) {
     throw new Error("Jupiter build " + name + " instruction data is non-canonical");
   }
+  if (!Array.isArray(record.accounts) || record.accounts.length > 256) {
+    throw new Error(label + " is malformed");
+  }
   const rawAccounts = snapshotDensePlainArray(
-    record.accounts, 256, "Jupiter build " + name + " instruction account list"
+    record.accounts, 256, "Jupiter build " + name + " instruction account list",
+    "Jupiter build " + name + " instruction account is malformed"
   );
   const accounts = rawAccounts.map((account) => {
     const meta = snapshotPlainRecord(
@@ -255,7 +259,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   let totalLookupAddresses = 0;
   for (const [table, addresses] of altEntries) {
     const addressSnapshot = snapshotDensePlainArray(
-      addresses, 256, "Jupiter build lookup-table addresses"
+      addresses, 256, "Jupiter build lookup-table addresses",
+      "Jupiter build lookup-table addresses are malformed"
     );
     if (!isCanonicalPublicKey(table) ||
         !addressSnapshot.every(isCanonicalPublicKey) ||
