@@ -50,3 +50,59 @@ test("rejects sparse account indexes and sparse decoded instruction sets", () =>
   assert.throws(() => validateSystemProgramInstructionSet(sparseInstructions), /unreviewed record/);
   assert.deepEqual(validateSystemProgramInstructionSet([decoded]), [decoded]);
 });
+
+
+test("System decoder rejects accessor-backed account indexes without invoking getters", () => {
+  let getterCalled = false;
+  const indexes = [0, 1];
+  Object.defineProperty(indexes, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return 0;
+    }
+  });
+  const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
+  assert.throws(
+    () => decodeSystemProgramInstruction(SYSTEM, encoded(transfer), indexes),
+    /accessor-backed/
+  );
+  assert.equal(getterCalled, false);
+});
+
+test("System decoder rejects decorated and custom-prototype account index arrays", () => {
+  const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
+  const decorated = [0, 1];
+  decorated.extra = true;
+  assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(transfer), decorated), /unsupported properties/);
+  const custom = [0, 1];
+  Object.setPrototypeOf(custom, { inherited: true });
+  assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(transfer), custom), /invalid/);
+});
+
+test("System instruction-set validator rejects accessors without invoking getters", () => {
+  const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
+  const record = decodeSystemProgramInstruction(SYSTEM, encoded(transfer), [0, 1]);
+  let getterCalled = false;
+  const records = [record];
+  Object.defineProperty(records, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return record;
+    }
+  });
+  assert.throws(() => validateSystemProgramInstructionSet(records), /accessor-backed/);
+  assert.equal(getterCalled, false);
+});
+
+test("System instruction-set validator rejects decorated and custom-prototype arrays", () => {
+  const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
+  const record = decodeSystemProgramInstruction(SYSTEM, encoded(transfer), [0, 1]);
+  const decorated = [record];
+  decorated.extra = true;
+  assert.throws(() => validateSystemProgramInstructionSet(decorated), /unsupported properties/);
+  const custom = [record];
+  Object.setPrototypeOf(custom, { inherited: true });
+  assert.throws(() => validateSystemProgramInstructionSet(custom), /unreviewed record/);
+});
