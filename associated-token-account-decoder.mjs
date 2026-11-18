@@ -6,6 +6,31 @@ const decodedRecords = new WeakSet();
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+function readDensePlainArray(value, maximum, exactLength, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum ||
+      (exactLength !== null && value.length !== exactLength)) {
+    throw new Error(label + " must be a bounded plain array");
+  }
+  const keys = Reflect.ownKeys(value);
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) throw new Error(label + " must not be sparse");
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " must not contain accessor-backed entries");
+    }
+    snapshot.push(descriptor.value);
+  }
+  if (keys.length !== value.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+         Number(key) >= value.length))) {
+    throw new Error(label + " contains unsupported properties");
+  }
+  return snapshot;
+}
+
 function isCanonicalPublicKey(value) {
   if (typeof value !== "string" || value.length === 0) return false;
   let decoded = 0n;
@@ -40,18 +65,21 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
   if (programId !== ASSOCIATED_TOKEN_PROGRAM_ID) {
     throw new Error("Associated Token decoder rejects unknown program IDs");
   }
-  if (!Array.isArray(accountIndexes) || accountIndexes.length !== 6 ||
-      !Array.isArray(accountKeys)) {
+  const indexes = readDensePlainArray(
+    accountIndexes, 6, 6, "Associated Token account indexes"
+  );
+  const keys = readDensePlainArray(
+    accountKeys, 256, null, "Associated Token account keys"
+  );
+  if (keys.length === 0) {
     throw new Error("Associated Token account layout is unsupported");
   }
-  for (let index = 0; index < accountIndexes.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
-        !Number.isInteger(accountIndexes[index]) || accountIndexes[index] < 0 ||
-        accountIndexes[index] >= accountKeys.length) {
+  for (const index of indexes) {
+    if (!Number.isInteger(index) || index < 0 || index >= keys.length) {
       throw new Error("Associated Token account indexes are invalid");
     }
   }
-  const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = accountIndexes;
+  const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = indexes;
   // Compiled message account keys are deduplicated. Solana therefore encodes
   // payer === owner as the SAME account index, not as duplicate key entries.
   // Permit only this documented role alias; every other role index is distinct.
@@ -64,7 +92,7 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
       }
     }
   }
-  const roleKeys = accountIndexes.map(index => accountKeys[index]);
+  const roleKeys = indexes.map(index => keys[index]);
   if (roleKeys.some(key => !isCanonicalPublicKey(key))) {
     throw new Error("Associated Token role accounts must be canonical 32-byte public keys");
   }
@@ -81,8 +109,8 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
   }
   // The only supported role alias is payer === owner, represented by one
   // shared compiled account index. The message-level key list is deduplicated.
-  if (accountKeys[systemIndex] !== SYSTEM_PROGRAM_ID ||
-      ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(accountKeys[tokenProgramIndex])) {
+  if (keys[systemIndex] !== SYSTEM_PROGRAM_ID ||
+      ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(keys[tokenProgramIndex])) {
     throw new Error("Associated Token system or token program account is invalid");
   }
   const bytes = decodeCanonicalBase64(encodedData);
@@ -94,17 +122,17 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
     decoderVersion: 1,
     analysisOnly: true,
     variant,
-    accountIndexes: Object.freeze([...accountIndexes]),
+    accountIndexes: Object.freeze(indexes),
     payerAccountIndex: payerIndex,
     associatedAccountIndex: associatedIndex,
     ownerAccountIndex: ownerIndex,
     mintAccountIndex: mintIndex,
     systemProgramAccountIndex: systemIndex,
     tokenProgramAccountIndex: tokenProgramIndex,
-    tokenProgramId: accountKeys[tokenProgramIndex],
-    associatedAccountAddress: accountKeys[associatedIndex],
-    ownerAddress: accountKeys[ownerIndex],
-    mintAddress: accountKeys[mintIndex],
+    tokenProgramId: keys[tokenProgramIndex],
+    associatedAccountAddress: keys[associatedIndex],
+    ownerAddress: keys[ownerIndex],
+    mintAddress: keys[mintIndex],
     accountRoles: Object.freeze(["payer", "associatedAccount", "owner", "mint", "systemProgram", "tokenProgram"])
   });
   decodedRecords.add(record);
