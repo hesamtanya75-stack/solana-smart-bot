@@ -136,3 +136,14 @@ A provider policy engine is an additional independent control, not a replacement
 - No semantic instruction verifier exists for the complete Jupiter route.
 - No live execution route or signer call exists.
 - No credentials, wallet enrollment, signing, or submission has been performed.
+
+
+### Turnkey adapter shape and credential boundary — verified in official Keychain TypeScript guide
+
+- The official TypeScript guide identifies the dedicated package as `@solana/keychain-turnkey`.
+- Turnkey's Keychain capability is a transaction partial signer plus a message partial signer. The application adapter must expose only the transaction-signing operation to the trade coordinator; off-chain message signing must not be reachable from the strategy or Worker route.
+- Turnkey's Keychain signer returns a signed transaction for caller-controlled broadcast; it is not a provider-side sign-and-send backend. The application would still need a separately guarded, idempotent submit/reconciliation flow, which remains unimplemented.
+- The documented configuration includes API public key, API private key, organization ID, private key ID, and Solana public key. API private key is an authentication credential, not the Solana wallet private key; it must never be committed, logged, placed in KV/Durable Object state, or sent to the browser. If later approved, use narrowly scoped Worker secrets and provider-side key/policy restrictions.
+- Because the generic Keychain factory also supports multiple signer capabilities, do not pass a generic signer object directly to strategy code. Wrap it behind a transaction-only adapter that checks the exact pinned wallet and immutable intent and never exposes `signMessages`, arbitrary message signing, or generic key-management methods.
+
+These details refine the adapter contract but do not change the compatibility decision: no Turnkey dependency, credentials, wallet, or signer is installed or configured until the isolated workerd compatibility spike and security review pass.
