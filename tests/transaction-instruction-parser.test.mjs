@@ -96,15 +96,17 @@ test("transaction parser rejects malformed System Program account layouts and un
   }], [SYSTEM, SOURCE, DESTINATION])), /variant is unsupported/);
 });
 
-test("transaction parser rejects unregistered Token and Token-2022 instructions", () => {
-  for (const programId of [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-  ]) {
-    assert.throws(() => parseSupportedInstructionMessage(
-      message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) }], [programId]),
-    ), /unsupported program ID/);
-  }
+test("transaction parser rejects unsupported classic Token variants and all Token-2022 instructions", () => {
+  const classicToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  assert.throws(() => parseSupportedInstructionMessage(
+    message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) }], [classicToken]),
+  ), /SPL Token instruction variant is unsupported/);
+  const transfer = Buffer.from([3, ...Array(8).fill(0)]).toString("base64");
+  assert.throws(() => parseSupportedInstructionMessage(
+    message([{ programIdIndex: 0, accountKeyIndexes: [1, 2, 3], data: transfer }],
+      [token2022, SOURCE, DESTINATION, SYSTEM]),
+  ), /unsupported program ID/);
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
@@ -318,6 +320,7 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
   tokenData[0] = 3;
   tokenData.writeBigUInt64LE(10n, 1);
   const accountKeys = [
+    "11111111111111111111111111111112",
     DESTINATION,
     SYSTEM,
     "SysvarRent111111111111111111111111111111111",
@@ -326,13 +329,13 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
   assert.throws(() => parseSupportedInstructionMessage({
     accountKeys,
     header: {
-      numRequiredSignatures: 0,
+      numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
       numReadonlyUnsignedAccounts: 1
     },
     instructions: [{
-      programIdIndex: 3,
-      accountKeyIndexes: [0, 1, 2],
+      programIdIndex: 4,
+      accountKeyIndexes: [1, 2, 3],
       data: tokenData.toString("base64")
     }]
   }), /SPL Token authority account privilege requirements are not satisfied/);
@@ -391,18 +394,19 @@ test("parser rejects ATA creation when payer is not a signer", () => {
     "11111111111111111111111111111115",
     SYSTEM,
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "11111111111111111111111111111116"
   ];
   assert.throws(() => parseSupportedInstructionMessage({
     accountKeys: keys,
     header: {
-      numRequiredSignatures: 0,
+      numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
       numReadonlyUnsignedAccounts: 6
     },
     instructions: [{
       programIdIndex: 6,
-      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      accountKeyIndexes: [1, 2, 3, 4, 5, 6],
       data: Buffer.from([0]).toString("base64")
     }]
   }), /ATA payer account privilege requirements are not satisfied/);
@@ -438,10 +442,11 @@ test("parser rejects ATA program account marked writable", () => {
   const keys = [
     "11111111111111111111111111111112",
     "11111111111111111111111111111113",
+    SYSTEM,
+    "11111111111111111111111111111116",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "11111111111111111111111111111114",
     "11111111111111111111111111111115",
-    SYSTEM,
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
   ];
   assert.throws(() => parseSupportedInstructionMessage({
@@ -449,11 +454,11 @@ test("parser rejects ATA program account marked writable", () => {
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
-      numReadonlyUnsignedAccounts: 4
+      numReadonlyUnsignedAccounts: 5
     },
     instructions: [{
       programIdIndex: 6,
-      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      accountKeyIndexes: [0, 1, 5, 6, 2, 4],
       data: Buffer.from([1]).toString("base64")
     }]
   }), /ATA System Program account privilege requirements are not satisfied/);
