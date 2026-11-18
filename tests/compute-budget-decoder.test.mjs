@@ -152,6 +152,28 @@ test("Compute Budget policy enforces explicit compute and priority-fee ceilings"
   }), /loaded-account-data limit exceeds transaction policy/);
 });
 
+test("Compute Budget policy rejects ceilings outside supported protocol bounds", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  const valid = {
+    maxComputeUnitLimit: 300000,
+    maxPriorityFeeLamports: 50000n,
+    maxHeapFrameBytes: 131072,
+    maxLoadedAccountDataBytes: 2097152
+  };
+  const invalidPolicies = [
+    { ...valid, maxComputeUnitLimit: 1400001 },
+    { ...valid, maxHeapFrameBytes: 32769 },
+    { ...valid, maxHeapFrameBytes: 263168 },
+    { ...valid, maxLoadedAccountDataBytes: 64 * 1024 * 1024 + 1 }
+  ];
+  for (const policy of invalidPolicies) {
+    assert.throws(
+      () => validateComputeBudgetPolicy([limit], policy),
+      /policy limits are invalid or incomplete/
+    );
+  }
+});
+
 test("Compute Budget policy rejects missing or malformed policy ceilings", () => {
   const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
   assert.throws(() => validateComputeBudgetPolicy([limit], null), /invalid or incomplete/);
