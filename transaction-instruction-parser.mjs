@@ -122,9 +122,7 @@ export function parseSupportedInstructionMessage(message) {
     throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
 
-  if (UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS.some(field =>
-    Object.prototype.hasOwnProperty.call(message, field)
-  )) {
+  if (UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS.some(field => field in message)) {
     throw new Error("Transaction message parser does not accept execution metadata or CPI evidence");
   }
 
