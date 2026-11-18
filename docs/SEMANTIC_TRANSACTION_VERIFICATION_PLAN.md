@@ -177,3 +177,10 @@ The sparse-index rejection and index-provenance assertions are structural safegu
 ### Next safe implementation boundary
 
 Implement and test a canonical legacy/v0 message-header and static-key privilege parser, then separately authenticate lookup-table account data at finalized commitment before combining the resolved key list. Bind the resulting immutable role records to the exact message digest and compiled instruction indexes. Until those prerequisites are complete, keep the System decoder's output syntax-only and do not treat it as authorization evidence.
+
+
+## CI evidence for parser provenance checkpoint
+
+Commit `952a6e48e2e6836b98a3914dbe77d8ecaaf8b4b1` completed the repository's Node tests, Cloudflare Worker build validation, and Devnet read-only validation successfully. The `devnet-read-only` job completed successfully, including unit/runtime tests and verification of Devnet cluster identity and read-only RPC methods. The `funded-devnet-lifecycle` job was skipped because explicit opt-in was not supplied; this is an intentional safety gate, not a passing funded lifecycle test.
+
+This CI result validates the current analysis-only parser and role-helper tests/build. It does not validate authenticated address lookup table resolution, full wire-message decoding, wallet enrollment, signing, transaction submission, or Mainnet readiness. PR #40 remains open and draft at this checkpoint.
