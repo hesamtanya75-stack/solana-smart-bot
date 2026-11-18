@@ -88,3 +88,20 @@ Before implementing any decoder, add a versioned decoder registry with an explic
 Then implement one instruction family at a time, starting with Compute Budget because its instruction data and global transaction effects can be bounded independently. Validate duplicates/conflicts and configured ceilings. Keep all other instruction families rejected until their own decoders and complete transaction-level funds-flow tests are reviewed.
 
 This follow-up is a source-review and implementation-sequencing note only. It does not alter executable code, semantic trust flags, coordinator gates, signing, submission, Worker routes, deployment, or production data.
+
+
+## Isolated Compute Budget decoder slice: PR #40 head `5fa022b93793fe4872359a476a11f1d9c0657a49`
+
+Added `compute-budget-decoder.mjs` and `tests/compute-budget-decoder.test.mjs`.
+
+The isolated decoder recognizes four explicitly encoded Compute Budget variants (heap frame, compute-unit limit, compute-unit price, loaded-account-data limit), applies local bounds, preserves u64 priority price as BigInt, and rejects unknown program IDs, unknown/legacy variants, malformed encodings, invalid lengths, and out-of-range values. Its instruction-set helper rejects duplicate variants and unsupported decoder versions.
+
+Scope limitation: this is a syntax decoder for one instruction family only. It is not wired into the unsigned transaction parser, does not verify account roles/privileges or whole-transaction ordering and funds flow, and does not attest semantic route trust. Existing `semanticInstructionVerification: false` and coordinator fail-closed gates remain unchanged. No signing, submission, live route, deployment, or production data operation was added.
+
+CI for this exact head completed:
+- Node tests: success (run 44294129397; safety and Durable Objects runtime test job passed).
+- Cloudflare Worker build validation: success (run 44294129214; build completed without deployment).
+- Devnet read-only: success (run 44294129292).
+- Funded Devnet lifecycle: skipped (job 134767019986).
+
+These results validate repository CI for the isolated decoder addition, not full semantic transaction verification or live trading readiness.
