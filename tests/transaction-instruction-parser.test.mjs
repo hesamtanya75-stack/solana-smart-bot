@@ -1,12 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COMPUTE_BUDGET_PROGRAM } from "../compute-budget-decoder.mjs";
+import { SYSTEM_PROGRAM_ID } from "../system-program-decoder.mjs";
 import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
 
 function data(tag, value) {
   const bytes = Buffer.alloc(5);
   bytes[0] = tag;
   bytes.writeUInt32LE(value, 1);
+  return bytes.toString("base64");
+}
+
+const SYSTEM = "11111111111111111111111111111111";
+const SOURCE = "ComputeBudget111111111111111111111111111111";
+const DESTINATION = "So11111111111111111111111111111111111111112";
+
+function transferData(lamports) {
+  const bytes = Buffer.alloc(12);
+  bytes.writeUInt32LE(2, 0);
+  bytes.writeBigUInt64LE(BigInt(lamports), 4);
   return bytes.toString("base64");
 }
 
@@ -32,9 +44,35 @@ test("transaction parser returns analysis-only result for registered Compute Bud
   assert.ok(Object.isFrozen(parsed.instructions));
 });
 
-test("transaction parser rejects unregistered System Program and token instructions", () => {
+test("transaction parser integrates the syntax-only System Program transfer decoder", () => {
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [1, 2],
+    data: transferData(2500000000n)
+  }], [SYSTEM, SOURCE, DESTINATION]));
+  assert.equal(parsed.instructionCount, 1);
+  assert.equal(parsed.instructions[0].variant, "transfer");
+  assert.equal(parsed.instructions[0].lamports, 2500000000n);
+  assert.deepEqual(parsed.instructions[0].accountRoles, ["source", "destination"]);
+  assert.equal(parsed.analysisOnly, true);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("transaction parser rejects malformed System Program account layouts and unsupported variants", () => {
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: [1], data: transferData(1)
+  }], [SYSTEM, SOURCE])), /payload or account count is invalid/);
+  const unknown = Buffer.alloc(4);
+  unknown.writeUInt32LE(99, 0);
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: [1, 2], data: unknown.toString("base64")
+  }], [SYSTEM, SOURCE, DESTINATION])), /variant is unsupported/);
+});
+
+test("transaction parser rejects unregistered Token and Token-2022 instructions", () => {
   for (const programId of [
-    "11111111111111111111111111111111",
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
   ]) {
