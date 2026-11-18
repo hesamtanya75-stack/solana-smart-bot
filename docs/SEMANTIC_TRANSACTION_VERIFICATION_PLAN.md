@@ -766,7 +766,7 @@ considered validated.
 
 The message-only syntax parser now rejects transaction execution metadata fields
 (`meta`, `innerInstructions`, logs, pre/post balances, pre/post token balances,
-and signatures) instead of silently ignoring them. This prevents callers from
+and signatures) whether supplied as own or inherited properties, instead of silently ignoring them. This prevents callers from
 mistaking a parsed outer-message instruction list for validated execution or
 CPI evidence.
 
