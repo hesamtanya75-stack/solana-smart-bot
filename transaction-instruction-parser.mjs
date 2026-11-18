@@ -194,6 +194,9 @@ export function parseSupportedInstructionMessage(message) {
     instructionCount: validated.length,
     instructions: validated,
     accountPrivilegeAnalysis,
+    associatedAddressVerification: associatedTokenInstructions.length
+      ? "not-performed"
+      : "not-applicable",
     analysisOnly: true,
     semanticVerification: "incomplete",
     signingPermitted: false,
