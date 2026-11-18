@@ -164,3 +164,16 @@ The helper derives signer/writable flags for static message keys from the legacy
 Important boundary: lookup addresses are caller-supplied and must already have been resolved and authenticated by a separate trusted layer. This helper does not fetch or verify lookup tables, parse raw transaction wire bytes, verify signatures, or establish instruction semantics. It is not yet integrated into the transaction parser or System Program decoder. Semantic verification remains incomplete; signing and submission remain disabled.
 
 CI for the immediately preceding code head `36f9f4b26b5110a1b9109c33255f1b5de36adc2e`: Node tests and Cloudflare Worker build validation succeeded. The latest Devnet read-only workflow is still running; funded Devnet lifecycle remains gated behind explicit opt-in. CI for this documentation update and the subsequent role-helper commits must be checked independently.
+
+
+## Parser account-index provenance follow-up: PR #40 head `d65b17001ca2c635fecce0511564239ae513d478`
+
+The analysis-only parser now rejects sparse compiled account-index arrays before program dispatch. The System Program syntax decoder preserves a frozen copy of the compiled account indexes on each decoded Transfer/CreateAccount record, and parser tests assert that this provenance survives dispatch.
+
+The account-role helper remains intentionally separate. The parser input still consists of an already-deserialized account-key list and compiled instruction list; it does not carry the legacy/v0 message header or authenticated address-lookup-table resolution evidence. Therefore the parser cannot currently establish signer/writable privileges or prove that a System Transfer source is the enrolled wallet or that its destination is approved. Do not integrate caller-supplied role labels or unverified lookup addresses as trusted authorization evidence.
+
+The sparse-index rejection and index-provenance assertions are structural safeguards only. They do not change `semanticVerification: "incomplete"`, `signingPermitted: false`, or `submissionPermitted: false`, and do not enable coordinator reservations, signing, submission, live Worker routes, or Mainnet trading.
+
+### Next safe implementation boundary
+
+Implement and test a canonical legacy/v0 message-header and static-key privilege parser, then separately authenticate lookup-table account data at finalized commitment before combining the resolved key list. Bind the resulting immutable role records to the exact message digest and compiled instruction indexes. Until those prerequisites are complete, keep the System decoder's output syntax-only and do not treat it as authorization evidence.
