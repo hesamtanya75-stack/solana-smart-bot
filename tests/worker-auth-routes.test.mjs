@@ -165,3 +165,15 @@ test("sessions are bound to the administrator principal and reject unbound or ma
   assert.equal(workerSource.includes("return !!session && session.expiresAt > Date.now();"), false,
     "legacy sessions without an explicit principal must fail closed");
 });
+
+test("browser sessions use Secure HttpOnly SameSite cookies instead of JavaScript-readable bearer tokens", () => {
+  assert.ok(workerSource.includes("function sessionTokenFromCookie(request)"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Strict"));
+  assert.ok(workerSource.includes('request.headers.get("Cookie")'));
+  assert.ok(workerSource.includes('session.subject === "admin"'));
+  assert.equal(workerSource.includes('request.headers.get("Authorization")'), false);
+  assert.ok(dashboardSource.includes('credentials: "same-origin"'));
+  assert.ok(dashboardSource.includes('localStorage.removeItem("solanaBotSession")'));
+  assert.equal(dashboardSource.includes('localStorage.setItem("solanaBotSession"'), false);
+  assert.equal(dashboardSource.includes("serverToken"), false);
+});
