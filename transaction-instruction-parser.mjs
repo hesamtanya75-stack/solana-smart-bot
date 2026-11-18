@@ -77,6 +77,12 @@ export function parseSupportedInstructionMessage(message) {
       throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
     }
 
+    for (let index = 0; index < instruction.accountKeyIndexes.length; index++) {
+      if (!Object.prototype.hasOwnProperty.call(instruction.accountKeyIndexes, index)) {
+        throw new Error("Transaction instruction " + position + " contains sparse account indexes");
+      }
+    }
+
     const programId = accountKeys[instruction.programIdIndex];
     if (programId === SYSTEM_PROGRAM_ID) {
       const decoded = decodeSystemProgramInstruction(
