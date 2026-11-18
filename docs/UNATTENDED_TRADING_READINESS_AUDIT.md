@@ -265,3 +265,18 @@ Reviewed the exact PR head `7b06a5a094d80bc8e87bd558e9fb457fe1e437d9` in `worker
 **Remaining hardening before unattended trading:** retain the separate session-identity gap documented above; add integration-level tests for the complete Worker routes (not only AuthGuard unit tests), explicit logout/session revocation and session expiry tests, and a recovery procedure for loss of the sole backup code that does not weaken authentication. Ensure operational recovery cannot silently disable MFA or rebind the trading wallet. No confirmed TOTP bypass was identified in this source review.
 
 This checkpoint is documentation-only. Do not change the UI, enable wallet signing, or add transaction submission.
+
+
+## Follow-up review: instruction decoder boundaries at `3e4bd1cda90e3187e2b053c7612a1ef7cff9f3be`
+
+A source review of `transaction-instruction-parser.mjs`, `system-program-decoder.mjs`, `compute-budget-decoder.mjs`, `message-account-roles.mjs`, and their focused tests confirms the following bounded behavior:
+
+- The transaction instruction parser validates the already-deserialized compiled instruction layout, key indexes, array density, and supported instruction ordering. It returns `analysisOnly: true`, `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`.
+- The versioned instruction registry is reject-by-default and currently registers only Compute Budget instructions with an empty account-meta layout. Duplicate or unsupported variants/programs are rejected.
+- The System Program syntax decoder recognizes only Transfer and CreateAccount with exact payload sizes and two distinct account indexes. It does not validate signer/writable privileges, signatures, runtime effects, rent, CPI, transaction intent, or net funds flow.
+- The account-role helper derives static signer/writable flags and appends resolved v0 lookup addresses in Solana's writable-then-readonly order. Its input lookup addresses must already have been independently fetched and authenticated; the helper itself does not verify lookup table ownership, context, deactivation, or contents.
+- Focused tests cover supported variants, malformed layouts, sparse arrays, duplicate keys/variants, unknown programs, and rejection of unsupported Token/Token-2022 instructions.
+
+**Security boundary:** these modules provide syntax and structural validation only. They are not yet composed into a complete authenticated wire-message verifier, and no semantic approval or signing authority follows from their outputs. In particular, the System decoder's role labels are not privilege checks, and caller-supplied resolved lookup addresses are not trusted merely because the role helper accepts them.
+
+**Next safe implementation stage:** build an independently authenticated legacy/v0 message and lookup-table resolution layer, then bind derived account privileges to each decoded instruction before adding SPL Token, Token-2022, ATA, and exact router/CPI decoders. Keep unknown instructions rejected and all semantic/signing/submission gates closed until whole-transaction intent and funds-flow verification is complete.
