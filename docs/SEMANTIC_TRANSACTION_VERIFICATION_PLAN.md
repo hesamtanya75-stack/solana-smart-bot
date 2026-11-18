@@ -946,3 +946,24 @@ Reviewed against PR #43 head `609affa13c00ce957f40693bb3307b627808eddb`.
 ### Safety disposition
 
 PR #43 remains open and Draft. These CI results do not mean the transaction verifier or live-trading system is complete. Keep semantic verification incomplete, reservation/signing/submission gates closed, and Mainnet trading disabled. No merge, production deployment, wallet signing, transaction submission, or funded Devnet lifecycle was performed as part of this audit.
+
+
+## Follow-up implementation review — 2026-11-19
+
+A focused review of `trusted-live-evidence.mjs` and `tests/trusted-live-evidence.test.mjs` confirms an important distinction:
+
+- A defensive `validateJupiterBuildResponse()` parser already exists. It snapshots plain records/arrays, bounds instruction and lookup-table resources, checks expected mint/amount intent, validates route-plan shape, and deliberately returns `semanticInstructionVerification: false` with `routeVerification: "build-envelope-only"`.
+- The current live evidence path does not call this parser. `fetchTrustedSellRoute()` still calls the Jupiter Swap V2 quote/order endpoint without a taker, requires `transaction: null`, and returns `quote-only-no-transaction`. `fetchTrustedLiveEvidence()` only returns `{ quote, risk, passed }`.
+- Therefore the existing /build parser is useful input validation, but it is not a build integration, compiled-message verification, instruction decoder, or evidence of an executable safe route. Do not flip its semantic flag or treat provider-supplied labels/program IDs as trusted semantics.
+
+### Safe next coding slice
+
+Implement a separate, server-side Jupiter build-evidence function and keep it disconnected from reservation/signing until the semantic verifier is complete. It must:
+1. Take a server-derived wallet/taker public key and immutable trade intent as explicit inputs; never accept a client-selected taker as authority.
+2. Request the documented build response, validate it with `validateJupiterBuildResponse()`, and bind input/output mints, amount, slippage, taker, request/intent ID, and response digest.
+3. Independently decode every compute-budget, setup, swap, cleanup, other, tip, and loaded-address instruction against reviewed program-specific decoders. Unknown programs, accounts, account roles, CPI effects, or instruction variants fail closed.
+4. Resolve v0 address lookup tables against trusted finalized RPC state and bind the resolved account list to the exact message.
+5. Derive base fee from the exact compiled message/RPC fee quote, priority fee from decoded compute-budget instructions, rent from actual account creations, tips from decoded transfers, and all other outflows. Reject missing or conflicting sources.
+6. Return evidence marked semantic only after every instruction and account effect is verified. Until then, the coordinator's reservation gate must continue to reject it.
+
+No production integration, key material, signer, transaction submission, or live-trading enablement is authorized by this plan.
