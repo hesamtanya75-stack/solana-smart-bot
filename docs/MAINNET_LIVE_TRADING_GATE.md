@@ -79,3 +79,31 @@ The exact head passed:
 The successful CI result does not establish a signed buy/sell lifecycle. The funded Devnet job was skipped, and no signer or submission flow exists. The Worker entry point remains the paper-trading Worker; `live-trading.mjs` only retrieves and structurally validates an unsigned Jupiter order, while `executeLiveOrder()` intentionally throws without signing or submitting. The coordinator is not wired to a live Worker route.
 
 The user has authorized preparation for future real-money trading, not funding, signing, submission, production deployment, PR merge, or Mainnet activation. Keep all those actions disabled until the acceptance gates and a separate explicit release approval are complete. Do not change UI/design.
+
+
+
+## Readiness checkpoint — 2026-11-19, PR #43 head `febb9a6a45773b2c2597ec404804f1dba2d3ac3d`
+
+The exact current PR head is open and Draft. It has not been merged.
+
+Latest GitHub Actions results for this exact head:
+- Node tests: run `44416144265` — success.
+- Cloudflare Worker build validation: run `44416144290` — success; Wrangler dry-run only, no deployment.
+- Devnet read-only validation: run `44416144261` — success, including unit/runtime tests and Devnet cluster identity/read-only RPC checks.
+- Funded Devnet lifecycle: skipped by the workflow gate; no funded transaction was run.
+
+The latest ATA PDA hardening changes also passed Node tests and the Worker build. They reject accessor-backed derivation inputs without invoking getters, as well as inherited or unexpected fields.
+
+### Remaining work — still release-blocking
+
+1. **Semantic transaction verification:** decode and validate every instruction in the supported Jupiter swap route, exact account roles/privileges, route amounts, destinations, and any CPI/inner-instruction effects. Current parsers and isolated decoders are analysis-only; do not promote them to semantic approval.
+2. **All-in cost evidence:** connect independently verified message-bound fees, priority fee, tips, rent, and every possible SOL/token outflow to immutable order intent and atomic spend reservation. The production evidence provider still does not supply trusted all-in costs.
+3. **Authenticated execution evidence:** verify signatures, transaction identity, confirmed/finalized metadata, and blockhash/quote expiry; safely reconcile ambiguous or partial submissions.
+4. **Settlement and recovery:** complete owner-scoped SOL/WSOL/SPL/Token-2022 balance-delta reconciliation, durable restart recovery, duplicate request/Cron handling, and idempotent ledger updates.
+5. **Signer integration:** Turnkey remains a selected candidate only. The SDK/adapter has not been installed or validated in workerd. First perform a no-secret mocked compatibility spike; then independent signer-side policy enforcement and transaction-only adapter review.
+6. **Operational controls:** prove the emergency kill switch blocks reservations and signing, define safe exit behavior, test RPC/provider outages, and complete an independent security review.
+7. **Separate release approvals:** only after the above gates, obtain explicit approval for a disposable-wallet funded Devnet lifecycle, then separately for production deployment and Mainnet activation.
+
+Until these are complete, keep the coordinator reservation gate closed, keep `executeLiveOrder()` non-executing, and keep Mainnet trading disabled. The passing checks establish code/test/build and read-only Devnet status only; they do not establish live-trading readiness.
+
+No UI/design changes, merge, production deployment, wallet enrollment, signing, transaction submission, or funded Devnet operation occurred in this checkpoint.
