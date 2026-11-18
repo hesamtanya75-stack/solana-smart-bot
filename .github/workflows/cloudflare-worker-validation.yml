@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "worker.js"
+      - "associated-token-account-pda.mjs"
       - "auth-guard.mjs"
       - "paper-trading-state.mjs"
       - "trusted-live-evidence.mjs"
@@ -29,7 +30,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+
+      - name: Install pinned project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Verify Wrangler targets the active Worker
         run: |
