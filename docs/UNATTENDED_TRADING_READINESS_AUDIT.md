@@ -142,3 +142,15 @@ The following are still blockers for unattended live trading; passing CI does no
 8. **Release validation:** only after the above, run isolated disposable-wallet Devnet signing/transfer tests with explicit authorization, then a separate Mainnet readiness/security review and explicit release approval.
 
 Current safe status remains paper-trading / no real transaction submission. Do not merge, deploy, enable Mainnet, or run funded Devnet as part of this audit.
+
+
+## CI completion for readiness-checklist commit `458a535a95366b0417a804583da0e35e2d685ab8`
+
+The three workflows for this exact PR head have completed:
+
+- Node tests: success (run 44292138720; test job passed).
+- Cloudflare Worker build validation: success (run 44292138818; Worker validation/build job passed without deployment).
+- Devnet workflow: success (run 44292138776; read-only job passed).
+- Funded Devnet lifecycle: skipped. No funded signing or transfer test was run.
+
+This validates the repository test suite and build for this commit only. It does not implement or validate semantic transaction decoding, unattended signing, or live trading.
