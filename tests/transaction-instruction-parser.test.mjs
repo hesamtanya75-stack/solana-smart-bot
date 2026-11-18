@@ -483,6 +483,55 @@ test("parser rejects System Transfer when the source is readonly or not a signer
   }), /privilege requirements are not satisfied/);
 });
 
+test("parser rejects System CreateAccount when the new account signer is readonly", () => {
+  const createAccountData = Buffer.concat([
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(32, 7)
+  ]).toString("base64");
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 0
+    },
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: createAccountData
+    }]
+  }), /System instruction account privilege requirements are not satisfied/);
+});
+
+test("parser accepts structurally writable signer roles for System CreateAccount but remains analysis-only", () => {
+  const createAccountData = Buffer.concat([
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(32, 7)
+  ]).toString("base64");
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 0
+    },
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: createAccountData
+    }]
+  });
+  assert.equal(parsed.instructions[0].variant, "createAccount");
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
 test("parser leaves System account privilege analysis explicitly absent without a message header", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
