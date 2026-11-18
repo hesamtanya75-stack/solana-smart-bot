@@ -1,7 +1,8 @@
 import {
   decodeSupportedTransactionInstruction,
   validateSupportedTransactionInstructionSet,
-  INSTRUCTION_DECODER_REGISTRY_VERSION
+  INSTRUCTION_DECODER_REGISTRY_VERSION,
+  validateComputeBudgetPolicy
 } from "./compute-budget-decoder.mjs";
 import {
   decodeSystemProgramInstruction,
@@ -170,6 +171,12 @@ export function parseSupportedInstructionMessage(message) {
   });
 
   validateSupportedTransactionInstructionSet(computeBudgetInstructions);
+  const computeBudgetPolicy = message.computeBudgetPolicy === undefined
+    ? null
+    : validateComputeBudgetPolicy(
+      computeBudgetInstructions.map(instruction => instruction.decoded),
+      message.computeBudgetPolicy
+    );
   validateSystemProgramInstructionSet(systemProgramInstructions);
   validateSplTokenInstructionSet(splTokenInstructions);
   validateAssociatedTokenInstructionSet(associatedTokenInstructions);
@@ -193,6 +200,9 @@ export function parseSupportedInstructionMessage(message) {
     decoderRegistryVersion: INSTRUCTION_DECODER_REGISTRY_VERSION,
     instructionCount: validated.length,
     instructions: validated,
+    computeBudgetPolicy: computeBudgetPolicy === null
+      ? "not-provided"
+      : Object.freeze({ status: "validated", ...computeBudgetPolicy }),
     accountPrivilegeAnalysis,
     associatedAddressVerification: associatedTokenInstructions.length
       ? "not-performed"
