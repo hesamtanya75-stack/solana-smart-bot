@@ -1165,6 +1165,70 @@ test("Jupiter /build instruction arrays reject custom iterators and decorated pr
   })), /instruction.*malformed/);
 });
 
+test("Jupiter /build rejects accessor-backed envelope and route data without invoking getters", () => {
+  let envelopeGetterCalls = 0;
+  const envelope = validBuildResponse();
+  Object.defineProperty(envelope, "inputMint", {
+    enumerable: true,
+    get() { envelopeGetterCalls++; return "So11111111111111111111111111111111111111112"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(envelope), /accessor-backed/);
+  assert.equal(envelopeGetterCalls, 0);
+
+  let routeGetterCalls = 0;
+  const routeStep = validBuildResponse().routePlan[0];
+  Object.defineProperty(routeStep, "percent", {
+    enumerable: true,
+    get() { routeGetterCalls++; return 100; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: [routeStep]
+  })), /accessor-backed/);
+  assert.equal(routeGetterCalls, 0);
+
+  let infoGetterCalls = 0;
+  const swapInfo = { ...validBuildResponse().routePlan[0].swapInfo };
+  Object.defineProperty(swapInfo, "ammKey", {
+    enumerable: true,
+    get() { infoGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: [{ percent: 100, bps: 10000, swapInfo }]
+  })), /accessor-backed/);
+  assert.equal(infoGetterCalls, 0);
+});
+
+test("Jupiter /build rejects sparse and accessor-backed route and blockhash arrays", () => {
+  const sparseRoute = new Array(1);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: sparseRoute
+  })), /routePlan is malformed/);
+
+  let byteGetterCalls = 0;
+  const blockhash = new Array(32).fill(1);
+  Object.defineProperty(blockhash, "0", {
+    enumerable: true,
+    get() { byteGetterCalls++; return 1; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    blockhashWithMetadata: { blockhash, lastValidBlockHeight: 123456 }
+  })), /response envelope/);
+  assert.equal(byteGetterCalls, 0);
+});
+
+test("Jupiter /build rejects accessor-backed lookup map entries without invoking getters", () => {
+  let getterCalls = 0;
+  const lookupMap = {};
+  Object.defineProperty(lookupMap, "11111111111111111111111111111111", {
+    enumerable: true,
+    get() { getterCalls++; return []; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: lookupMap
+  })), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
+
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
   const parsed = validateJupiterBuildResponse(validBuildResponse({
     transactionVersion: 1,
