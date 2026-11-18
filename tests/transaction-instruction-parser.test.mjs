@@ -151,6 +151,29 @@ test("transaction parser rejects metadata and accessor fields nested in compiled
   assert.equal(getterCalled, false);
 });
 
+test("transaction parser rejects accessor-backed compiled account indexes without evaluating them", () => {
+  let getterCalled = false;
+  const indexes = [];
+  indexes.length = 1;
+  Object.defineProperty(indexes, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return 0;
+    }
+  });
+  const instruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: indexes,
+    data: data(2, 200000)
+  };
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([instruction])),
+    /sparse or accessor-backed account indexes/
+  );
+  assert.equal(getterCalled, false);
+});
+
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
