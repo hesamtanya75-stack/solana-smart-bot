@@ -166,3 +166,15 @@ All three PR-triggered workflow runs for this exact head completed:
 - Funded Devnet lifecycle: skipped (job 134761573407). No funded signing or transfer was performed.
 
 PR #40 remains open and Draft, not merged. This CI result validates tests, build, and read-only Devnet checks only. It does not establish semantic transaction verification, wallet enrollment, isolated signing, transaction submission, settlement, or unattended live-trading readiness. The existing safety boundary remains unchanged: no merge, production deploy, funded Devnet run, or Mainnet trading.
+
+
+## CI completion for decoder-plan commit `d4c789ba4ba34f239d8c7bec371975eafcf4aff6`
+
+All PR-triggered workflows for this exact head completed:
+
+- Node tests: success (run 44293522543; test job passed).
+- Cloudflare Worker build validation: success (run 44293522532; build validation passed without deployment).
+- Devnet workflow: success (run 44293522533; read-only Devnet job passed).
+- Funded Devnet lifecycle: skipped (job 134764962922). No funded signing or transfer was performed.
+
+This validates the repository tests, Worker build, and read-only Devnet checks for this documentation-only commit. It does not implement a decoder registry or instruction decoders, and does not validate signing, transaction submission, settlement, or live trading. PR #40 remains Draft and unmerged; no production deployment or Mainnet trading is authorized by this result.
