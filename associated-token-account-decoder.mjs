@@ -102,6 +102,9 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
     systemProgramAccountIndex: systemIndex,
     tokenProgramAccountIndex: tokenProgramIndex,
     tokenProgramId: accountKeys[tokenProgramIndex],
+    associatedAccountAddress: accountKeys[associatedIndex],
+    ownerAddress: accountKeys[ownerIndex],
+    mintAddress: accountKeys[mintIndex],
     accountRoles: Object.freeze(["payer", "associatedAccount", "owner", "mint", "systemProgram", "tokenProgram"])
   });
   decodedRecords.add(record);
