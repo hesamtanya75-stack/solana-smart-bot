@@ -730,10 +730,12 @@ test("parser rejects v0 account keys that disagree with canonical static and loo
 const PDA_OWNER = "CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY";
 const PDA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const PDA_CLASSIC_ATA = "3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b";
+const PDA_TOKEN_2022_ATA = "J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr";
 const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const CLASSIC_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
-function ataMessageWithAddress(associatedAddress) {
+function ataMessageWithAddress(associatedAddress, tokenProgram = CLASSIC_TOKEN_PROGRAM) {
   const payer = "11111111111111111111111111111112";
   const system = "11111111111111111111111111111111";
   const accountKeys = [
@@ -742,7 +744,7 @@ function ataMessageWithAddress(associatedAddress) {
     PDA_OWNER,
     PDA_MINT,
     system,
-    CLASSIC_TOKEN_PROGRAM,
+    tokenProgram,
     ATA_PROGRAM
   ];
   return {
@@ -768,6 +770,20 @@ test("async parser integrates a successful ATA PDA-only verification without gra
   assert.equal(parsed.submissionPermitted, false);
   assert.ok(Object.isFrozen(parsed));
   assert.ok(Object.isFrozen(parsed.associatedAddressPdaChecks));
+});
+
+test("async parser verifies Token-2022 ATA PDA end-to-end without granting semantic trust", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress(PDA_TOKEN_2022_ATA, TOKEN_2022_PROGRAM)
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-verified");
+  assert.equal(parsed.associatedAddressPdaChecks.length, 1);
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, true);
+  assert.equal(parsed.associatedAddressPdaChecks[0].tokenProgramId, TOKEN_2022_PROGRAM);
+  assert.equal(parsed.associatedAddressPdaChecks[0].bump, 254);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
 });
 
 test("async parser reports an ATA PDA mismatch and never promotes it to approval", async () => {
