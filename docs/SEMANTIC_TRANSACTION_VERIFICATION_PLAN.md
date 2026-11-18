@@ -1039,3 +1039,12 @@ freezing a shallow clone of a valid decoded record does not preserve that
 provenance and is rejected as unreviewed. This is still syntax/provenance
 hardening, not proof of token balance effects, Token-2022 extension behavior,
 CPI execution, or semantic transaction approval.
+
+## SPL Token account-privilege negative coverage
+
+Parser regression tests now reject three structurally unsafe layouts when a
+message header is supplied: readonly transfer source, readonly transfer
+destination, and writable TransferChecked mint. These checks validate only
+message-header privilege consistency. They do not prove token-account state,
+actual balance deltas, Token-2022 extension effects, CPI behavior, or semantic
+transaction safety; parser output remains analysis-only and non-authorizing.
