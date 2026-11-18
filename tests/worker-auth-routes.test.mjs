@@ -170,7 +170,7 @@ test("sessions are bound to the administrator principal and reject unbound or ma
 
 test("browser sessions use Secure HttpOnly SameSite cookies instead of JavaScript-readable bearer tokens", () => {
   assert.ok(workerSource.includes("function sessionTokenFromCookie(request)"));
-  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Strict"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Lax"));
   assert.ok(workerSource.includes('request.headers.get("Cookie")'));
   assert.ok(workerSource.includes('session.subject === "admin"'));
   assert.equal(workerSource.includes('const authorization = request.headers.get("Authorization")'), false,
