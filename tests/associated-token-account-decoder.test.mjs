@@ -48,11 +48,21 @@ test("rejects forged and sparse records", () => {
 });
 
 
-test("rejects duplicate public keys across distinct ATA role indexes", () => {
-  const duplicateRoleKeys = [...keys];
-  duplicateRoleKeys[2] = duplicateRoleKeys[0];
+test("allows payer and owner to resolve to the same wallet public key", () => {
+  const payerIsOwner = [...keys];
+  payerIsOwner[2] = payerIsOwner[0];
+  const result = decodeAssociatedTokenInstruction(
+    ATA, encoded(0), [0,1,2,3,4,5], payerIsOwner
+  );
+  assert.equal(result.variant, "create");
+  assert.equal(result.payerAccountIndex, 0);
+  assert.equal(result.ownerAccountIndex, 2);
+  assert.equal(payerIsOwner[result.payerAccountIndex], payerIsOwner[result.ownerAccountIndex]);
+});
+
+test("still rejects duplicate ATA instruction account indexes", () => {
   assert.throws(
-    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], duplicateRoleKeys),
-    /role accounts must be distinct/
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,3,5], keys),
+    /indexes must be distinct/
   );
 });
