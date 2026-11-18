@@ -1022,7 +1022,7 @@ test("parser rejects static keys or lookup resolutions without a message header"
 });
 
 test("transaction parser rejects an unreviewed program even when its data mimics Compute Budget", () => {
-  const unknownProgram = "11111111111111111111111111111111";
+  const unknownProgram = "11111111111111111111111111111112";
   assert.throws(() => parseSupportedInstructionMessage({
     accountKeys: [unknownProgram],
     instructions: [{
