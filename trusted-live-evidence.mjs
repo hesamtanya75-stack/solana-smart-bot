@@ -225,8 +225,10 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   }
   const routePlan = validateBuildRoutePlan(build.routePlan, build.inputMint, build.outputMint);
   const validateList = (items, name) => Object.freeze(
-    snapshotDensePlainArray(items, 64, "Jupiter build " + name + " instruction list")
-      .map((item, index) => validateBuildInstruction(item, name + "[" + index + "]"))
+    snapshotDensePlainArray(
+      items, 64, "Jupiter build " + name + " instruction list",
+      "Jupiter build " + name + " instruction is malformed"
+    ).map((item, index) => validateBuildInstruction(item, name + "[" + index + "]"))
   );
   const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
   const setupInstructions = validateList(build.setupInstructions, "setup");
