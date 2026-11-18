@@ -1066,9 +1066,11 @@ function snapshotDenseAccountKeys(value) {
     const entry = descriptor?.value;
     let key = entry;
     if (entry && typeof entry === "object" && Object.getPrototypeOf(entry) === Object.prototype) {
+      const entryKeys = Reflect.ownKeys(entry);
       const pubkeyDescriptor = Object.getOwnPropertyDescriptor(entry, "pubkey");
       key = pubkeyDescriptor?.value;
-      if (!pubkeyDescriptor || !Object.prototype.hasOwnProperty.call(pubkeyDescriptor, "value")) {
+      if (entryKeys.length !== 1 || entryKeys[0] !== "pubkey" ||
+          !pubkeyDescriptor || !Object.prototype.hasOwnProperty.call(pubkeyDescriptor, "value")) {
         throw new Error("Finalized transaction account keys are malformed");
       }
     }
