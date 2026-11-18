@@ -184,3 +184,65 @@ test("Compute Budget policy rejects missing or malformed policy ceilings", () =>
     maxLoadedAccountDataBytes: 1000000
   }), /invalid or incomplete/);
 });
+
+
+test("Compute Budget validators reject accessor-backed instruction arrays without invoking getters", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  let getterCalled = false;
+  const records = [limit];
+  Object.defineProperty(records, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return limit;
+    }
+  });
+  assert.throws(() => validateComputeBudgetInstructionSet(records), /accessor-backed/);
+  assert.equal(getterCalled, false);
+
+  const transactionRecord = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM,
+    data: data(2, 200000),
+    accountIndexes: []
+  });
+  getterCalled = false;
+  const transactionRecords = [transactionRecord];
+  Object.defineProperty(transactionRecords, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return transactionRecord;
+    }
+  });
+  assert.throws(() => validateSupportedTransactionInstructionSet(transactionRecords), /accessor-backed/);
+  assert.equal(getterCalled, false);
+});
+
+test("Compute Budget validators reject decorated and custom-prototype arrays", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  const decorated = [limit];
+  decorated.extra = true;
+  assert.throws(() => validateComputeBudgetInstructionSet(decorated), /unsupported properties/);
+  const custom = [limit];
+  Object.setPrototypeOf(custom, { inherited: true });
+  assert.throws(() => validateComputeBudgetInstructionSet(custom), /invalid/);
+
+  const transactionRecord = decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM,
+    data: data(2, 200000),
+    accountIndexes: []
+  });
+  const transactionRecords = [transactionRecord];
+  transactionRecords.extra = true;
+  assert.throws(() => validateSupportedTransactionInstructionSet(transactionRecords), /unsupported properties/);
+});
+
+test("Compute Budget registry rejects decorated empty account-index arrays", () => {
+  const indexes = [];
+  indexes.extra = true;
+  assert.throws(() => decodeSupportedTransactionInstruction({
+    programId: COMPUTE_BUDGET_PROGRAM,
+    data: data(2, 200000),
+    accountIndexes: indexes
+  }), /unsupported properties/);
+});
