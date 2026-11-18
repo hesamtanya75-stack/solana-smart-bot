@@ -1077,19 +1077,73 @@ export async function verifyFinalizedJupiterSettlement({
 export function parseTrustedMintAccount(account) {
   const value = account?.value;
   if (!value) throw new Error("Mint account is unavailable");
-  const parsed = value.data?.parsed?.info;
-  if (parsed) {
-    const tokenProgram = value.owner;
-    if (!EXPECTED_TOKEN_PROGRAMS.has(tokenProgram)) {
-      throw new Error("Mint account is owned by an unsupported token program");
+  const tokenProgram = value.owner;
+  if (!EXPECTED_TOKEN_PROGRAMS.has(tokenProgram)) {
+    throw new Error("Mint account is owned by an unsupported token program");
+  }
+  const dataRecord = value.data;
+  const parsedEnvelope = dataRecord && typeof dataRecord === "object" &&
+    !Array.isArray(dataRecord) &&
+    (Object.getPrototypeOf(dataRecord) === Object.prototype ||
+      Object.getPrototypeOf(dataRecord) === null)
+    ? Object.getOwnPropertyDescriptor(dataRecord, "parsed")
+    : undefined;
+  const parsed = parsedEnvelope &&
+    Object.prototype.hasOwnProperty.call(parsedEnvelope, "value")
+    ? parsedEnvelope.value : undefined;
+  const infoDescriptor = parsed && typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    (Object.getPrototypeOf(parsed) === Object.prototype ||
+      Object.getPrototypeOf(parsed) === null)
+    ? Object.getOwnPropertyDescriptor(parsed, "info")
+    : undefined;
+  if (infoDescriptor &&
+      Object.prototype.hasOwnProperty.call(infoDescriptor, "value")) {
+    const info = infoDescriptor.value;
+    if (!info || typeof info !== "object" || Array.isArray(info) ||
+        (Object.getPrototypeOf(info) !== Object.prototype &&
+          Object.getPrototypeOf(info) !== null)) {
+      throw new Error("Parsed mint account information is malformed");
     }
-    const token2022ExtensionsSafe =
-      tokenProgram === TOKEN_PROGRAM_ID ||
-      (tokenProgram === TOKEN_2022_PROGRAM_ID &&
-        Array.isArray(parsed.extensions) && parsed.extensions.length === 0);
+    const mintAuthority = Object.getOwnPropertyDescriptor(info, "mintAuthority");
+    const freezeAuthority = Object.getOwnPropertyDescriptor(info, "freezeAuthority");
+    const extensions = Object.getOwnPropertyDescriptor(info, "extensions");
+    if (!mintAuthority || !Object.prototype.hasOwnProperty.call(mintAuthority, "value") ||
+        !freezeAuthority || !Object.prototype.hasOwnProperty.call(freezeAuthority, "value")) {
+      throw new Error("Parsed mint authority metadata is incomplete");
+    }
+    const validAuthority = authority => authority === null ||
+      isCanonicalPublicKey(authority);
+    if (!validAuthority(mintAuthority.value) ||
+        !validAuthority(freezeAuthority.value)) {
+      throw new Error("Parsed mint authority metadata is malformed");
+    }
+    let token2022ExtensionsSafe = tokenProgram === TOKEN_PROGRAM_ID;
+    if (tokenProgram === TOKEN_2022_PROGRAM_ID) {
+      if (!extensions || !Object.prototype.hasOwnProperty.call(extensions, "value")) {
+        token2022ExtensionsSafe = false;
+      } else {
+        const extensionList = snapshotDensePlainArray(
+          extensions.value, 64, "Parsed Token-2022 mint extensions",
+          "Parsed Token-2022 mint extensions are malformed"
+        );
+        token2022ExtensionsSafe = extensionList.length === 0;
+      }
+    } else if (extensions) {
+      if (!Object.prototype.hasOwnProperty.call(extensions, "value")) {
+        throw new Error("Parsed mint extensions contain accessor-backed metadata");
+      }
+      const extensionList = snapshotDensePlainArray(
+        extensions.value, 64, "Parsed mint extensions",
+        "Parsed mint extensions are malformed"
+      );
+      if (extensionList.length !== 0) {
+        token2022ExtensionsSafe = false;
+      }
+    }
     return {
-      mintAuthoritySafe: parsed.mintAuthority == null,
-      freezeAuthoritySafe: parsed.freezeAuthority == null,
+      mintAuthoritySafe: mintAuthority.value === null,
+      freezeAuthoritySafe: freezeAuthority.value === null,
       token2022ExtensionsSafe
     };
   }
