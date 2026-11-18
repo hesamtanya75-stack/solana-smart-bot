@@ -350,3 +350,60 @@ test("parser keeps Token-2022 fail-closed until its extension semantics are revi
     }]
   }), /unsupported program ID/);
 });
+
+
+test("parser integrates ATA CreateIdempotent and checks account privileges", () => {
+  const keys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  ];
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: keys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 5
+    },
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  });
+  assert.equal(parsed.instructions[0].variant, "createIdempotent");
+  assert.equal(parsed.instructions[0].tokenProgramId, keys[5]);
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser rejects ATA creation when payer is not a signer", () => {
+  const keys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: keys,
+    header: {
+      numRequiredSignatures: 0,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 6
+    },
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([0]).toString("base64")
+    }]
+  }), /ATA payer account privilege requirements are not satisfied/);
+});
