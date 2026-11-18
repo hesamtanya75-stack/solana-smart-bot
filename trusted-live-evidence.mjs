@@ -1056,7 +1056,7 @@ export async function verifyFinalizedJupiterSettlement({
   const signatures = transaction?.transaction?.signatures;
   const accountKeys = message?.accountKeys;
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
-      !meta || meta.err !== null || !Array.isArray(signatures) || !signatures.includes(signature) ||
+      !meta || meta.err !== null || !Array.isArray(signatures) || signatures[0] !== signature ||
       !Array.isArray(accountKeys) || !Array.isArray(meta.preBalances) ||
       !Array.isArray(meta.postBalances) || meta.preBalances.length !== accountKeys.length ||
       meta.postBalances.length !== accountKeys.length ||
