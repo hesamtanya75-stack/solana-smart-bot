@@ -1123,6 +1123,48 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }
 });
 
+test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const unrelatedSignature = encodeBase58(new Uint8Array(64).fill(8));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 126,
+          transaction: {
+            // The requested signature is present, but is not the first
+            // signature corresponding to the fee payer account.
+            signatures: [unrelatedSignature, signature],
+            message: { accountKeys: [BOT_WALLET] }
+          },
+          meta: {
+            err: null, fee: 5000,
+            preBalances: [100_000_000], postBalances: [89_995_000],
+            preTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 } },
+              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "12345", decimals: 6 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(
+    verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
+    }, fetchImpl),
+    /metadata is incomplete or indicates failure/
+  );
+});
+
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
   const inputMint = "So11111111111111111111111111111111111111112";
