@@ -1057,3 +1057,12 @@ Only the exact record instances registered by each decoder are accepted by
 its validator. This is provenance hardening for analysis records only; it does
 not establish runtime execution, CPI effects, account-state correctness, or
 semantic transaction approval.
+
+## System CreateAccount privilege regression coverage
+
+Parser regression tests now exercise the System Program CreateAccount layout
+with message-header-derived privileges. They reject a new-account signer that
+is readonly and accept the structurally required writable signer roles while
+keeping the parse result analysis-only. This checks message-header structure;
+it does not verify account funding, runtime execution, ownership effects, or
+whole-transaction semantics.
