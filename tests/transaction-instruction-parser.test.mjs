@@ -541,3 +541,61 @@ test("parser marks ATA address verification not applicable without ATA instructi
   }]));
   assert.equal(parsed.associatedAddressVerification, "not-applicable");
 });
+
+
+test("parser accepts canonical ATA creation when payer and owner share one compiled account index", () => {
+  const payer = "11111111111111111111111111111112";
+  const associated = "11111111111111111111111111111113";
+  const mint = "11111111111111111111111111111114";
+  const ataProgram = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const accountKeys = [payer, associated, mint, SYSTEM, tokenProgram, ataProgram];
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 4
+    },
+    instructions: [{
+      programIdIndex: 5,
+      accountKeyIndexes: [0, 1, 0, 2, 3, 4],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  });
+  assert.equal(parsed.instructions[0].payerAccountIndex, 0);
+  assert.equal(parsed.instructions[0].ownerAccountIndex, 0);
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.associatedAddressVerification, "not-performed");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser rejects a distinct ATA owner that is marked as a signer", () => {
+  const ataProgram = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const accountKeys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    "11111111111111111111111111111116",
+    SYSTEM,
+    tokenProgram,
+    ataProgram
+  ];
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys,
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 5
+    },
+    instructions: [{
+      programIdIndex: 7,
+      accountKeyIndexes: [0, 1, 2, 3, 5, 6],
+      data: Buffer.from([0]).toString("base64")
+    }]
+  }), /ATA owner account privilege requirements are not satisfied/);
+});
