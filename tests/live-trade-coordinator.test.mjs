@@ -1018,3 +1018,21 @@ test("confirmation rejects finalized all-in cost evidence that differs from the 
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+
+
+test("reservation rejects compute-unit prices outside the Solana u64 range", async () => {
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    costs: {
+      ...trustedEvidence().costs,
+      computeUnitPriceMicroLamports: "18446744073709551616",
+      computeUnitLimit: 1,
+      maxPriorityFeeLamports: 18446744073710
+    }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-u64-price"
+  }));
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /compute budget evidence is invalid/);
+});
