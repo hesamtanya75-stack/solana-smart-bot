@@ -19,25 +19,49 @@ export function calculateVerifiedTransactionCosts(evidence) {
   if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
     throw new Error("Verified transaction cost evidence is required");
   }
-  if (evidence.semanticInstructionVerification !== true ||
-      evidence.messageAccountEffectsVerified !== true ||
-      evidence.feeQuoteBoundToMessage !== true) {
+  const prototype = Object.getPrototypeOf(evidence);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("Transaction cost evidence must be a plain data record");
+  }
+  const allowedFields = new Set([
+    "semanticInstructionVerification", "messageAccountEffectsVerified",
+    "feeQuoteBoundToMessage", "messageDigest", "computeUnitPriceMicroLamports",
+    "computeUnitLimit", "baseFeeLamports", "tipLamports", "rentLamports",
+    "otherOutflowLamports"
+  ]);
+  const snapshot = Object.create(null);
+  for (const key of Reflect.ownKeys(evidence)) {
+    if (typeof key !== "string" || !allowedFields.has(key)) {
+      throw new Error("Transaction cost evidence contains an unsupported field");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(evidence, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Transaction cost evidence must not contain accessor-backed fields");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  if (Reflect.ownKeys(snapshot).length !== allowedFields.size) {
+    throw new Error("Transaction cost evidence is incomplete");
+  }
+  if (snapshot.semanticInstructionVerification !== true ||
+      snapshot.messageAccountEffectsVerified !== true ||
+      snapshot.feeQuoteBoundToMessage !== true) {
     throw new Error("Transaction cost evidence is not semantically verified");
   }
-  if (typeof evidence.messageDigest !== "string" ||
-      !/^[a-f0-9]{64}$/.test(evidence.messageDigest)) {
+  if (typeof snapshot.messageDigest !== "string" ||
+      !/^[a-f0-9]{64}$/.test(snapshot.messageDigest)) {
     throw new Error("A canonical compiled-message digest is required");
   }
 
   const computeUnitPriceMicroLamports = readU64(
-    evidence.computeUnitPriceMicroLamports, "computeUnitPriceMicroLamports"
+    snapshot.computeUnitPriceMicroLamports, "computeUnitPriceMicroLamports"
   );
-  const computeUnitLimit = readU64(evidence.computeUnitLimit, "computeUnitLimit");
-  const baseFeeLamports = readU64(evidence.baseFeeLamports, "baseFeeLamports");
-  const tipLamports = readU64(evidence.tipLamports, "tipLamports");
-  const rentLamports = readU64(evidence.rentLamports, "rentLamports");
+  const computeUnitLimit = readU64(snapshot.computeUnitLimit, "computeUnitLimit");
+  const baseFeeLamports = readU64(snapshot.baseFeeLamports, "baseFeeLamports");
+  const tipLamports = readU64(snapshot.tipLamports, "tipLamports");
+  const rentLamports = readU64(snapshot.rentLamports, "rentLamports");
   const otherOutflowLamports = readU64(
-    evidence.otherOutflowLamports, "otherOutflowLamports"
+    snapshot.otherOutflowLamports, "otherOutflowLamports"
   );
 
   if (computeUnitLimit === 0n) throw new Error("computeUnitLimit must be greater than zero");
@@ -53,7 +77,7 @@ export function calculateVerifiedTransactionCosts(evidence) {
   }
 
   return Object.freeze({
-    messageDigest: evidence.messageDigest,
+    messageDigest: snapshot.messageDigest,
     computeUnitPriceMicroLamports: computeUnitPriceMicroLamports.toString(),
     computeUnitLimit: computeUnitLimit.toString(),
     maxPriorityFeeLamports: maxPriorityFeeLamports.toString(),
