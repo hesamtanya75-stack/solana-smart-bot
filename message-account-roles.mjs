@@ -11,7 +11,15 @@ function snapshotPlainArray(value, maximum, label) {
   const snapshot = [];
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!descriptor) throw new Error(label + " contains a sparse entry");
+    if (!descriptor) {
+      if (label === "Resolved address lookup table list") {
+        throw new Error("Resolved address lookup table entry is malformed");
+      }
+      if (label.includes("account keys") || label.includes("lookup addresses")) {
+        throw new Error("Resolved lookup account key is invalid or duplicated");
+      }
+      throw new Error(label + " contains a sparse entry");
+    }
     if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
       throw new Error(label + " contains an accessor-backed entry");
     }
@@ -80,6 +88,10 @@ export function deriveMessageAccountRoles(input) {
     ["staticAccountKeys", "header", "resolvedAddressTableLookups"],
     "Message account-role input"
   );
+  if (!Array.isArray(args.staticAccountKeys) || args.staticAccountKeys.length < 1 ||
+      args.staticAccountKeys.length > MAX_ACCOUNT_KEYS) {
+    throw new Error("Message account-role input is malformed");
+  }
   const staticAccountKeys = snapshotPlainArray(
     args.staticAccountKeys, MAX_ACCOUNT_KEYS, "Static account keys"
   );
