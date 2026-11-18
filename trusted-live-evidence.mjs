@@ -99,32 +99,88 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
   return Object.freeze(validated);
 }
 
-function validateBuildInstruction(instruction, name) {
-  if (!instruction || typeof instruction !== "object" ||
-      !isCanonicalPublicKey(instruction.programId) ||
-      !Array.isArray(instruction.accounts) || instruction.accounts.length > 256 ||
-      typeof instruction.data !== "string" || instruction.data.length > 16384 ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(instruction.data)) {
-    throw new Error("Jupiter build " + name + " instruction is malformed");
+function snapshotPlainRecord(value, allowedKeys, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(label + " is malformed");
   }
-  const data = Uint8Array.from(atob(instruction.data), char => char.charCodeAt(0));
-  if (btoa(String.fromCharCode(...data)) !== instruction.data) {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(label + " is malformed");
+  }
+  const snapshot = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || !allowedKeys.includes(key)) {
+      throw new Error(label + " is malformed");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed properties");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function snapshotDensePlainArray(value, maximum, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum) {
+    throw new Error(label + " is malformed");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " is malformed");
+  }
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) throw new Error(label + " is malformed");
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed entries");
+    }
+    snapshot.push(descriptor.value);
+  }
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+        Number(key) >= value.length) {
+      throw new Error(label + " is malformed");
+    }
+  }
+  return snapshot;
+}
+
+function validateBuildInstruction(instruction, name) {
+  const label = "Jupiter build " + name + " instruction";
+  const record = snapshotPlainRecord(instruction, ["programId", "accounts", "data"], label);
+  if (!isCanonicalPublicKey(record.programId) ||
+      typeof record.data !== "string" || record.data.length > 16384 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.data)) {
+    throw new Error(label + " is malformed");
+  }
+  const data = Uint8Array.from(atob(record.data), char => char.charCodeAt(0));
+  if (btoa(String.fromCharCode(...data)) !== record.data) {
     throw new Error("Jupiter build " + name + " instruction data is non-canonical");
   }
-  const accounts = Array.from(instruction.accounts, (account) => {
-    if (!account || typeof account !== "object" ||
-        !isCanonicalPublicKey(account.pubkey) ||
-        typeof account.isSigner !== "boolean" ||
-        typeof account.isWritable !== "boolean") {
+  const rawAccounts = snapshotDensePlainArray(
+    record.accounts, 256, "Jupiter build " + name + " instruction account list"
+  );
+  const accounts = rawAccounts.map((account) => {
+    const meta = snapshotPlainRecord(
+      account, ["pubkey", "isSigner", "isWritable"],
+      "Jupiter build " + name + " instruction account"
+    );
+    if (!isCanonicalPublicKey(meta.pubkey) ||
+        typeof meta.isSigner !== "boolean" ||
+        typeof meta.isWritable !== "boolean") {
       throw new Error("Jupiter build " + name + " instruction account is malformed");
     }
     return Object.freeze({
-      pubkey: account.pubkey,
-      isSigner: account.isSigner,
-      isWritable: account.isWritable
+      pubkey: meta.pubkey,
+      isSigner: meta.isSigner,
+      isWritable: meta.isWritable
     });
   });
-  return Object.freeze({ programId: instruction.programId, accounts: Object.freeze(accounts), data: instruction.data });
+  return Object.freeze({ programId: record.programId, accounts: Object.freeze(accounts), data: record.data });
 }
 
 /**
@@ -164,8 +220,10 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     throw new Error("Jupiter build transaction version is unsupported");
   }
   const routePlan = validateBuildRoutePlan(build.routePlan, build.inputMint, build.outputMint);
-  const validateList = (items, name) => Object.freeze(Array.from(items, (item, index) =>
-    validateBuildInstruction(item, name + "[" + index + "]")));
+  const validateList = (items, name) => Object.freeze(
+    snapshotDensePlainArray(items, 64, "Jupiter build " + name + " instruction list")
+      .map((item, index) => validateBuildInstruction(item, name + "[" + index + "]"))
+  );
   const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
   const setupInstructions = validateList(build.setupInstructions, "setup");
   const swapInstruction = validateBuildInstruction(build.swapInstruction, "swap");
@@ -196,16 +254,19 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   if (altEntries.length > 64) throw new Error("Jupiter build contains too many lookup tables");
   let totalLookupAddresses = 0;
   for (const [table, addresses] of altEntries) {
-    if (!isCanonicalPublicKey(table) || !Array.isArray(addresses) || addresses.length > 256 ||
-        !Array.from(addresses).every(isCanonicalPublicKey) ||
-        new Set(addresses).size !== addresses.length) {
+    const addressSnapshot = snapshotDensePlainArray(
+      addresses, 256, "Jupiter build lookup-table addresses"
+    );
+    if (!isCanonicalPublicKey(table) ||
+        !addressSnapshot.every(isCanonicalPublicKey) ||
+        new Set(addressSnapshot).size !== addressSnapshot.length) {
       throw new Error("Jupiter build lookup-table addresses are malformed");
     }
-    totalLookupAddresses += addresses.length;
+    totalLookupAddresses += addressSnapshot.length;
     if (totalLookupAddresses > 4096) {
       throw new Error("Jupiter build lookup-table address bundle exceeds aggregate resource limits");
     }
-    lookupTables[table] = Object.freeze([...addresses]);
+    lookupTables[table] = Object.freeze(addressSnapshot);
   }
   if (version === "1" && (computeBudgetInstructions.length !== 0 ||
       Object.keys(lookupTables).length !== 0 ||
