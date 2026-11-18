@@ -214,8 +214,8 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
       "CF-Connecting-IP": "203.0.113.44"
     })
   ));
-  assert.equal(limitedSetupAttempts.filter(response => response.status === 401).length, 4);
-  assert.equal(limitedSetupAttempts.filter(response => response.status === 429).length, 1);
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 401).length, 3);
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 429).length, 2);
   const setup = await post("/api/totp/setup", { password: LOGIN_PASSWORD }, env, authHeader);
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
