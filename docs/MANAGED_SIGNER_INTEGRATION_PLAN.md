@@ -60,3 +60,12 @@ No generic message-signing, arbitrary transaction-signing, transfer, delegate ap
 - No funded Devnet lifecycle evidence for the current PR checks.
 
 CI success, Phantom read-only connection, and syntax-only instruction decoding do not satisfy these blockers. Keep live trading disabled, keep PR #40 draft, and do not merge or deploy as part of this plan.
+
+
+## Preparation authorization and current evidence — 2026-11-18
+
+The user authorized continued preparation for eventual real-money trading. This authorization is not permission to create/fund a wallet, enroll a signer, sign or submit a transaction, deploy to production, merge a PR, or enable Mainnet.
+
+PR #43 head `7e5261bf4f5d7955c359b0d0f66720d4f82b7b95` passed Node tests (run `44395541512`), Cloudflare Worker build validation (run `44395541434`), and Devnet read-only validation (run `44395541377`). The funded Devnet lifecycle job was skipped. These checks do not prove signing or execution readiness.
+
+Next implementation dependency: select and review a managed signer provider and its Solana transaction policy/custody model. Until a provider is selected, implement only provider-neutral validation and mocked adapter tests; never accept or store raw wallet key material. The semantic verifier, isolated signer enforcement, live Worker route, transaction submission, complete settlement, and funded disposable-wallet lifecycle remain unimplemented.
