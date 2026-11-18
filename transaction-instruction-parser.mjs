@@ -41,11 +41,15 @@ export function parseSupportedInstructionMessage(message) {
   }
 
   const accountKeys = message.accountKeys;
-  if (accountKeys.some(key => !isCanonicalPublicKey(key))) {
-    throw new Error("Transaction message contains an invalid account key");
-  }
-  if (new Set(accountKeys).size !== accountKeys.length) {
-    throw new Error("Transaction message contains duplicate account keys");
+  const seenAccountKeys = new Set();
+  for (const key of accountKeys) {
+    if (!isCanonicalPublicKey(key)) {
+      throw new Error("Transaction message contains an invalid account key");
+    }
+    if (seenAccountKeys.has(key)) {
+      throw new Error("Transaction message contains duplicate account keys");
+    }
+    seenAccountKeys.add(key);
   }
 
   const decodedInstructions = message.instructions.map((instruction, position) => {
