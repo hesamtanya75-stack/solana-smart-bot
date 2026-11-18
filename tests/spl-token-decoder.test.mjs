@@ -47,6 +47,19 @@ test("decodes only base TransferChecked under Token-2022 and preserves its progr
   assert.deepEqual(validateSplTokenInstructionSet([result]), [result]);
 });
 
+test("decodes only the base Token-2022 Transfer and marks extensions uninspected", () => {
+  const data = Buffer.alloc(9);
+  data[0] = 3;
+  data.writeBigUInt64LE(77n, 1);
+  const result = decodeSplTokenInstruction(TOKEN_2022, encoded(data), [2, 3, 4]);
+  assert.equal(result.variant, "transfer");
+  assert.equal(result.amount, 77n);
+  assert.equal(result.programId, TOKEN_2022);
+  assert.equal(result.extensionSemantics, "not-inspected");
+  assert.equal(result.analysisOnly, true);
+  assert.ok(Object.isFrozen(result));
+});
+
 test("rejects Token-2022 TransferChecked layouts with extension extra accounts", () => {
   const data = Buffer.alloc(10);
   data[0] = 12;
