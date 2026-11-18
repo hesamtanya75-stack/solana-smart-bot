@@ -894,3 +894,22 @@ It does not authenticate the source of resolved lookup addresses, prove
 finalized lookup-table state, verify signatures, or establish execution or
 settlement. A caller-provided lookup result remains untrusted evidence until a
 separate trusted RPC resolver verifies its provenance and context.
+
+
+## Latest PR #43 validation snapshot — 2026-11-18
+
+The current branch head `9e88bcb43b84eaaf894c94e439f558b89aa8f0fa`
+completed all three pull-request validation workflows successfully:
+
+- Node tests: workflow run `44394619807` — success.
+- Cloudflare Worker build validation: workflow run `44394620013` — success.
+- Devnet read-only validation: workflow run `44394619937` — success.
+
+The Devnet job was read-only. This result is not evidence of a funded Devnet buy/sell lifecycle. No signing, transaction submission, production deployment, Mainnet trading, or UI design change occurred. PR #43 remains open and Draft.
+
+The current code still deliberately returns
+`semanticInstructionVerification: false` / `semanticVerification: "incomplete"`
+for parsed or structurally resolved Jupiter transactions. The LiveTradeCoordinator
+continues to reject any route that does not carry a separately established
+`semantically-verified` result. This is an intentional safety block, not a
+completed semantic verifier.
