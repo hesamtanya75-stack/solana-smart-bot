@@ -1117,3 +1117,36 @@ test("coordinator rejects non-SOL input mints before requesting trusted evidence
   assert.match(result.body.error, /Complete immutable order intent/);
   assert.equal(evidenceCalls, 0);
 });
+
+
+test("coordinator rejects accessor-backed and noncanonical all-in cost evidence without invoking getters", async () => {
+  let getterCalled = false;
+  const accessorCosts = { ...trustedEvidence().costs };
+  Object.defineProperty(accessorCosts, "baseFeeLamports", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      getterCalled = true;
+      return 5000;
+    }
+  });
+  const cases = [
+    { name: "accessor-backed costs", costs: accessorCosts },
+    { name: "unexpected cost field", costs: { ...trustedEvidence().costs, unreviewedFee: 1 } },
+    { name: "inherited cost fields", costs: Object.assign(Object.create({ baseFeeLamports: 5000 }), {
+      computeUnitPriceMicroLamports: "10000", computeUnitLimit: 200000,
+      maxPriorityFeeLamports: 2000, tipLamports: 0, rentLamports: 0, otherOutflowLamports: 0
+    }) }
+  ];
+  for (const scenario of cases) {
+    const { coordinator, storage } = makeCoordinator(async () => trustedEvidence({ costs: scenario.costs }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "cost-shape-" + scenario.name.replace(/[^a-z]+/gi, "-").toLowerCase()
+    }));
+    assert.equal(result.status, 409, scenario.name);
+    assert.match(result.body.error, /Trusted all-in transaction cost evidence is missing/);
+    assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 0);
+  }
+  assert.equal(getterCalled, false);
+});
