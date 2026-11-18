@@ -1178,26 +1178,64 @@ export function parseTrustedMintAccount(account) {
   const mintOption = u32(0);
   const freezeOption = u32(46);
   if (mintOption > 1 || freezeOption > 1) throw new Error("Mint authority layout is invalid");
-  const extensions = [];
-  if (bytes.length >= 166) {
+  let hasToken2022Extensions = false;
+  if (value.owner === TOKEN_PROGRAM_ID) {
+    if (bytes.length !== 82) {
+      throw new Error("Classic SPL Token mint account must use the exact base layout");
+    }
+  } else if (bytes.length !== 82) {
+    // Token-2022 extended mints use the 82-byte base mint, zero padding
+    // through byte 164, an AccountType byte at 165, then TLV records at 166.
+    if (bytes.length < 166) {
+      throw new Error("Token-2022 mint extension header is truncated");
+    }
+    for (let index = 82; index < 165; index++) {
+      if (bytes[index] !== 0) {
+        throw new Error("Token-2022 mint padding is not canonical");
+      }
+    }
+    if (bytes[165] !== 1) {
+      throw new Error("Token-2022 account type is not Mint");
+    }
+    const seenExtensionTypes = new Set();
     let offset = 166;
-    while (offset + 4 <= bytes.length) {
+    let terminated = false;
+    while (offset < bytes.length) {
+      if (bytes.length - offset < 4) {
+        throw new Error("Token-2022 extension TLV header is truncated");
+      }
       const type = bytes[offset] | (bytes[offset + 1] << 8);
       const length = bytes[offset + 2] | (bytes[offset + 3] << 8);
-      if (type === 0 && length === 0) break;
-      if (offset + 4 + length > bytes.length) throw new Error("Token-2022 extension data is truncated");
-      extensions.push(type);
-      offset += 4 + length;
+      offset += 4;
+      if (type === 0 && length === 0) {
+        terminated = true;
+        for (let index = offset; index < bytes.length; index++) {
+          if (bytes[index] !== 0) {
+            throw new Error("Token-2022 extension padding is not canonical");
+          }
+        }
+        break;
+      }
+      if (type === 0 || length === 0 || seenExtensionTypes.has(type) ||
+          offset + length > bytes.length) {
+        throw new Error("Token-2022 extension TLV record is invalid");
+      }
+      seenExtensionTypes.add(type);
+      hasToken2022Extensions = true;
+      offset += length;
+    }
+    // A terminator is optional when the final TLV record exactly reaches
+    // account end. All extension-bearing mints remain unsafe until each
+    // extension type has a dedicated, reviewed semantic policy.
+    if (terminated && offset > bytes.length) {
+      throw new Error("Token-2022 extension terminator is invalid");
     }
   }
   return {
     mintAuthoritySafe: mintOption === 0,
     freezeAuthoritySafe: freezeOption === 0,
-    // Without a trusted Token-2022 TLV/account-type decoder, accept only
-    // the exact 82-byte base mint. Any extended/raw layout fails closed.
-    token2022ExtensionsSafe: value.owner === TOKEN_PROGRAM_ID
-      ? bytes.length === 82
-      : bytes.length === 82 && extensions.length === 0
+    token2022ExtensionsSafe: value.owner === TOKEN_PROGRAM_ID ||
+      (bytes.length === 82 && !hasToken2022Extensions)
   };
 }
 
