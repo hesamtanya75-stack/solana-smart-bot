@@ -356,8 +356,11 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       blockhash: Object.freeze(blockhash),
       lastValidBlockHeight: blockhashMetadata.lastValidBlockHeight
     }),
+    analysisOnly: true,
     semanticInstructionVerification: false,
-    routeVerification: "build-envelope-only"
+    routeVerification: "build-envelope-only",
+    signingPermitted: false,
+    submissionPermitted: false
   });
 }
 
