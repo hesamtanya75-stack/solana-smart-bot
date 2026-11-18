@@ -815,7 +815,7 @@ export default {
             ? { scope: "api-automation", limit: 10, windowMs: 60000 }
             : ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())
               ? { scope: "api-write", limit: 30, windowMs: 60000 }
-              : { scope: "api-read", limit: 120, windowMs: 60000 };
+              : { scope: "api-read", limit: 100, windowMs: 60000 };
       const limited = await enforceApiRateLimit(env, request, ratePolicy.scope, ratePolicy.limit, ratePolicy.windowMs);
       if (limited) return limited;
       if (url.pathname === "/api/logout" && request.method === "POST") {
