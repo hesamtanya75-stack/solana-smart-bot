@@ -94,3 +94,63 @@ test("rejects forged decoder records", async () => {
     /trusted decoded instruction record/
   );
 });
+
+
+test("ATA decoder rejects accessor-backed account indexes without invoking getters", () => {
+  let getterCalled = false;
+  const indexes = [0, 1, 0, 2, 3, 4];
+  Object.defineProperty(indexes, "1", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return 1;
+    }
+  });
+  const keys = [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), indexes, keys),
+    /accessor-backed/
+  );
+  assert.equal(getterCalled, false);
+});
+
+test("ATA decoder rejects sparse, decorated, and custom-prototype account arrays", () => {
+  const keys = [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
+  const sparse = [0, 1, 0, 2, 3];
+  sparse.length = 6;
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), sparse, keys),
+    /sparse/
+  );
+
+  const decoratedIndexes = [0, 1, 0, 2, 3, 4];
+  decoratedIndexes.extra = true;
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), decoratedIndexes, keys),
+    /unsupported properties/
+  );
+
+  const customKeys = [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
+  Object.setPrototypeOf(customKeys, { inherited: true });
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0, 1, 0, 2, 3, 4], customKeys),
+    /plain array/
+  );
+});
+
+test("ATA decoder snapshots account keys and rejects accessor-backed key slots without invoking getters", () => {
+  let getterCalled = false;
+  const keys = [OWNER, CLASSIC_ATA, MINT, SYSTEM, CLASSIC_TOKEN_PROGRAM_ID];
+  Object.defineProperty(keys, "1", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return CLASSIC_ATA;
+    }
+  });
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ASSOCIATED_TOKEN_PROGRAM_ID, encoded(1), [0, 1, 0, 2, 3, 4], keys),
+    /accessor-backed/
+  );
+  assert.equal(getterCalled, false);
+});
