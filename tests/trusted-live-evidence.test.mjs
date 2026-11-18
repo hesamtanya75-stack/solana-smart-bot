@@ -1123,6 +1123,63 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }
 });
 
+test("settlement proof rejects sparse or accessor-backed native lamport balance metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(8));
+  const baseResult = {
+    slot: 124,
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  let responseResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : responseResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  const request = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+
+  const sparse = new Array(1);
+  responseResult = {
+    ...baseResult,
+    meta: { ...baseResult.meta, preBalances: sparse }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /metadata is incomplete/);
+
+  let getterCalls = 0;
+  const accessorBacked = [100000];
+  Object.defineProperty(accessorBacked, "0", {
+    get() { getterCalls++; return 100000; }
+  });
+  responseResult = {
+    ...baseResult,
+    meta: { ...baseResult.meta, preBalances: accessorBacked }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /metadata is incomplete/);
+  assert.equal(getterCalls, 0);
+
+  responseResult = {
+    ...baseResult,
+    meta: { ...baseResult.meta, postBalances: [Number.MAX_SAFE_INTEGER + 1] }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /metadata is incomplete/);
+});
+
 test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const unrelatedSignature = encodeBase58(new Uint8Array(64).fill(8));
