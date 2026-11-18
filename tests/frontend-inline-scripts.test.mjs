@@ -50,6 +50,6 @@ test("demo trade mint is HTML-escaped before rendering", () => {
   assert.notEqual(start, -1, "demo trade card renderer should exist");
   assert.notEqual(end, -1, "demo trade card renderer should have a stable boundary");
   const renderer = html.slice(start, end);
-  assert.match(renderer, /safe\\(t\\.mint\\)/);
-  assert.doesNotMatch(renderer, /t\\.mint\\)\\.replace/);
+  assert.match(renderer, /safe\(t\.mint\)/);
+  assert.equal(renderer.includes("t.mint).replace"), false);
 });
