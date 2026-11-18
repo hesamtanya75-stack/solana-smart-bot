@@ -1104,3 +1104,15 @@ tests assert that getters are not invoked. This prevents caller-controlled
 JavaScript object behavior from changing validation while it runs; it does
 not authenticate the supplied SlotHashes or establish a same-bank finalized
 RPC context.
+
+## CI regression findings and corrective follow-up
+
+The PR #43 Node/Devnet CI attempt executed 378 Node tests: 374 passed and 4
+failed. Two failures exposed an over-escaped dense-array index regular
+expression in the lookup resolver input snapshot; this was corrected. The
+other two failures came from System CreateAccount test fixtures that marked
+the System Program account as a signer instead of modeling it as a readonly
+unsigned program account; the fixtures now place the program key after the two
+signer accounts and mark it readonly. These are test-fixture/validation
+corrections, not a change to UI or transaction execution. CI must be rerun on
+the updated head before these fixes can be considered verified.
