@@ -491,15 +491,15 @@ test("parser rejects System CreateAccount when the new account signer is readonl
     Buffer.alloc(32, 7)
   ]).toString("base64");
   assert.throws(() => parseSupportedInstructionMessage({
-    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    accountKeys: [SOURCE, DESTINATION, SYSTEM],
     header: {
       numRequiredSignatures: 2,
       numReadonlySignedAccounts: 1,
-      numReadonlyUnsignedAccounts: 0
+      numReadonlyUnsignedAccounts: 1
     },
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [1, 2],
+      programIdIndex: 2,
+      accountKeyIndexes: [0, 1],
       data: createAccountData
     }]
   }), /System instruction account privilege requirements are not satisfied/);
@@ -513,15 +513,15 @@ test("parser accepts structurally writable signer roles for System CreateAccount
     Buffer.alloc(32, 7)
   ]).toString("base64");
   const parsed = parseSupportedInstructionMessage({
-    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    accountKeys: [SOURCE, DESTINATION, SYSTEM],
     header: {
       numRequiredSignatures: 2,
       numReadonlySignedAccounts: 0,
-      numReadonlyUnsignedAccounts: 0
+      numReadonlyUnsignedAccounts: 1
     },
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [1, 2],
+      programIdIndex: 2,
+      accountKeyIndexes: [0, 1],
       data: createAccountData
     }]
   });
