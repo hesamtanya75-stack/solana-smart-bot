@@ -759,6 +759,7 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
       throw new Error("Address lookup table extension slot is ahead of RPC context");
     }
     const addresses = decodedTable.addresses;
+    const lastExtendedSlot = decodedTable.lastExtendedSlot;
     const lastExtendedStartIndex = decodedTable.lastExtendedSlotStartIndex;
     const table = lookups[i];
     const allIndexes = [...table.writableIndexes, ...table.readonlyIndexes];
