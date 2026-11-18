@@ -35,6 +35,35 @@ function message(instructions, accountKeys = [COMPUTE_BUDGET_PROGRAM]) {
   return { accountKeys, instructions };
 }
 
+test("transaction message parser rejects unverified execution metadata and CPI evidence", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  for (const field of [
+    "meta",
+    "innerInstructions",
+    "logs",
+    "preTokenBalances",
+    "postTokenBalances",
+    "preBalances",
+    "postBalances",
+    "signature",
+    "signatures"
+  ]) {
+    assert.throws(
+      () => parseSupportedInstructionMessage({ ...valid, [field]: [] }),
+      /does not accept execution metadata or CPI evidence/,
+      field
+    );
+  }
+  assert.throws(
+    () => parseSupportedInstructionMessage({ ...valid, meta: { innerInstructions: [] } }),
+    /does not accept execution metadata or CPI evidence/
+  );
+});
+
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
