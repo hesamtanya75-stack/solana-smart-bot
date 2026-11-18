@@ -81,9 +81,9 @@ async function rpc(method, params = []) {
     }
 
     const rawCode = lastError?.cause?.code || lastError?.cause?.name ||
-      lastError?.code || lastError?.name || "network error";
+      lastError?.code || lastError?.message || lastError?.name || "network error";
     const safeCode = String(rawCode).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "network error";
-    failures.push(safeCode);
+    failures.push("network request failed after 4 attempts (" + safeCode + ")");
   }
 
   throw new Error(method + " failed on " + DEVNET_RPCS.length +
