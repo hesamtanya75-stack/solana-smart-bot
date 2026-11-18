@@ -42,6 +42,28 @@ function isCanonicalPublicKey(value) {
   return leadingZeroBytes + significantBytes === 32;
 }
 
+function assertDensePlainArray(value, maximum, label, minimum = 0) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length < minimum || value.length > maximum) {
+    throw new Error(label + " must be a bounded plain array");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " contains sparse indexes or unsupported properties");
+  }
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+        Number(key) >= value.length) {
+      throw new Error(label + " contains unsupported properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed indexes");
+    }
+  }
+}
+
 function requireRole(roles, index, expected, label) {
   const role = roles[index];
   if (!role || (expected.signer && !role.signer) ||
@@ -147,18 +169,8 @@ export function parseSupportedInstructionMessage(message) {
     }
   }
 
-  if (!Array.isArray(message.accountKeys) ||
-      message.accountKeys.length < 1 || message.accountKeys.length > MAX_ACCOUNT_KEYS ||
-      !Array.isArray(message.instructions) ||
-      message.instructions.length < 1 || message.instructions.length > MAX_INSTRUCTIONS) {
-    throw new Error("Transaction message shape is invalid or exceeds parser limits");
-  }
-
-  for (let index = 0; index < message.instructions.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(message.instructions, index)) {
-      throw new Error("Transaction message contains a sparse compiled instruction list");
-    }
-  }
+  assertDensePlainArray(message.accountKeys, MAX_ACCOUNT_KEYS, "Transaction account keys", 1);
+  assertDensePlainArray(message.instructions, MAX_INSTRUCTIONS, "Transaction compiled instructions", 1);
 
   const accountKeys = message.accountKeys;
   const seenAccountKeys = new Set();
