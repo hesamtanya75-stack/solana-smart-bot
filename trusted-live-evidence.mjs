@@ -55,12 +55,23 @@ function isU64DecimalString(value, allowZero = false) {
 }
 
 function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
-  const validated = Array.from(routePlan, (step, index) => {
-    const info = step?.swapInfo;
-    if (!step || typeof step !== "object" || Array.isArray(step) ||
-        !Number.isInteger(step.percent) || step.percent < 1 || step.percent > 100 ||
-        !Number.isInteger(step.bps) || step.bps < 1 || step.bps > 10000 ||
-        !info || typeof info !== "object" || Array.isArray(info) ||
+  const steps = snapshotDensePlainArray(
+    routePlan, 64, "Jupiter build routePlan",
+    "Jupiter build routePlan is malformed"
+  );
+  if (steps.length === 0) throw new Error("Jupiter build routePlan is malformed");
+  const validated = steps.map((step, index) => {
+    const stepRecord = snapshotPlainRecord(
+      step, ["percent", "bps", "swapInfo", "label"],
+      "Jupiter build routePlan[" + index + "]"
+    );
+    const info = snapshotPlainRecord(
+      stepRecord.swapInfo,
+      ["ammKey", "label", "inputMint", "outputMint", "inAmount", "outAmount", "feeAmount", "feeMint"],
+      "Jupiter build routePlan[" + index + "] swapInfo"
+    );
+    if (!Number.isInteger(stepRecord.percent) || stepRecord.percent < 1 || stepRecord.percent > 100 ||
+        !Number.isInteger(stepRecord.bps) || stepRecord.bps < 1 || stepRecord.bps > 10000 ||
         !isCanonicalPublicKey(info.ammKey) ||
         !isCanonicalPublicKey(info.inputMint) || !isCanonicalPublicKey(info.outputMint) ||
         info.inputMint === info.outputMint ||
@@ -71,8 +82,8 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
       throw new Error("Jupiter build routePlan[" + index + "] is malformed");
     }
     return Object.freeze({
-      percent: step.percent,
-      ...(step.bps == null ? {} : { bps: step.bps }),
+      percent: stepRecord.percent,
+      ...(stepRecord.bps == null ? {} : { bps: stepRecord.bps }),
       swapInfo: Object.freeze({
         ammKey: info.ammKey,
         inputMint: info.inputMint,
@@ -98,7 +109,6 @@ function validateBuildRoutePlan(routePlan, inputMint, outputMint) {
   }
   return Object.freeze(validated);
 }
-
 function snapshotPlainRecord(value, allowedKeys, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(label + " is malformed");
@@ -149,6 +159,26 @@ function snapshotDensePlainArray(value, maximum, label, malformedMessage = label
   return snapshot;
 }
 
+function snapshotDynamicPlainRecord(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(label + " is malformed");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(label + " is malformed");
+  }
+  const snapshot = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") throw new Error(label + " is malformed");
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed properties");
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
 function validateBuildInstruction(instruction, name) {
   const label = "Jupiter build " + name + " instruction";
   const record = snapshotPlainRecord(instruction, ["programId", "accounts", "data"], label);
@@ -192,52 +222,70 @@ function validateBuildInstruction(instruction, name) {
  * It does not decode instruction semantics or establish program trust.
  */
 export function validateJupiterBuildResponse(build, expected = {}) {
-  if (!build || typeof build !== "object" ||
-      !isCanonicalPublicKey(build.inputMint) ||
-      !isCanonicalPublicKey(build.outputMint) ||
-      build.inputMint === build.outputMint ||
-      (expected.inputMint && build.inputMint !== expected.inputMint) ||
-      (expected.outputMint && build.outputMint !== expected.outputMint) ||
-      !isU64DecimalString(build.inAmount) ||
-      !isU64DecimalString(build.outAmount) ||
-      !isU64DecimalString(build.otherAmountThreshold, true) ||
-      !Number.isInteger(build.slippageBps) || build.slippageBps < 0 || build.slippageBps > 10000 ||
-      !Array.isArray(build.routePlan) || build.routePlan.length === 0 || build.routePlan.length > 64 ||
-      !["ExactIn", "ExactOut"].includes(build.swapMode) ||
-      !Array.isArray(build.computeBudgetInstructions) || build.computeBudgetInstructions.length > 64 ||
-      !Array.isArray(build.setupInstructions) || build.setupInstructions.length > 64 ||
-      !Array.isArray(build.otherInstructions) || build.otherInstructions.length > 64 ||
-      !Object.prototype.hasOwnProperty.call(build, "cleanupInstruction") ||
-      !Object.prototype.hasOwnProperty.call(build, "tipInstruction") ||
-      !build.blockhashWithMetadata || typeof build.blockhashWithMetadata !== "object" ||
-      Array.isArray(build.blockhashWithMetadata) ||
-      !Array.isArray(build.blockhashWithMetadata.blockhash) ||
-      build.blockhashWithMetadata.blockhash.length !== 32 ||
-      !Array.from(build.blockhashWithMetadata.blockhash).every(byte =>
-        Number.isInteger(byte) && byte >= 0 && byte <= 255) ||
-      !Number.isSafeInteger(build.blockhashWithMetadata.lastValidBlockHeight) ||
-      build.blockhashWithMetadata.lastValidBlockHeight <= 0) {
+  const record = snapshotPlainRecord(build, [
+    "inputMint", "outputMint", "inAmount", "outAmount", "otherAmountThreshold",
+    "slippageBps", "routePlan", "swapMode", "computeBudgetInstructions",
+    "setupInstructions", "swapInstruction", "cleanupInstruction",
+    "otherInstructions", "tipInstruction", "blockhashWithMetadata",
+    "transactionVersion", "addressesByLookupTableAddress", "computeUnitPrice"
+  ], "Jupiter build response");
+  const expectedRecord = snapshotPlainRecord(
+    expected, ["inputMint", "outputMint", "amount"], "Jupiter build expected intent"
+  );
+  const blockhashMetadata = snapshotPlainRecord(
+    record.blockhashWithMetadata, ["blockhash", "lastValidBlockHeight"],
+    "Jupiter build blockhash metadata"
+  );
+  let blockhash;
+  try {
+    blockhash = snapshotDensePlainArray(
+      blockhashMetadata.blockhash, 32, "Jupiter build blockhash",
+      "Jupiter build response envelope is incomplete or inconsistent"
+    );
+  } catch {
     throw new Error("Jupiter build response envelope is incomplete or inconsistent");
   }
-  const version = String(build.transactionVersion ?? "0");
+  if (!isCanonicalPublicKey(record.inputMint) ||
+      !isCanonicalPublicKey(record.outputMint) ||
+      record.inputMint === record.outputMint ||
+      (expectedRecord.inputMint && record.inputMint !== expectedRecord.inputMint) ||
+      (expectedRecord.outputMint && record.outputMint !== expectedRecord.outputMint) ||
+      !isU64DecimalString(record.inAmount) ||
+      !isU64DecimalString(record.outAmount) ||
+      !isU64DecimalString(record.otherAmountThreshold, true) ||
+      !Number.isInteger(record.slippageBps) || record.slippageBps < 0 || record.slippageBps > 10000 ||
+      !Array.isArray(record.routePlan) || record.routePlan.length === 0 || record.routePlan.length > 64 ||
+      !["ExactIn", "ExactOut"].includes(record.swapMode) ||
+      !Array.isArray(record.computeBudgetInstructions) || record.computeBudgetInstructions.length > 64 ||
+      !Array.isArray(record.setupInstructions) || record.setupInstructions.length > 64 ||
+      !Array.isArray(record.otherInstructions) || record.otherInstructions.length > 64 ||
+      !Object.prototype.hasOwnProperty.call(record, "cleanupInstruction") ||
+      !Object.prototype.hasOwnProperty.call(record, "tipInstruction") ||
+      !Number.isSafeInteger(blockhashMetadata.lastValidBlockHeight) ||
+      blockhashMetadata.lastValidBlockHeight <= 0 ||
+      blockhash.length !== 32 ||
+      !blockhash.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+    throw new Error("Jupiter build response envelope is incomplete or inconsistent");
+  }
+  const version = String(record.transactionVersion ?? "0");
   if (version !== "0" && version !== "1") {
     throw new Error("Jupiter build transaction version is unsupported");
   }
-  const routePlan = validateBuildRoutePlan(build.routePlan, build.inputMint, build.outputMint);
+  const routePlan = validateBuildRoutePlan(record.routePlan, record.inputMint, record.outputMint);
   const validateList = (items, name) => Object.freeze(
     snapshotDensePlainArray(
       items, 64, "Jupiter build " + name + " instruction list",
       "Jupiter build " + name + " instruction is malformed"
     ).map((item, index) => validateBuildInstruction(item, name + "[" + index + "]"))
   );
-  const computeBudgetInstructions = validateList(build.computeBudgetInstructions, "computeBudget");
-  const setupInstructions = validateList(build.setupInstructions, "setup");
-  const swapInstruction = validateBuildInstruction(build.swapInstruction, "swap");
-  const cleanupInstruction = build.cleanupInstruction === null
-    ? null : validateBuildInstruction(build.cleanupInstruction, "cleanup");
-  const otherInstructions = validateList(build.otherInstructions, "other");
-  const tipInstruction = build.tipInstruction === null
-    ? null : validateBuildInstruction(build.tipInstruction, "tip");
+  const computeBudgetInstructions = validateList(record.computeBudgetInstructions, "computeBudget");
+  const setupInstructions = validateList(record.setupInstructions, "setup");
+  const swapInstruction = validateBuildInstruction(record.swapInstruction, "swap");
+  const cleanupInstruction = record.cleanupInstruction === null
+    ? null : validateBuildInstruction(record.cleanupInstruction, "cleanup");
+  const otherInstructions = validateList(record.otherInstructions, "other");
+  const tipInstruction = record.tipInstruction === null
+    ? null : validateBuildInstruction(record.tipInstruction, "tip");
   const allInstructions = [
     ...computeBudgetInstructions, ...setupInstructions, swapInstruction,
     ...(cleanupInstruction ? [cleanupInstruction] : []),
@@ -251,13 +299,17 @@ export function validateJupiterBuildResponse(build, expected = {}) {
       totalInstructionDataChars > 262144) {
     throw new Error("Jupiter build instruction bundle exceeds aggregate resource limits");
   }
-  const rawAlts = build.addressesByLookupTableAddress;
-  if (rawAlts !== null && (typeof rawAlts !== "object" || Array.isArray(rawAlts))) {
+  const rawAlts = record.addressesByLookupTableAddress;
+  if (rawAlts !== null && rawAlts !== undefined &&
+      (typeof rawAlts !== "object" || Array.isArray(rawAlts))) {
     throw new Error("Jupiter build lookup-table map is malformed");
   }
-  const lookupTables = {};
-  const altEntries = Object.entries(rawAlts || {});
+  const altRecord = rawAlts == null
+    ? Object.create(null)
+    : snapshotDynamicPlainRecord(rawAlts, "Jupiter build lookup-table map");
+  const altEntries = Object.entries(altRecord);
   if (altEntries.length > 64) throw new Error("Jupiter build contains too many lookup tables");
+  const lookupTables = {};
   let totalLookupAddresses = 0;
   for (const [table, addresses] of altEntries) {
     const addressSnapshot = snapshotDensePlainArray(
@@ -277,20 +329,20 @@ export function validateJupiterBuildResponse(build, expected = {}) {
   }
   if (version === "1" && (computeBudgetInstructions.length !== 0 ||
       Object.keys(lookupTables).length !== 0 ||
-      !/^\d+$/.test(String(build.computeUnitPrice ?? "")))) {
+      !/^\d+$/.test(String(record.computeUnitPrice ?? "")))) {
     throw new Error("Jupiter v1 build response has invalid inline-account compute-budget fields");
   }
-  if (expected.amount != null && String(build.inAmount) !== String(expected.amount)) {
+  if (expectedRecord.amount != null && String(record.inAmount) !== String(expectedRecord.amount)) {
     throw new Error("Jupiter build input amount does not match the requested amount");
   }
   return Object.freeze({
-    inputMint: build.inputMint,
-    outputMint: build.outputMint,
-    inAmount: String(build.inAmount),
-    outAmount: String(build.outAmount),
-    otherAmountThreshold: String(build.otherAmountThreshold),
-    slippageBps: build.slippageBps,
-    swapMode: build.swapMode,
+    inputMint: record.inputMint,
+    outputMint: record.outputMint,
+    inAmount: String(record.inAmount),
+    outAmount: String(record.outAmount),
+    otherAmountThreshold: String(record.otherAmountThreshold),
+    slippageBps: record.slippageBps,
+    swapMode: record.swapMode,
     routePlan,
     transactionVersion: Number(version),
     computeBudgetInstructions,
@@ -301,8 +353,8 @@ export function validateJupiterBuildResponse(build, expected = {}) {
     tipInstruction,
     addressesByLookupTableAddress: Object.freeze(lookupTables),
     blockhashWithMetadata: Object.freeze({
-      blockhash: Object.freeze([...build.blockhashWithMetadata.blockhash]),
-      lastValidBlockHeight: build.blockhashWithMetadata.lastValidBlockHeight
+      blockhash: Object.freeze(blockhash),
+      lastValidBlockHeight: blockhashMetadata.lastValidBlockHeight
     }),
     semanticInstructionVerification: false,
     routeVerification: "build-envelope-only"
