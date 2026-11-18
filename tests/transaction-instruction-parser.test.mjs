@@ -174,3 +174,58 @@ test("transaction parser rejects malformed data, duplicate variants and oversize
   assert.throws(() => parseSupportedInstructionMessage(message([])),
     /shape is invalid or exceeds parser limits/);
 });
+
+import { deriveMessageAccountRoles } from "../message-account-roles.mjs";
+
+test("System Transfer account indexes can be cross-checked against derived privileges without granting semantic trust", () => {
+  const accountKeys = [SYSTEM, SOURCE, DESTINATION];
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [1, 2],
+    data: transferData(123)
+  }], accountKeys));
+  const roles = deriveMessageAccountRoles({
+    staticAccountKeys: accountKeys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    }
+  });
+  const transfer = parsed.instructions[0];
+  const sourceRole = roles.roles[transfer.accountIndexes[0]];
+  const destinationRole = roles.roles[transfer.accountIndexes[1]];
+  assert.equal(sourceRole.publicKey, SOURCE);
+  assert.equal(sourceRole.signer, true);
+  assert.equal(sourceRole.writable, true);
+  assert.equal(destinationRole.publicKey, DESTINATION);
+  assert.equal(destinationRole.signer, false);
+  assert.equal(destinationRole.writable, true);
+  // These two helpers are not yet a complete semantic verifier or signer gate.
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("System Transfer with a readonly source remains analysis-only and is not promoted to approval", () => {
+  const accountKeys = [SYSTEM, SOURCE, DESTINATION];
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [1, 2],
+    data: transferData(123)
+  }], accountKeys));
+  const roles = deriveMessageAccountRoles({
+    staticAccountKeys: accountKeys,
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 1
+    }
+  });
+  const sourceRole = roles.roles[parsed.instructions[0].accountIndexes[0]];
+  assert.equal(sourceRole.signer, true);
+  assert.equal(sourceRole.writable, false);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
