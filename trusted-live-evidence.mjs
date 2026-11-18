@@ -825,7 +825,7 @@ const ALT_DEACTIVATION_SLOT_NEVER = 18446744073709551615n;
 export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fetch) {
   const lookupSnapshot = snapshotDensePlainArray(
     lookups, 64, "Jupiter address lookup descriptors",
-    "Jupiter address lookup descriptors are missing or invalid"
+    "Jupiter address lookup table keys are invalid or duplicated"
   );
   if (lookupSnapshot.length === 0) {
     throw new Error("Jupiter address lookup descriptors are missing or invalid");
