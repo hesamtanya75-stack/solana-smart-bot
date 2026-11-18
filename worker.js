@@ -703,6 +703,25 @@ async function recordAuthFailure(env, scope) {
 async function authFailureScope(prefix, ip) {
   return prefix + ":" + await hashText(ip);
 }
+async function enforceApiRateLimit(env, request, scope, limit, windowMs) {
+  try {
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const bucket = scope + ":" + await hashText(ip);
+    const result = await authGuardCall(env, {
+      operation: "consume-rate-limit", scope: bucket, limit, windowMs
+    });
+    if (result.limited) {
+      return json({
+        error: "زۆر داواکاری نێردراوە؛ تکایە دوای چەند چرکەیەک دووبارە هەوڵ بدە.",
+        retryAfterSeconds: Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))
+      }, 429);
+    }
+    return null;
+  } catch {
+    // Rate limiting is a security boundary: fail closed if its Durable Object is unavailable.
+    return json({ error: "پاراستنی داواکارییەکان بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+  }
+}
 async function clearAuthFailures(env, scope) {
   return authGuardCall(env, { operation: "clear-failures", scope });
 }
@@ -723,6 +742,8 @@ export default {
       return json({ ok: true, build, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
+      const limited = await enforceApiRateLimit(env, request, "login-request", 8, 900000);
+      if (limited) return limited;
       try {
         const { password } = await readBoundedJson(request, 4096);
         const expected = env.BOT_LOGIN_PASSWORD;
@@ -752,6 +773,8 @@ export default {
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
+      const limited = await enforceApiRateLimit(env, request, "totp-request", 8, 900000);
+      if (limited) return limited;
       try {
         const { challengeId, code } = await readBoundedJson(request, 4096);
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
@@ -784,6 +807,17 @@ export default {
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      const ratePolicy = url.pathname === "/api/paper/buy"
+        ? { scope: "api-paper-buy", limit: 5, windowMs: 60000 }
+        : url.pathname === "/api/market-prices"
+          ? { scope: "api-market-prices", limit: 20, windowMs: 60000 }
+          : url.pathname === "/api/automation"
+            ? { scope: "api-automation", limit: 10, windowMs: 60000 }
+            : ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())
+              ? { scope: "api-write", limit: 30, windowMs: 60000 }
+              : { scope: "api-read", limit: 120, windowMs: 60000 };
+      const limited = await enforceApiRateLimit(env, request, ratePolicy.scope, ratePolicy.limit, ratePolicy.windowMs);
+      if (limited) return limited;
       if (url.pathname === "/api/logout" && request.method === "POST") {
         const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         if (!token) return json({ error: "Unauthorized" }, 401);
@@ -817,6 +851,8 @@ export default {
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
+        const limited = await enforceApiRateLimit(env, request, "totp-setup", 3, 900000);
+        if (limited) return limited;
         let reauth;
         try { reauth = await readBoundedJson(request, 4096); }
         catch { return json({ error: "پشتڕاستکردنەوەی وشەی نهێنی پێویستە" }, 400); }
@@ -844,6 +880,8 @@ export default {
         return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        const limited = await enforceApiRateLimit(env, request, "totp-confirm", 5, 900000);
+        if (limited) return limited;
         try {
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           const failureScope = await authFailureScope("totp", ip);
