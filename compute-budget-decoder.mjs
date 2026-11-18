@@ -155,9 +155,13 @@ export function validateSupportedTransactionInstructionSet(instructions) {
 export function validateComputeBudgetPolicy(instructions, limits) {
   const reviewed = validateComputeBudgetInstructionSet(instructions);
   if (!limits || typeof limits !== "object" || Array.isArray(limits) ||
-      !Number.isSafeInteger(limits.maxComputeUnitLimit) || limits.maxComputeUnitLimit < 1 ||
-      !Number.isSafeInteger(limits.maxHeapFrameBytes) || limits.maxHeapFrameBytes < 32768 ||
-      !Number.isSafeInteger(limits.maxLoadedAccountDataBytes) || limits.maxLoadedAccountDataBytes < 1 ||
+      !Number.isSafeInteger(limits.maxComputeUnitLimit) ||
+      limits.maxComputeUnitLimit < 1 || limits.maxComputeUnitLimit > 1400000 ||
+      !Number.isSafeInteger(limits.maxHeapFrameBytes) ||
+      limits.maxHeapFrameBytes < 32768 || limits.maxHeapFrameBytes > 262144 ||
+      limits.maxHeapFrameBytes % 1024 !== 0 ||
+      !Number.isSafeInteger(limits.maxLoadedAccountDataBytes) ||
+      limits.maxLoadedAccountDataBytes < 1 || limits.maxLoadedAccountDataBytes > 64 * 1024 * 1024 ||
       (typeof limits.maxPriorityFeeLamports !== "bigint" && !Number.isSafeInteger(limits.maxPriorityFeeLamports)) ||
       BigInt(limits.maxPriorityFeeLamports) < 0n) {
     throw new Error("Compute Budget policy limits are invalid or incomplete");
