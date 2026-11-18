@@ -55,6 +55,27 @@ test("rejects uninitialized, malformed, noncanonical and oversized lookup table 
   assert.throws(() => decodeAddressLookupTableAccountData(new Uint8Array(56 + 257 * 32)), /invalid size/);
 });
 
+test("lookup resolution rejects cloned or caller-constructed decoded table records", () => {
+  const decoded = decodeAddressLookupTableAccountData(fixture({ addresses: [keyA] }));
+  const clone = Object.freeze({
+    ...decoded,
+    addresses: Object.freeze([...decoded.addresses])
+  });
+  const args = { indexes: [0], bankSlot: 11n, slotHashes: [] };
+  assert.throws(() => resolveAddressLookupTableIndexes({ ...args, table: clone }), /malformed/);
+  assert.throws(() => resolveAddressLookupTableIndexes({
+    ...args,
+    table: {
+      deactivationSlot: 0xffffffffffffffffn,
+      lastExtendedSlot: 10n,
+      lastExtendedSlotStartIndex: 1,
+      authority: null,
+      addresses: [decoded.addresses[0]]
+    }
+  }), /malformed/);
+  assert.deepEqual(resolveAddressLookupTableIndexes({ ...args, table: decoded }), [decoded.addresses[0]]);
+});
+
 test("lookup resolution enforces deactivation and same-slot warmup visibility", () => {
   const table = decodeAddressLookupTableAccountData(fixture({
     addresses: [keyA, keyB], lastExtendedSlot: 10n, startIndex: 1
