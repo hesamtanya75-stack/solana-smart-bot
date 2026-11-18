@@ -65,6 +65,10 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
   if (programId !== ASSOCIATED_TOKEN_PROGRAM_ID) {
     throw new Error("Associated Token decoder rejects unknown program IDs");
   }
+  if (!Array.isArray(accountIndexes) || accountIndexes.length !== 6 ||
+      !Array.isArray(accountKeys)) {
+    throw new Error("Associated Token account layout is unsupported");
+  }
   const indexes = readDensePlainArray(
     accountIndexes, 6, 6, "Associated Token account indexes"
   );
