@@ -21,54 +21,73 @@ function retryDelayMs(response, attempt) {
   return 1000 * (attempt + 1);
 }
 
+const DEVNET_RPCS = [...new Set([
+  DEVNET_RPC,
+  "https://api.devnet.solana.com"
+])];
+
 async function rpc(method, params = []) {
-  let response;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      response = await fetch(DEVNET_RPC, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(15000)
-      });
-    } catch (error) {
-      // Retry transient network failures/timeouts as well as retryable HTTP
-      // responses; never print the RPC URL because it may contain a key.
-      if (attempt === 3) {
-        // Surface a sanitized transport code (for example ECONNRESET or
-        // ENOTFOUND) so CI can distinguish DNS/TLS/socket failures without
-        // exposing the configured RPC URL or any embedded credential.
-        const rawCode = error?.cause?.code || error?.cause?.name || error?.name || "network error";
-        const safeCode = String(rawCode).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "network error";
-        throw new Error(method + " network request failed after 4 attempts (" + safeCode + ")");
+  const failures = [];
+  for (const endpoint of DEVNET_RPCS) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let response;
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+          signal: AbortSignal.timeout(15000)
+        });
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        break;
       }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-      continue;
+
+      if (!response.ok) {
+        if (![429, 500, 502, 503, 504].includes(response.status)) {
+          throw new Error(method + " returned HTTP " + response.status);
+        }
+        lastError = new Error("HTTP " + response.status);
+        if (attempt < 3) {
+          try { await response.body?.cancel(); } catch {}
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs(response, attempt)));
+          continue;
+        }
+        break;
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error(method + " returned invalid JSON");
+      }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+          payload.jsonrpc !== "2.0" || payload.id !== 1) {
+        throw new Error(method + " returned a mismatched JSON-RPC envelope");
+      }
+      if (payload.error) {
+        throw new Error(method + " RPC error: " + (payload.error.message || "unknown"));
+      }
+      if (!Object.prototype.hasOwnProperty.call(payload, "result")) {
+        throw new Error(method + " response missing result");
+      }
+      return payload.result;
     }
-    if (response.ok) break;
-    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
-      throw new Error(method + " returned HTTP " + response.status);
-    }
-    // Release the retryable response before waiting, and respect a bounded
-    // Retry-After hint so public Devnet RPC rate limits are not amplified.
-    try { await response.body?.cancel(); } catch {}
-    await new Promise(resolve => setTimeout(resolve, retryDelayMs(response, attempt)));
+
+    const rawCode = lastError?.cause?.code || lastError?.cause?.name ||
+      lastError?.code || lastError?.name || "network error";
+    const safeCode = String(rawCode).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "network error";
+    failures.push(safeCode);
   }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error(method + " returned invalid JSON");
-  }
-  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
-      payload.jsonrpc !== "2.0" || payload.id !== 1) {
-    throw new Error(method + " returned a mismatched JSON-RPC envelope");
-  }
-  if (payload.error) throw new Error(method + " RPC error: " + (payload.error.message || "unknown"));
-  if (!Object.prototype.hasOwnProperty.call(payload, "result")) {
-    throw new Error(method + " response missing result");
-  }
-  return payload.result;
+
+  throw new Error(method + " failed on " + DEVNET_RPCS.length +
+    " Devnet RPC endpoint(s) after bounded retries (" + [...new Set(failures)].join(", ") + ")");
 }
 
 async function fetchSolUsdSpot() {
