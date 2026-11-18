@@ -279,7 +279,11 @@ test("missing Jupiter feeBps remains unknown instead of being reported as zero",
     }), { status: 200, headers: { "Content-Type": "application/json" } })
   });
   assert.equal(result.feeBps, null);
+  assert.equal(result.analysisOnly, true);
   assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
 
