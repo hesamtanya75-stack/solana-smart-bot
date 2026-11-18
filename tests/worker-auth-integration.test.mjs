@@ -184,7 +184,7 @@ test("Worker login migrates legacy MFA and enforces one-time TOTP and backup cod
   assert.equal(verifiedBody.token, undefined, "MFA session token must never be exposed to JavaScript");
   const cookie = sessionCookie(verified);
   assert.match(cookie, /^__Host-solana_bot_session=[0-9a-f-]{36}$/i);
-  assert.match(verified.headers.get("set-cookie"), /HttpOnly; Secure; SameSite=Strict/);
+  assert.match(verified.headers.get("set-cookie"), /HttpOnly; Secure; SameSite=Lax/);
 
   const replay = await post("/api/login/totp", {
     challengeId: challenge.challengeId,
@@ -281,7 +281,7 @@ test("legacy authenticated sessions contain no trading principal or wallet autho
   }
 });
 
-test("Worker logout revokes the bearer session immediately", async () => {
+test("Worker logout revokes the HttpOnly cookie session immediately", async () => {
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
@@ -302,7 +302,7 @@ test("Worker logout revokes the bearer session immediately", async () => {
   assert.equal(afterLogout.status, 401);
 });
 
-test("Worker rejects expired bearer sessions", async () => {
+test("Worker rejects expired cookie sessions", async () => {
   const { env } = makeEnvironment();
   const token = "123e4567-e89b-42d3-a456-426614174000";
   await env.BOT_STATE.put("session:" + token, JSON.stringify({
