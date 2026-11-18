@@ -35,6 +35,14 @@ jobs:
       - name: Install pinned project dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
 
+      - name: Export generated lockfile for reproducible commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify Wrangler targets the active Worker
         run: |
           node --input-type=module <<'NODE'
