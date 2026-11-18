@@ -458,3 +458,11 @@ test("Jupiter order response is rejected before reading an oversized provider bo
   }), /exceeds the 2097152-byte limit/);
   assert.equal(reads, 0);
 });
+
+
+test("live execution remains a hard stop and never signs or submits", async () => {
+  await assert.rejects(
+    executeLiveOrder(),
+    /Live execution is not implemented; no transaction was signed or submitted/
+  );
+});
