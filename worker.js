@@ -159,8 +159,8 @@ function sessionCookieResponse(data, token, maxAge = Math.ceil(SESSION_MS / 1000
   const response = json(data);
   const headers = new Headers(response.headers);
   const value = token
-    ? `__Host-solana_bot_session=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Strict`
-    : `__Host-solana_bot_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
+    ? `__Host-solana_bot_session=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`
+    : `__Host-solana_bot_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
   headers.append("Set-Cookie", value);
   return new Response(response.body, { status: response.status, headers });
 }
