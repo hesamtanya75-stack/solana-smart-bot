@@ -590,3 +590,37 @@ expected value inside the same test is not an independent fixed vector.
 
 No executable code, dependency, parser status, coordinator gate, signing,
 transaction submission, UI, deployment, or production data was changed.
+
+
+
+### Independent Token-2022 address candidate located: 2026-11-18
+
+A further source search located a fixed Token-2022 ATA address fixture in
+`themusebook/x402-messaging`, at pinned revision
+`e9e3b653041503ae6e138d6c356022aab10820e0`, file
+`pay-kit-main/lua/tests/methods_solana_ata_spec.lua`.
+
+The fixture states that its expected address is cross-checked against the
+project's Ruby reference implementation and `spl-token` CLI, and records:
+
+| Owner | Mint | Token program | Expected ATA address |
+|---|---|---|---|
+| `CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | Token-2022 (`TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb`) | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` |
+
+This is useful independent, cross-implementation address evidence, but the
+inspected fixture does not publish the canonical bump. It is therefore an
+address-only candidate, not yet the required fixed address+bump vector. Do not
+invent or infer the bump from this table. Before using it as a final test
+vector, independently verify the exact owner/mint/token-program tuple and
+derive the bump with a second trusted implementation; record the implementation
+and version used. The official Solana Foundation `pay-kit` repository also
+contains Token-2022 harness fixtures for this owner and program ID, but those
+harness excerpts inspected so far do not themselves state the ATA bump.
+
+Sources:
+- https://github.com/themusebook/x402-messaging/blob/e9e3b653041503ae6e138d6c356022aab10820e0/pay-kit-main/lua/tests/methods_solana_ata_spec.lua
+- https://github.com/solana-foundation/pay-kit/tree/86400da56a35705516f166394a026ea32e8356fb
+
+This is documentation-only evidence collection. No executable code,
+dependency, parser status, coordinator gate, signing, transaction submission,
+UI, deployment, or production data was changed.
