@@ -1019,3 +1019,14 @@ The transaction-cost calculation result is explicitly marked
 `signingPermitted` and `submissionPermitted` fixed to false. This prevents a
 successful arithmetic result from being mistaken for a transaction approval.
 Regression coverage asserts these fields and the frozen result object.
+
+## Quote-only Jupiter payload regression coverage — 2026-11-19
+
+The production trusted-evidence integration test continues to assert that the
+current Jupiter route is quote-only, semantically unverified, and has no
+all-in-cost evidence. The quote-only route regression now additionally rejects
+unexpected non-null transaction payloads (both string and object forms), not
+just a missing transaction field. This protects the deliberate no-taker quote
+path from silently accepting an executable-looking payload. It does not parse,
+authenticate, or semantically verify a Jupiter transaction, and it does not
+change the coordinator's fail-closed gate.
