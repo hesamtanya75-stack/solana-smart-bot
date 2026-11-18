@@ -293,3 +293,10 @@ This helper is not yet wired into transaction admission or the live-trade coordi
 Added coordinator tests proving that unsigned-structure-only evidence, build-envelope-only evidence, a contradictory semantic boolean, or missing sell-route evidence cannot create a reservation. The test asserts HTTP 409 and an unchanged empty reservation ledger for each case.
 
 This is policy-gate regression coverage using mocked evidence. It does not implement a production semantic verifier or prove a real Jupiter transaction safe. Production evidence remains unverified and the coordinator must continue to block reservations until a complete reviewed verifier exists.
+
+
+### Transaction parser Compute Budget policy integration
+
+The analysis-only transaction parser now accepts an optional explicit `computeBudgetPolicy` object on its message input. When supplied, it applies the caller's complete set of required ceilings to the decoded Compute Budget instructions and returns a frozen `computeBudgetPolicy` result with status `validated`. A missing policy is explicitly reported as `not-provided`; invalid or exceeded limits reject parsing. Regression tests cover successful policy application, a compute-unit ceiling breach, and incomplete policy input.
+
+This is a bounded policy check for the decoded Compute Budget instruction family only. It does not infer runtime defaults, prove fee payer balance, validate all transaction costs, or establish transaction/route semantic trust. The parser continues to return `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`.
