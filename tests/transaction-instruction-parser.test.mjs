@@ -995,3 +995,28 @@ test("async parser marks ATA PDA verification not applicable when no ATA instruc
   assert.equal(parsed.semanticVerification, "incomplete");
   assert.equal(parsed.signingPermitted, false);
 });
+
+
+test("parser rejects static keys or lookup resolutions without a message header", () => {
+  const base = {
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(25)
+    }]
+  };
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    staticAccountKeys: [SYSTEM, SOURCE, DESTINATION]
+  }), /Message account-role metadata requires a message header/);
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    resolvedAddressTableLookups: []
+  }), /Message account-role metadata requires a message header/);
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    staticAccountKeys: [SYSTEM, SOURCE],
+    resolvedAddressTableLookups: [{ writableAddresses: [DESTINATION], readonlyAddresses: [] }]
+  }), /Message account-role metadata requires a message header/);
+});
