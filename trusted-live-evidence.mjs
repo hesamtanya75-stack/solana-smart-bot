@@ -155,7 +155,7 @@ function validateBuildInstruction(instruction, name) {
   if (!isCanonicalPublicKey(record.programId) ||
       typeof record.data !== "string" || record.data.length > 16384 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.data)) {
-    throw new Error(malformedMessage);
+    throw new Error(label + " is malformed");
   }
   const data = Uint8Array.from(atob(record.data), char => char.charCodeAt(0));
   if (btoa(String.fromCharCode(...data)) !== record.data) {
