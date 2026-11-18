@@ -716,11 +716,12 @@ current environment. Its pull-request CI must validate SDK API compatibility
 and build resolution. The Worker validation workflow was updated to install
 project dependencies and use Node 22 for the Worker dry-run.
 
-The repository does not yet have a committed package-manager lockfile. The
-exact dependency is pinned in `package.json`, but reproducible frozen-lockfile
-installation remains a separate outstanding task; do not describe dependency
-installation as fully reproducible until a generated lockfile is committed and
-CI uses it.
+The repository now includes a generated npm lockfile v3 (`package-lock.json`)
+covering the exact `@solana/addresses@8.6.0` dependency and the resolved project
+dependency graph. The Cloudflare Worker validation workflow now uses
+`npm ci --ignore-scripts --no-audit --no-fund` so installation is frozen to the
+committed lockfile. A fresh CI run on the lockfile commit is still required to
+confirm the `npm ci` path before this is considered fully validated.
 
 No merge, deployment, signing, transaction submission, Mainnet trading, or UI
 design change is part of this branch. The syntax parser's semantic trust status
