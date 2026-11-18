@@ -106,7 +106,7 @@ test("transaction parser rejects unsupported classic Token variants and all Toke
   assert.throws(() => parseSupportedInstructionMessage(
     message([{ programIdIndex: 0, accountKeyIndexes: [], data: transfer }],
       [token2022]),
-  ), /reviewed account-role schema/);
+  ), /Instruction registry rejects an unsupported program ID/);
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
