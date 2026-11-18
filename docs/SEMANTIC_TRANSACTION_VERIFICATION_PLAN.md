@@ -807,3 +807,8 @@ Account-index arrays are inspected through own property descriptors before any
 index value is read, so accessor-backed indexes are rejected without invoking
 their getters. The parser also rejects sparse arrays and non-index own
 properties on these arrays.
+The top-level account-key and compiled-instruction collections are also
+validated as bounded, dense plain arrays before iteration. Custom iterators,
+overridden collection methods, symbol properties, extra properties, sparse
+slots, and accessor-backed indexes are rejected before the parser can invoke
+them.
