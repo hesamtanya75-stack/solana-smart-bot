@@ -426,3 +426,19 @@ Before choosing between `@solana/addresses` and `@solana/kit`:
 - Keep the ATA parser result at `not-performed` until fixed-vector tests and parser integration pass.
 
 No package has been installed or added by this research note. No executable code, parser trust status, coordinator gate, signing, submission, deployment, or production data has changed.
+
+
+
+### API-shape finding: PDA derivation is asynchronous
+
+The published `@solana/addresses` API reference documents `getProgramDerivedAddress` as returning a `Promise<[Address, bump]>`, and its example awaits the call. The documented import path is directly from `@solana/addresses`, with `getAddressEncoder` used to encode the owner, token-program, and mint seed addresses.
+
+This matters to the current repository: `parseSupportedInstructionMessage()` is presently synchronous. Integrating the SDK helper directly therefore requires an explicit design decision to make the parser asynchronous and update every caller/test accordingly, or to keep syntax parsing synchronous and introduce a separate asynchronous PDA-verification stage. Do not block the event loop or replace the SDK with a hand-written synchronous derivation algorithm to preserve the current function signature.
+
+The safer staged option is to keep the existing syntax parser and its `not-performed` status unchanged, then add a distinct async verification layer with fixed vectors and explicit result binding. The parser must not claim semantic verification merely because PDA derivation succeeds; the on-chain ATA account state remains a separate check.
+
+References:
+- https://www.solanakit.com/api/functions/getProgramDerivedAddress
+- https://www.npmjs.com/package/@solana/addresses?activeTab=versions
+
+This is a research/design note only. No executable code or parser API has changed.
