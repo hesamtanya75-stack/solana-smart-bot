@@ -381,3 +381,16 @@ No dependency is added in this documentation-only step. The SDK choice must be v
 - Keep authenticated on-chain account-state checks as a separate later requirement; deriving the expected address alone does not prove an account exists or is correctly initialized.
 
 This research note changes no executable code, parser trust flags, coordinator gates, wallet signing, transaction submission, deployment, or production data. Mainnet trading remains disabled.
+
+
+### Repository-specific Worker build gate
+
+The inspected `.github/workflows/cloudflare-worker-validation.yml` runs on pull requests that change `package.json`, `worker.js`, `wrangler.jsonc`, or tests. Its validation step runs `npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc`; this is a build-only dry run, not a deployment. Therefore, a future SDK dependency change to `package.json` will trigger this Worker bundling check. The current workflow does not run a clean install from a committed project lockfile, so it does not by itself prove lockfile reproducibility.
+
+The official SDK documentation lists `@solana/kit` as the recommended TypeScript SDK and exposes `getProgramDerivedAddress`. The published `@solana/kit` package describes Node, web, and React Native support, but that broad statement is not a project-specific Cloudflare Workers compatibility guarantee. A changelog entry for one transitive `@solana/errors` package adding `workerd` and `edge-light` exports is useful evidence, but it does not establish that every package in the SDK dependency graph is Worker-compatible. Treat the Wrangler dry-run plus a focused runtime test in the actual Worker environment as required evidence before relying on this SDK for PDA verification.
+
+References:
+- https://solana.com/docs/clients/official/javascript
+- https://solana.com/docs/core/pda/pda-derivation
+- https://www.npmjs.com/package/@solana/kit
+- https://github.com/anza-xyz/kit/blob/main/packages/errors/CHANGELOG.md
