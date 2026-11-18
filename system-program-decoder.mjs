@@ -40,6 +40,9 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
     !Number.isInteger(index) || index < 0 || index > 255)) {
     throw new Error("System instruction account indexes are invalid");
   }
+  if (accountIndexes.length === 2 && accountIndexes[0] === accountIndexes[1]) {
+    throw new Error("System instruction requires distinct account indexes");
+  }
   const bytes = decodeCanonicalBase64(encodedData);
   if (bytes.length < 4) throw new Error("System instruction discriminator is truncated");
   const variant = readU32LE(bytes, 0);
