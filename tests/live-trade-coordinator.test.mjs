@@ -1043,7 +1043,11 @@ test("reservation fails closed unless trusted evidence attests complete semantic
     { semanticInstructionVerification: false, routeVerification: "unsigned-structure-and-alt-only" },
     { semanticInstructionVerification: false, routeVerification: "build-envelope-only" },
     { semanticInstructionVerification: true, routeVerification: "unsigned-structure-and-alt-only" },
-    null
+    { semanticInstructionVerification: true },
+    { semanticInstructionVerification: true, routeVerification: "semantically-verified-but-not-message-bound" },
+    { semanticInstructionVerification: "true", routeVerification: "semantically-verified" },
+    null,
+    undefined
   ]) {
     let evidenceCalls = 0;
     const { coordinator, storage } = makeCoordinator(async () => {
