@@ -534,3 +534,36 @@ Sources:
 This source cross-check changes documentation only. No dependency, executable
 code, parser status, coordinator gate, signing, transaction submission, UI,
 deployment, or production data was changed.
+
+
+### Seed-order and legacy-helper review
+
+A direct read of the same pinned upstream `interface/src/address.rs` confirms the
+canonical seed order used by the official ATA helper:
+
+1. Wallet/owner public-key bytes.
+2. Selected token-program public-key bytes.
+3. Mint public-key bytes.
+
+The PDA program is the Associated Token Account Program ID. The upstream
+`get_associated_token_address_with_program_id` helper passes the selected token
+program ID into that derivation path. The older two-argument
+`get_associated_token_address` helper is explicitly deprecated because it
+assumes the Classic SPL Token program and does not work for Token-2022 mints.
+
+Implementation consequence: do not use the deprecated two-argument helper for
+the verifier. The selected token program must be an explicit, validated input,
+and it must occupy the second seed position. Add a regression test that swaps
+the token-program and mint seed positions and confirms the resulting address
+does not match the canonical fixed vector.
+
+This review confirms the source-level seed contract only. It does not supply
+the missing fixed ATA address strings, prove the SDK package runtime behavior,
+or authorize changing `associatedAddressVerification` from
+`"not-performed"`.
+
+Pinned upstream source:
+- https://github.com/solana-program/associated-token-account/blob/fbf5379e7398ac8b231c73ee8a9ff677b43dd0ec/interface/src/address.rs
+
+No executable code, dependency, parser status, coordinator gate, signing,
+transaction submission, UI, deployment, or production data was changed.
