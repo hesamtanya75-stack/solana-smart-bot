@@ -1,4 +1,5 @@
 const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
+const decodedInstructionRecords = new WeakSet();
 
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 32 ||
@@ -56,11 +57,13 @@ export function decodeComputeBudgetInstruction(programId, encodedData) {
   } else {
     throw new Error("Compute Budget instruction variant or payload shape is unsupported");
   }
-  return Object.freeze({
+  const record = Object.freeze({
     programId: COMPUTE_BUDGET_PROGRAM_ID,
     decoderVersion: 1,
     ...decoded
   });
+  decodedInstructionRecords.add(record);
+  return record;
 }
 
 /**
@@ -73,7 +76,8 @@ export function validateComputeBudgetInstructionSet(instructions) {
   }
   const seen = new Set();
   for (const instruction of instructions) {
-    if (!instruction || instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID ||
+    if (!instruction || !decodedInstructionRecords.has(instruction) ||
+        instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID ||
         instruction.decoderVersion !== 1 ||
         typeof instruction.variant !== "string" || seen.has(instruction.variant)) {
       throw new Error("Compute Budget instruction set contains an unknown or duplicate variant");
