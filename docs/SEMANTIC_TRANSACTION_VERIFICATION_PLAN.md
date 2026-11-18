@@ -742,3 +742,22 @@ permission to sign or submit transactions.
 No merge, deployment, signing, transaction submission, Mainnet trading, or UI
 design change is part of this branch. The syntax parser's semantic trust status
 and coordinator gates remain unchanged.
+
+## Token-2022 bounded transfer decoder follow-up (PR #43)
+
+The parser now recognizes only the base SPL Token `Transfer` (tag 3) and
+`TransferChecked` (tag 12) layouts for both Classic Token and Token-2022.
+This is a syntax-decoding increment, not a semantic approval.
+
+- Exact account counts are required; Token-2022 extension extra-account layouts
+  (including transfer-hook account layouts) are rejected until separately
+  reviewed.
+- Other Token-2022 extension instructions, authority changes, approvals,
+  confidential transfers, transfer-fee semantics, and CPI effects remain
+  unsupported and fail closed.
+- Decoded records retain the exact token program ID and are marked analysis-only.
+- Transaction semantic verification remains incomplete; signing and submission
+  remain disabled.
+
+A fresh CI run on the final code head is required before this increment can be
+considered validated.
