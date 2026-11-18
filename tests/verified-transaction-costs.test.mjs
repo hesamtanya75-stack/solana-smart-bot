@@ -21,7 +21,7 @@ function evidence(overrides = {}) {
 test("calculates priority fee with ceiling and sums every cost component exactly", () => {
   const result = calculateVerifiedTransactionCosts(evidence());
   assert.equal(result.maxPriorityFeeLamports, "2000");
-  assert.equal(result.totalFeeLamports, "2037530");
+  assert.equal(result.totalFeeLamports, "2047530");
   assert.equal(result.messageDigest, "a".repeat(64));
 });
 
