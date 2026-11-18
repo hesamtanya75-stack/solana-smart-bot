@@ -1068,6 +1068,31 @@ test("Jupiter /build response envelope is structurally validated without semanti
   assert.equal(parsed.routeVerification, "build-envelope-only");
 });
 
+test("every Jupiter /build instruction slot remains untrusted regardless of program ID", () => {
+  const opaqueInstruction = {
+    programId: "11111111111111111111111111111111",
+    accounts: [],
+    data: ""
+  };
+  const parsed = validateJupiterBuildResponse(validBuildResponse({
+    computeBudgetInstructions: [opaqueInstruction],
+    setupInstructions: [opaqueInstruction],
+    swapInstruction: opaqueInstruction,
+    cleanupInstruction: opaqueInstruction,
+    otherInstructions: [opaqueInstruction],
+    tipInstruction: opaqueInstruction
+  }));
+
+  assert.equal(parsed.semanticInstructionVerification, false);
+  assert.equal(parsed.routeVerification, "build-envelope-only");
+  assert.equal(parsed.computeBudgetInstructions.length, 1);
+  assert.equal(parsed.setupInstructions.length, 1);
+  assert.equal(parsed.swapInstruction.programId, opaqueInstruction.programId);
+  assert.equal(parsed.cleanupInstruction.programId, opaqueInstruction.programId);
+  assert.equal(parsed.otherInstructions.length, 1);
+  assert.equal(parsed.tipInstruction.programId, opaqueInstruction.programId);
+});
+
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
   const parsed = validateJupiterBuildResponse(validBuildResponse({
     transactionVersion: 1,
