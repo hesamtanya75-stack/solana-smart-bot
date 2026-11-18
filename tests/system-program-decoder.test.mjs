@@ -12,6 +12,8 @@ test("decodes bounded System Transfer lamports without claiming semantic trust",
   assert.equal(decoded.variant, "transfer");
   assert.equal(decoded.lamports, 2500000000n);
   assert.deepEqual(decoded.accountRoles, ["source", "destination"]);
+  assert.deepEqual(decoded.accountIndexes, [0, 1]);
+  assert.ok(Object.isFrozen(decoded.accountIndexes));
   assert.equal(decoded.analysisOnly, true);
   assert.ok(Object.isFrozen(decoded));
   assert.deepEqual(validateSystemProgramInstructionSet([decoded]), [decoded]);
@@ -25,6 +27,7 @@ test("decodes exact CreateAccount fields", () => {
   assert.equal(decoded.lamports, 1000n);
   assert.equal(decoded.space, 165n);
   assert.equal(decoded.ownerBytesHex, owner.toString("hex"));
+  assert.deepEqual(decoded.accountIndexes, [0, 1]);
 });
 
 test("rejects unsupported variants, malformed lengths, wrong accounts and forged records", () => {
