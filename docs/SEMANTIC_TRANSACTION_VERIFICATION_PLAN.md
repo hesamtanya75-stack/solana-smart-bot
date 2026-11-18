@@ -211,3 +211,17 @@ Before ALT-derived keys can be used as semantic or signing evidence, a separate 
 ### Current status
 
 This is a source-review checklist, not an implementation. The repository helper does not perform RPC retrieval, ALT program-owner or metadata verification, deactivation/warmup checks, or message-to-lookup-descriptor binding. The transaction parser does not currently consume authenticated ALT evidence. Therefore ALT-derived account roles remain untrusted for semantic approval; `semanticVerification` remains `incomplete`, and signing/submission must remain disabled. No live route, signer, or transaction-submission behavior is authorized by this review.
+
+
+## System Program privilege cross-check slice: PR #40 head `c71eec8ffeb54826f0c9462a967c090d5e8475e7`
+
+The analysis-only transaction parser now optionally accepts the already-deserialized message header and passes static keys plus caller-supplied resolved lookup addresses through `deriveMessageAccountRoles()`. When a header is supplied, the parser cross-checks System Program instruction account privileges:
+
+- Transfer: source must be signer+writable; destination must be writable.
+- CreateAccount: funding account and new account must both be signer+writable.
+
+The parser fails closed when a supplied header proves a required privilege is absent. If no header is supplied, it explicitly reports `accountPrivilegeAnalysis: "not-provided"`. A successful structural cross-check is labeled `"structural-match-only"`.
+
+Tests cover a valid Transfer role layout, a readonly source rejection, and the no-header path. All results remain analysis-only: `semanticVerification: "incomplete"`, `signingPermitted: false`, and `submissionPermitted: false`.
+
+Important limitation: this is not authenticated transaction evidence. The parser still accepts already-deserialized input, does not verify signatures or message bytes, and does not authenticate caller-supplied lookup-table addresses. The structural role match does not prove wallet ownership, approved destinations, runtime effects, rent, CPI behavior, or transaction-wide funds flow. Do not use this result as signer authorization.
