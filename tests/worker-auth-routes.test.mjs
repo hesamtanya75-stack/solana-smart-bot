@@ -145,7 +145,7 @@ test("all private API routes consume a transactional per-IP rate limit after ses
   assert.ok(workerSource.includes('scope: "api-market-prices", limit: 20, windowMs: 60000'));
   assert.ok(workerSource.includes('scope: "api-automation", limit: 10, windowMs: 60000'));
   assert.ok(workerSource.includes('scope: "api-write", limit: 30, windowMs: 60000'));
-  assert.ok(workerSource.includes('scope: "api-read", limit: 120, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-read", limit: 100, windowMs: 60000'));
   assert.ok(workerSource.includes('operation: "consume-rate-limit", scope: bucket, limit, windowMs'));
 });
 
