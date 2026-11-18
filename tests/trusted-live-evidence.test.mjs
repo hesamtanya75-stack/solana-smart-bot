@@ -1180,6 +1180,55 @@ test("settlement proof rejects sparse or accessor-backed native lamport balance 
     /metadata is incomplete/);
 });
 
+test("settlement proof rejects accessor-backed and sparse finalized account keys without invoking getters", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(8));
+  const baseResult = {
+    slot: 124,
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  let responseResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : responseResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  const request = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+
+  let getterCalls = 0;
+  const accessorKeys = [BOT_WALLET];
+  Object.defineProperty(accessorKeys, "0", {
+    get() { getterCalls++; return BOT_WALLET; }
+  });
+  responseResult = {
+    ...baseResult,
+    transaction: { ...baseResult.transaction, message: { accountKeys: accessorKeys } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account keys are malformed/);
+  assert.equal(getterCalls, 0);
+
+  responseResult = {
+    ...baseResult,
+    transaction: { ...baseResult.transaction, message: { accountKeys: new Array(1) } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account keys are incomplete/);
+});
+
 test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(7));
   const unrelatedSignature = encodeBase58(new Uint8Array(64).fill(8));
