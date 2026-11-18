@@ -1544,7 +1544,7 @@ setInterval(() => {
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
 let serverStateRevision = null;
-let serverToken = localStorage.getItem("solanaBotSession") || "";
+// Session credentials are held only in an HttpOnly server cookie. Remove any legacy browser token.\nlocalStorage.removeItem("solanaBotSession");
 let serverSaveTimer = null;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
@@ -1561,8 +1561,7 @@ if (!serverLogin.isConnected) document.body.appendChild(serverLogin);
 
 async function serverRequest(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (serverToken) headers.Authorization = "Bearer " + serverToken;
-  const response = await fetch(path, { ...options, headers, cache: "no-store" });
+  const response = await fetch(path, { ...options, headers, credentials: "same-origin", cache: "no-store" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
   return data;
@@ -1660,9 +1659,7 @@ const localSaveDemoState = saveDemoState;
 saveDemoState = function() {
   localSaveDemoState();
 };
-async function finishServerLogin(token) {
-  serverToken = token;
-  localStorage.setItem("solanaBotSession", token);
+async function finishServerLogin() {
   const remote = await serverRequest("/api/state");
   serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
   // Enable server persistence before migrating the browser's existing paper-trading
@@ -1705,7 +1702,7 @@ async function submitServerLogin() {
         body: JSON.stringify({ challengeId: serverMfaChallenge, code: otp.value.trim() })
       });
       serverMfaChallenge = "";
-      await finishServerLogin(verified.token);
+      await finishServerLogin();
       return;
     }
     const result = await serverRequest("/api/login", {
@@ -1728,7 +1725,7 @@ async function submitServerLogin() {
       button.textContent = "پشتڕاستکردنەوە";
       return;
     }
-    await finishServerLogin(result.token);
+    await finishServerLogin();
   } catch (e) {
     error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
   } finally {
@@ -1770,13 +1767,10 @@ pauseBuyBtn.onclick = async function() {
       : "بۆتی سێرڤەر دووبارە دەستی پێکردەوە.";
   } catch (e) { document.getElementById("demoStatus").textContent = e.message; }
 };
-if (serverToken) {
-  finishServerLogin(serverToken).catch(() => {
-    localStorage.removeItem("solanaBotSession");
-    serverToken = "";
-    serverLogin.style.display = "flex";
-  });
-}
+finishServerLogin().catch(() => {
+  serverModeReady = false;
+  serverLogin.style.display = "flex";
+});
 
 
 /* ===== Private administrator profile ===== */
@@ -1853,9 +1847,7 @@ if (serverToken) {
     status().textContent="هەڵوەشاندنەوەی Session...";
     try{
       await serverRequest("/api/logout",{method:"POST",body:"{}"});
-      serverToken="";
       serverModeReady=false;
-      localStorage.removeItem("solanaBotSession");
       modal.style.display="none";
       serverLogin.style.display="flex";
       status().textContent="چوونەژوورەوە هەڵوەشێندرایەوە.";
