@@ -1109,6 +1109,9 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     outputAmount: "12345"
   }, fetchImpl);
   assert.equal(proof.verified, true);
+  assert.equal(proof.proofScope, "finalized-owner-scoped-token-balance-deltas");
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.allInCostsVerified, false);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
   // The native SOL balance delta includes the 10,000,000-lamport wrapped-SOL
