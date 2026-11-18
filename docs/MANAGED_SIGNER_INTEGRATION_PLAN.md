@@ -100,3 +100,39 @@ PR #43 head `29e9a2b129e2ed8da28160d157386d49e4be2a8e`:
 - Funded Devnet lifecycle job `135126644427` — skipped.
 
 The combined status still reports the Deno Deploy context `deploy/hesamtanya75-stack/solana-smart-bot-17` as failure. This is not evidence of a successful production deployment. The three successful workflows above do not prove signer integration or live-trading readiness.
+
+
+## Turnkey / Solana Keychain compatibility review — 2026-11-19
+
+### Verified upstream facts
+
+- Solana's official Keychain documentation lists Turnkey as a supported TypeScript backend and describes the TypeScript signing interface as compatible with `@solana/kit` and `@solana/signers` 8.1+.
+- The TypeScript quick start signs an already-compiled transaction through `signTransactionWithSigners`; the provider adapter is not a semantic transaction verifier.
+- Solana's backend-selection guide categorizes Turnkey as non-custodial key management for programmatic, policy-gated signing. It distinguishes ordinary sign-and-return from backends that rewrite or broadcast transactions.
+- The current repository's `package.json` does not include `@solana/kit`, `@solana/signers`, `@solana/keychain`, or the Turnkey Keychain adapter. Its current Solana dependency is `@solana/addresses@8.6.0`.
+- The current `wrangler.jsonc` does not declare the `nodejs_compat` compatibility flag. The repository has only validated its existing Worker build; it has not validated the Turnkey SDK or Keychain adapter in the deployed Worker runtime.
+
+### Compatibility decision
+
+**Do not install or import the Turnkey SDK or Keychain packages yet.** Official support for TypeScript does not prove compatibility with this repository's Cloudflare Workers runtime, its current Solana Kit dependency graph, or the exact serialized Jupiter v0 transaction format. No upstream source reviewed so far provides a definitive Cloudflare Workers compatibility guarantee for this combination.
+
+### Safe next validation sequence
+
+1. In an isolated branch or CI-only spike, pin the exact `@solana/keychain-turnkey`, `@solana/keychain` / `@solana/signers` versions and their transitive dependencies; do not add secrets or create provider resources.
+2. Inspect package exports and dependency graph for Node-only modules, native bindings, filesystem access, unsupported crypto APIs, dynamic code loading, and bundle-size/runtime limits.
+3. Build a Worker-only mocked adapter test using a fake signer that cannot contact Turnkey and cannot produce a valid signature. Verify the module loads and the expected transaction-signer capability is exposed in workerd.
+4. Verify the signer API signs only the exact bytes/digest supplied by the immutable intent; reject message mutation, wallet mismatch, cluster mismatch, expired intent, replay, unsupported message versions, and arbitrary transfer instructions.
+5. Separately test provider policy configuration using documented Turnkey sandbox/test facilities before any production organization, wallet, credential, or signer enrollment is considered.
+6. Keep the real signer factory behind an absent-by-default feature flag and ensure the Worker cannot reach it while live trading is disabled.
+
+### Important security boundary
+
+A provider policy engine is an additional independent control, not a replacement for this application's semantic instruction verifier, all-in cost accounting, atomic daily reservation, kill switch, or finalized settlement reconciliation. Never treat provider approval or a successful signature response as proof that a swap is safe or finalized.
+
+### Repository-specific blocker summary
+
+- No Keychain / Turnkey packages are installed.
+- No Cloudflare Workers compatibility test exists for the provider adapter.
+- No semantic instruction verifier exists for the complete Jupiter route.
+- No live execution route or signer call exists.
+- No credentials, wallet enrollment, signing, or submission has been performed.
