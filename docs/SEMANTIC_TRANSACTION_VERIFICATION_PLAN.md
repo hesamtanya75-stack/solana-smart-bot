@@ -151,3 +151,14 @@ Format and account-role reference: Solana's official instruction documentation e
 A review of the isolated System Program syntax decoder found that its two-account variants accepted the same compiled account index in both positions. The decoder now rejects aliased indexes for Transfer and CreateAccount, and regression tests cover both cases. This prevents a source/destination or funding/new-account role collision from being represented as a normal two-account instruction record.
 
 This is still a syntax-level structural check only. It does not validate signer/writable privileges, account identities, runtime effects, rent, approved destinations, or transaction-wide funds flow. The decoder remains isolated from the transaction parser and semantic trust registry; signing and submission remain prohibited.
+
+
+## Isolated message account-role derivation slice
+
+Added `message-account-roles.mjs` and `tests/message-account-roles.test.mjs`.
+
+The helper derives signer/writable flags for static message keys from the legacy/v0 header counts and appends already-resolved lookup addresses in Solana v0 order: all writable loaded addresses followed by all readonly loaded addresses. Loaded addresses are treated as non-signers. It rejects malformed header counts, noncanonical/duplicate public keys, malformed lookup input, and account-key lists above the 256-key bound. The tests cover static privileges, multiple lookup tables, global writable-before-readonly ordering, and malformed/duplicate inputs.
+
+Important boundary: lookup addresses are caller-supplied and must already have been resolved and authenticated by a separate trusted layer. This helper does not fetch or verify lookup tables, parse raw transaction wire bytes, verify signatures, or establish instruction semantics. It is not yet integrated into the transaction parser or System Program decoder. Semantic verification remains incomplete; signing and submission remain disabled.
+
+CI for the immediately preceding code head `36f9f4b26b5110a1b9109c33255f1b5de36adc2e`: Node tests and Cloudflare Worker build validation succeeded. The latest Devnet read-only workflow is still running; funded Devnet lifecycle remains gated behind explicit opt-in. CI for this documentation update and the subsequent role-helper commits must be checked independently.
