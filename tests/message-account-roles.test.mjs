@@ -149,3 +149,24 @@ test("rejects sparse resolved lookup table lists", () => {
     resolvedAddressTableLookups: sparseTables
   }), /malformed/);
 });
+test("rejects sparse lookup key arrays even when holes follow valid addresses", () => {
+  const sparseWritable = new Array(2);
+  sparseWritable[0] = keys.b;
+  const sparseReadonly = new Array(2);
+  sparseReadonly[0] = keys.c;
+  const header = {
+    numRequiredSignatures: 1,
+    numReadonlySignedAccounts: 0,
+    numReadonlyUnsignedAccounts: 0
+  };
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header,
+    resolvedAddressTableLookups: [{ writableAddresses: sparseWritable, readonlyAddresses: [] }]
+  }), /invalid or duplicated/);
+  assert.throws(() => deriveMessageAccountRoles({
+    staticAccountKeys: [keys.a],
+    header,
+    resolvedAddressTableLookups: [{ writableAddresses: [], readonlyAddresses: sparseReadonly }]
+  }), /invalid or duplicated/);
+});
