@@ -257,7 +257,7 @@ test("legacy authenticated sessions contain no trading principal or wallet autho
   const loginBody = await login.json();
   assert.equal(loginBody.token, undefined, "session token must never be exposed to JavaScript");
   const setCookie = login.headers.get("set-cookie") || "";
-  assert.match(setCookie, /^__Host-solana_bot_session=[0-9a-f-]{36}; Path=\\/; Max-Age=\\d+; HttpOnly; Secure; SameSite=Lax$/i);
+  assert.match(setCookie, /^__Host-solana_bot_session=[0-9a-f-]{36}; Path=\/; Max-Age=\d+; HttpOnly; Secure; SameSite=Lax$/i);
   const cookie = sessionCookie(login);
   const token = sessionId(cookie);
   assert.ok(token);
