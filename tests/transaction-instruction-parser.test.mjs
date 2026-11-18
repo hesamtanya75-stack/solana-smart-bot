@@ -52,7 +52,7 @@ test("transaction parser rejects sparse compiled instruction arrays", () => {
     data: data(2, 200000)
   };
   assert.throws(() => parseSupportedInstructionMessage(message(sparseInstructions)),
-    /unknown, forged, or unsupported record/);
+    /sparse compiled instruction list/);
 });
 
 test("transaction parser rejects sparse account-key arrays", () => {
