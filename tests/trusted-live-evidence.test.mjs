@@ -26,7 +26,7 @@ test("raw mint account parsing requires bounded canonical base64 encoding", () =
   for (const data of [
     [baseMint, "base64url"],
     [baseMint + " ", "base64"],
-    [baseMint.slice(0, -2) + "A=", "base64"],
+    [baseMint.slice(0, -2) + "B=", "base64"],
     [baseMint, "base64", "unexpected"],
     ["A".repeat(17000), "base64"]
   ]) {
