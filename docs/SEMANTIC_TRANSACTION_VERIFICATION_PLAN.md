@@ -442,3 +442,30 @@ References:
 - https://www.npmjs.com/package/@solana/addresses?activeTab=versions
 
 This is a research/design note only. No executable code or parser API has changed.
+
+## SDK package and Cloudflare export audit: 2026-11-18
+
+Inspected the published `@solana/addresses@8.6.0` package metadata and the matching upstream `anza-xyz/kit` tag.
+
+Confirmed package facts:
+
+- The package declares explicit conditional exports for `workerd`, `edge-light`, `browser`, `node`, and `react-native`. The `workerd` condition resolves to the package's Node-targeted ESM/CJS distribution files; this is an explicit Workers runtime export, not an inference from its browser build.
+- The implementation of `getProgramDerivedAddress()` uses `crypto.subtle.digest('SHA-256', ...)`, `TextEncoder`, and `Uint8Array`. It checks for digest capability before deriving. These are APIs available in the Workers runtime, but this source inspection alone is not a substitute for executing the built package inside the project's actual Workers-compatible test runtime.
+- The function is asynchronous and returns the PDA and bump as a tuple. It tries bump seeds from 255 downward and retries only when the candidate digest is on the Ed25519 curve.
+- The implementation enforces at most 16 seeds and at most 32 bytes per seed. ATA derivation uses three 32-byte public-key seeds plus the one-byte bump, within those limits.
+- The package's direct runtime dependencies are `@solana/assertions`, `@solana/codecs-core`, `@solana/codecs-strings`, `@solana/errors`, and `@solana/nominal-types`. This is a small standalone package compared with importing the full `@solana/kit` package, but it is not dependency-free.
+- Its declared Node engine is `>=20.18.0`; the repository currently declares `>=20`. CI must therefore verify the actual pinned Node version before adopting this package. Do not silently raise the repository's engine floor as part of an ATA-only change.
+
+### Adoption gate
+
+The source audit supports keeping `@solana/addresses@8.6.0` as the leading SDK candidate, but does not yet establish that it is safe to add to this repository. Before adding it:
+
+1. Verify the repository's actual Node version in all test and build workflows against the package's `>=20.18.0` engine.
+2. Install the exact pinned version and commit the package-manager lockfile; do not use an unpinned or floating dependency.
+3. Run the package through the existing Node test suite and the existing Wrangler dry-run build.
+4. Add a focused test that imports the built Worker bundle in the project's Workers-compatible runtime and derives known ATA vectors for both Classic Token and Token-2022.
+5. Cross-check expected address and bump vectors against the official Associated Token Program implementation or an independent trusted implementation.
+6. Test malformed keys, incorrect program IDs, wrong token program, wrong owner/mint, and on-curve rejection. Keep the verifier async and separate from the synchronous syntax decoder.
+7. Preserve `semanticInstructionVerification: false` and all coordinator fail-closed gates until the complete semantic-verification acceptance matrix is satisfied.
+
+No dependency was added by this audit. No executable source, parser behavior, signing, transaction submission, Worker routes, UI/design, deployment, or production data was changed.
