@@ -40,10 +40,12 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
   }
   const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = accountIndexes;
   const roleKeys = accountIndexes.map(index => accountKeys[index]);
-  if (roleKeys.some(key => typeof key !== "string" || key.length === 0) ||
-      new Set(roleKeys).size !== roleKeys.length) {
-    throw new Error("Associated Token role accounts must be distinct valid key strings");
+  if (roleKeys.some(key => typeof key !== "string" || key.length === 0)) {
+    throw new Error("Associated Token role accounts must contain valid key strings");
   }
+  // Different instruction account indexes may legitimately resolve to the
+  // same public key (most commonly payer === owner). Validate index uniqueness
+  // above; do not incorrectly reject valid role aliases here.
   if (accountKeys[systemIndex] !== SYSTEM_PROGRAM_ID ||
       ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(accountKeys[tokenProgramIndex])) {
     throw new Error("Associated Token system or token program account is invalid");
