@@ -408,3 +408,21 @@ References:
 - https://developers.cloudflare.com/workers/wrangler/bundling/
 - https://developers.cloudflare.com/workers/configuration/compatibility-flags/
 - https://solana.com/docs/clients/official/javascript
+
+
+
+### Smaller direct-package candidate: `@solana/addresses`
+
+A follow-up package-level review found that the documented `getProgramDerivedAddress` helper is also published from the standalone `@solana/addresses` package. This creates a narrower candidate than importing the umbrella `@solana/kit` package when the implementation needs only address/PDA derivation.
+
+The package metadata inspected during this review lists stable release `8.6.0` and five direct dependencies. Treat that version as a research candidate only, not as an approved or installed dependency. A smaller direct package may reduce the dependency surface, but its transitive exports and actual Cloudflare Workers runtime behavior still require verification.
+
+Before choosing between `@solana/addresses` and `@solana/kit`:
+
+- Confirm the exact exported import path and API against the pinned package version.
+- Inspect the complete resolved dependency graph and package export conditions; do not infer Worker compatibility from one dependency's `workerd` export.
+- Generate the lockfile with the repository's chosen package manager and prove a clean frozen/locked install.
+- Run all Node tests, the Wrangler Worker dry-run, and a focused test using the actual Workers-compatible runtime.
+- Keep the ATA parser result at `not-performed` until fixed-vector tests and parser integration pass.
+
+No package has been installed or added by this research note. No executable code, parser trust status, coordinator gate, signing, submission, deployment, or production data has changed.
