@@ -720,11 +720,14 @@ has completed these pull-request CI jobs successfully:
   installed from the committed lockfile with `npm ci` and completed the
   Wrangler dry-run build without deploying.
 
-The read-only Devnet workflow `44385908899` has passed its unit and real
-Durable Objects runtime test step. Its Devnet cluster identity/read-only RPC
-verification is still running; the funded Devnet lifecycle remains skipped
-unless explicit opt-in is supplied. Do not report the Devnet workflow as
-complete until its final job conclusion is successful.
+The read-only Devnet workflow on the follow-up documentation head
+`4dee1870f3ad4f7595626bb59cb2ee3dbbad0e1b` completed successfully:
+workflow run `44386026189`. Its unit tests, real Durable Objects runtime
+tests, Devnet genesis/health/confirmed-slot checks, reference mint and supply
+checks, and read-only RPC validation all passed. The separate funded Devnet
+lifecycle job was skipped because this was a pull-request run and no explicit
+workflow-dispatch opt-in was supplied. No signing or transaction submission
+occurred.
 
 The repository includes a committed npm lockfile v3 (`package-lock.json`)
 covering the exact `@solana/addresses@8.6.0` dependency and the resolved project
