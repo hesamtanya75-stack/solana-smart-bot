@@ -812,3 +812,19 @@ validated as bounded, dense plain arrays before iteration. Custom iterators,
 overridden collection methods, symbol properties, extra properties, sparse
 slots, and accessor-backed indexes are rejected before the parser can invoke
 them.
+
+
+## Reject detached account-role metadata (PR #43)
+
+The analysis-only message parser now rejects `staticAccountKeys` or
+`resolvedAddressTableLookups` unless the caller also supplies the message
+header. Previously these optional fields could be accepted and silently ignored
+when no header was present, creating an ambiguous input contract in which
+callers might believe signer/writable analysis had consumed the supplied role
+metadata. The parser now fails closed instead. Regression tests cover each
+field independently and together.
+
+This remains structural input validation only. Supplied lookup addresses are
+still unauthenticated, the parser does not verify transaction signatures or RPC
+provenance, and `accountPrivilegeAnalysis` remains non-authoritative. Semantic
+verification remains incomplete; signing and submission remain disabled.
