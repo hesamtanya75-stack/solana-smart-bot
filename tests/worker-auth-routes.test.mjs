@@ -131,3 +131,30 @@ test("live coordinator remains isolated until semantic verification and all-in c
   assert.equal(workerSource.includes('url.pathname === "/api/live"'), false);
   assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
 });
+
+test("Jupiter live quote preview is authenticated, bounded, and quote-only", () => {
+  const route = workerSource.indexOf('if (url.pathname === "/api/live/quote-preview" && request.method === "POST")');
+  const auth = workerSource.indexOf('if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);');
+  const nextRoute = workerSource.indexOf('if (url.pathname === "/api/market-prices" && request.method === "POST")', route);
+  assert.ok(route > auth, "quote preview must remain behind session authentication");
+  assert.ok(nextRoute > route, "quote preview route must be registered");
+  const source = workerSource.slice(route, nextRoute);
+  assert.ok(source.includes('inputMint: "So11111111111111111111111111111111111111112"'));
+  assert.ok(source.includes('outputMint,\n            amount: amountLamports'));
+  assert.ok(source.includes('"x-api-key": apiKey'));
+  assert.ok(source.includes('order.transaction !== null'));
+  assert.ok(source.includes('quoteOnly: true'));
+  assert.ok(source.includes('transactionAvailable: false'));
+  assert.ok(source.includes('otherAmountThreshold:'));
+  assert.ok(source.includes('otherAmountThreshold: /^\\d+$/'));
+  assert.ok(source.includes('platformFeeAmount: /^\\d+$/'));
+  assert.ok(source.includes('order.slippageBps != null'));
+  assert.ok(source.includes('order.feeBps != null'), "missing Jupiter fees must remain unknown, not become zero");
+  assert.ok(source.includes('outUsdValue:'));
+  assert.ok(source.includes('slippageBps:'));
+  assert.ok(source.includes('platformFeeAmount:'));
+  assert.equal(source.includes('taker:'), false, "preview must not request an assembled transaction");
+  assert.equal(source.includes('signedTransaction'), false, "preview must never sign or submit");
+  assert.ok(source.includes('BigInt(amountLamports) > 18446744073709551615n'));
+  assert.ok(workerSource.includes('https://api.jup.ag; img-src'), "CSP must permit the Jupiter API");
+});
