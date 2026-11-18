@@ -67,3 +67,24 @@ Until then:
 - Keep Mainnet trading disabled.
 - Do not run a funded Devnet transfer without a separately approved disposable-wallet test plan.
 - Do not merge PR #40 or deploy to production as part of this plan.
+
+
+## Source inspection follow-up: PR #40 head `fd3845c32ba4da5ffbf3e2b6666a888617caaff3`
+
+The current implementation and test file were inspected at this exact head.
+
+### Confirmed current parser scope
+
+- `validateUnsignedJupiterTransaction()` performs structural parsing for the supported V0 and V1 message formats.
+- `validateAndResolveUnsignedJupiterTransaction()` resolves lookup-table addresses and explicitly preserves `semanticInstructionVerification: false`.
+- `validateJupiterBuildResponse()` validates the Jupiter build envelope and its six instruction slots, but returns `routeVerification: "build-envelope-only"`.
+- Existing tests cover V1 header/config bounds, signer pinning, instruction/account indexes, lookup-table integrity, malformed structures, and the fact that structurally parsed or build-envelope instructions remain semantically untrusted.
+- These tests do not yet decode instruction data into reviewed System, Compute Budget, SPL Token/Token-2022, Associated Token Account, or Jupiter/router semantics.
+
+### Next implementation slice
+
+Before implementing any decoder, add a versioned decoder registry with an explicit reject-by-default contract. Each registry entry must bind an exact program ID, instruction discriminator/variant, supported message context, decoder version, and reviewed account-role schema. The registry must not infer trust from a familiar program ID alone. Add tests proving unknown programs, unknown variants, malformed payloads, and unsupported decoder versions are rejected before any semantic attestation can be produced.
+
+Then implement one instruction family at a time, starting with Compute Budget because its instruction data and global transaction effects can be bounded independently. Validate duplicates/conflicts and configured ceilings. Keep all other instruction families rejected until their own decoders and complete transaction-level funds-flow tests are reviewed.
+
+This follow-up is a source-review and implementation-sequencing note only. It does not alter executable code, semantic trust flags, coordinator gates, signing, submission, Worker routes, deployment, or production data.
