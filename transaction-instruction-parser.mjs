@@ -178,10 +178,27 @@ export function parseSupportedInstructionMessage(message) {
   const associatedTokenInstructions = [];
   const programIdIndexes = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
-    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
-        !Number.isInteger(instruction.programIdIndex) ||
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+      throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
+    }
+    const instructionPrototype = Object.getPrototypeOf(instruction);
+    if (instructionPrototype !== Object.prototype && instructionPrototype !== null) {
+      throw new Error("Transaction instruction " + position + " must be a plain data record");
+    }
+    const instructionFields = new Set(["programIdIndex", "accountKeyIndexes", "data"]);
+    for (const field of Reflect.ownKeys(instruction)) {
+      const descriptor = Object.getOwnPropertyDescriptor(instruction, field);
+      if (typeof field !== "string" || !instructionFields.has(field)) {
+        throw new Error("Transaction instruction " + position + " contains an unsupported field");
+      }
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+        throw new Error("Transaction instruction " + position + " fields must be plain data properties");
+      }
+    }
+    if (!Number.isInteger(instruction.programIdIndex) ||
         instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeys.length ||
         !Array.isArray(instruction.accountKeyIndexes) ||
+        Object.getPrototypeOf(instruction.accountKeyIndexes) !== Array.prototype ||
         instruction.accountKeyIndexes.length > MAX_ACCOUNT_KEYS ||
         instruction.accountKeyIndexes.some(index =>
           !Number.isInteger(index) || index < 0 || index >= accountKeys.length) ||
@@ -189,9 +206,16 @@ export function parseSupportedInstructionMessage(message) {
       throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
     }
 
+    const indexArrayKeys = Reflect.ownKeys(instruction.accountKeyIndexes);
+    if (indexArrayKeys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+         Number(key) >= instruction.accountKeyIndexes.length))) {
+      throw new Error("Transaction instruction " + position + " account indexes contain unsupported properties");
+    }
     for (let index = 0; index < instruction.accountKeyIndexes.length; index++) {
-      if (!Object.prototype.hasOwnProperty.call(instruction.accountKeyIndexes, index)) {
-        throw new Error("Transaction instruction " + position + " contains sparse account indexes");
+      const descriptor = Object.getOwnPropertyDescriptor(instruction.accountKeyIndexes, String(index));
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+        throw new Error("Transaction instruction " + position + " contains sparse or accessor-backed account indexes");
       }
     }
 
