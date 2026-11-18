@@ -2,6 +2,7 @@ const LOOKUP_TABLE_META_SIZE = 56;
 const LOOKUP_TABLE_MAX_ADDRESSES = 256;
 const U64_MAX = 0xffffffffffffffffn;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const decodedLookupTables = new WeakSet();
 
 export const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = "AddressLookupTab1e1111111111111111111111111";
 
@@ -69,13 +70,15 @@ export function decodeAddressLookupTableAccountData(input) {
   for (let offset = LOOKUP_TABLE_META_SIZE; offset < data.byteLength; offset += 32) {
     addresses.push(encodeBase58(data.subarray(offset, offset + 32)));
   }
-  return Object.freeze({
+  const record = Object.freeze({
     deactivationSlot,
     lastExtendedSlot,
     lastExtendedSlotStartIndex,
     authority,
     addresses: Object.freeze(addresses)
   });
+  decodedLookupTables.add(record);
+  return record;
 }
 
 /**
@@ -84,7 +87,8 @@ export function decodeAddressLookupTableAccountData(input) {
  * context; this pure helper cannot establish that provenance itself.
  */
 export function resolveAddressLookupTableIndexes({ table, indexes, bankSlot, slotHashes }) {
-  if (!table || !Array.isArray(table.addresses) ||
+  if (!table || typeof table !== "object" || !decodedLookupTables.has(table) ||
+      !Array.isArray(table.addresses) ||
       typeof bankSlot !== "bigint" || bankSlot < 0n ||
       !Array.isArray(indexes) || indexes.length < 1 ||
       !Array.isArray(slotHashes)) {
