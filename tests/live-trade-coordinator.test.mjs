@@ -396,7 +396,8 @@ test("confirmed positions cannot be closed or release daily spend without indepe
     verified: true, signature: args.signature, inputMint: args.inputMint,
     inputAmount: args.inputAmount, outputMint: args.outputMint,
     outputAmount: args.outputAmount, owner: args.expectedOwner,
-    confirmationStatus: "finalized"
+    confirmationStatus: "finalized",
+    costs: fixtureSettlementCosts(args.inputAmount)
   });
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -837,7 +838,14 @@ test("kill switch activated during evidence retrieval blocks the in-flight reser
 
 
 test("active emergency stop blocks new reservations but permits finalized settlement reconciliation", async () => {
-  const { coordinator } = makeCoordinator();
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized",
+    costs: fixtureSettlementCosts(args.inputAmount)
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   await post(coordinator, "/kill-switch", { enabled: true });
