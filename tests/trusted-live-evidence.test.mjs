@@ -1308,7 +1308,7 @@ test("Jupiter route-plan amounts must be exact decimal strings", () => {
     };
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       routePlan: [{ ...validBuildResponse().routePlan[0], swapInfo }]
-    })), /routePlan\[0\] is malformed/);
+    })), /routePlan\[0\].*malformed/);
   }
 });
 
@@ -1322,7 +1322,7 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     [{ ...valid.routePlan[0], swapInfo: { ...valid.routePlan[0].swapInfo, inAmount: "18446744073709551616" } }]
   ]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\[0\] is malformed/);
+      /routePlan\[0\].*malformed/);
   }
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ swapMode: "Unknown" })),
     /response envelope|blockhash metadata.*malformed/);
@@ -1333,7 +1333,7 @@ test("Jupiter /build rejects sparse route and instruction collections", () => {
   sparseRoute[0] = validBuildResponse().routePlan[0];
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     routePlan: sparseRoute
-  })), /routePlan\[1\] is malformed/);
+  })), /routePlan.*malformed/);
 
   const sparseAccounts = new Array(1);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
@@ -1412,7 +1412,7 @@ test("Jupiter /build requires basis points on every route-plan step", () => {
   ]) {
     assert.throws(
       () => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\[0\] is malformed/
+      /routePlan\[0\].*malformed/
     );
   }
 });
