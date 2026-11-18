@@ -888,6 +888,17 @@ export default {
           }
           const apiKey = String(env.JUPITER_API_KEY || "").trim();
           if (!apiKey) return json({ error: "Jupiter API key is not configured; quote preview is unavailable" }, 503);
+          const authorization = request.headers.get("Authorization") || "";
+          const sessionMatch = /^Bearer ([^\\s]+)$/i.exec(authorization);
+          if (!sessionMatch) return json({ error: "Unauthorized" }, 401);
+          const quoteScope = "quote:" + (await hashText(sessionMatch[1])).slice(0, 48);
+          const rate = await authGuardCall(env, {
+            operation: "consume-rate-limit",
+            scope: quoteScope
+          });
+          if (rate.limited) {
+            return json({ error: "Quote preview rate limit exceeded; try again later" }, 429);
+          }
           const params = new URLSearchParams({
             inputMint: "So11111111111111111111111111111111111111112",
             outputMint,
