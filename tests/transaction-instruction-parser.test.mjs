@@ -458,3 +458,36 @@ test("parser rejects ATA program account marked writable", () => {
     }]
   }), /ATA System Program account privilege requirements are not satisfied/);
 });
+
+
+test("parser explicitly reports ATA address derivation as not performed", () => {
+  const keys = [
+    "11111111111111111111111111111112",
+    "11111111111111111111111111111113",
+    "11111111111111111111111111111114",
+    "11111111111111111111111111111115",
+    SYSTEM,
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  ];
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: keys,
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  });
+  assert.equal(parsed.associatedAddressVerification, "not-performed");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser marks ATA address verification not applicable without ATA instructions", () => {
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]));
+  assert.equal(parsed.associatedAddressVerification, "not-applicable");
+});
