@@ -55,6 +55,12 @@ test("transaction parser rejects malformed compiled instruction indexes and keys
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
   }], ["not-a-public-key"])), /invalid account key/);
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
+  }], ["22222222222222222222222222222222"])), /invalid account key/);
+  assert.throws(() => parseSupportedInstructionMessage(message([{
+    programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000)
+  }], ["zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"])), /invalid account key/);
 });
 
 test("transaction parser rejects malformed data, duplicate variants and oversized messages", () => {
