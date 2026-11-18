@@ -590,6 +590,77 @@ test("parser decodes bounded Token-2022 TransferChecked but never grants semanti
 });
 
 
+test("parser rejects SPL Token TransferChecked when source is readonly", () => {
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const destination = "11111111111111111111111111111113";
+  const source = "11111111111111111111111111111114";
+  const mint = "11111111111111111111111111111115";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, destination, source, mint, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 3
+    },
+    instructions: [{
+      programIdIndex: 4,
+      accountKeyIndexes: [2, 3, 1, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token source account privilege requirements are not satisfied/);
+});
+
+test("parser rejects SPL Token TransferChecked when mint is writable", () => {
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const mint = "11111111111111111111111111111113";
+  const source = "11111111111111111111111111111114";
+  const destination = "11111111111111111111111111111115";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, mint, source, destination, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    instructions: [{
+      programIdIndex: 4,
+      accountKeyIndexes: [2, 1, 3, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token mint account privilege requirements are not satisfied/);
+});
+
+test("parser rejects SPL Token Transfer when destination is readonly", () => {
+  const tokenData = Buffer.alloc(9);
+  tokenData[0] = 3;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const source = "11111111111111111111111111111113";
+  const destination = "11111111111111111111111111111114";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, source, destination, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 2
+    },
+    instructions: [{
+      programIdIndex: 3,
+      accountKeyIndexes: [1, 2, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token destination account privilege requirements are not satisfied/);
+});
+
 test("parser integrates ATA CreateIdempotent and checks account privileges", () => {
   const keys = [
     "11111111111111111111111111111112",
