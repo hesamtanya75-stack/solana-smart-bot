@@ -180,6 +180,8 @@ test("Worker login migrates legacy MFA and enforces one-time TOTP and backup cod
     code
   }, env);
   assert.equal(verified.status, 200);
+  const verifiedBody = await verified.json();
+  assert.equal(verifiedBody.token, undefined, "MFA session token must never be exposed to JavaScript");
   const cookie = sessionCookie(verified);
   assert.match(cookie, /^__Host-solana_bot_session=[0-9a-f-]{36}$/i);
   assert.match(verified.headers.get("set-cookie"), /HttpOnly; Secure; SameSite=Strict/);
@@ -252,8 +254,11 @@ test("legacy authenticated sessions contain no trading principal or wallet autho
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
+  const loginBody = await login.json();
+  assert.equal(loginBody.token, undefined, "session token must never be exposed to JavaScript");
   const cookie = sessionCookie(login);
   const token = sessionId(cookie);
+  assert.ok(token);
   const record = await env.BOT_STATE.get("session:" + token, "json");
 
   assert.deepEqual(Object.keys(record).sort(), ["expiresAt", "subject"]);
