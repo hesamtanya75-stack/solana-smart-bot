@@ -709,19 +709,32 @@ pass in CI before the values are treated as runtime-validated by this project.
   malformed owner/mint, unsupported token program, wrong ATA/owner/mint, and
   forged decoder records.
 
-### Validation still required
+### Validation status: 2026-11-18
 
-This branch has not yet had Node tests or Wrangler build executed in the
-current environment. Its pull-request CI must validate SDK API compatibility
-and build resolution. The Worker validation workflow was updated to install
-project dependencies and use Node 22 for the Worker dry-run.
+The latest implementation head `c296e7664f49d5df9856b246c271f7e393d5d4ec`
+has completed these pull-request CI jobs successfully:
 
-The repository now includes a generated npm lockfile v3 (`package-lock.json`)
+- Node tests: run `44385908865` — success. This includes the async parser
+  integration test for the fixed Token-2022 ATA address and bump 254.
+- Cloudflare Worker build validation: run `44385908988` — success. The job
+  installed from the committed lockfile with `npm ci` and completed the
+  Wrangler dry-run build without deploying.
+
+The read-only Devnet workflow `44385908899` has passed its unit and real
+Durable Objects runtime test step. Its Devnet cluster identity/read-only RPC
+verification is still running; the funded Devnet lifecycle remains skipped
+unless explicit opt-in is supplied. Do not report the Devnet workflow as
+complete until its final job conclusion is successful.
+
+The repository includes a committed npm lockfile v3 (`package-lock.json`)
 covering the exact `@solana/addresses@8.6.0` dependency and the resolved project
-dependency graph. The Cloudflare Worker validation workflow now uses
-`npm ci --ignore-scripts --no-audit --no-fund` so installation is frozen to the
-committed lockfile. A fresh CI run on the lockfile commit is still required to
-confirm the `npm ci` path before this is considered fully validated.
+dependency graph. The Cloudflare Worker validation workflow uses
+`npm ci --ignore-scripts --no-audit --no-fund`.
+
+These CI results validate the current SDK integration and Worker build only.
+They do not establish complete transaction semantics, CPI effects, on-chain
+ATA existence or initialization, signature verification, wallet safety, or
+permission to sign or submit transactions.
 
 No merge, deployment, signing, transaction submission, Mainnet trading, or UI
 design change is part of this branch. The syntax parser's semantic trust status
