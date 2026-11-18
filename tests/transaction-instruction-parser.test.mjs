@@ -174,6 +174,35 @@ test("transaction parser rejects accessor-backed compiled account indexes withou
   assert.equal(getterCalled, false);
 });
 
+test("transaction parser rejects custom array iterators and methods on message collections", () => {
+  const validInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  };
+  const accountKeys = [COMPUTE_BUDGET_PROGRAM];
+  Object.defineProperty(accountKeys, Symbol.iterator, {
+    value() {
+      throw new Error("untrusted iterator must not run");
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([validInstruction], accountKeys)),
+    /unsupported properties/
+  );
+
+  const instructions = [validInstruction];
+  Object.defineProperty(instructions, "map", {
+    value() {
+      throw new Error("untrusted map must not run");
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message(instructions)),
+    /unsupported properties/
+  );
+});
+
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
