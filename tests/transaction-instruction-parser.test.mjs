@@ -229,3 +229,51 @@ test("System Transfer with a readonly source remains analysis-only and is not pr
   assert.equal(parsed.signingPermitted, false);
   assert.equal(parsed.submissionPermitted, false);
 });
+
+
+test("parser cross-checks System Transfer signer and writable privileges when a message header is supplied", () => {
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: [SOURCE, SYSTEM, DESTINATION],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 0
+    },
+    instructions: [{
+      programIdIndex: 1,
+      accountKeyIndexes: [0, 2],
+      data: transferData(500)
+    }]
+  });
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("parser rejects System Transfer when the source is readonly or not a signer", () => {
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 0
+    },
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(500)
+    }]
+  }), /privilege requirements are not satisfied/);
+});
+
+test("parser leaves System account privilege analysis explicitly absent without a message header", () => {
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [1, 2],
+    data: transferData(10)
+  }], [SYSTEM, SOURCE, DESTINATION]));
+  assert.equal(parsed.accountPrivilegeAnalysis, "not-provided");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+});
