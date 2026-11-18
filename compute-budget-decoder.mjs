@@ -128,7 +128,8 @@ export const COMPUTE_BUDGET_PROGRAM = COMPUTE_BUDGET_PROGRAM_ID;
 export const INSTRUCTION_DECODER_REGISTRY_VERSION = 1;
 
 export function decodeSupportedTransactionInstruction({ programId, data, accountIndexes }) {
-  if (typeof programId !== "string" || !Array.isArray(accountIndexes)) {
+  if (typeof programId !== "string" || !Array.isArray(accountIndexes) ||
+      accountIndexes.length !== 0) {
     throw new Error("Instruction does not match a reviewed account-role schema");
   }
   const indexes = readDensePlainArray(accountIndexes, 0, "Instruction account indexes");
