@@ -336,6 +336,25 @@ test("Worker dashboard HTML responses use a fresh nonce-based CSP", async () => 
   assert.notEqual(nonce, "static-nonce");
 });
 
+
+test("Worker dashboard CSP nonce is unique for each HTML response", async () => {
+  const { env } = makeEnvironment();
+  env.ASSETS = {
+    fetch: async () => new Response("<!doctype html><script>window.app=1</script>", {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    })
+  };
+  const first = await worker.fetch(new Request("https://bot.example/"), env);
+  const second = await worker.fetch(new Request("https://bot.example/"), env);
+  const firstPolicy = first.headers.get("content-security-policy");
+  const secondPolicy = second.headers.get("content-security-policy");
+  const firstNonce = firstPolicy.match(/script-src 'nonce-([^']+)'/)[1];
+  const secondNonce = secondPolicy.match(/script-src 'nonce-([^']+)'/)[1];
+  assert.notEqual(firstNonce, secondNonce, "separate responses must not reuse a CSP nonce");
+  assert.match(await first.text(), new RegExp('<script nonce="' + firstNonce + '">'));
+  assert.match(await second.text(), new RegExp('<script nonce="' + secondNonce + '">'));
+});
+
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
   const { env } = makeEnvironment();
   for (const token of [
