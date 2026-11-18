@@ -7,7 +7,9 @@ const decodedRecords = new WeakSet();
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 function isCanonicalPublicKey(value) {
-  if (typeof value !== "string" || value.length === 0) return false;
+  // A 32-byte value has a canonical base58 representation of 32–44 chars.
+  // Bound input before BigInt conversion to avoid attacker-controlled CPU work.
+  if (typeof value !== "string" || value.length < 32 || value.length > 44) return false;
   let decoded = 0n;
   for (const char of value) {
     const digit = BASE58_ALPHABET.indexOf(char);
