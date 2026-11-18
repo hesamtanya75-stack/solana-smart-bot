@@ -761,3 +761,23 @@ This is a syntax-decoding increment, not a semantic approval.
 
 A fresh CI run on the final code head is required before this increment can be
 considered validated.
+
+## CPI and execution-evidence boundary hardening (PR #43)
+
+The message-only syntax parser now rejects transaction execution metadata fields
+(`meta`, `innerInstructions`, logs, pre/post balances, pre/post token balances,
+and signatures) instead of silently ignoring them. This prevents callers from
+mistaking a parsed outer-message instruction list for validated execution or
+CPI evidence.
+
+This is a fail-closed input-boundary check only. It does not decode inner
+instructions, authenticate RPC transaction metadata, verify a transaction
+signature, resolve or authenticate address lookup tables, or establish token
+balance deltas. A future CPI verifier must bind confirmed transaction metadata
+to a verified signature and outer instruction index, validate each inner
+instruction group, and independently reconcile pre/post token balances before
+any semantic status can advance.
+
+The parser continues to report semantic verification as incomplete, with
+signing and submission disabled.
+
