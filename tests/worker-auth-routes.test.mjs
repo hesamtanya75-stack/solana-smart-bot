@@ -12,9 +12,11 @@ const authGuard = workerSource.indexOf(
 const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/setup"');
 const totpConfirmRoute = workerSource.indexOf('if (url.pathname === "/api/totp/confirm"');
 
-test("worker session authorization requires one exact Bearer token without whitespace", () => {
-  assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
-  assert.ok(workerSource.includes("if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))"));
+test("worker session authorization parses only a bounded UUID from the HttpOnly cookie", () => {
+  assert.ok(workerSource.includes('request.headers.get("Cookie")'));
+  assert.ok(workerSource.includes('const token = match ? match[1] : ""'));
+  assert.ok(workerSource.includes("function sessionCookieResponse(data, token"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Strict"));
 });
 
 test("private API authentication guard precedes private route handlers", () => {
