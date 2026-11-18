@@ -39,6 +39,11 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
     throw new Error("Associated Token account indexes must be distinct");
   }
   const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = accountIndexes;
+  const roleKeys = accountIndexes.map(index => accountKeys[index]);
+  if (roleKeys.some(key => typeof key !== "string" || key.length === 0) ||
+      new Set(roleKeys).size !== roleKeys.length) {
+    throw new Error("Associated Token role accounts must be distinct valid key strings");
+  }
   if (accountKeys[systemIndex] !== SYSTEM_PROGRAM_ID ||
       ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(accountKeys[tokenProgramIndex])) {
     throw new Error("Associated Token system or token program account is invalid");
