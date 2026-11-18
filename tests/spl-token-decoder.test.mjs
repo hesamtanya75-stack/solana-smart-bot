@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { decodeSplTokenInstruction, validateSplTokenInstructionSet } from "../spl-token-decoder.mjs";
 
 const TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const encoded = bytes => Buffer.from(bytes).toString("base64");
 
 test("decodes exact classic SPL Token Transfer", () => {
@@ -31,12 +32,26 @@ test("decodes exact classic SPL Token TransferChecked", () => {
   assert.deepEqual(result.accountRoles, ["source", "mint", "destination", "authority"]);
 });
 
+test("decodes only base TransferChecked under Token-2022 and preserves its program identity", () => {
+  const data = Buffer.alloc(10);
+  data[0] = 12;
+  data.writeBigUInt64LE(123456n, 1);
+  data[9] = 9;
+  const result = decodeSplTokenInstruction(TOKEN_2022, encoded(data), [4, 5, 6, 7]);
+  assert.equal(result.programId, TOKEN_2022);
+  assert.equal(result.variant, "transferChecked");
+  assert.equal(result.amount, 123456n);
+  assert.equal(result.decimals, 9);
+  assert.equal(result.analysisOnly, true);
+  assert.deepEqual(validateSplTokenInstructionSet([result]), [result]);
+});
+
 test("rejects unsupported variants, multisig layouts, duplicate accounts and malformed data", () => {
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([9])), [0, 1, 2]), /variant is unsupported/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(7).fill(0)])), [0, 1, 2]), /payload or account layout/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2, 3]), /payload or account layout/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 0, 2]), /payload or account layout/);
-  assert.throws(() => decodeSplTokenInstruction("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2]), /unknown program/);
+  assert.throws(() => decodeSplTokenInstruction("11111111111111111111111111111111", encoded(Buffer.from([3, ...Array(8).fill(0)])), [0, 1, 2]), /unknown program/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, "not-base64", [0, 1, 2]), /canonical base64/);
 });
 
