@@ -103,7 +103,7 @@ test("accepts canonical 32-byte Solana program IDs and rejects invalid base58 le
   }
 
   for (const invalid of ["1", "1111111111111111111111111111111", "0".repeat(32),
-    "z".repeat(45), "111111111111111111111111111111111"]) {
+    "z".repeat(45), "z".repeat(100000), "111111111111111111111111111111111"]) {
     const candidateKeys = [...keys];
     candidateKeys[1] = invalid;
     assert.throws(
