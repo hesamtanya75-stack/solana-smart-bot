@@ -323,3 +323,10 @@ A deeper review identified that the prior alias test modeled payer and owner as 
 The ATA decoder now permits exactly this one index alias (payer/owner) and rejects collisions among all other role pairs. The parser's structural privilege check accounts for Solana's message-wide privilege union: the shared payer/owner index remains signer+writable; for distinct roles, owner and mint must be readonly non-signers. Tests cover successful shared-index parsing and rejection of a distinct signer owner.
 
 This is still structural-only validation. It does not derive or verify the ATA PDA, authenticate lookup tables or account state, or prove transaction semantics. The parser continues to report `associatedAddressVerification: "not-performed"`, `semanticVerification: "incomplete"`, and both signing/submission permissions false.
+
+
+## Instruction program-account privilege cross-check
+
+When a message header is supplied, the structural parser now also checks every compiled instruction's program account index and requires that account to be readonly and a non-signer. This is separate from checking the instruction's operand accounts and closes a structural gap where a program account could otherwise be marked writable or signer while the parser still reported a privilege match. Regression tests cover both invalid privilege states.
+
+This remains a structural check over the caller-supplied, already-deserialized message and header. It does not authenticate the program executable, prove program identity beyond the account-key string, authenticate address lookup table contents, or establish instruction semantics. Signing and submission remain disabled.
