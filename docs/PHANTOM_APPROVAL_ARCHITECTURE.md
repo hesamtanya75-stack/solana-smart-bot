@@ -135,3 +135,15 @@ This is a source audit only. It does not change MFA configuration, sessions, rou
 - Do not simply move the token to sessionStorage; JavaScript can still read it. Do not change the existing dashboard or authentication flow as part of this documentation-only audit.
 
 This records an architectural risk, not a confirmed exploit. No browser token, session, route, production configuration, or UI was changed.
+
+### Dashboard CSP and DOM-rendering audit (2026-11-18)
+
+Verified against `worker.js`, `index.html`, `wrangler.jsonc`, and the frontend/auth test sources at the audited PR revision:
+
+- Dashboard HTML responses are rebuilt by the Worker with a fresh 18-byte random nonce, which is added to inline script elements. The response CSP includes `default-src 'self'`, nonce-based `script-src`, `strict-dynamic`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'`, `form-action 'self'`, and an explicit `connect-src` allowlist for the dashboard's API/RPC sources.
+- The dashboard response also sets `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, and a restrictive permissions policy. The dashboard is served only at `/` and `/index.html`; the asset fallback rejects other paths.
+- The CSP intentionally permits inline styles via `style-src 'unsafe-inline'`; this is separate from script execution policy. Do not remove it without checking the dashboard's inline style usage and visual regression tests.
+- The frontend contains several HTML rendering sinks (`innerHTML` and `insertAdjacentHTML`). The reviewed token/market/holder fields are generally passed through `safe()` before entering HTML; numeric chart values are converted to numbers and bounded before interpolation. No `eval()`, `new Function`, `document.write()`, inline event-handler attributes, or iframe elements were found in the current `index.html` scan.
+- Existing frontend tests check inline-script syntax and that Phantom remains read-only, but they do not currently assert the Worker-generated CSP nonce/header behavior or systematically test hostile API strings against each HTML sink.
+
+No exploitable XSS was demonstrated by this source review. The remaining hardening task is to add automated response-level tests for nonce uniqueness/injection and CSP directives, plus adversarial rendering tests for token names, symbols, holder metadata, market fields, and stored demo-trade values. Prefer DOM text APIs over HTML string interpolation when changing rendering code. This audit is documentation only; no CSP, dashboard code, styles, routes, or production configuration was changed.
