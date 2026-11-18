@@ -59,6 +59,23 @@ test("transaction parser integrates the syntax-only System Program transfer deco
   assert.equal(parsed.submissionPermitted, false);
 });
 
+test("transaction parser preserves original order across Compute Budget and System instructions", () => {
+  const parsed = parseSupportedInstructionMessage(message([
+    { programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) },
+    { programIdIndex: 1, accountKeyIndexes: [2, 3], data: transferData(42) },
+    { programIdIndex: 0, accountKeyIndexes: [], data: data(3, 1) }
+  ], [COMPUTE_BUDGET_PROGRAM, SYSTEM, SOURCE, DESTINATION]));
+  assert.deepEqual(parsed.instructions.map(instruction => instruction.variant), [
+    "setComputeUnitLimit",
+    "transfer",
+    "setComputeUnitPrice"
+  ]);
+  assert.equal(parsed.instructions[1].lamports, 42n);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
 test("transaction parser rejects malformed System Program account layouts and unsupported variants", () => {
   assert.throws(() => parseSupportedInstructionMessage(message([{
     programIdIndex: 0, accountKeyIndexes: [1], data: transferData(1)
