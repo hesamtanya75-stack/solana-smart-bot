@@ -133,3 +133,14 @@ This slice does not change the semantic trust flags in the existing Jupiter pars
 The analysis-only transaction instruction parser now rejects duplicate entries in the message-level `accountKeys` array before resolving any compiled instruction indexes. This prevents ambiguous account-index interpretation from entering the decoder path. A regression test supplies the same canonical Compute Budget program key twice and confirms the parser fails closed.
 
 This is an additional structural invariant only. It does not establish signer/writable privileges, decode System Program instructions, reconstruct SOL/token funds flow, verify Jupiter CPI behavior, or produce semantic trust. The parser remains analysis-only and signing/submission remain prohibited.
+
+
+## Isolated System Program syntax decoder slice
+
+Added `system-program-decoder.mjs` and `tests/system-program-decoder.test.mjs` on PR #40.
+
+The isolated decoder currently recognizes only the exact fixed-width `Transfer` (u32 little-endian variant 2 plus u64 lamports) and `CreateAccount` (variant 0 plus u64 lamports, u64 space, and 32-byte owner) payloads. It requires exactly two compiled account indexes for either variant, rejects other variants and malformed lengths, preserves u64 values as BigInt, and labels returned records analysis-only. Tests cover both supported layouts, unsupported variants/program IDs, malformed lengths/account counts, and forged records.
+
+This implementation is deliberately not wired into the transaction parser or trusted decoder registry. It does not have signer/writable metadata, cannot prove the required account privileges, and does not establish runtime success, rent sufficiency, account state, CPI behavior, transaction-wide SOL effects, or approved-destination intent. In particular, a decoded Transfer is not proof that the source is the enrolled wallet or that the destination is allowed. Semantic verification, signing, and submission remain disabled.
+
+Format and account-role reference: Solana's official instruction documentation explains that instruction data encoding is program-defined and that signer/writable requirements must be taken from the program implementation; the System Program reference documents Transfer and CreateAccount behavior. This syntax-only slice intentionally does not claim those privilege checks are complete.
