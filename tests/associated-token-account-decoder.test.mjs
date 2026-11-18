@@ -57,6 +57,22 @@ test("allows payer and owner to share the same compiled account index", () => {
   assert.equal(result.ownerAccountIndex, 0);
 });
 
+test("rejects non-canonical public keys and duplicate keys under distinct indexes", () => {
+  const malformedKeys = [...keys];
+  malformedKeys[1] = "not-a-public-key";
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], malformedKeys),
+    /canonical 32-byte public keys/
+  );
+
+  const duplicateKeys = [...keys];
+  duplicateKeys[1] = duplicateKeys[0];
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], duplicateKeys),
+    /duplicate public key/
+  );
+});
+
 test("rejects unsupported duplicate ATA role indexes", () => {
   assert.throws(
     () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,2,4,5], keys),
