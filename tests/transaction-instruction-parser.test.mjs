@@ -60,6 +60,8 @@ test("transaction parser integrates the syntax-only System Program transfer deco
   assert.equal(parsed.instructions[0].variant, "transfer");
   assert.equal(parsed.instructions[0].lamports, 2500000000n);
   assert.deepEqual(parsed.instructions[0].accountRoles, ["source", "destination"]);
+  assert.deepEqual(parsed.instructions[0].accountIndexes, [1, 2]);
+  assert.ok(Object.isFrozen(parsed.instructions[0].accountIndexes));
   assert.equal(parsed.analysisOnly, true);
   assert.equal(parsed.semanticVerification, "incomplete");
   assert.equal(parsed.signingPermitted, false);
