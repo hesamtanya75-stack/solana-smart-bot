@@ -1048,3 +1048,12 @@ destination, and writable TransferChecked mint. These checks validate only
 message-header privilege consistency. They do not prove token-account state,
 actual balance deltas, Token-2022 extension effects, CPI behavior, or semantic
 transaction safety; parser output remains analysis-only and non-authorizing.
+
+## System and Associated Token decoder provenance regression
+
+System Program and Associated Token instruction-set validator tests now also
+reject shallow copies and frozen shallow copies of valid decoder records.
+Only the exact record instances registered by each decoder are accepted by
+its validator. This is provenance hardening for analysis records only; it does
+not establish runtime execution, CPI effects, account-state correctness, or
+semantic transaction approval.
