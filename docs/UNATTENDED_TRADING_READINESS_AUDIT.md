@@ -237,3 +237,17 @@ At commit `2b1684224bbc31e6db3f0b266b8ccc7061b21181`, the API rate-limit impleme
 - PR #40: open, Draft, not merged.
 
 These checks do not validate full transaction semantics, wallet enrollment, isolated signing, submission, or Mainnet readiness. Keep live execution disabled and paper trading unchanged.
+
+
+## Follow-up review: bearer-session and wallet identity boundary
+
+Reviewed `worker.js` session authorization, login/MFA completion, logout, same-origin checks, and the private API router at the current PR head.
+
+- Private `/api/*` routes share a session guard before route handlers; unknown private API paths do not bypass it. State-changing API requests are checked for same-origin signals before route handling. Dedicated login/TOTP and private API rate limits are applied, and rate-limit service failure returns 503.
+- A successful password-only login (when TOTP is not enabled) or successful MFA challenge creates a random UUID bearer token. The Workers KV session record contains only `expiresAt` and expires after 12 hours. Each private request checks that the token has the expected UUID shape and that the stored expiry is in the future. Logout deletes that token's KV record.
+- The reviewed Worker session record does not bind a stable authenticated principal, enrolled wallet, authorization version, or step-up authentication state. The API uses an Authorization Bearer token rather than a server-managed Secure/HttpOnly cookie. Therefore the current session model is not yet an adequate identity/authorization foundation for dedicated-wallet enrollment or unattended signing. A browser-readable bearer token is exposed to same-origin script execution if an XSS flaw is ever introduced; this review does not establish that an exploitable XSS currently exists.
+- Same-origin request checks are a useful CSRF defense for browser mutation requests, but they do not replace session identity, wallet binding, reauthentication, or signer-side policy enforcement.
+
+**Required before wallet enrollment or unattended trading:** introduce a reviewed server-managed session design (Secure, HttpOnly, SameSite cookie with explicit CSRF protection, or an equivalently hardened approach), stable principal/session identifiers and revocation/versioning, short-lived step-up authorization for wallet/policy changes, and explicit binding to a separately enrolled trading wallet. The isolated signer must independently verify those bindings on every intent. Preserve current fail-closed route behavior; do not add a signing or submission route as part of this hardening checkpoint.
+
+This is a source-review gap, not a confirmed account compromise. Keep Phantom read-only, primary wallet separate, live execution disabled, and paper trading unchanged.
