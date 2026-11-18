@@ -83,3 +83,32 @@ test("rejects unsupported duplicate ATA role indexes", () => {
     /unsupported role alias/
   );
 });
+
+test("accepts canonical 32-byte Solana program IDs and rejects invalid base58 lengths", () => {
+  const knownKeys = [
+    SYSTEM,
+    TOKEN,
+    TOKEN_2022,
+    ATA
+  ];
+  for (const key of knownKeys) {
+    const candidateKeys = [...keys];
+    candidateKeys[1] = key;
+    // A program ID is a valid public key encoding even when used in a role
+    // slot for this encoding-only check; duplicate-role rules still apply.
+    if (candidateKeys.some((value, index) => index !== 1 && value === key)) continue;
+    assert.doesNotThrow(() =>
+      decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], candidateKeys)
+    );
+  }
+
+  for (const invalid of ["1", "1111111111111111111111111111111", "0".repeat(32),
+    "z".repeat(45), "111111111111111111111111111111111"]) {
+    const candidateKeys = [...keys];
+    candidateKeys[1] = invalid;
+    assert.throws(
+      () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], candidateKeys),
+      /canonical 32-byte public keys/
+    );
+  }
+});
