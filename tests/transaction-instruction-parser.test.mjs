@@ -337,3 +337,16 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
     }]
   }), /SPL Token authority account privilege requirements are not satisfied/);
 });
+
+
+test("parser keeps Token-2022 fail-closed until its extension semantics are reviewed", () => {
+  const token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [token2022Program],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [],
+      data: Buffer.from([3, ...Array(8).fill(0)]).toString("base64")
+    }]
+  }), /unsupported program ID/);
+});
