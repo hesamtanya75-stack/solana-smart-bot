@@ -656,7 +656,7 @@ test("parser rejects an instruction program account marked as a signer", () => {
 
 
 test("parser validates complete v0 account ordering before checking loaded writable privileges", () => {
-  const staticAccountKeys = [SYSTEM, SOURCE];
+  const staticAccountKeys = [SOURCE, SYSTEM];
   const resolvedAddressTableLookups = [{
     writableAddresses: [DESTINATION],
     readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
@@ -671,8 +671,8 @@ test("parser validates complete v0 account ordering before checking loaded writa
     },
     resolvedAddressTableLookups,
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [1, 2],
+      programIdIndex: 1,
+      accountKeyIndexes: [0, 2],
       data: transferData(25)
     }]
   });
@@ -704,8 +704,8 @@ test("parser rejects v0 lookup inputs without explicit static keys", () => {
 
 test("parser rejects v0 account keys that disagree with canonical static and lookup ordering", () => {
   assert.throws(() => parseSupportedInstructionMessage({
-    staticAccountKeys: [SYSTEM, SOURCE],
-    accountKeys: [SYSTEM, SOURCE, COMPUTE_BUDGET_PROGRAM],
+    staticAccountKeys: [SOURCE, SYSTEM],
+    accountKeys: [SOURCE, SYSTEM, COMPUTE_BUDGET_PROGRAM],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
@@ -716,8 +716,8 @@ test("parser rejects v0 account keys that disagree with canonical static and loo
       readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
     }],
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [1, 2],
+      programIdIndex: 1,
+      accountKeyIndexes: [0, 2],
       data: transferData(25)
     }]
   }), /do not match static and lookup account ordering/);
