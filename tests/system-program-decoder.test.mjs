@@ -36,3 +36,14 @@ test("rejects unsupported variants, malformed lengths, wrong accounts and forged
   assert.throws(() => decodeSystemProgramInstruction("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", encoded(Buffer.from([2,0,0,0,...Array(8).fill(0)])), [0,1]), /unknown program/);
   assert.throws(() => validateSystemProgramInstructionSet([{}]), /unreviewed/);
 });
+test("rejects sparse account indexes and sparse decoded instruction sets", () => {
+  const transfer = Buffer.concat([Buffer.from([2, 0, 0, 0]), u64(1)]);
+  const sparseIndexes = new Array(2);
+  sparseIndexes[0] = 0;
+  assert.throws(() => decodeSystemProgramInstruction(SYSTEM, encoded(transfer), sparseIndexes), /account indexes are invalid/);
+
+  const decoded = decodeSystemProgramInstruction(SYSTEM, encoded(transfer), [0, 1]);
+  const sparseInstructions = new Array(1);
+  assert.throws(() => validateSystemProgramInstructionSet(sparseInstructions), /unreviewed record/);
+  assert.deepEqual(validateSystemProgramInstructionSet([decoded]), [decoded]);
+});
