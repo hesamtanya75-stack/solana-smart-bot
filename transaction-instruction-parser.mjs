@@ -40,6 +40,12 @@ export function parseSupportedInstructionMessage(message) {
     throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
 
+  for (let index = 0; index < message.instructions.length; index++) {
+    if (!Object.prototype.hasOwnProperty.call(message.instructions, index)) {
+      throw new Error("Transaction message contains a sparse compiled instruction list");
+    }
+  }
+
   const accountKeys = message.accountKeys;
   const seenAccountKeys = new Set();
   for (const key of accountKeys) {
