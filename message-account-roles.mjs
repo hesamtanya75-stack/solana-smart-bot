@@ -54,24 +54,30 @@ export function deriveMessageAccountRoles({ staticAccountKeys, header, resolvedA
       : index < staticCount - numReadonlyUnsignedAccounts
   }));
 
+  const writableLookupAddresses = [];
+  const readonlyLookupAddresses = [];
   for (const lookup of resolvedAddressTableLookups) {
     if (!lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
         !Array.isArray(lookup.writableAddresses) || !Array.isArray(lookup.readonlyAddresses)) {
       throw new Error("Resolved address lookup table entry is malformed");
     }
-    for (const [source, writable, addresses] of [
-      ["lookup-writable", true, lookup.writableAddresses],
-      ["lookup-readonly", false, lookup.readonlyAddresses]
-    ]) {
-      for (const publicKey of addresses) {
-        if (!isCanonicalPublicKey(publicKey) || allKeys.includes(publicKey)) {
-          throw new Error("Resolved lookup account key is invalid or duplicated");
-        }
-        if (allKeys.length >= MAX_ACCOUNT_KEYS) throw new Error("Resolved message account keys exceed parser limit");
-        const index = allKeys.length;
-        allKeys.push(publicKey);
-        roles.push(Object.freeze({ index, publicKey, source, signer: false, writable }));
+    writableLookupAddresses.push(...lookup.writableAddresses);
+    readonlyLookupAddresses.push(...lookup.readonlyAddresses);
+  }
+  // Solana v0 account-key order is static keys, then ALL loaded writable
+  // addresses, then ALL loaded readonly addresses (not per-table interleaving).
+  for (const [source, writable, addresses] of [
+    ["lookup-writable", true, writableLookupAddresses],
+    ["lookup-readonly", false, readonlyLookupAddresses]
+  ]) {
+    for (const publicKey of addresses) {
+      if (!isCanonicalPublicKey(publicKey) || allKeys.includes(publicKey)) {
+        throw new Error("Resolved lookup account key is invalid or duplicated");
       }
+      if (allKeys.length >= MAX_ACCOUNT_KEYS) throw new Error("Resolved message account keys exceed parser limit");
+      const index = allKeys.length;
+      allKeys.push(publicKey);
+      roles.push(Object.freeze({ index, publicKey, source, signer: false, writable }));
     }
   }
 
