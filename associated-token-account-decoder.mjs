@@ -120,3 +120,8 @@ export function validateAssociatedTokenInstructionSet(instructions) {
   }
   return Object.freeze([...instructions]);
 }
+
+/** True only for records produced by this module's syntax decoder. */
+export function isDecodedAssociatedTokenInstruction(record) {
+  return Boolean(record && typeof record === "object" && decodedRecords.has(record));
+}
