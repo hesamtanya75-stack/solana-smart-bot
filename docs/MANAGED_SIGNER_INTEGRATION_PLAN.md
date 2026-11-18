@@ -59,7 +59,7 @@ No generic message-signing, arbitrary transaction-signing, transfer, delegate ap
 - No implemented transaction submission or complete finalized settlement state machine.
 - No funded Devnet lifecycle evidence for the current PR checks.
 
-CI success, Phantom read-only connection, and syntax-only instruction decoding do not satisfy these blockers. Keep live trading disabled, keep PR #40 draft, and do not merge or deploy as part of this plan.
+CI success, Phantom read-only connection, and syntax-only instruction decoding do not satisfy these blockers. Keep live trading disabled, keep PR #43 draft, and do not merge or deploy as part of this plan.
 
 
 ## Preparation authorization and current evidence — 2026-11-18
@@ -69,3 +69,34 @@ The user authorized continued preparation for eventual real-money trading. This 
 PR #43 head `7e5261bf4f5d7955c359b0d0f66720d4f82b7b95` passed Node tests (run `44395541512`), Cloudflare Worker build validation (run `44395541434`), and Devnet read-only validation (run `44395541377`). The funded Devnet lifecycle job was skipped. These checks do not prove signing or execution readiness.
 
 Next implementation dependency: select and review a managed signer provider and its Solana transaction policy/custody model. Until a provider is selected, implement only provider-neutral validation and mocked adapter tests; never accept or store raw wallet key material. The semantic verifier, isolated signer enforcement, live Worker route, transaction submission, complete settlement, and funded disposable-wallet lifecycle remain unimplemented.
+
+
+## Signer provider selection — 2026-11-18
+
+The user approved **Turnkey as the selected provider candidate** for the dedicated bot-wallet signer. This is a provider-selection decision for preparation only; it is not authorization to create or enroll a wallet, open/fund an account, configure credentials, sign or submit transactions, deploy, merge, or enable Mainnet.
+
+### Why Turnkey is the current candidate
+
+- Solana's TypeScript `@solana/keychain` integration documents Turnkey as a supported signing backend.
+- Turnkey documents a Solana policy engine capable of transaction-level controls, including amount, address, and program-interaction policies.
+- These capabilities appear relevant to a narrowly scoped unattended trading signer, but they do not establish that this repository's exact Worker runtime, transaction format, or desired policy model is compatible.
+
+### Mandatory provider validation before any integration
+
+1. Review Turnkey's current custody/key-management model, wallet recovery, revocation, audit trail, availability, pricing, regional/service constraints, and account requirements.
+2. Confirm the exact Solana transaction formats and signing API supported by the chosen Turnkey product and the `@solana/keychain` adapter version.
+3. Run a no-secret, mocked compatibility spike against the repository's Cloudflare Workers runtime and pinned dependency graph. Do not add provider credentials or key material.
+4. Define independent signer-side policies for the dedicated wallet, approved cluster, exact immutable intent digest, per-trade and daily all-in spend, token/program allowlists, and emergency revocation.
+5. Review policy bypass cases and confirm the provider enforces the policy on the transaction being signed, not merely on caller-supplied metadata.
+
+Until these checks are reviewed, do not install a provider SDK, create a Turnkey organization, enroll a wallet, request credentials, or expose a signing endpoint. Continue with provider-neutral semantic verification and mocked adapter contract tests only.
+
+### CI evidence at selection time
+
+PR #43 head `29e9a2b129e2ed8da28160d157386d49e4be2a8e`:
+- Node tests: run `44396066751` — success.
+- Cloudflare Worker build validation: run `44396066578` — success; build only, no deployment.
+- Devnet read-only validation: run `44396066564` — success.
+- Funded Devnet lifecycle job `135126644427` — skipped.
+
+The combined status still reports the Deno Deploy context `deploy/hesamtanya75-stack/solana-smart-bot-17` as failure. This is not evidence of a successful production deployment. The three successful workflows above do not prove signer integration or live-trading readiness.
