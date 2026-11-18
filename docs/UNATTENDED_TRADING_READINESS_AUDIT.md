@@ -38,3 +38,17 @@ Audit basis: branch `manual-live-wallet-connect-synced-4678a20`, commit `0f537fa
 ## Safety boundary
 
 Passing CI does not prove live-trading readiness. Connecting Phantom does not provide unattended signing. This audit makes no live route, signer, transaction submission, production deployment, merge, Cloudflare binding, KV, or Durable Object changes. Mainnet trading must remain disabled. No real transaction was signed or submitted as part of this audit.
+
+
+## Follow-up verification: PR head `4108d6b59fded78826634b70a5d0206b61b86eff`
+
+The following workflows completed successfully for this exact commit:
+
+- Node tests: success.
+- Cloudflare Worker build validation: success; the workflow only builds and does not deploy.
+- Devnet signed lifecycle workflow's read-only job: success.
+- The separate `funded-devnet-lifecycle` job: skipped because it requires an explicit `workflow_dispatch` opt-in. No funded signing or transfer was performed by this PR run.
+
+Important test-coverage limitation: coordinator unit tests can supply a mocked trusted-evidence fixture with `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"` to exercise downstream reservation policy. This does not implement or prove a real transaction semantic decoder. The actual Jupiter transaction parser tests continue to assert `semanticInstructionVerification: false`, including for structurally parsed unknown programs. The coordinator's production gate remains fail-closed.
+
+The README also confirms that the Worker has no live-trading route invoking the coordinator and that the current Worker does not submit real transactions.
