@@ -46,6 +46,17 @@ test("decodes only base TransferChecked under Token-2022 and preserves its progr
   assert.deepEqual(validateSplTokenInstructionSet([result]), [result]);
 });
 
+test("rejects Token-2022 TransferChecked layouts with extension extra accounts", () => {
+  const data = Buffer.alloc(10);
+  data[0] = 12;
+  data.writeBigUInt64LE(5n, 1);
+  data[9] = 6;
+  assert.throws(
+    () => decodeSplTokenInstruction(TOKEN_2022, encoded(data), [0, 1, 2, 3, 4]),
+    /TransferChecked payload or account layout is unsupported/
+  );
+});
+
 test("rejects unsupported variants, multisig layouts, duplicate accounts and malformed data", () => {
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([9])), [0, 1, 2]), /variant is unsupported/);
   assert.throws(() => decodeSplTokenInstruction(TOKEN, encoded(Buffer.from([3, ...Array(7).fill(0)])), [0, 1, 2]), /payload or account layout/);
