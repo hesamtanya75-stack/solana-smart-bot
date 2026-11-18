@@ -93,17 +93,42 @@ test("parsed mint evidence requires explicit authority fields and safe extension
   })), /extensions are malformed/);
 });
 
-test("raw Token-2022 mint data with extension space remains unsafe", () => {
-  const extended = Buffer.alloc(166).toString("base64");
+test("raw Token-2022 mint TLV layout is validated and extensions remain unsafe", () => {
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const makeExtended = (mutate = () => {}) => {
+    const bytes = Buffer.alloc(171);
+    bytes[165] = 1; // AccountType::Mint
+    bytes.writeUInt16LE(1, 166); // TransferFeeConfig extension type
+    bytes.writeUInt16LE(1, 168);
+    bytes[170] = 7;
+    mutate(bytes);
+    return bytes.toString("base64");
+  };
   const result = parseTrustedMintAccount({
-    value: {
-      owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-      data: [extended, "base64"]
-    }
+    value: { owner: token2022, data: [makeExtended(), "base64"] }
   });
   assert.equal(result.mintAuthoritySafe, true);
   assert.equal(result.freezeAuthoritySafe, true);
   assert.equal(result.token2022ExtensionsSafe, false);
+
+  for (const encoded of [
+    makeExtended(bytes => { bytes[165] = 2; }),
+    makeExtended(bytes => { bytes[82] = 1; }),
+    makeExtended(bytes => { bytes[168] = 0; bytes[169] = 0; }),
+    makeExtended(bytes => { bytes[170] = 7; bytes[171] = 1; })
+  ]) {
+    assert.throws(() => parseTrustedMintAccount({
+      value: { owner: token2022, data: [encoded, "base64"] }
+    }), /Token-2022/);
+  }
+
+  const truncated = Buffer.alloc(169);
+  truncated[165] = 1;
+  truncated.writeUInt16LE(1, 166);
+  truncated.writeUInt16LE(4, 168);
+  assert.throws(() => parseTrustedMintAccount({
+    value: { owner: token2022, data: [truncated.toString("base64"), "base64"] }
+  }), /TLV record is invalid/);
 });
 
 function decodeBase58(value) {
