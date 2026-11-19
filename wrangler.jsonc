@@ -11,7 +11,8 @@
       "/index.html",
       "/api/*",
       "/health",
-      "/version"
+      "/version",
+      "/asset-check"
     ]
   },
   "kv_namespaces": [
