@@ -80,9 +80,9 @@ const imported = await request(targetUrl + "/api/state", {
   headers: { authorization: "Bearer " + targetToken }
 });
 
-if (!statesMatch(original, imported)) {
-  throw new Error("Verification failed: imported balance/trades differ. Keep Deno running and restore from the backup; do not repeat blindly.");
+if (!statesMatch(importState, imported)) {
+  throw new Error("Verification failed: imported state differs from the normalized Deno export, including Worker defaults. Keep Deno running and restore from the backup; do not repeat blindly.");
 }
-console.log("VERIFIED: Cloudflare balance and trade history match the Deno export.");
+console.log("VERIFIED: Cloudflare state matches the complete normalized Deno export, including safe Worker defaults.");
 console.log(`Cloudflare balance: ${imported.balance}; trades: ${imported.trades.length}`);
 console.log("Do not delete the Deno project or KV data until you manually confirm the dashboard.");
