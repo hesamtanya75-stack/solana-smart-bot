@@ -46,16 +46,59 @@ function cleanState(value) {
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
+const STATE_VERSION = Symbol("paperStateVersion");
+async function coordinatorRequest(env, path, body) {
+  if (!env.PAPER_STATE_COORDINATOR) throw new Error("Paper State Coordinator binding is unavailable");
+  const id = env.PAPER_STATE_COORDINATOR.idFromName("paper-state");
+  const stub = env.PAPER_STATE_COORDINATOR.get(id);
+  const response = await stub.fetch("https://paper-state.internal/" + path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    const error = new Error(result.error || "Paper State Coordinator request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
 async function readStoredState(env) {
-  const stored = await env.BOT_STATE.get("bot_state", "json");
-  return stored === null || stored === undefined ? null : cleanState(stored);
+  const snapshot = await coordinatorRequest(env, "snapshot");
+  if (!snapshot.initialized || !snapshot.state) return null;
+  const state = cleanState(snapshot.state);
+  Object.defineProperty(state, STATE_VERSION, { value: snapshot.version, writable: true });
+  return state;
 }
 async function readState(env) {
   return (await readStoredState(env)) || cleanState(null);
 }
 async function saveState(env, state) {
-  state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  const expectedVersion = state[STATE_VERSION];
+  const candidate = cleanState(state);
+  candidate.updatedAt = new Date().toISOString();
+  if (Number.isSafeInteger(expectedVersion)) {
+    const result = await coordinatorRequest(env, "commit", { expectedVersion, state: candidate });
+    Object.defineProperty(state, STATE_VERSION, { value: result.version, writable: true });
+    return result;
+  }
+  const result = await coordinatorRequest(env, "import", candidate);
+  Object.defineProperty(state, STATE_VERSION, { value: result.version, writable: true });
+  return result;
+}
+async function patchPaperState(env, patch) {
+  const snapshot = await coordinatorRequest(env, "snapshot");
+  if (!snapshot.initialized) {
+    const initial = { ...cleanState(null), ...patch };
+    try {
+      await coordinatorRequest(env, "import", initial);
+      return { ok: true, state: initial, version: 1 };
+    } catch (error) {
+      if (error.status !== 409) throw error;
+    }
+  }
+  return coordinatorRequest(env, "patch", patch);
 }
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -512,7 +555,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: "59ef112" });
     }
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
@@ -684,25 +727,35 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
-      if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
+      if (url.pathname === "/api/state" && request.method === "GET") {
+        const state = await readStoredState(env);
+        return json(state || cleanState(null));
+      }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
           const current = await readState(env);
+          const expectedVersion = current[STATE_VERSION];
           const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
+          if (Number.isSafeInteger(expectedVersion)) Object.defineProperty(state, STATE_VERSION, { value: expectedVersion, writable: true });
           await saveState(env, state);
           return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State changed; reload and retry" : "Invalid state" }, error.status || 400);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid settings" }, 400); }
+          const patch = {};
+          if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
+          if (typeof body.paused === "boolean") patch.paused = body.paused;
+          if (!Object.keys(patch).length) return json({ error: "Invalid settings" }, 400);
+          const result = await patchPaperState(env, patch);
+          return json({ ok: true, state: result.state });
+        } catch (error) {
+          return json({ error: "Invalid settings" }, error.status || 400);
+        }
       }
       return json({ error: "Not found" }, 404);
     }
