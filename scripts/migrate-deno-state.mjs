@@ -52,6 +52,25 @@ console.log(`Backup saved: ${backupPath}`);
 console.log(`Source balance: ${original.balance}; trades: ${original.trades.length}`);
 
 const targetToken = await login(targetUrl, targetPassword);
+const existing = await request(targetUrl + "/api/state", {
+  headers: { authorization: "Bearer " + targetToken }
+});
+
+// The Worker returns updatedAt:null only when the KV state key is absent.
+// Never overwrite a state that appears initialized, even if it looks empty.
+const targetIsUninitialized = existing &&
+  existing.updatedAt === null &&
+  Number(existing.balance) === 100 &&
+  Array.isArray(existing.trades) && existing.trades.length === 0 &&
+  existing.autoEnabled === false &&
+  existing.paused === false &&
+  Array.isArray(existing.scannedMints) && existing.scannedMints.length === 0 &&
+  Array.isArray(existing.deferredMints) && existing.deferredMints.length === 0 &&
+  Array.isArray(existing.lastScanReport) && existing.lastScanReport.length === 0;
+if (!targetIsUninitialized) {
+  throw new Error("Cloudflare state is already initialized or cannot be proven empty. Import aborted to prevent overwriting existing data.");
+}
+
 await request(targetUrl + "/api/state", {
   method: "PUT",
   headers: { authorization: "Bearer " + targetToken },
