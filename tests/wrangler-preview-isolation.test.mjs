@@ -24,3 +24,7 @@ test("paper-state coordinator is configured as a SQLite Durable Object class", (
   assert.equal(config.exports?.PaperStateCoordinator?.storage, "sqlite");
   assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "PAPER_STATE_COORDINATOR").length, 1);
 });
+
+test("Preview asset diagnostics are routed through the Worker", () => {
+  assert.ok(config.assets?.run_worker_first?.includes("/asset-check"));
+});
