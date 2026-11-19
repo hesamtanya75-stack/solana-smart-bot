@@ -407,3 +407,16 @@ test("diagnostic screen route is hidden unless explicitly enabled", async () => 
   assert.equal(enabled.status, 200);
   assert.match(await enabled.text(), /SCREEN TEST OK/);
 });
+
+test("TOTP setup confirmation is throttled atomically per IP", async () => {
+  const { authLimiter, authStorage } = environment();
+  const ipHash = "b".repeat(64);
+  const results = await Promise.all(
+    Array.from({ length: 12 }, () => authLimiter.reserveTotpSetup(ipHash))
+  );
+  assert.equal(results.filter(result => result.allowed).length, 5);
+  assert.equal(results.filter(result => result.reason === "ip").length, 7);
+  assert.equal(authStorage.values.get("auth:totp-setup:" + ipHash)?.count, 5);
+  await authLimiter.clearTotpSetup(ipHash);
+  assert.equal(authStorage.values.has("auth:totp-setup:" + ipHash), false);
+});
