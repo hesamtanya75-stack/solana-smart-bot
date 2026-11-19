@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isValidSourceState,
+  isCompatibleWithWorkerState,
   isUninitializedTargetState,
   isDefaultLikeSourceState,
   statesMatch
@@ -54,4 +55,22 @@ test("default-like Deno state is flagged because GET cannot prove KV key existen
   assert.equal(isDefaultLikeSourceState({ balance: 99, trades: [] }), false);
   assert.equal(isDefaultLikeSourceState({ balance: 100, trades: [{ mint: "abc" }] }), false);
   assert.equal(isDefaultLikeSourceState(null), false);
+});
+
+test("migration rejects source arrays that the Worker would truncate or normalize", () => {
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [] }), true);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: Array(500).fill({}) }), true);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: Array(501).fill({}) }), false);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: Array(1000).fill("x") }), true);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: Array(1001).fill("x") }), false);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], deferredMints: Array(1001).fill("x") }), false);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], lastScanReport: Array(21).fill({}) }), false);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: "invalid" }), false);
+});
+
+test("post-import verification compares every source field except server timestamp", () => {
+  const source = { balance: 95, trades: [{ mint: "abc" }], autoEnabled: false, customSetting: "kept" };
+  assert.equal(statesMatch(source, { ...source, balance: 95, updatedAt: "2026-11-19T00:00:00.000Z" }), true);
+  assert.equal(statesMatch(source, { ...source, customSetting: "lost" }), false);
+  assert.equal(statesMatch(source, { ...source, trades: [] }), false);
 });
