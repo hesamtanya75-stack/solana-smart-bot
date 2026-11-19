@@ -1,3 +1,5 @@
+const MAX_STATE_BYTES = 1_000_000;
+
 export function isValidSourceState(state) {
   return !!state && typeof state === "object" &&
     typeof state.balance === "number" &&
@@ -8,6 +10,7 @@ export function isValidSourceState(state) {
 
 export function isCompatibleWithWorkerState(state) {
   if (!isValidSourceState(state) || state.trades.length > 500) return false;
+  if (new TextEncoder().encode(JSON.stringify(state)).byteLength > MAX_STATE_BYTES) return false;
   // The legacy Deno API persists only balance, trades, and updatedAt.
   // Missing Worker-only fields are supplied by the Durable Object's
   // validated DEFAULT_STATE during the atomic import.
