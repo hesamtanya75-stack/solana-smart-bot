@@ -436,6 +436,21 @@ test("concurrent MFA login requests cannot reuse the same backup code", async ()
   assert.equal(JSON.parse(values.get("admin_profile")).backupHash, null);
 });
 
+test("auth limiter alarm cleans expired MFA claims and retains active claims", async () => {
+  const { authLimiter, authStorage } = environment();
+  const now = Date.now();
+  authStorage.values.set("auth:mfa-challenge-claim:expired", { expiresAt: now - 1 });
+  authStorage.values.set("auth:mfa-credential:expired", { expiresAt: now - 1 });
+  authStorage.values.set("auth:totp-setup-claim:expired", { expiresAt: now - 1 });
+  authStorage.values.set("auth:mfa-challenge-claim:active", { expiresAt: now + 120_000 });
+  await authLimiter.alarm();
+  assert.equal(authStorage.values.has("auth:mfa-challenge-claim:expired"), false);
+  assert.equal(authStorage.values.has("auth:mfa-credential:expired"), false);
+  assert.equal(authStorage.values.has("auth:totp-setup-claim:expired"), false);
+  assert.equal(authStorage.values.get("auth:mfa-challenge-claim:active")?.expiresAt, now + 120_000);
+  assert.equal(authStorage.alarmAt, now + 120_000);
+});
+
 test("MFA login challenge claims are atomic and single-use", async () => {
   const { authLimiter, authStorage } = environment();
   const challengeId = "challenge-atomic-123";
