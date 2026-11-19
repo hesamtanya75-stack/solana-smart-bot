@@ -860,7 +860,17 @@ export default {
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
         : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
+      try {
+        await saveState(env, state);
+      } catch (error) {
+        if (error?.status === 409) {
+          console.warn("Server cycle discarded: paper state changed while this cycle was running.", {
+            durationMs: Date.now() - startedAt
+          });
+          return;
+        }
+        throw error;
+      }
 
       // Safe operational log: never include secrets, wallet data, or API keys.
       console.info("Server cycle finished", {
