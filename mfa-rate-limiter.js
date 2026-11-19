@@ -75,6 +75,16 @@ export class MfaRateLimiter {
         await this.clearTotpSetup(body.ipHash);
         return response({ ok: true });
       }
+      if (url.pathname === "/mfa-credential-claim" || url.pathname === "/mfa-credential-release") {
+        validateHash(body.credentialHash, "MFA credential hash");
+        if (url.pathname === "/mfa-credential-claim") {
+          const claimed = await this.claimMfaCredential(body.credentialHash);
+          await this.scheduleCleanup();
+          return response({ claimed });
+        }
+        await this.releaseMfaCredential(body.credentialHash);
+        return response({ ok: true });
+      }
       if (url.pathname === "/totp-setup-claim" || url.pathname === "/totp-setup-release") {
         validateHash(body.secretHash, "TOTP setup secret hash");
         if (url.pathname === "/totp-setup-claim") {
@@ -158,6 +168,22 @@ export class MfaRateLimiter {
   async clearTotpSetup(ipHash) {
     validateHash(ipHash, "IP hash");
     return this.storage.transaction(txn => txn.delete("auth:totp-setup:" + ipHash));
+  }
+
+  async claimMfaCredential(credentialHash) {
+    validateHash(credentialHash, "MFA credential hash");
+    return this.storage.transaction(async txn => {
+      const key = "auth:mfa-credential:" + credentialHash;
+      const current = await txn.get(key);
+      if (current && current.expiresAt > Date.now()) return false;
+      await txn.put(key, { expiresAt: Date.now() + 2 * 60 * 1000 });
+      return true;
+    });
+  }
+
+  async releaseMfaCredential(credentialHash) {
+    validateHash(credentialHash, "MFA credential hash");
+    return this.storage.transaction(txn => txn.delete("auth:mfa-credential:" + credentialHash));
   }
 
   async claimTotpSetup(secretHash) {
