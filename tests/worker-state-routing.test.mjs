@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { PaperStateCoordinator } from "../worker.js";
+import worker, { PaperStateCoordinator, MfaRateLimiter } from "../worker.js";
 
 class MemoryStorage {
   values = new Map();
   tail = Promise.resolve();
+  alarmAt = null;
   async transaction(callback) {
     let release;
     const previous = this.tail;
@@ -12,16 +13,26 @@ class MemoryStorage {
     await previous;
     const tx = {
       get: async key => this.values.get(key),
-      put: async (key, value) => { this.values.set(key, structuredClone(value)); }
+      put: async (key, value) => { this.values.set(key, structuredClone(value)); },
+      delete: async key => this.values.delete(key)
     };
     try { return await callback(tx); }
     finally { release(); }
   }
+  async list({ prefix = "" } = {}) {
+    return new Map([...this.values].filter(([key]) => key.startsWith(prefix)));
+  }
+  async delete(key) { return this.values.delete(key); }
+  async getAlarm() { return this.alarmAt; }
+  async setAlarm(timestamp) { this.alarmAt = timestamp; }
 }
 function environment() {
   const storage = new MemoryStorage();
   const coordinator = new PaperStateCoordinator({ storage });
   const stub = { fetch: (input, init) => coordinator.fetch(new Request(input, init)) };
+  const authStorage = new MemoryStorage();
+  const authLimiter = new MfaRateLimiter({ storage: authStorage });
+  const authStub = { fetch: (input, init) => authLimiter.fetch(new Request(input, init)) };
   const touchedKvKeys = [];
   const env = {
     BOT_STATE: {
@@ -36,9 +47,13 @@ function environment() {
     PAPER_STATE_COORDINATOR: {
       idFromName: name => name,
       get: () => stub
+    },
+    AUTH_RATE_LIMITER: {
+      idFromName: name => name,
+      get: () => authStub
     }
   };
-  return { env, coordinator, touchedKvKeys };
+  return { env, coordinator, touchedKvKeys, authStorage, authLimiter };
 }
 function request(path, method = "GET", body) {
   return new Request("https://worker.test" + path, {
@@ -296,8 +311,8 @@ test("unauthenticated automation and profile API requests are rejected before st
 });
 
 
-test("password login throttles after five failures", async () => {
-  const { env } = environment();
+test("password login throttles after five failures through the atomic auth Durable Object", async () => {
+  const { env, authStorage } = environment();
   const values = new Map();
   env.BOT_LOGIN_PASSWORD = "preview-test-password";
   env.BOT_STATE.get = async (key, type) => {
@@ -320,7 +335,8 @@ test("password login throttles after five failures", async () => {
     body: JSON.stringify({ password: "preview-test-password" })
   }), env);
   assert.equal(blocked.status, 429);
-  assert.equal(JSON.parse(values.get("login_fail:192.0.2.10")).count, 5);
+  const counter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:login:"));
+  assert.equal(counter?.[1]?.count, 5);
 });
 
 test("MFA challenge is deleted after five invalid codes", async () => {
@@ -350,7 +366,20 @@ test("MFA challenge is deleted after five invalid codes", async () => {
   }), env);
   assert.equal(blocked.status, 429);
   assert.equal(values.has("mfa_challenge:test-challenge"), false);
-  assert.equal(JSON.parse(values.get("totp_fail:192.0.2.20")).count, 5);
+  const ipCounter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:mfa-ip:"));
+  const challengeCounter = authStorage.values.get("auth:mfa-challenge:test-challenge");
+  assert.equal(ipCounter?.[1]?.count, 5);
+  assert.equal(challengeCounter?.count, 5);
+});
+
+test("MFA attempt reservations are atomic under concurrent requests", async () => {
+  const { authLimiter } = environment();
+  const ipHash = "a".repeat(64);
+  const results = await Promise.all(
+    Array.from({ length: 12 }, () => authLimiter.reserveMfa(ipHash, "parallel-challenge"))
+  );
+  assert.equal(results.filter(result => result.allowed).length, 5);
+  assert.equal(results.filter(result => result.reason === "challenge").length, 7);
 });
 
 
