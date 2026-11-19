@@ -28,6 +28,26 @@ const initial = {
   lastMessage: "ready", lastScanReport: [], updatedAt: null
 };
 
+test("Durable Object storage failures return service unavailable", async () => {
+  const storage = {
+    transaction: async () => { throw new Error("storage unavailable"); }
+  };
+  const coordinator = new PaperStateCoordinator({ storage });
+  const response = await coordinator.fetch(new Request("https://paper-state.internal/snapshot"));
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /storage unavailable/);
+});
+
+test("malformed coordinator JSON is rejected as a bad request", async () => {
+  const { coordinator } = fixture();
+  const response = await coordinator.fetch(new Request("https://paper-state.internal/patch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{"
+  }));
+  assert.equal(response.status, 400);
+});
+
 test("snapshot remains uninitialized until an explicit import", async () => {
   const { coordinator, storage } = fixture();
   assert.deepEqual(await coordinator.snapshot(), { initialized: false, state: null, version: 0 });
