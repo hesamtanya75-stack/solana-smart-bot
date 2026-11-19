@@ -15,6 +15,20 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
     /response\.status === 401[\s\S]*?!path\.startsWith\("\/api\/login"\)[\s\S]*?path !== "\/api\/totp\/confirm"/,
     "an incorrect TOTP setup code must not be treated as an expired admin session"
   );
+  const mfaConfirmStart = html.indexOf('document.getElementById("totpConfirm").onclick');
+  const mfaConfirmEnd = html.indexOf('})();', mfaConfirmStart);
+  const mfaConfirmHandler = html.slice(mfaConfirmStart, mfaConfirmEnd);
+  assert.ok(mfaConfirmStart >= 0 && mfaConfirmEnd > mfaConfirmStart, "expected the MFA setup confirmation handler");
+  assert.ok(
+    mfaConfirmHandler.indexOf('document.getElementById("totpBackupCode").textContent=p.backupCode') <
+      mfaConfirmHandler.indexOf('localStorage.removeItem("solanaBotSession")'),
+    "show the one-time backup code before invalidating the setup session"
+  );
+  assert.match(
+    html,
+    /if\(!serverModeReady\)\s*\{\s*serverLogin\.style\.display="flex"/,
+    "closing the admin profile after MFA activation must reopen the login panel"
+  );
   for (const [index, source] of scripts.entries()) {
     assert.doesNotThrow(
       () => new vm.Script(source, { filename: "index.html:inline-script-" + (index + 1) }),
