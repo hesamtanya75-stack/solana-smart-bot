@@ -617,3 +617,22 @@ test("migration status and import endpoints reject requests without an admin ses
   assert.equal(imported.status, 401);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+test("enabled MFA with missing secret fails closed instead of granting a password-only session", async () => {
+  const { env } = environment();
+  env.BOT_LOGIN_PASSWORD = "preview-test-password";
+  const stored = new Map([["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: null })]]);
+  env.BOT_STATE.get = async (key) => {
+    if (key === "admin_profile") return JSON.parse(stored.get(key));
+    return null;
+  };
+  env.BOT_STATE.put = async (key, value) => { stored.set(key, value); };
+  env.BOT_STATE.delete = async key => { stored.delete(key); };
+  const response = await worker.fetch(new Request("https://worker.test/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "preview-test-password" })
+  }), env);
+  assert.equal(response.status, 503);
+  assert.equal([...stored.keys()].some(key => key.startsWith("session:")), false);
+});
