@@ -10,6 +10,11 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
     .filter(Boolean);
 
   assert.ok(scripts.length > 0, "expected at least one inline dashboard script");
+  assert.match(
+    html,
+    /response\.status === 401[\s\S]*?!path\.startsWith\("\/api\/login"\)[\s\S]*?path !== "\/api\/totp\/confirm"/,
+    "an incorrect TOTP setup code must not be treated as an expired admin session"
+  );
   for (const [index, source] of scripts.entries()) {
     assert.doesNotThrow(
       () => new vm.Script(source, { filename: "index.html:inline-script-" + (index + 1) }),
