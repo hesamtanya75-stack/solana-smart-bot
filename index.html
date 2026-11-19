@@ -270,6 +270,7 @@ main>.panel{
 <header>
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
+<button id="serverLogoutButton" type="button" hidden>چوونەدەرەوە</button>
 </header>
 <div class="safety-strip"><span class="safety-dot"></span><strong>پشکنینی سەلامەتیی Solana</strong><span>تەنها تاقیکردنەوەی خەیاڵی</span></div>
 
@@ -1702,6 +1703,8 @@ async function finishServerLogin(token) {
   }
   serverModeReady = true;
   serverLogin.style.display = "none";
+  const logoutButton = document.getElementById("serverLogoutButton");
+  if (logoutButton) logoutButton.hidden = false;
   renderServerControls(remote.updatedAt ? remote : {
     autoEnabled: false, paused: false
   });
@@ -1709,6 +1712,26 @@ async function finishServerLogin(token) {
   refreshServerPrices().catch(() => {});
   setInterval(() => syncServerState().catch(() => {}), 15000);
   setInterval(() => refreshServerPrices().catch(() => {}), 5000);
+}
+const serverLogoutButton = document.getElementById("serverLogoutButton");
+if (serverLogoutButton) {
+  serverLogoutButton.addEventListener("click", async () => {
+    serverLogoutButton.disabled = true;
+    try {
+      await serverRequest("/api/logout", { method: "POST" });
+      serverModeReady = false;
+      serverToken = "";
+      localStorage.removeItem("solanaBotSession");
+      serverLogoutButton.hidden = true;
+      serverLogin.style.display = "flex";
+      document.getElementById("serverPassword").value = "";
+      document.getElementById("serverLoginError").textContent = "بە سەرکەوتوویی چوویتە دەرەوە.";
+    } catch (error) {
+      document.getElementById("serverLoginError").textContent = "چوونەدەرەوە سەرکەوتوو نەبوو؛ پەیوەندی بپشکنە و دووبارە هەوڵ بدە.";
+    } finally {
+      serverLogoutButton.disabled = false;
+    }
+  });
 }
 let serverMfaChallenge = "";
 async function submitServerLogin() {
