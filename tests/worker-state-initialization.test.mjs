@@ -67,7 +67,7 @@ test("scheduled cycle continues safely after state has been initialized", async 
 
 test("frontend blocks silent overwrite when initialized local and server paper-trading data differ", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  const match = html.match(/function hasLegacyEmptyServerConflict\\(local, remote\\) \\{[\\s\\S]*?\\n\\}/);
+  const match = html.match(/function hasLegacyEmptyServerConflict\(local, remote\) \{[\s\S]*?\n\}/);
   assert.ok(match, "frontend conflict guard helper must exist");
   const vm = await import("node:vm");
   const guard = vm.runInNewContext("(" + match[0].replace(/^function hasLegacyEmptyServerConflict/, "function") + ")");
