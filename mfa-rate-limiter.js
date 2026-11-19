@@ -15,6 +15,12 @@ function validateHash(value, name) {
   }
 }
 
+function validateChallengeId(value) {
+  if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) {
+    throw new TypeError("Invalid challenge ID");
+  }
+}
+
 function legacyCount(value) {
   const count = Number(value || 0);
   return Number.isSafeInteger(count) && count > 0 ? Math.min(count, MAX_ATTEMPTS) : 0;
