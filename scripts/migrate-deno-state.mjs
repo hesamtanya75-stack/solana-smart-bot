@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { isValidSourceState, isUninitializedTargetState, statesMatch } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
@@ -41,10 +42,7 @@ const sourceToken = await login(sourceUrl, sourcePassword);
 const original = await request(sourceUrl + "/api/state", {
   headers: { authorization: "Bearer " + sourceToken }
 });
-if (!original || typeof original !== "object" ||
-    !Number.isFinite(Number(original.balance)) ||
-    Number(original.balance) < 0 ||
-    !Array.isArray(original.trades)) {
+if (!isValidSourceState(original)) {
   throw new Error("Source state failed validation; nothing was imported.");
 }
 await writeFile(backupPath, JSON.stringify(original, null, 2) + "\n", { flag: "wx" });
@@ -58,15 +56,7 @@ const existing = await request(targetUrl + "/api/state", {
 
 // The Worker returns updatedAt:null only when the KV state key is absent.
 // Never overwrite a state that appears initialized, even if it looks empty.
-const targetIsUninitialized = existing &&
-  existing.updatedAt === null &&
-  Number(existing.balance) === 100 &&
-  Array.isArray(existing.trades) && existing.trades.length === 0 &&
-  existing.autoEnabled === false &&
-  existing.paused === false &&
-  Array.isArray(existing.scannedMints) && existing.scannedMints.length === 0 &&
-  Array.isArray(existing.deferredMints) && existing.deferredMints.length === 0 &&
-  Array.isArray(existing.lastScanReport) && existing.lastScanReport.length === 0;
+const targetIsUninitialized = isUninitializedTargetState(existing);
 if (!targetIsUninitialized) {
   throw new Error("Cloudflare state is already initialized or cannot be proven empty. Import aborted to prevent overwriting existing data.");
 }
@@ -80,9 +70,7 @@ const imported = await request(targetUrl + "/api/state", {
   headers: { authorization: "Bearer " + targetToken }
 });
 
-const sameBalance = Number(imported.balance) === Number(original.balance);
-const sameTrades = JSON.stringify(imported.trades) === JSON.stringify(original.trades);
-if (!sameBalance || !sameTrades) {
+if (!statesMatch(original, imported)) {
   throw new Error("Verification failed: imported balance/trades differ. Keep Deno running and restore from the backup; do not repeat blindly.");
 }
 console.log("VERIFIED: Cloudflare balance and trade history match the Deno export.");
