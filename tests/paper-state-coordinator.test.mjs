@@ -156,3 +156,26 @@ test("valid legacy-shaped paper trades and scan metadata remain accepted", async
   await coordinator.importOnce(state);
   assert.deepEqual((await coordinator.snapshot()).state, state);
 });
+
+test("paper state rejects oversized metadata and collection strings", async () => {
+  const { coordinator, storage } = fixture();
+  const mint = "S".repeat(65);
+  const invalidStates = [
+    { ...initial, lastMessage: "x".repeat(2001) },
+    { ...initial, lastRunAt: "x".repeat(65) },
+    { ...initial, scannedMints: [mint] },
+    { ...initial, deferredMints: [{ mint, retryAt: 1 }] },
+    { ...initial, lastScanReport: [{
+      mint: "So11111111111111111111111111111111111111112",
+      status: "rejected", reasons: Array(13).fill("reason")
+    }] },
+    { ...initial, trades: [{
+      mint: "So11111111111111111111111111111111111111112",
+      buyPrice: 1, tokens: 1, sold: false, note: "x".repeat(10000)
+    }] }
+  ];
+  for (const state of invalidStates) {
+    await assert.rejects(() => coordinator.importOnce(state));
+    assert.equal(storage.values.size, 0);
+  }
+});
