@@ -1,3 +1,5 @@
+export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
