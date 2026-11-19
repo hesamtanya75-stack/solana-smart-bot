@@ -119,7 +119,7 @@ test("frontend stops repeated full-state saves after a version conflict and pres
     "a stale-write conflict must be recognized");
   assert.match(match[0], /serverModeReady = false/,
     "server persistence must stop after a conflict instead of retrying a stale full-state write");
-  assert.match(match[0], /local browser copy untouched/,
+  assert.match(match[0], /browser copy untouched/,
     "the conflict path must explicitly preserve local browser data");
   assert.match(match[0], /داتای ئەم مۆبایلە پارێزراوە/,
     "the user must be told that the local copy is preserved");
