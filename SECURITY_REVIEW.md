@@ -675,3 +675,21 @@ The documentation update was pushed to PR #27 and the workflows associated with 
 - Deno Deploy commit status: failure remains present for the `solana-smart-bot-17` deployment check. This is a separate deployment gate; the GitHub Actions and Cloudflare preview validations above passed. The Deno failure does not mean the Node tests or Cloudflare dry-run failed.
 
 The current PR head remains Draft, Open, and unmerged. The all-in cost evidence and semantic Jupiter instruction verification gaps described above remain unresolved. No merge, production deployment, Mainnet access, signing, transaction submission, or live trading was performed.
+
+## Exact PR #27 head verification — 2026-11-19 (head `9f856b3f34668a96a54c0fe4061ace2da0000d1b`)
+
+PR #27 was rechecked against the exact head commit `9f856b3f34668a96a54c0fe4061ace2da0000d1b` on branch `security/pr26-clean-main`. The PR remains **Open, Draft, and unmerged**.
+
+GitHub Actions and the Cloudflare preview checks for this exact head:
+- Node tests: **220 passed, 0 failed, 0 skipped**; the isolated dependency-audit step completed successfully.
+- Frontend JavaScript validation: success.
+- Cloudflare Worker build validation: success using Wrangler `--dry-run`; this is not a production deployment.
+- Devnet read-only preflight: success. The Devnet genesis hash was returned and the read-only preflight completed, but the Devnet RPC rate-limited largest-account holder enumeration (HTTP 429); holder concentration was **not validated**. The preflight reported `transactionsSubmitted: 0`.
+- Cloudflare Workers Builds preview check: build and preview deployment succeeded for this commit. This is a preview environment only.
+- Funded signed Devnet lifecycle: **skipped**. The pull-request event did not satisfy the workflow's explicit `workflow_dispatch` opt-in gate; the `require-explicit-confirmation` and `funded-devnet-lifecycle` jobs were skipped. No faucet-funded transfer, signer creation, signing, or transaction submission occurred. The masked `DEVNET_RPC_URL` value does not allow this review to confirm whether a dedicated secret is configured.
+
+A separate commit status from the Deno Deploy integration is **failure** with description `Organization suspended - resolve billing to deploy` for `solana-smart-bot-17`. This is not a GitHub Actions workflow failure and does not change the successful Cloudflare Worker dry-run or preview result. It remains an external deployment/status blocker until the Deno organization billing/suspension issue is resolved or the obsolete integration is intentionally retired.
+
+The workflow logs also emit a non-blocking Node.js 20 deprecation warning for `actions/checkout@v4` and `actions/setup-node@v4`; no workflow failed because of this warning.
+
+The current source remains deliberately **not approved for live trading**: the Worker only exports the `LiveTradeCoordinator` Durable Object and has no live route invoking it; trusted Jupiter evidence still sets `semanticInstructionVerification: false` and `routeVerification: "build-envelope-only"`; the coordinator requires a semantically verified route and therefore fails closed. Do not weaken these checks. PR #27 remains paper-trading/security preparation only. No merge, production deployment, Mainnet access, signing, transaction submission, or live trading was performed or authorized.
