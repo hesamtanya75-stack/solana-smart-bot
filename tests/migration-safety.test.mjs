@@ -132,6 +132,14 @@ test("migration rejects source arrays that the Worker would truncate or normaliz
   assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: "invalid" }), false);
 });
 
+test("migration preflight rejects payloads larger than the Worker storage limit", () => {
+  const oversized = {
+    balance: 100,
+    trades: [{ mint: "legacy-token", note: "x".repeat(1_000_001) }]
+  };
+  assert.equal(isCompatibleWithWorkerState(oversized), false);
+});
+
 test("post-import verification compares every source field except server timestamp", () => {
   const source = { balance: 95, trades: [{ mint: "abc" }], autoEnabled: false, customSetting: "kept" };
   assert.equal(statesMatch(source, { ...source, balance: 95, updatedAt: "2026-11-19T00:00:00.000Z" }), true);
