@@ -34,6 +34,22 @@ export function isCompatibleWithWorkerState(state) {
   return true;
 }
 
+export function normalizeLegacySourceState(state) {
+  if (!isCompatibleWithWorkerState(state)) {
+    throw new TypeError("Source state is not compatible with the Worker schema");
+  }
+  return {
+    autoEnabled: false,
+    paused: false,
+    scannedMints: [],
+    deferredMints: [],
+    lastRunAt: null,
+    lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
+    lastScanReport: [],
+    ...state
+  };
+}
+
 export function isUninitializedTargetState(state) {
   return !!state &&
     state.updatedAt === null &&
