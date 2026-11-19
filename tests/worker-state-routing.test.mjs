@@ -116,3 +116,35 @@ test("state API rejects malformed automation flags before persistence", async ()
   assert.equal(response.status, 400);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+test("Cron discards a stale result when dashboard state changes mid-cycle", async () => {
+  const storage = new MemoryStorage();
+  const coordinator = new PaperStateCoordinator({ storage });
+  let raced = false;
+  const stub = {
+    fetch: async (input, init) => {
+      const url = new URL(input);
+      if (url.pathname === "/commit" && !raced) {
+        raced = true;
+        await coordinator.patch({ paused: true });
+      }
+      return coordinator.fetch(new Request(input, init));
+    }
+  };
+  const env = {
+    BOT_STATE: { get: async () => null, put: async () => {}, delete: async () => {} },
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+  };
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  let pending;
+  await worker.scheduled({}, env, { waitUntil: promise => { pending = promise; } });
+  await pending;
+  const snapshot = await coordinator.snapshot();
+  assert.equal(snapshot.version, 2);
+  assert.equal(snapshot.state.paused, true);
+  assert.equal(snapshot.state.lastRunAt, null);
+});
