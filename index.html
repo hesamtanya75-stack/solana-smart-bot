@@ -1537,7 +1537,10 @@ async function serverRequest(path, options = {}) {
   if (serverToken) headers.Authorization = "Bearer " + serverToken;
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
   const data = await response.json().catch(() => ({}));
-  if (response.status === 401 && serverToken && !path.startsWith("/api/login")) {
+  // TOTP setup confirmation uses 401 for an incorrect one-time code;
+  // that response must not revoke an otherwise valid admin browser session.
+  if (response.status === 401 && serverToken &&
+      !path.startsWith("/api/login") && path !== "/api/totp/confirm") {
     clearExpiredServerSession();
   }
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
