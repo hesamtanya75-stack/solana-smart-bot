@@ -64,3 +64,15 @@ test("scheduled cycle continues safely after state has been initialized", async 
   assert.equal(writes[0].value.autoEnabled, false);
   assert.ok(writes[0].value.updatedAt);
 });
+
+test("frontend blocks sync only when local history exists and remote history is timestamped but empty", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const match = html.match(/function hasLegacyEmptyServerConflict\\(local, remote\\) \\{[\\s\\S]*?\\n\\}/);
+  assert.ok(match, "frontend conflict guard helper must exist");
+  const vm = await import("node:vm");
+  const guard = vm.runInNewContext("(" + match[0].replace(/^function hasLegacyEmptyServerConflict/, "function") + ")");
+  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [], updatedAt: "2026-11-19T00:00:00.000Z" }), true);
+  assert.equal(guard({ trades: [] }, { trades: [], updatedAt: "2026-11-19T00:00:00.000Z" }), false);
+  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [{ mint: "remote" }], updatedAt: "2026-11-19T00:00:00.000Z" }), false);
+  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [] }), false);
+});
