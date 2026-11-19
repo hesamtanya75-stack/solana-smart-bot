@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
   lastScanReport: [],
   updatedAt: null
 };
+const MAX_STATE_BYTES = 1_000_000;
 const LIMITS = {
   trades: 500,
   scannedMints: 1000,
@@ -98,6 +99,9 @@ function validateState(input) {
     throw new TypeError("Invalid scan report entry");
   }
   const state = { ...DEFAULT_STATE, ...input };
+  if (new TextEncoder().encode(JSON.stringify(state)).byteLength > MAX_STATE_BYTES) {
+    throw new TypeError("Paper state exceeds the 1 MB storage limit");
+  }
   // Never silently truncate data at the coordination boundary.
   for (const [key, limit] of Object.entries(LIMITS)) {
     if (state[key].length > limit) throw new TypeError("Oversized " + key);
