@@ -1,4 +1,5 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
@@ -63,6 +64,34 @@ async function coordinatorRequest(env, path, body) {
     throw error;
   }
   return result;
+}
+async function authRateLimitRequest(env, path, body) {
+  if (!env.AUTH_RATE_LIMITER) {
+    const error = new Error("Authentication rate limiter binding is unavailable");
+    error.status = 503;
+    throw error;
+  }
+  try {
+    const id = env.AUTH_RATE_LIMITER.idFromName("auth-rate-limit");
+    const stub = env.AUTH_RATE_LIMITER.get(id);
+    const response = await stub.fetch("https://auth-rate-limit.internal" + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const error = new Error(result.error || "Authentication rate limiter request failed");
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  } catch (error) {
+    if (error?.status) throw error;
+    const unavailable = new Error("Authentication rate limiter is unavailable");
+    unavailable.status = 503;
+    throw unavailable;
+  }
 }
 async function readStoredState(env) {
   const snapshot = await coordinatorRequest(env, "snapshot");
@@ -592,18 +621,20 @@ export default {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginKey = "login_fail:" + ip;
-        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
-        if (Number(failures.count || 0) >= 5) {
+        const ipHash = await hashText(ip);
+        const legacyFailures = await env.BOT_STATE.get("login_fail:" + ip, "json") || { count: 0 };
+        const loginLimit = await authRateLimitRequest(env, "/login-attempt", {
+          ipHash,
+          legacyCount: Number(legacyFailures.count || 0)
+        });
+        if (!loginLimit.allowed) {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
         if (!expected || typeof password !== "string" || password !== expected) {
-          await env.BOT_STATE.put(loginKey, JSON.stringify({
-            count: Number(failures.count || 0) + 1
-          }), { expirationTtl: 900 });
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(loginKey);
+        await authRateLimitRequest(env, "/login-clear", { ipHash });
+        await env.BOT_STATE.delete("login_fail:" + ip);
         const profile = await readProfile(env);
         if (profile.totpEnabled && profile.totpSecret) {
           const challengeId = crypto.randomUUID();
@@ -614,20 +645,34 @@ export default {
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        return json({ error: "داواکاری هەڵەیە" }, 400);
+      }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const ipHash = await hashText(ip);
         const ipFailureKey = "totp_fail:" + ip;
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
-        const ipFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
-        if (Number(ipFailures.count || 0) >= 5) {
+        const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
+        const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
+          ipHash,
+          challengeId,
+          legacyIpCount: Number(legacyIpFailures.count || 0),
+          legacyChallengeCount: Number(challenge.attempts || 0)
+        });
+        if (!mfaLimit.allowed) {
+          if (mfaLimit.reason === "challenge") {
+            await env.BOT_STATE.delete(key);
+            return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
+          }
           return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
         const profile = await readProfile(env);
@@ -641,20 +686,19 @@ export default {
           }
         }
         if (!valid) {
-          challenge.attempts = Number(challenge.attempts || 0) + 1;
-          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
-          await env.BOT_STATE.put(ipFailureKey, JSON.stringify({
-            count: Number(ipFailures.count || 0) + 1
-          }), { expirationTtl: 900 });
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         }
+        await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
         await env.BOT_STATE.delete(ipFailureKey);
         await env.BOT_STATE.delete(key);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
+      }
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
