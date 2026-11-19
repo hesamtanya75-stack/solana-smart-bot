@@ -1644,10 +1644,8 @@ async function finishServerLogin(token) {
   try { local = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
   const localHasTrades = !!(local && Array.isArray(local.trades) && local.trades.length);
   const remoteHasTrades = Array.isArray(remote.trades) && remote.trades.length > 0;
-  const historiesDiffer = localHasTrades && remoteHasTrades &&
-    JSON.stringify(local.trades) !== JSON.stringify(remote.trades);
   const remoteLooksEmpty = !!remote.updatedAt && !remoteHasTrades;
-  if (localHasTrades && (remoteLooksEmpty || historiesDiffer)) {
+  if (localHasTrades && remoteLooksEmpty) {
     serverToken = "";
     localStorage.removeItem("solanaBotSession");
     serverModeReady = false;
