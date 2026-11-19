@@ -10,8 +10,24 @@ const workerWithEmbeddedCoordinator = workerSource.replace(
   "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + ");"
 );
 const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerWithEmbeddedCoordinator).toString("base64");
-const { default: worker } = await import(workerModuleUrl);
+const { default: worker, PaperStateCoordinator } = await import(workerModuleUrl);
 
+class MemoryStorage {
+  values = new Map();
+  tail = Promise.resolve();
+  async transaction(callback) {
+    let release;
+    const previous = this.tail;
+    this.tail = new Promise(resolve => { release = resolve; });
+    await previous;
+    const tx = {
+      get: async key => this.values.get(key),
+      put: async (key, value) => { this.values.set(key, structuredClone(value)); }
+    };
+    try { return await callback(tx); }
+    finally { release(); }
+  }
+}
 function makeContext() {
   let pending;
   return {
@@ -19,56 +35,47 @@ function makeContext() {
     async drain() { await pending; }
   };
 }
+function makeEnv(initialState) {
+  const storage = new MemoryStorage();
+  const coordinator = new PaperStateCoordinator({ storage });
+  const stub = { fetch: (input, init) => coordinator.fetch(new Request(input, init)) };
+  const touchedKvKeys = [];
+  const env = {
+    BOT_STATE: {
+      async get(key) { touchedKvKeys.push(["get", key]); return null; },
+      async put(key) { touchedKvKeys.push(["put", key]); },
+      async delete(key) { touchedKvKeys.push(["delete", key]); }
+    },
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+  };
+  return { env, coordinator, touchedKvKeys };
+}
 
 test("scheduled cycle does not create default state before first login or import", async () => {
-  const writes = [];
-  const env = {
-    BOT_STATE: {
-      async get(key) {
-        assert.equal(key, "bot_state");
-        return null;
-      },
-      async put(...args) { writes.push(args); }
-    }
-  };
+  const { env, coordinator, touchedKvKeys } = makeEnv();
   const ctx = makeContext();
-
   await worker.scheduled({}, env, ctx);
   await ctx.drain();
-
-  assert.deepEqual(writes, [], "an uninitialized namespace must remain untouched by Cron");
+  assert.deepEqual(await coordinator.snapshot(), { initialized: false, state: null, version: 0 });
+  assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
 });
 
-test("scheduled cycle continues safely after state has been initialized", async () => {
-  const writes = [];
+test("scheduled cycle commits initialized paper state through the Durable Object", async () => {
   const initial = {
-    balance: 100,
-    trades: [],
-    autoEnabled: false,
-    paused: false,
-    scannedMints: [],
-    deferredMints: [],
-    lastScanReport: [],
-    updatedAt: "2026-11-18T00:00:00.000Z"
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
   };
-  const env = {
-    BOT_STATE: {
-      async get(key) {
-        assert.equal(key, "bot_state");
-        return initial;
-      },
-      async put(key, value) { writes.push({ key, value: JSON.parse(value) }); }
-    }
-  };
+  const { env, coordinator, touchedKvKeys } = makeEnv();
+  await coordinator.importOnce(initial);
   const ctx = makeContext();
-
   await worker.scheduled({}, env, ctx);
   await ctx.drain();
-
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].key, "bot_state");
-  assert.equal(writes[0].value.autoEnabled, false);
-  assert.ok(writes[0].value.updatedAt);
+  const snapshot = await coordinator.snapshot();
+  assert.equal(snapshot.version, 2);
+  assert.equal(snapshot.state.autoEnabled, false);
+  assert.ok(snapshot.state.updatedAt);
+  assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
 });
 
 test("frontend blocks silent overwrite when initialized local and server paper-trading data differ", async () => {
