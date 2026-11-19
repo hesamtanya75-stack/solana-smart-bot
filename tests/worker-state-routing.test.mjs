@@ -420,3 +420,15 @@ test("TOTP setup confirmation is throttled atomically per IP", async () => {
   await authLimiter.clearTotpSetup(ipHash);
   assert.equal(authStorage.values.has("auth:totp-setup:" + ipHash), false);
 });
+
+test("auth limiter storage failures return service unavailable", async () => {
+  const { authLimiter, authStorage } = environment();
+  authStorage.transaction = async () => { throw new Error("storage unavailable"); };
+  const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/totp-setup-attempt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ipHash: "c".repeat(64) })
+  }));
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /storage unavailable/);
+});
