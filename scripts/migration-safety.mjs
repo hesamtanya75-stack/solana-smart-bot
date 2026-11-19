@@ -8,24 +8,29 @@ export function isValidSourceState(state) {
 
 export function isCompatibleWithWorkerState(state) {
   if (!isValidSourceState(state) || state.trades.length > 500) return false;
+  // The legacy Deno API persists only balance, trades, and updatedAt.
+  // Missing Worker-only fields are supplied by the Durable Object's
+  // validated DEFAULT_STATE during the atomic import.
   const allowedKeys = new Set([
     "balance", "trades", "autoEnabled", "paused", "scannedMints",
     "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
   ]);
   if (Object.keys(state).some(key => !allowedKeys.has(key))) return false;
-  if (typeof state.autoEnabled !== "boolean" || typeof state.paused !== "boolean") return false;
+  for (const key of ["autoEnabled", "paused"]) {
+    if (state[key] !== undefined && typeof state[key] !== "boolean") return false;
+  }
   const boundedArrays = [
     ["scannedMints", 1000],
     ["deferredMints", 1000],
     ["lastScanReport", 20]
   ];
   for (const [key, maxLength] of boundedArrays) {
-    if (!Array.isArray(state[key]) || state[key].length > maxLength) return false;
+    if (state[key] !== undefined &&
+        (!Array.isArray(state[key]) || state[key].length > maxLength)) return false;
   }
   for (const key of ["lastRunAt", "lastMessage", "updatedAt"]) {
     if (state[key] !== undefined && state[key] !== null && typeof state[key] !== "string") return false;
   }
-  if (state.lastRunAt === undefined) return false;
   return true;
 }
 
