@@ -39,7 +39,7 @@ This project remains in paper-trading mode. These repository changes do not auth
 
 ## Safe Deno KV state transfer
 
-A guarded migration helper is available at `scripts/migrate-deno-state.mjs`. It uses the existing authenticated `GET /api/state` endpoint on Deno and the authenticated `PUT /api/state` endpoint on Cloudflare. It writes a one-time local JSON backup before attempting the import, then reads Cloudflare state back and verifies the balance and complete trade array.
+A guarded migration helper is available at `scripts/migrate-deno-state.mjs`. It uses the existing authenticated `GET /api/state` endpoint on Deno and the authenticated `PUT /api/state` endpoint on Cloudflare. It writes a one-time local JSON backup before attempting the import, rejects source data that the Worker would normalize or truncate, then reads Cloudflare state back and compares every source field except the server-managed `updatedAt` timestamp.
 
 Run it from a trusted computer with Node.js 20+; do not paste passwords into source code or commit them:
 
@@ -51,6 +51,6 @@ CLOUDFLARE_LOGIN_PASSWORD="..." \\
 node scripts/migrate-deno-state.mjs
 ```
 
-The script deliberately stops if either login does not return a session token (for example, if an additional MFA step is required), validates the source state, refuses to overwrite an existing backup file, and does not migrate login sessions or secrets. It only verifies balance and trade history; review other dashboard settings separately. Keep Deno and its KV data intact until the Cloudflare dashboard is manually checked. Use a Cloudflare Preview environment and its isolated KV namespace first; do not point this helper at production during the test.
+The script deliberately stops if either login does not return a session token (for example, if an additional MFA step is required), validates the source state, refuses to overwrite an existing backup file, and does not migrate login sessions or secrets. It does not provide atomic protection against a concurrent Cloudflare state write between the target preflight and import. The Durable Object single-writer design is documented in `docs/adr/0001-paper-state-durable-object-coordination.md` but is not implemented yet. Therefore, do not run this helper against a live or shared namespace until that coordination work is implemented and tested. Keep Deno and its KV data intact until the Cloudflare dashboard is manually checked. Use a Cloudflare Preview environment and its isolated KV namespace first; do not point this helper at production during the test.
 
 This helper is an operator-run migration utility, not a deployment or an automated cutover. It does not deploy, merge, enable live trading, sign wallet transactions, or submit Solana transactions.
