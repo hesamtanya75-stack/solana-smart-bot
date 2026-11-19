@@ -537,6 +537,23 @@ test("TOTP setup and confirmation routes require an authenticated admin session"
 });
 
 
+test("enabling MFA invalidates sessions issued before MFA activation", async () => {
+  const { env } = environment();
+  const values = new Map([
+    ["session:old-session", { expiresAt: Date.now() + 60000, authVersion: 0 }],
+    ["admin_profile", { totpEnabled: true, authVersion: 1 }]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    if (value == null) return null;
+    return type === "json" ? value : JSON.stringify(value);
+  };
+  const response = await worker.fetch(new Request("https://worker.test/api/state", {
+    headers: { Authorization: "Bearer old-session" }
+  }), env);
+  assert.equal(response.status, 401);
+});
+
 test("authenticated logout revokes the current server session", async () => {
   const { env, touchedKvKeys } = environment();
   const response = await worker.fetch(request("/api/logout", "POST"), env);
