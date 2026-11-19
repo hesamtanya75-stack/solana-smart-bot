@@ -488,6 +488,22 @@ test("TOTP setup confirmation is throttled atomically per IP", async () => {
   assert.equal(authStorage.values.has("auth:totp-setup:" + ipHash), false);
 });
 
+test("auth limiter rejects malformed claim identifiers and hashes as bad requests", async () => {
+  const { authLimiter } = environment();
+  const invalidRequests = [
+    ["/mfa-challenge-claim", { challengeId: "../bad" }],
+    ["/mfa-credential-claim", { credentialHash: "not-a-hash" }]
+  ];
+  for (const [path, body] of invalidRequests) {
+    const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal" + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }));
+    assert.equal(response.status, 400, path + " must reject malformed input");
+  }
+});
+
 test("auth limiter storage failures return service unavailable", async () => {
   const { authLimiter, authStorage } = environment();
   authStorage.transaction = async () => { throw new Error("storage unavailable"); };
