@@ -122,3 +122,37 @@ test("state validation rejects coercible balances and malformed metadata", async
   await assert.rejects(() => coordinator.importOnce({ ...initial, autoEnabled: 1 }), /Invalid automation flags/);
   assert.equal(storage.values.size, 0);
 });
+
+test("collection entries are validated before paper state is persisted", async () => {
+  const { coordinator, storage } = fixture();
+  const invalidStates = [
+    { ...initial, trades: [{ mint: "So11111111111111111111111111111111111111112", buyPrice: "1", tokens: 2 }] },
+    { ...initial, scannedMints: [null] },
+    { ...initial, deferredMints: [{ mint: "So11111111111111111111111111111111111111112", retryAt: "later" }] },
+    { ...initial, lastScanReport: [{ mint: "So11111111111111111111111111111111111111112", status: "blocked", reasons: "not-an-array" }] }
+  ];
+  for (const state of invalidStates) {
+    await assert.rejects(() => coordinator.importOnce(state));
+    assert.equal(storage.values.size, 0);
+  }
+});
+
+test("valid legacy-shaped paper trades and scan metadata remain accepted", async () => {
+  const { coordinator } = fixture();
+  const state = {
+    ...initial,
+    trades: [{
+      mint: "So11111111111111111111111111111111111111112",
+      amount: 5, buyPrice: 1.25, currentPrice: 1.3, tokens: 4,
+      sold: false, boughtAt: "2026-01-01T00:00:00.000Z", mode: "paper"
+    }],
+    scannedMints: ["So11111111111111111111111111111111111111112"],
+    deferredMints: [{ mint: "So11111111111111111111111111111111111111112", retryAt: 123456 }],
+    lastScanReport: [{
+      mint: "So11111111111111111111111111111111111111112",
+      status: "rejected", reasons: ["Liquidity too low"]
+    }]
+  };
+  await coordinator.importOnce(state);
+  assert.deepEqual((await coordinator.snapshot()).state, state);
+});
