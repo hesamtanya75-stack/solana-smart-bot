@@ -737,6 +737,19 @@ export default {
           if (!body || typeof body !== "object" || Array.isArray(body)) {
             return json({ error: "Invalid state" }, 400);
           }
+          const allowedKeys = new Set([
+            "balance", "trades", "autoEnabled", "paused", "scannedMints",
+            "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
+          ]);
+          if (Object.keys(body).some(key => !allowedKeys.has(key))) {
+            return json({ error: "State contains unsupported fields" }, 400);
+          }
+          const stringFields = ["lastRunAt", "lastMessage", "updatedAt"];
+          for (const key of stringFields) {
+            if (body[key] !== undefined && body[key] !== null && typeof body[key] !== "string") {
+              return json({ error: "Invalid " + key }, 400);
+            }
+          }
           const limits = { trades: 500, scannedMints: 1000, deferredMints: 1000, lastScanReport: 20 };
           for (const [key, limit] of Object.entries(limits)) {
             if (body[key] !== undefined && (!Array.isArray(body[key]) || body[key].length > limit)) {
