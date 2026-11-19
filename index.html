@@ -1639,10 +1639,15 @@ function hasLegacyEmptyServerConflict(local, remote) {
 
   const localTrades = Array.isArray(local.trades) ? local.trades : [];
   const remoteTrades = Array.isArray(remote.trades) ? remote.trades : [];
-  const localBalanceValue = Number(local.balance);
-  const remoteBalanceValue = Number(remote.balance);
-  const localBalance = Number.isFinite(localBalanceValue) ? localBalanceValue : 100;
-  const remoteBalance = Number.isFinite(remoteBalanceValue) ? remoteBalanceValue : 100;
+  // Missing, null, or blank balances represent the legacy default, not zero.
+  // Preserve an explicit numeric zero as real paper-trading state.
+  const normalizeBalance = value => {
+    if (value === null || value === undefined || value === "") return 100;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 100;
+  };
+  const localBalance = normalizeBalance(local.balance);
+  const remoteBalance = normalizeBalance(remote.balance);
 
   // A pristine local default is safe to replace with initialized server data.
   // Once local trading history or a non-default balance exists, require an
