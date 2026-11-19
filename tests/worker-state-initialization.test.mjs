@@ -113,7 +113,7 @@ test("frontend blocks silent overwrite when initialized local and server paper-t
 
 test("frontend stops repeated full-state saves after a version conflict and preserves local history", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  const match = html.match(/async function saveServerState\(\) \{[\\s\\S]*?\n\}/);
+  const match = html.match(/async function saveServerState\(\) \{[\s\S]*?\n\}/);
   assert.ok(match, "server state save helper must exist");
   assert.match(match[0], /message\.includes\("State changed"\) \|\| message\.includes\("409"\)/,
     "a stale-write conflict must be recognized");
