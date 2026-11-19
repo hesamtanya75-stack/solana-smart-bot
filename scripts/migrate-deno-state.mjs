@@ -62,7 +62,7 @@ const existing = await request(targetUrl + "/api/state", {
   headers: { authorization: "Bearer " + targetToken }
 });
 
-// The Worker returns updatedAt:null only when the KV state key is absent.
+// The Worker returns updatedAt:null only when the Durable Object has no state.
 // Never overwrite a state that appears initialized, even if it looks empty.
 const targetIsUninitialized = isUninitializedTargetState(existing);
 if (!targetIsUninitialized) {
