@@ -60,14 +60,16 @@ Use a dedicated Preview-only login password configured as the `BOT_LOGIN_PASSWOR
 1. POST the Preview password to `/api/login`; if MFA is enabled, complete the configured TOTP challenge through `/api/login/totp`.
 2. If the Preview admin profile says MFA is enabled but its TOTP secret is missing or blank, confirm password login fails closed with HTTP 503 and creates neither a session nor an MFA challenge.
 3. Confirm `/api/login/totp` rejects backup-code authentication when MFA is disabled or its TOTP secret is missing; no session may be created.
-2. Keep the returned session token private and send it only as `Authorization: Bearer <token>`.
-3. Confirm unauthenticated `GET /api/state` and `PUT /api/state` both return HTTP 401.
-4. With the authenticated token, GET `/api/state` and record whether the Preview coordinator is initialized. Do not assume a default-looking response proves persistent initialization.
-5. On a disposable Preview deployment only, verify an allow-listed state PATCH/automation update, then read state back and confirm it persisted. Keep `enabled: false` and `paused: true`; do not enable automatic paper buys.
-6. Verify invalid/unknown state fields are rejected (HTTP 400).
-7. Verify version conflict behavior with two commits based on the same snapshot: only one may succeed; the stale commit must be rejected (HTTP 409).
-8. Repeat the read after a Preview redeploy and confirm the same Durable Object state/version remains available.
-9. Confirm the Preview KV namespace and Durable Object binding remain isolated from Production.
+4. Keep the returned session token private and send it only as `Authorization: Bearer <token>`.
+5. Confirm unauthenticated `GET /api/state` and `PUT /api/state` both return HTTP 401.
+6. With the authenticated token, GET `/api/state` and record whether the Preview coordinator is initialized. Do not assume a default-looking response proves persistent initialization.
+7. On a disposable Preview deployment only, verify an allow-listed state PATCH/automation update, then read state back and confirm it persisted. Keep `enabled: false` and `paused: true`; do not enable automatic paper buys.
+8. Verify invalid/unknown state fields are rejected (HTTP 400).
+9. Verify version conflict behavior with two commits based on the same snapshot: only one may succeed; the stale commit must be rejected (HTTP 409).
+10. Repeat the read after a Preview redeploy and confirm the same Durable Object state/version remains available.
+11. Confirm the Preview KV namespace and Durable Object binding remain isolated from Production.
+12. Verify `POST /api/logout` invalidates the session and that the same token is rejected afterward.
+13. When enabling MFA on the disposable Preview admin profile, verify the previous session is rejected after activation, the one-time backup code is displayed once, and a fresh password-plus-TOTP login succeeds. An incorrect TOTP setup code must not revoke the active setup session.
 
 Do not run state-mutating checks against Production. If a clean Preview coordinator cannot be guaranteed, stop before the first mutation and create a fresh disposable Preview test target using the Cloudflare dashboard.
 
