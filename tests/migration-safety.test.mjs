@@ -123,7 +123,7 @@ test("migration rejects source arrays that the Worker would truncate or normaliz
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   };
   assert.equal(isCompatibleWithWorkerState(valid), true);
-  assert.equal(isCompatibleWithWorkerState({ ...valid, trades: Array(500).fill({}) }), true);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, trades: Array(500).fill({ mint: "legacy-token", amount: 5 }) }), true);
   assert.equal(isCompatibleWithWorkerState({ ...valid, trades: Array(501).fill({}) }), false);
   assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: Array(1000).fill("x") }), true);
   assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: Array(1001).fill("x") }), false);
