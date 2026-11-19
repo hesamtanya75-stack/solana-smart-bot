@@ -138,3 +138,28 @@ test("post-import verification compares every source field except server timesta
   assert.equal(statesMatch(source, { ...source, customSetting: "lost" }), false);
   assert.equal(statesMatch(source, { ...source, trades: [] }), false);
 });
+
+test("migration preflight preserves legacy trades but rejects malformed entries", () => {
+  const base = { balance: 90, trades: [{ mint: "legacy-token", amount: 5 }] };
+  assert.equal(isCompatibleWithWorkerState(base), true);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, trades: [{ mint: "token", buyPrice: "1", tokens: 2 }]
+  }), false);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, trades: [{ mint: "token", buyPrice: 1, tokens: -1 }]
+  }), false);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, trades: [{ mint: "x".repeat(65) }]
+  }), false);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, lastMessage: "x".repeat(2001)
+  }), false);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, deferredMints: [{ mint: "token", retryAt: "later" }]
+  }), false);
+  assert.equal(isCompatibleWithWorkerState({
+    ...base, lastScanReport: [{
+      mint: "token", status: "blocked", reasons: ["x".repeat(501)]
+    }]
+  }), false);
+});
