@@ -81,3 +81,15 @@ The Preview validation is complete only when the read-only smoke checks, authent
 ## Explicitly out of scope
 
 This checklist does not authorize Production deployment, Production KV access, Deno-to-Cloudflare data import, Deno retirement, PR merge, funded Devnet activity, Mainnet trading, wallet signing, or real-money transactions.
+
+## Automated Preview workflow
+
+The repository includes `.github/workflows/cloudflare-preview.yml`. It is deliberately guarded and will publish a Preview only when all of these conditions are met:
+
+- The pull request targets `fix/worker-empty-state-cron-guard` and comes from a branch in this same repository.
+- The repository Actions variable `CLOUDFLARE_PREVIEW_ENABLED` is set to the literal value `true`.
+- The repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.
+
+The workflow runs `npm test`, performs a Wrangler dry-run build, checks that both secrets are present without printing them, and then invokes Wrangler 4.135.0's `preview` command. It does not run `wrangler deploy` or select a Production environment. If the enablement variable is absent or false, the Preview job is skipped by design.
+
+Before enabling it, create a Cloudflare API token with only the permissions required to publish Worker Previews for this account. Add the token and account ID as GitHub repository Actions secrets, and set `CLOUDFLARE_PREVIEW_ENABLED=true` as a repository Actions variable. Never put credentials in workflow files, commits, issue comments, or chat. Once enabled, update this PR (or synchronize its branch) to trigger the guarded workflow. A successful job and the exact Preview URL in its logs are required evidence; a skipped job is not a deployment.
