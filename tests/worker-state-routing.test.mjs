@@ -599,3 +599,21 @@ test("migration import endpoint initializes only once on a proven empty coordina
   assert.equal(repeated.status, 409);
   assert.equal((await coordinator.snapshot()).state.balance, 77);
 });
+
+
+test("migration status and import endpoints reject requests without an admin session", async () => {
+  const { env, coordinator } = environment();
+  const status = await worker.fetch(new Request("https://worker.test/api/state/status"), env);
+  assert.equal(status.status, 401);
+  const imported = await worker.fetch(new Request("https://worker.test/api/state/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      balance: 50, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], deferredMints: [], lastRunAt: null,
+      lastMessage: "unauthorized", lastScanReport: [], updatedAt: null
+    })
+  }), env);
+  assert.equal(imported.status, 401);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
