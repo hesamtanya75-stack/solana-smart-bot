@@ -1067,7 +1067,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     const amountDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "amount");
     const amount = amountDescriptor?.value;
     if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
-        typeof amount !== "string" || !/^(0|[1-9]\\d*)$/.test(amount)) {
+        typeof amount !== "string" || !/^(0|[1-9]\d*)$/.test(amount)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
     total += BigInt(amount);
