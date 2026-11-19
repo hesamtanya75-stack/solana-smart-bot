@@ -5,10 +5,17 @@ import { readFile } from "node:fs/promises";
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const coordinatorSource = await readFile(new URL("../paper-state-coordinator.js", import.meta.url), "utf8");
 const coordinatorModuleUrl = "data:text/javascript;base64," + Buffer.from(coordinatorSource).toString("base64");
-const workerWithEmbeddedCoordinator = workerSource.replace(
-  'export { PaperStateCoordinator } from "./paper-state-coordinator.js";',
-  "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + "); export { PaperStateCoordinator };"
-);
+const limiterSource = await readFile(new URL("../mfa-rate-limiter.js", import.meta.url), "utf8");
+const limiterModuleUrl = "data:text/javascript;base64," + Buffer.from(limiterSource).toString("base64");
+const workerWithEmbeddedCoordinator = workerSource
+  .replace(
+    'export { PaperStateCoordinator } from "./paper-state-coordinator.js";',
+    "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + "); export { PaperStateCoordinator };"
+  )
+  .replace(
+    'export { MfaRateLimiter } from "./mfa-rate-limiter.js";',
+    "const { MfaRateLimiter } = await import(" + JSON.stringify(limiterModuleUrl) + "); export { MfaRateLimiter };"
+  );
 const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerWithEmbeddedCoordinator).toString("base64");
 const { default: worker, PaperStateCoordinator } = await import(workerModuleUrl);
 
