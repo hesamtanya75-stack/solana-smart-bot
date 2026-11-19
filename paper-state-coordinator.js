@@ -70,8 +70,10 @@ function validateState(input) {
   if (input.trades.some(trade =>
     !trade || typeof trade !== "object" || Array.isArray(trade) ||
     typeof trade.mint !== "string" || !trade.mint || trade.mint.length > 64 ||
-    typeof trade.buyPrice !== "number" || !Number.isFinite(trade.buyPrice) || trade.buyPrice <= 0 ||
-    typeof trade.tokens !== "number" || !Number.isFinite(trade.tokens) || trade.tokens < 0 ||
+    (trade.buyPrice !== undefined &&
+      (typeof trade.buyPrice !== "number" || !Number.isFinite(trade.buyPrice) || trade.buyPrice <= 0)) ||
+    (trade.tokens !== undefined &&
+      (typeof trade.tokens !== "number" || !Number.isFinite(trade.tokens) || trade.tokens < 0)) ||
     (trade.sold !== undefined && typeof trade.sold !== "boolean")
   )) {
     throw new TypeError("Invalid trade entry");
