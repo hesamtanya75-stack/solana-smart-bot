@@ -1610,16 +1610,27 @@ async function refreshServerPrices() {
 }
 async function saveServerState() {
   if (!serverModeReady) return;
-  await serverRequest("/api/state", {
-    method: "PUT",
-    body: JSON.stringify({
-      balance: demoBalance,
-      trades: demoTrades,
-      autoEnabled: autoDemoBuyEnabled,
-      paused: autoDemoBuyPaused,
-      scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
-    })
-  });
+  try {
+    await serverRequest("/api/state", {
+      method: "PUT",
+      body: JSON.stringify({
+        balance: demoBalance,
+        trades: demoTrades,
+        autoEnabled: autoDemoBuyEnabled,
+        paused: autoDemoBuyPaused,
+        scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
+      })
+    });
+  } catch (error) {
+    const message = String(error?.message || error);
+    if (message.includes("State changed") || message.includes("409")) {
+      // Stop further full-state writes after a version race. Keep the local
+      // browser copy untouched so a later login can run the history guard.
+      serverModeReady = false;
+      error.message = "داتای سێرڤەر لە کاتی پاشەکەوتکردندا گۆڕاوە؛ پاشەکەوتی ئۆتۆماتیکی ڕاگیرا و داتای ئەم مۆبایلە پارێزراوە. تکایە پێش هاوکاتکردنەوە دووبارە بچۆژوورەوە و مێژووی مامەڵەکان بپشکنە.";
+    }
+    throw error;
+  }
 }
 const localSaveDemoState = saveDemoState;
 saveDemoState = function() {
