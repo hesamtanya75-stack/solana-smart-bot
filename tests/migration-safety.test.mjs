@@ -22,7 +22,7 @@ const emptyWorkerState = {
 test("source state requires a finite nonnegative balance and a trades array", () => {
   assert.equal(isValidSourceState({ balance: 100, trades: [] }), true);
   assert.equal(isValidSourceState({ balance: 0, trades: [] }), true);
-  for (const balance of [-1, "NaN", Infinity, null, undefined, true, false, ""]) {
+  for (const balance of [-1, "100", "NaN", Infinity, null, undefined, true, false, ""]) {
     assert.equal(isValidSourceState({ balance, trades: [] }), false);
   }
   assert.equal(isValidSourceState({ balance: 100, trades: {} }), false);
