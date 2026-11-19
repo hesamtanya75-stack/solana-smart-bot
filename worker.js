@@ -637,10 +637,10 @@ export default {
         await env.BOT_STATE.delete("login_fail:" + ip);
         const profile = await readProfile(env);
         // A damaged MFA profile must never downgrade to password-only login.
-        if (profile.totpEnabled && !profile.totpSecret) {
+        if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
           return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
         }
-        if (profile.totpEnabled && profile.totpSecret) {
+        if (profile.totpEnabled) {
           const challengeId = crypto.randomUUID();
           await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
           return json({ ok: true, mfaRequired: true, challengeId });
@@ -680,7 +680,10 @@ export default {
           return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
         const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
+        if (!profile.totpEnabled || typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) {
+          return json({ error: "Authenticator is not configured correctly" }, 401);
+        }
+        let valid = await verifyTotp(profile.totpSecret, code);
         let credentialClaimHash = null;
         let backupCodeUsed = false;
         if (valid) {
