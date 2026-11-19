@@ -1634,6 +1634,12 @@ saveDemoState = function() {
     }, 500);
   }
 };
+function hasLegacyEmptyServerConflict(local, remote) {
+  const localHasTrades = !!(local && Array.isArray(local.trades) && local.trades.length);
+  const remoteHasTrades = Array.isArray(remote && remote.trades) && remote.trades.length > 0;
+  return localHasTrades && !!(remote && remote.updatedAt) && !remoteHasTrades;
+}
+
 async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
@@ -1642,10 +1648,7 @@ async function finishServerLogin(token) {
   // while this browser still has paper-trading history. Never pick a winner silently.
   let local = null;
   try { local = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
-  const localHasTrades = !!(local && Array.isArray(local.trades) && local.trades.length);
-  const remoteHasTrades = Array.isArray(remote.trades) && remote.trades.length > 0;
-  const remoteLooksEmpty = !!remote.updatedAt && !remoteHasTrades;
-  if (localHasTrades && remoteLooksEmpty) {
+  if (hasLegacyEmptyServerConflict(local, remote)) {
     serverToken = "";
     localStorage.removeItem("solanaBotSession");
     serverModeReady = false;
