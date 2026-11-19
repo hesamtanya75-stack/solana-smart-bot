@@ -1,5 +1,7 @@
 export function isValidSourceState(state) {
-  return !!state && typeof state === "object" &&
+  const balanceTypeIsValid = typeof state?.balance === "number" ||
+    (typeof state?.balance === "string" && state.balance.trim() !== "");
+  return !!state && typeof state === "object" && balanceTypeIsValid &&
     Number.isFinite(Number(state.balance)) &&
     Number(state.balance) >= 0 &&
     Array.isArray(state.trades);
