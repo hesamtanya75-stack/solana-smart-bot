@@ -16,6 +16,26 @@ This checklist is deliberately separate from the repository's in-memory tests an
 - [ ] Keep the Deno project and its KV data intact.
 - [ ] If the deployment interface offers only a Production target or cannot demonstrate Preview isolation, stop.
 
+## Creating the isolated Preview
+
+Use Cloudflare **Worker Previews**, not a production deploy or a Worker Version URL. Worker Previews require Wrangler 4.135.0 or later.
+
+For a manual deployment from this branch, use:
+
+```sh
+npx --yes wrangler@4.135.0 preview --name pr-47 --json
+```
+
+The command must run with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` supplied through the operator's secure environment. Never print either value. Do not use `wrangler deploy`, `wrangler versions upload`, or a Production environment for this checklist.
+
+The current `previews` configuration maps `BOT_STATE` to the dedicated Preview KV namespace and declares the paper-state and auth-rate-limit Durable Object bindings. Cloudflare creates separate Durable Object namespaces/storage for each Preview. Confirm the resulting Preview's bindings in Cloudflare before any authenticated state mutation.
+
+Configure a dedicated Preview-only `BOT_LOGIN_PASSWORD` secret with Cloudflare's Preview secret workflow. Do not copy the Production password. If the Preview requires MFA, use a separate Preview admin profile; do not copy Production MFA secrets or profile data.
+
+**Cron limitation:** Cloudflare Cron Triggers do not target Worker Previews. Do not treat a Preview smoke test as Cron runtime validation. Validate Cron logic through the isolated automated tests and retain the separate checklist item as an explicit limitation.
+
+If this repository is connected to Cloudflare Workers Builds and Preview Builds are enabled, a pull-request update can create the Preview automatically using the configured Preview command. Verify that the command is `npx wrangler preview` and that the Preview URL is reported before proceeding.
+
 ## Read-only smoke checks
 
 Set `PREVIEW_URL` to the exact Preview URL shown by Cloudflare. Do not guess or reuse a production URL.
