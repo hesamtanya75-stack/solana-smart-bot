@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { isValidSourceState, isCompatibleWithWorkerState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
+import { isValidSourceState, isCompatibleWithWorkerState, normalizeLegacySourceState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
@@ -57,6 +57,8 @@ await writeFile(backupPath, JSON.stringify(original, null, 2) + "\n", { flag: "w
 console.log(`Backup saved: ${backupPath}`);
 console.log(`Source balance: ${original.balance}; trades: ${original.trades.length}`);
 
+const importState = normalizeLegacySourceState(original);
+
 const targetToken = await login(targetUrl, targetPassword);
 const existing = await request(targetUrl + "/api/state", {
   headers: { authorization: "Bearer " + targetToken }
@@ -72,7 +74,7 @@ if (!targetIsUninitialized) {
 await request(targetUrl + "/api/state", {
   method: "PUT",
   headers: { authorization: "Bearer " + targetToken },
-  body: JSON.stringify(original)
+  body: JSON.stringify(importState)
 });
 const imported = await request(targetUrl + "/api/state", {
   headers: { authorization: "Bearer " + targetToken }
