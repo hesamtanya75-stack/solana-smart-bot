@@ -242,3 +242,18 @@ test("state API rejects malformed metadata before persistence", async () => {
   assert.equal(response.status, 400);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+
+test("unauthenticated requests cannot read or initialize paper state", async () => {
+  const { env, coordinator } = environment();
+  env.BOT_STATE.get = async () => null;
+  const read = await worker.fetch(new Request("https://worker.test/api/state"), env);
+  const write = await worker.fetch(new Request("https://worker.test/api/state", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ balance: 1 })
+  }), env);
+  assert.equal(read.status, 401);
+  assert.equal(write.status, 401);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
