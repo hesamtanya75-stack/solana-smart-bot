@@ -6,6 +6,7 @@ on:
       - "worker.js"
       - "tests/worker-state-initialization.test.mjs"
       - "package.json"
+      - "scripts/migrate-deno-state.mjs"
       - ".github/workflows/worker-state-tests.yml"
   push:
     branches:
@@ -26,3 +27,5 @@ jobs:
           node-version: "20"
       - name: Run Worker state regression tests
         run: npm test
+      - name: Check Deno-to-Cloudflare migration helper syntax
+        run: node --check scripts/migrate-deno-state.mjs
