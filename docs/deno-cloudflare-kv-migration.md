@@ -66,3 +66,33 @@ preserved.
 - [ ] Dashboard displays the expected balance and trades after fresh login.
 - [ ] Deno KV backup remains available until operator sign-off.
 - [ ] No production deployment, wallet signing, or Mainnet transaction was part of this procedure.
+
+
+## Newly identified cutover blocker: Cron can pre-create empty state
+
+The Worker scheduled handler calls `readState()` and then always calls `saveState()`,
+even when the `bot_state` key did not previously exist and no trade data was imported.
+That write adds a fresh `updatedAt` timestamp to the default state.
+
+The dashboard's `finishServerLogin()` migrates browser `demoTradingData` only when
+the returned remote state has no `updatedAt`. If the one-minute Cron runs first, the
+newly-created default state has `updatedAt`, so the browser migration branch is skipped
+and the empty/default server state is applied instead. This can strand local browser
+paper-trading history even though the login itself succeeds.
+
+This is a separate issue from Deno KV migration. The cutover must not assume that
+`updatedAt` proves a human or migration process initialized the state. Before enabling
+Cron on a fresh namespace, implement and test an explicit initialization marker or
+source marker (for example, distinguish `stateInitialized` from the routine
+`updatedAt` timestamp). The browser migration decision must be based on a verified
+initialization/source marker and must fail closed if both local and remote histories
+exist and differ. Do not silently overwrite either copy.
+
+Required regression tests:
+- Empty Workers KV followed by one or more scheduled runs still permits the intended
+  localStorage migration path.
+- An explicitly imported Deno state is recognized as initialized and is not overwritten
+  by browser defaults.
+- A pre-existing local history and a populated remote history produce a conflict that
+  requires an explicit resolution; neither side is silently discarded.
+- Cron defaults keep `autoEnabled` false and never initiate live trading.
