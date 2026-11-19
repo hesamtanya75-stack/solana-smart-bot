@@ -96,6 +96,46 @@ test("Cron skips uninitialized state and commits initialized state with version 
   assert.ok(snapshot.state.lastRunAt);
 });
 
+test("concurrent state API PUTs cannot overwrite a newer paper-state version", async () => {
+  const storage = new MemoryStorage();
+  const coordinator = new PaperStateCoordinator({ storage });
+  let arrivals = 0;
+  let release;
+  const bothCommits = new Promise(resolve => { release = resolve; });
+  const stub = {
+    fetch: async (input, init) => {
+      const url = new URL(input);
+      if (url.pathname === "/commit") {
+        arrivals += 1;
+        if (arrivals === 2) release();
+        await bothCommits;
+      }
+      return coordinator.fetch(new Request(input, init));
+    }
+  };
+  const env = {
+    BOT_STATE: {
+      get: async () => ({ expiresAt: Date.now() + 60_000 }),
+      put: async () => {},
+      delete: async () => {}
+    },
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+  };
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  const responses = await Promise.all([
+    worker.fetch(request("/api/state", "PUT", { balance: 91 }), env),
+    worker.fetch(request("/api/state", "PUT", { balance: 82 }), env)
+  ]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
+  const snapshot = await coordinator.snapshot();
+  assert.equal(snapshot.version, 2);
+  assert.ok([91, 82].includes(snapshot.state.balance));
+});
+
 test("state API rejects oversized arrays instead of silently truncating them", async () => {
   const { env, coordinator } = environment();
   const response = await worker.fetch(request("/api/state", "PUT", { balance: 90, trades: Array.from({ length: 501 }, (_, i) => ({ id: i })) }), env);
