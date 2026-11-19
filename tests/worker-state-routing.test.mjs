@@ -349,7 +349,8 @@ test("MFA challenge is deleted after five invalid codes", async () => {
     body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
   }), env);
   assert.equal(blocked.status, 429);
-  assert.equal(values.has("mfa_challenge:test-challenge"), false);\n  assert.equal(JSON.parse(values.get("totp_fail:192.0.2.20")).count, 5);
+  assert.equal(values.has("mfa_challenge:test-challenge"), false);
+  assert.equal(JSON.parse(values.get("totp_fail:192.0.2.20")).count, 5);
 });
 
 
