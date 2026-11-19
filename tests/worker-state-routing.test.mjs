@@ -414,7 +414,7 @@ test("concurrent MFA login requests cannot reuse the same backup code", async ()
   const backupCode = "ABCD1234EFGH5678";
   const backupHash = createHash("sha256").update(backupCode).digest("hex");
   const values = new Map([
-    ["admin_profile", JSON.stringify({ totpEnabled: false, totpSecret: null, backupHash })],
+    ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash })],
     ["mfa_challenge:parallel-login", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
   ]);
   env.BOT_STATE.get = async (key, type) => {
@@ -635,4 +635,49 @@ test("enabled MFA with missing secret fails closed instead of granting a passwor
   }), env);
   assert.equal(response.status, 503);
   assert.equal([...stored.keys()].some(key => key.startsWith("session:")), false);
+});
+
+
+test("backup code cannot authenticate after MFA is disabled or loses its secret", async () => {
+  const { env } = environment();
+  const backupCode = "ABCD1234EFGH5678";
+  const backupHash = createHash("sha256").update(backupCode).digest("hex");
+  const values = new Map([
+    ["mfa_challenge:pending", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  for (const profile of [
+    { totpEnabled: false, totpSecret: "JBSWY3DPEHPK3PXP", backupHash },
+    { totpEnabled: true, totpSecret: null, backupHash }
+  ]) {
+    values.set("admin_profile", JSON.stringify(profile));
+    const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.67" },
+      body: JSON.stringify({ challengeId: "pending", code: backupCode })
+    }), env);
+    assert.equal(response.status, 401);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+  }
+});
+
+test("blank MFA secret is rejected before issuing a challenge", async () => {
+  const { env } = environment();
+  env.BOT_LOGIN_PASSWORD = "preview-test-password";
+  const values = new Map([["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "  " })]]);
+  env.BOT_STATE.get = async key => key === "admin_profile" ? JSON.parse(values.get(key)) : null;
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const response = await worker.fetch(new Request("https://worker.test/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "preview-test-password" })
+  }), env);
+  assert.equal(response.status, 503);
+  assert.equal([...values.keys()].some(key => key.startsWith("session:") || key.startsWith("mfa_challenge:")), false);
 });
