@@ -32,5 +32,19 @@
     "crons": [
       "* * * * *"
     ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PAPER_STATE_COORDINATOR",
+        "class_name": "PaperStateCoordinator"
+      }
+    ]
+  },
+  "exports": {
+    "PaperStateCoordinator": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   }
 }
