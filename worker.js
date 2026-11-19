@@ -622,14 +622,14 @@ export default {
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipFailureKey = "totp_fail:" + ip;
-        const ipFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
-        if (Number(ipFailures.count || 0) >= 5) {
-          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
+        const ipFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
+        if (Number(ipFailures.count || 0) >= 5) {
+          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
         if (!valid && profile.backupHash) {
