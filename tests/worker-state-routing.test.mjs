@@ -77,6 +77,42 @@ test("automation settings use atomic Durable Object patches", async () => {
   assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
 });
 
+test("concurrent first-time automation patches preserve both settings", async () => {
+  const storage = new MemoryStorage();
+  const coordinator = new PaperStateCoordinator({ storage });
+  let snapshots = 0;
+  let releaseSnapshots;
+  const bothSnapshots = new Promise(resolve => { releaseSnapshots = resolve; });
+  const stub = {
+    fetch: async (input, init) => {
+      const response = await coordinator.fetch(new Request(input, init));
+      if (new URL(input).pathname === "/snapshot") {
+        snapshots += 1;
+        if (snapshots === 2) releaseSnapshots();
+        await bothSnapshots;
+      }
+      return response;
+    }
+  };
+  const env = {
+    BOT_STATE: {
+      get: async () => ({ expiresAt: Date.now() + 60_000 }),
+      put: async () => {},
+      delete: async () => {}
+    },
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+  };
+  const responses = await Promise.all([
+    worker.fetch(request("/api/automation", "POST", { enabled: true }), env),
+    worker.fetch(request("/api/automation", "POST", { paused: true }), env)
+  ]);
+  assert.deepEqual(responses.map(response => response.status), [200, 200]);
+  const snapshot = await coordinator.snapshot();
+  assert.equal(snapshot.state.autoEnabled, true);
+  assert.equal(snapshot.state.paused, true);
+  assert.equal(snapshot.version, 2);
+});
+
 test("Cron skips uninitialized state and commits initialized state with version protection", async () => {
   const { env, coordinator } = environment();
   let pending;
