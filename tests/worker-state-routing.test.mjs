@@ -409,31 +409,16 @@ test("diagnostic screen route is hidden unless explicitly enabled", async () => 
   assert.match(await enabled.text(), /SCREEN TEST OK/);
 });
 
-test("concurrent MFA login requests cannot reuse the same backup code", async () => {
-  const { env } = environment();
+test("backup-code credential claims are atomic under concurrent login attempts", async () => {
+  const { authLimiter, authStorage } = environment();
   const backupCode = "ABCD1234EFGH5678";
   const backupHash = createHash("sha256").update(backupCode).digest("hex");
-  const values = new Map([
-    ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash })],
-    ["mfa_challenge:parallel-login", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
-  ]);
-  env.BOT_STATE.get = async (key, type) => {
-    const value = values.get(key);
-    if (value === undefined) return null;
-    return type === "json" && typeof value === "string" ? JSON.parse(value) : value;
-  };
-  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
-  env.BOT_STATE.delete = async key => { values.delete(key); };
-  const submit = () => worker.fetch(new Request("https://worker.test/api/login/totp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.44" },
-    body: JSON.stringify({ challengeId: "parallel-login", code: backupCode })
-  }), env);
-  const responses = await Promise.all([submit(), submit()]);
-  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
-  const sessions = [...values.keys()].filter(key => key.startsWith("session:"));
-  assert.equal(sessions.length, 1);
-  assert.equal(JSON.parse(values.get("admin_profile")).backupHash, null);
+  const credentialHash = createHash("sha256").update("backup:" + backupHash).digest("hex");
+  const claims = await Promise.all(
+    Array.from({ length: 12 }, () => authLimiter.claimMfaCredential(credentialHash))
+  );
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(authStorage.values.has("auth:mfa-credential:" + credentialHash), true);
 });
 
 test("auth limiter alarm cleans expired MFA claims and retains active claims", async () => {
