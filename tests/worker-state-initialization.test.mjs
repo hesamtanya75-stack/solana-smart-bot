@@ -77,6 +77,12 @@ test("frontend blocks silent overwrite when initialized local and server paper-t
     "local trade history must not be replaced by an empty initialized server record");
   assert.equal(guard({ balance: 100, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
     "a pristine local default may load server state");
+  assert.equal(guard({ balance: null, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
+    "a missing/null legacy balance must use the default rather than being treated as zero");
+  assert.equal(guard({ balance: "", trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
+    "a blank legacy balance must use the default rather than being treated as zero");
+  assert.equal(guard({ balance: 0, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), true,
+    "an explicit zero balance is meaningful local state and must not be overwritten");
   assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 90, trades: [{ mint: "remote" }], updatedAt: timestamp }), true,
     "different initialized histories must require reconciliation");
   assert.equal(guard({ balance: 95, trades: [{ mint: "same" }] }, { balance: 95, trades: [{ mint: "same" }], updatedAt: timestamp }), false,
