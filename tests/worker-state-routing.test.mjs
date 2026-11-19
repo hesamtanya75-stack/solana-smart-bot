@@ -408,6 +408,18 @@ test("diagnostic screen route is hidden unless explicitly enabled", async () => 
   assert.match(await enabled.text(), /SCREEN TEST OK/);
 });
 
+test("MFA credential claims are atomic and prevent concurrent replay", async () => {
+  const { authLimiter, authStorage } = environment();
+  const credentialHash = "f".repeat(64);
+  const claims = await Promise.all(
+    Array.from({ length: 12 }, () => authLimiter.claimMfaCredential(credentialHash))
+  );
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(authStorage.values.has("auth:mfa-credential:" + credentialHash), true);
+  await authLimiter.releaseMfaCredential(credentialHash);
+  assert.equal(authStorage.values.has("auth:mfa-credential:" + credentialHash), false);
+});
+
 test("TOTP setup confirmation is throttled atomically per IP", async () => {
   const { authLimiter, authStorage } = environment();
   const ipHash = "b".repeat(64);
