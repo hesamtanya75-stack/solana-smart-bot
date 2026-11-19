@@ -740,6 +740,7 @@ export default {
         return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        let claimedSecretHash = null;
         try {
           const { code } = await request.json();
           const p = await readProfile(env);
@@ -749,6 +750,9 @@ export default {
           const setupLimit = await authRateLimitRequest(env, "/totp-setup-attempt", { ipHash });
           if (!setupLimit.allowed) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          claimedSecretHash = await hashText(p.pendingTotpSecret);
+          const claim = await authRateLimitRequest(env, "/totp-setup-claim", { secretHash: claimedSecretHash });
+          if (!claim.claimed) return json({ error: "ئەم setup ـە پێشتر پشتڕاست کراوەتەوە؛ تکایە دووبارە setup بکە." }, 409);
           await authRateLimitRequest(env, "/totp-setup-clear", { ipHash });
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
@@ -759,6 +763,9 @@ export default {
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch (error) {
+          if (claimedSecretHash) {
+            try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
+          }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
         }
