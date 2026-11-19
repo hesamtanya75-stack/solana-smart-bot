@@ -744,7 +744,12 @@ export default {
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          const ipHash = await hashText(ip);
+          const setupLimit = await authRateLimitRequest(env, "/totp-setup-attempt", { ipHash });
+          if (!setupLimit.allowed) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          await authRateLimitRequest(env, "/totp-setup-clear", { ipHash });
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
