@@ -63,6 +63,36 @@ function validateState(input) {
       throw new TypeError("Invalid or oversized " + key);
     }
   }
+  // Validate collection entry shapes before they reach Cron/UI consumers.
+  // Keep historical trade fields extensible; require only the stable identity
+  // and numeric fields the paper-trading engine reads.
+  if (input.trades.some(trade =>
+    !trade || typeof trade !== "object" || Array.isArray(trade) ||
+    typeof trade.mint !== "string" || !trade.mint ||
+    typeof trade.buyPrice !== "number" || !Number.isFinite(trade.buyPrice) || trade.buyPrice <= 0 ||
+    typeof trade.tokens !== "number" || !Number.isFinite(trade.tokens) || trade.tokens < 0 ||
+    (trade.sold !== undefined && typeof trade.sold !== "boolean")
+  )) {
+    throw new TypeError("Invalid trade entry");
+  }
+  if (input.scannedMints.some(mint => typeof mint !== "string" || !mint)) {
+    throw new TypeError("Invalid scanned mint entry");
+  }
+  if (input.deferredMints.some(item =>
+    !item || typeof item !== "object" || Array.isArray(item) ||
+    typeof item.mint !== "string" || !item.mint ||
+    !Number.isFinite(item.retryAt) || item.retryAt < 0
+  )) {
+    throw new TypeError("Invalid deferred mint entry");
+  }
+  if (input.lastScanReport.some(item =>
+    !item || typeof item !== "object" || Array.isArray(item) ||
+    typeof item.mint !== "string" || !item.mint ||
+    typeof item.status !== "string" || !Array.isArray(item.reasons) ||
+    item.reasons.some(reason => typeof reason !== "string")
+  )) {
+    throw new TypeError("Invalid scan report entry");
+  }
   const state = { ...DEFAULT_STATE, ...input };
   // Never silently truncate data at the coordination boundary.
   for (const [key, limit] of Object.entries(LIMITS)) {
