@@ -65,14 +65,26 @@ test("scheduled cycle continues safely after state has been initialized", async 
   assert.ok(writes[0].value.updatedAt);
 });
 
-test("frontend blocks sync only when local history exists and remote history is timestamped but empty", async () => {
+test("frontend blocks silent overwrite when initialized local and server paper-trading data differ", async () => {
   const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  const match = html.match(/function hasLegacyEmptyServerConflict\(local, remote\) \{[\s\S]*?\n\}/);
+  const match = html.match(/function hasLegacyEmptyServerConflict\\(local, remote\\) \\{[\\s\\S]*?\\n\\}/);
   assert.ok(match, "frontend conflict guard helper must exist");
   const vm = await import("node:vm");
   const guard = vm.runInNewContext("(" + match[0].replace(/^function hasLegacyEmptyServerConflict/, "function") + ")");
-  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [], updatedAt: "2026-11-19T00:00:00.000Z" }), true);
-  assert.equal(guard({ trades: [] }, { trades: [], updatedAt: "2026-11-19T00:00:00.000Z" }), false);
-  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [{ mint: "remote" }], updatedAt: "2026-11-19T00:00:00.000Z" }), false);
-  assert.equal(guard({ trades: [{ mint: "local" }] }, { trades: [] }), false);
+
+  const timestamp = "2026-11-19T00:00:00.000Z";
+  assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 100, trades: [], updatedAt: timestamp }), true,
+    "local trade history must not be replaced by an empty initialized server record");
+  assert.equal(guard({ balance: 100, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
+    "a pristine local default may load server state");
+  assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 90, trades: [{ mint: "remote" }], updatedAt: timestamp }), true,
+    "different initialized histories must require reconciliation");
+  assert.equal(guard({ balance: 95, trades: [{ mint: "same" }] }, { balance: 95, trades: [{ mint: "same" }], updatedAt: timestamp }), false,
+    "identical initialized histories may sync");
+  assert.equal(guard({ balance: 95, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), true,
+    "a locally changed balance must not be silently overwritten");
+  assert.equal(guard({ balance: 100, trades: [] }, { balance: 95, trades: [{ mint: "remote" }], updatedAt: timestamp }), false,
+    "a pristine local default may adopt initialized server history");
+  assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 100, trades: [] }), false,
+    "an uninitialized server record remains eligible for safe migration");
 });
