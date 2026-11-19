@@ -1,8 +1,136 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
+test("raw mint account parsing requires bounded canonical base64 encoding", () => {
+  const classic = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const baseMint = Buffer.alloc(82).toString("base64");
+
+  assert.deepEqual(parseTrustedMintAccount({
+    value: { owner: classic, data: [baseMint, "base64"] }
+  }), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.deepEqual(parseTrustedMintAccount({
+    value: { owner: token2022, data: [baseMint, "base64"] }
+  }), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+
+  for (const data of [
+    [baseMint, "base64url"],
+    [baseMint + " ", "base64"],
+    [baseMint.slice(0, -2) + "B=", "base64"],
+    [baseMint, "base64", "unexpected"],
+    ["A".repeat(17000), "base64"]
+  ]) {
+    assert.throws(() => parseTrustedMintAccount({
+      value: { owner: classic, data }
+    }), /encoding|canonical/);
+  }
+
+  const accessorBacked = [baseMint, "base64"];
+  let getterCalls = 0;
+  Object.defineProperty(accessorBacked, "0", {
+    get() { getterCalls++; return baseMint; }
+  });
+  assert.throws(() => parseTrustedMintAccount({
+    value: { owner: classic, data: accessorBacked }
+  }), /encoding/);
+  assert.equal(getterCalls, 0);
+});
+
+test("parsed mint evidence requires explicit authority fields and safe extension metadata", () => {
+  const classic = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const parsed = (owner, info) => ({
+    value: { owner, data: { parsed: { type: "mint", info } } }
+  });
+
+  assert.deepEqual(parseTrustedMintAccount(parsed(classic, {
+    mintAuthority: null, freezeAuthority: null
+  })), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.deepEqual(parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null, extensions: []
+  })), {
+    mintAuthoritySafe: true,
+    freezeAuthoritySafe: true,
+    token2022ExtensionsSafe: true
+  });
+  assert.equal(parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null
+  })).token2022ExtensionsSafe, false);
+
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, {
+    freezeAuthority: null
+  })), /authority metadata is incomplete/);
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, {
+    mintAuthority: null, freezeAuthority: "not-a-public-key"
+  })), /authority metadata is malformed/);
+
+  let getterCalls = 0;
+  const hostileInfo = { freezeAuthority: null };
+  Object.defineProperty(hostileInfo, "mintAuthority", {
+    get() { getterCalls += 1; return null; }
+  });
+  assert.throws(() => parseTrustedMintAccount(parsed(classic, hostileInfo)),
+    /authority metadata is incomplete/);
+  assert.equal(getterCalls, 0);
+
+  const sparseExtensions = new Array(1);
+  assert.throws(() => parseTrustedMintAccount(parsed(token2022, {
+    mintAuthority: null, freezeAuthority: null, extensions: sparseExtensions
+  })), /extensions are malformed/);
+});
+
+test("raw Token-2022 mint TLV layout is validated and extensions remain unsafe", () => {
+  const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+  const makeExtended = (mutate = () => {}) => {
+    const bytes = Buffer.alloc(171);
+    bytes[165] = 1; // AccountType::Mint
+    bytes.writeUInt16LE(1, 166); // TransferFeeConfig extension type
+    bytes.writeUInt16LE(1, 168);
+    bytes[170] = 7;
+    mutate(bytes);
+    return bytes.toString("base64");
+  };
+  const result = parseTrustedMintAccount({
+    value: { owner: token2022, data: [makeExtended(), "base64"] }
+  });
+  assert.equal(result.mintAuthoritySafe, true);
+  assert.equal(result.freezeAuthoritySafe, true);
+  assert.equal(result.token2022ExtensionsSafe, false);
+
+  for (const encoded of [
+    makeExtended(bytes => { bytes[165] = 2; }),
+    makeExtended(bytes => { bytes[82] = 1; }),
+    makeExtended(bytes => { bytes[168] = 0; bytes[169] = 0; }),
+    Buffer.concat([Buffer.from(makeExtended(), "base64"), Buffer.from([1])]).toString("base64")
+  ]) {
+    assert.throws(() => parseTrustedMintAccount({
+      value: { owner: token2022, data: [encoded, "base64"] }
+    }), /Token-2022/);
+  }
+
+  const truncated = Buffer.alloc(170);
+  truncated[165] = 1;
+  truncated.writeUInt16LE(1, 166);
+  truncated.writeUInt16LE(4, 168);
+  assert.throws(() => parseTrustedMintAccount({
+    value: { owner: token2022, data: [truncated.toString("base64"), "base64"] }
+  }), /TLV record is invalid/);
+});
+
 function decodeBase58(value) {
   let number = 0n;
   for (const char of value) number = number * 58n +
@@ -301,7 +429,7 @@ test("ALT resolver rejects more than 256 aggregate loaded addresses", async () =
     data.writeBigUInt64LE(90n, 12);
     data[20] = 129;
     for (let i = 0; i < 129; i++) data.fill(start + i, 56 + i * 32, 56 + (i + 1) * 32);
-    return { owner: "AddressLookupTab1e1111111111111111111111111", data: [data.toString("base64"), "base64"] };
+    return { owner: "AddressLookupTab1e1111111111111111111111111", executable: false, data: [data.toString("base64"), "base64"] };
   };
   await assert.rejects(resolveJupiterAddressLookupTables(tableKeys.map(accountKey => ({
     accountKey,
@@ -356,6 +484,40 @@ test("ALT resolver rejects sparse lookup descriptor arrays before RPC", async ()
   assert.equal(called, false);
 });
 
+test("ALT resolver rejects accessor-backed descriptors and index arrays without invoking getters", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  let getterCalls = 0;
+  const descriptor = {
+    accountKey: tableKey,
+    writableIndexes: [0],
+    readonlyIndexes: []
+  };
+  Object.defineProperty(descriptor, "accountKey", {
+    enumerable: true,
+    get() { getterCalls++; return tableKey; }
+  });
+  let rpcCalled = false;
+  await assert.rejects(resolveJupiterAddressLookupTables([descriptor], async () => {
+    rpcCalled = true;
+    throw new Error("RPC should not be called");
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+  assert.equal(rpcCalled, false);
+
+  const accessorIndexes = [0];
+  Object.defineProperty(accessorIndexes, "0", {
+    get() { getterCalls++; return 0; }
+  });
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: accessorIndexes, readonlyIndexes: []
+  }], async () => {
+    rpcCalled = true;
+    throw new Error("RPC should not be called");
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+  assert.equal(rpcCalled, false);
+});
+
 test("ALT resolver rejects duplicate indexes before making an RPC request", async () => {
   let called = false;
   await assert.rejects(resolveJupiterAddressLookupTables([{
@@ -364,6 +526,16 @@ test("ALT resolver rejects duplicate indexes before making an RPC request", asyn
   }], async () => { called = true; throw new Error("RPC should not be called"); }),
   /indexes are invalid or duplicated/);
   assert.equal(called, false);
+});
+
+test("ALT resolver rejects malformed RPC account data tuples", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const base = mockLookupTableAccount();
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [{ ...base, data: [...base.data, "unexpected"] }]
+  } })), /malformed|invalid/i);
 });
 
 test("ALT resolver rejects tables not owned by the Address Lookup Table program", async () => {
@@ -375,6 +547,25 @@ test("ALT resolver rejects tables not owned by the Address Lookup Table program"
   } })), /unexpected program/);
 });
 
+test("ALT resolver rejects executable accounts and noncanonical base64", async () => {
+  const tableKey = encodeBase58(new Uint8Array(32).fill(42));
+  const executable = mockLookupTableAccount();
+  executable.executable = true;
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [executable]
+  } })), /executable/);
+
+  const malformedBase64 = mockLookupTableAccount();
+  malformedBase64.data = [malformedBase64.data[0] + " ", "base64"];
+  await assert.rejects(resolveJupiterAddressLookupTables([{
+    accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
+  }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 100 }, value: [malformedBase64]
+  } })), /canonical base64/);
+});
+
 test("ALT resolver rejects oversized encoded account data before decoding", async () => {
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const oversized = mockLookupTableAccount();
@@ -383,7 +574,7 @@ test("ALT resolver rejects oversized encoded account data before decoding", asyn
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
     context: { slot: 100 }, value: [oversized]
-  } })), /exceeds the maximum encoded size/);
+  } })), /exceeds limits or is not canonical base64/);
 });
 
 
@@ -397,7 +588,7 @@ test("ALT resolver rejects nonzero reserved authority bytes when authority is ab
     accountKey: tableKey, writableIndexes: [0], readonlyIndexes: []
   }], async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
     context: { slot: 100 }, value: [malformed]
-  } })), /metadata is invalid/);
+  } })), /reserved authority bytes/);
 });
 
 test("ALT resolver rejects deactivated lookup tables", async () => {
@@ -726,14 +917,29 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
       fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
       /complete quote-only sell-route response/
     );
+    for (const transaction of ["unsigned-transaction-string", { message: "not-a-verified-message" }]) {
+      jupiterResponseOverride = {
+        requestId: "unexpected-transaction-payload",
+        transaction,
+        inputMint: mint,
+        outputMint: "So11111111111111111111111111111111111111112",
+        inAmount: "3",
+        outAmount: "1000000",
+        routePlan: [{ swapInfo: { label: "test-route" } }]
+      };
+      await assert.rejects(
+        fetchTrustedTokenRisk(mint, mockFetch, "test-alchemy-api-key-123456", "test-jupiter-api-key-123456"),
+        /complete quote-only sell-route response/
+      );
+    }
   } finally {
     Date.now = originalNow;
   }
   assert.equal(risk.fetchedAt, 1000);
   assert.ok(clock > risk.fetchedAt);
-  // Three full evidence fetches run: one valid quote and two malformed quote regressions.
+  // Five full evidence fetches run: one valid quote and four malformed quote regressions.
   // Each must still page both holder-census pages completely.
-  assert.equal(holderPages, 6);
+  assert.equal(holderPages, 10);
   assert.equal(risk.holderSampleOnly, false);
   assert.equal(risk.holderAccountCount, 101);
   assert.equal(risk.holderOwnerCount, 2);
@@ -746,7 +952,11 @@ test("risk inspection pages the complete Alchemy holder census and reconciles su
   assert.equal(risk.sellRoute.semanticInstructionVerification, false);
   assert.equal(risk.sellRoute.signatureCount, null);
   assert.equal(risk.sellRoute.walletTokenBalance, undefined);
+  assert.equal(risk.sellRoute.analysisOnly, true);
+  assert.equal(risk.sellRoute.semanticInstructionVerification, false);
   assert.equal(risk.sellRoute.routeVerification, "quote-only-no-transaction");
+  assert.equal(risk.sellRoute.signingPermitted, false);
+  assert.equal(risk.sellRoute.submissionPermitted, false);
   assert.equal(risk.passed, false);
 });
 
@@ -913,6 +1123,9 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
     outputAmount: "12345"
   }, fetchImpl);
   assert.equal(proof.verified, true);
+  assert.equal(proof.proofScope, "finalized-owner-scoped-token-balance-deltas");
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.allInCostsVerified, false);
   assert.equal(proof.confirmationStatus, "finalized");
   assert.equal(proof.slot, 123);
   // The native SOL balance delta includes the 10,000,000-lamport wrapped-SOL
@@ -927,6 +1140,170 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
   }
 });
 
+test("settlement proof rejects sparse or accessor-backed native lamport balance metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(8));
+  const baseResult = {
+    slot: 124,
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } }
+      ],
+      postTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } }
+      ]
+    }
+  };
+  let responseResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : responseResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  const request = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+
+  const sparse = new Array(1);
+  responseResult = {
+    ...baseResult,
+    meta: { ...baseResult.meta, preBalances: sparse }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /metadata is incomplete/);
+
+  responseResult = {
+    ...baseResult,
+    meta: { ...baseResult.meta, preBalances: [null] }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /metadata is incomplete/);
+
+});
+
+test("settlement proof rejects accessor-backed and sparse finalized account keys without invoking getters", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(8));
+  const baseResult = {
+    slot: 124,
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } }
+      ],
+      postTokenBalances: [
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } }
+      ]
+    }
+  };
+  let responseResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const method = JSON.parse(options.body).method;
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : responseResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  const request = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+
+  responseResult = {
+    ...baseResult,
+    transaction: { ...baseResult.transaction, message: { accountKeys: [null] } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account keys are malformed/);
+
+  responseResult = {
+    ...baseResult,
+    transaction: { ...baseResult.transaction, message: { accountKeys: new Array(1) } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account keys are malformed/);
+
+  responseResult = {
+    ...baseResult,
+    transaction: {
+      ...baseResult.transaction,
+      message: { accountKeys: [{ pubkey: BOT_WALLET, unexpected: true }] }
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account keys are malformed/);
+
+  responseResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [...baseResult.meta.preTokenBalances, null]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /token balance metadata is malformed/);
+});
+
+test("settlement proof requires the requested signature to occupy the fee-payer signature slot", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(7));
+  const unrelatedSignature = encodeBase58(new Uint8Array(64).fill(8));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 126,
+          transaction: {
+            // The requested signature is present, but is not the first
+            // signature corresponding to the fee payer account.
+            signatures: [unrelatedSignature, signature],
+            message: { accountKeys: [BOT_WALLET] }
+          },
+          meta: {
+            err: null, fee: 5000,
+            preBalances: [100_000_000], postBalances: [89_995_000],
+            preTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "10000000", decimals: 9 }
+            }],
+            postTokenBalances: [
+              { mint: inputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 } },
+              { mint: outputMint, owner: BOT_WALLET, uiTokenAmount: { amount: "12345", decimals: 6 } }
+            ]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  await assert.rejects(
+    verifyFinalizedJupiterSettlement({
+      signature, inputMint, outputMint, inputAmount: "10000000", outputAmount: "12345"
+    }, fetchImpl),
+    /metadata is incomplete or indicates failure/
+  );
+});
+
 test("settlement proof rejects a transaction where the bot wallet is not the fee payer", async () => {
   const signature = encodeBase58(new Uint8Array(64).fill(9));
   const inputMint = "So11111111111111111111111111111111111111112";
@@ -939,7 +1316,7 @@ test("settlement proof rejects a transaction where the bot wallet is not the fee
           slot: 125,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, "TokenAccountInput11111111111111111111111111111", "TokenAccountOutput1111111111111111111111111111"] }
+            message: { accountKeys: ["11111111111111111111111111111111", BOT_WALLET, encodeBase58(new Uint8Array(32).fill(10)), encodeBase58(new Uint8Array(32).fill(11))] }
           },
           meta: {
             err: null, fee: 5000,
@@ -1064,8 +1441,11 @@ test("Jupiter /build response envelope is structurally validated without semanti
   });
   assert.equal(parsed.transactionVersion, 0);
   assert.equal(parsed.swapInstruction.programId, "11111111111111111111111111111111");
+  assert.equal(parsed.analysisOnly, true);
   assert.equal(parsed.semanticInstructionVerification, false);
   assert.equal(parsed.routeVerification, "build-envelope-only");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
 });
 
 test("every Jupiter /build instruction slot remains untrusted regardless of program ID", () => {
@@ -1093,6 +1473,123 @@ test("every Jupiter /build instruction slot remains untrusted regardless of prog
   assert.equal(parsed.tipInstruction.programId, opaqueInstruction.programId);
 });
 
+test("Jupiter /build instruction validator rejects getters without invoking them", () => {
+  let instructionGetterCalls = 0;
+  const accessorInstruction = {
+    accounts: [],
+    data: ""
+  };
+  Object.defineProperty(accessorInstruction, "programId", {
+    enumerable: true,
+    get() { instructionGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: accessorInstruction
+  })), /instruction contains accessor-backed properties/);
+  assert.equal(instructionGetterCalls, 0);
+
+  let accountGetterCalls = 0;
+  const accessorAccount = { isSigner: false, isWritable: false };
+  Object.defineProperty(accessorAccount, "pubkey", {
+    enumerable: true,
+    get() { accountGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      programId: "11111111111111111111111111111111",
+      accounts: [accessorAccount],
+      data: ""
+    }
+  })), /instruction account contains accessor-backed properties/);
+  assert.equal(accountGetterCalls, 0);
+});
+
+test("Jupiter /build instruction arrays reject custom iterators and decorated prototypes", () => {
+  let iteratorCalls = 0;
+  const accounts = [];
+  Object.defineProperty(accounts, Symbol.iterator, {
+    value() { iteratorCalls++; return [][Symbol.iterator](); }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    swapInstruction: {
+      programId: "11111111111111111111111111111111",
+      accounts,
+      data: ""
+    }
+  })), /instruction account.*malformed/);
+  assert.equal(iteratorCalls, 0);
+
+  const decorated = [];
+  decorated.extra = true;
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    otherInstructions: decorated
+  })), /instruction.*malformed/);
+});
+
+test("Jupiter /build rejects accessor-backed envelope and route data without invoking getters", () => {
+  let envelopeGetterCalls = 0;
+  const envelope = validBuildResponse();
+  Object.defineProperty(envelope, "inputMint", {
+    enumerable: true,
+    get() { envelopeGetterCalls++; return "So11111111111111111111111111111111111111112"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(envelope), /accessor-backed/);
+  assert.equal(envelopeGetterCalls, 0);
+
+  let routeGetterCalls = 0;
+  const routeStep = validBuildResponse().routePlan[0];
+  Object.defineProperty(routeStep, "percent", {
+    enumerable: true,
+    get() { routeGetterCalls++; return 100; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: [routeStep]
+  })), /accessor-backed/);
+  assert.equal(routeGetterCalls, 0);
+
+  let infoGetterCalls = 0;
+  const swapInfo = { ...validBuildResponse().routePlan[0].swapInfo };
+  Object.defineProperty(swapInfo, "ammKey", {
+    enumerable: true,
+    get() { infoGetterCalls++; return "11111111111111111111111111111111"; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: [{ percent: 100, bps: 10000, swapInfo }]
+  })), /accessor-backed/);
+  assert.equal(infoGetterCalls, 0);
+});
+
+test("Jupiter /build rejects sparse and accessor-backed route and blockhash arrays", () => {
+  const sparseRoute = new Array(1);
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    routePlan: sparseRoute
+  })), /routePlan is malformed/);
+
+  let byteGetterCalls = 0;
+  const blockhash = new Array(32).fill(1);
+  Object.defineProperty(blockhash, "0", {
+    enumerable: true,
+    get() { byteGetterCalls++; return 1; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    blockhashWithMetadata: { blockhash, lastValidBlockHeight: 123456 }
+  })), /response envelope|blockhash metadata.*malformed/);
+  assert.equal(byteGetterCalls, 0);
+});
+
+test("Jupiter /build rejects accessor-backed lookup map entries without invoking getters", () => {
+  let getterCalls = 0;
+  const lookupMap = {};
+  Object.defineProperty(lookupMap, "11111111111111111111111111111111", {
+    enumerable: true,
+    get() { getterCalls++; return []; }
+  });
+  assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
+    addressesByLookupTableAddress: lookupMap
+  })), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
+
 test("Jupiter /build v1 requires inline-account response shape and compute unit price", () => {
   const parsed = validateJupiterBuildResponse(validBuildResponse({
     transactionVersion: 1,
@@ -1112,10 +1609,10 @@ test("Jupiter /build v1 requires inline-account response shape and compute unit 
 test("Jupiter /build rejects oversized route, instruction, account, and lookup-table collections", () => {
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     routePlan: new Array(65).fill(validBuildResponse().routePlan[0])
-  })), /response envelope/);
+  })), /response envelope|blockhash metadata.*malformed/);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     otherInstructions: new Array(65).fill(validBuildResponse().swapInstruction)
-  })), /response envelope/);
+  })), /response envelope|blockhash metadata.*malformed/);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     swapInstruction: {
       ...validBuildResponse().swapInstruction,
@@ -1144,10 +1641,10 @@ test("Jupiter /build rejects token amounts outside the Solana u64 range", () => 
   for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "18446744073709551616"
-    })), /response envelope/);
+    })), /response envelope|blockhash metadata.*malformed/);
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "9".repeat(100000)
-    })), /response envelope/);
+    })), /response envelope|blockhash metadata.*malformed/);
   }
 });
 
@@ -1156,10 +1653,10 @@ test("Jupiter /build rejects numeric or non-canonical amount values without coer
   for (const field of ["inAmount", "outAmount", "otherAmountThreshold"]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: 9007199254740992
-    })), /response envelope/);
+    })), /response envelope|blockhash metadata.*malformed/);
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       [field]: "01"
-    })), /response envelope/);
+    })), /response envelope|blockhash metadata.*malformed/);
   }
 });
 
@@ -1172,7 +1669,7 @@ test("Jupiter route-plan amounts must be exact decimal strings", () => {
     };
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
       routePlan: [{ ...validBuildResponse().routePlan[0], swapInfo }]
-    })), /routePlan\[0\] is malformed/);
+    })), /routePlan\[0\].*malformed/);
   }
 });
 
@@ -1186,10 +1683,10 @@ test("Jupiter /build validates route-plan entries and swap mode", () => {
     [{ ...valid.routePlan[0], swapInfo: { ...valid.routePlan[0].swapInfo, inAmount: "18446744073709551616" } }]
   ]) {
     assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\[0\] is malformed/);
+      /routePlan\[0\].*malformed/);
   }
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({ swapMode: "Unknown" })),
-    /response envelope/);
+    /response envelope|blockhash metadata.*malformed/);
 });
 
 test("Jupiter /build rejects sparse route and instruction collections", () => {
@@ -1197,7 +1694,7 @@ test("Jupiter /build rejects sparse route and instruction collections", () => {
   sparseRoute[0] = validBuildResponse().routePlan[0];
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     routePlan: sparseRoute
-  })), /routePlan\[1\] is malformed/);
+  })), /routePlan.*malformed/);
 
   const sparseAccounts = new Array(1);
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
@@ -1219,7 +1716,7 @@ test("Jupiter /build rejects array-shaped blockhash metadata", () => {
   metadata.lastValidBlockHeight = 123456;
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     blockhashWithMetadata: metadata
-  })), /response envelope/);
+  })), /response envelope|blockhash metadata.*malformed/);
 });
 
 test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
@@ -1227,7 +1724,7 @@ test("Jupiter /build rejects sparse blockhash and lookup-table arrays", () => {
   delete sparseBlockhash[7];
   assert.throws(() => validateJupiterBuildResponse(validBuildResponse({
     blockhashWithMetadata: { blockhash: sparseBlockhash, lastValidBlockHeight: 123456 }
-  })), /response envelope/);
+  })), /response envelope|blockhash metadata.*malformed/);
 
   const sparseAddresses = new Array(2);
   sparseAddresses[0] = "11111111111111111111111111111111";
@@ -1276,7 +1773,7 @@ test("Jupiter /build requires basis points on every route-plan step", () => {
   ]) {
     assert.throws(
       () => validateJupiterBuildResponse(validBuildResponse({ routePlan })),
-      /routePlan\[0\] is malformed/
+      /routePlan\[0\].*malformed/
     );
   }
 });

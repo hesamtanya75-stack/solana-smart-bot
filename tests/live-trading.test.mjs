@@ -279,7 +279,11 @@ test("missing Jupiter feeBps remains unknown instead of being reported as zero",
     }), { status: 200, headers: { "Content-Type": "application/json" } })
   });
   assert.equal(result.feeBps, null);
+  assert.equal(result.analysisOnly, true);
   assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
 
@@ -457,4 +461,12 @@ test("Jupiter order response is rejected before reading an oversized provider bo
     })
   }), /exceeds the 2097152-byte limit/);
   assert.equal(reads, 0);
+});
+
+
+test("live execution remains a hard stop and never signs or submits", async () => {
+  await assert.rejects(
+    executeLiveOrder(),
+    /Live execution is not implemented; no transaction was signed or submitted/
+  );
 });

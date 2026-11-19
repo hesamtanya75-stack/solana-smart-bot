@@ -2,6 +2,35 @@ const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
 const MAX_DATA_LENGTH = 128;
 const decodedRecords = new WeakSet();
 
+function readDensePlainArray(value, maximum, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum) {
+    throw new Error(label + " are invalid");
+  }
+  const keys = Reflect.ownKeys(value);
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) throw new Error(label + " are invalid");
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contain accessor-backed entries");
+    }
+    snapshot.push(descriptor.value);
+  }
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " contain unsupported properties");
+  }
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const key = keys[keyIndex];
+    if (key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= value.length)) {
+      throw new Error(label + " contain unsupported properties");
+    }
+  }
+  return snapshot;
+}
+
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_DATA_LENGTH ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
@@ -36,16 +65,13 @@ function toHex(bytes) {
  */
 export function decodeSystemProgramInstruction(programId, encodedData, accountIndexes) {
   if (programId !== SYSTEM_PROGRAM_ID) throw new Error("System decoder rejects unknown program IDs");
-  if (!Array.isArray(accountIndexes) || accountIndexes.length > 64) {
-    throw new Error("System instruction account indexes are invalid");
-  }
-  for (let index = 0; index < accountIndexes.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
-        !Number.isInteger(accountIndexes[index]) || accountIndexes[index] < 0 || accountIndexes[index] > 255) {
+  const indexes = readDensePlainArray(accountIndexes, 64, "System instruction account indexes");
+  for (const index of indexes) {
+    if (!Number.isInteger(index) || index < 0 || index > 255) {
       throw new Error("System instruction account indexes are invalid");
     }
   }
-  if (accountIndexes.length === 2 && accountIndexes[0] === accountIndexes[1]) {
+  if (indexes.length === 2 && indexes[0] === indexes[1]) {
     throw new Error("System instruction requires distinct account indexes");
   }
   const bytes = decodeCanonicalBase64(encodedData);
@@ -53,7 +79,7 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
   const variant = readU32LE(bytes, 0);
   let decoded;
   if (variant === 2) {
-    if (bytes.length !== 12 || accountIndexes.length !== 2) {
+    if (bytes.length !== 12 || indexes.length !== 2) {
       throw new Error("System Transfer payload or account count is invalid");
     }
     decoded = { variant: "transfer", lamports: readU64LE(bytes, 4), accountRoles: ["source", "destination"] };
@@ -76,7 +102,7 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
     decoderVersion: 1,
     analysisOnly: true,
     ...decoded,
-    accountIndexes: Object.freeze([...accountIndexes]),
+    accountIndexes: Object.freeze(indexes),
     accountRoles: Object.freeze(decoded.accountRoles)
   });
   decodedRecords.add(record);
@@ -84,17 +110,32 @@ export function decodeSystemProgramInstruction(programId, encodedData, accountIn
 }
 
 export function validateSystemProgramInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
+  if (!Array.isArray(instructions) ||
+      Object.getPrototypeOf(instructions) !== Array.prototype ||
+      instructions.length > 64) {
     throw new Error("System instruction set contains an unreviewed record");
   }
+  const keys = Reflect.ownKeys(instructions);
   const validated = [];
   for (let index = 0; index < instructions.length; index++) {
-    const instruction = instructions[index];
-    if (!Object.prototype.hasOwnProperty.call(instructions, index) ||
-        !instruction || !decodedRecords.has(instruction)) {
+    const descriptor = Object.getOwnPropertyDescriptor(instructions, String(index));
+    if (!descriptor) {
+      throw new Error("System instruction set contains an unreviewed record");
+    }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("System instruction set contains an accessor-backed entry");
+    }
+    const instruction = descriptor.value;
+    if (!instruction || !decodedRecords.has(instruction)) {
       throw new Error("System instruction set contains an unreviewed record");
     }
     validated.push(instruction);
+  }
+  if (keys.length !== instructions.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= instructions.length))) {
+    throw new Error("System instruction set contains unsupported properties");
   }
   return Object.freeze(validated);
 }

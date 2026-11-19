@@ -17,6 +17,10 @@ import {
   decodeAssociatedTokenInstruction,
   validateAssociatedTokenInstructionSet
 } from "./associated-token-account-decoder.mjs";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  verifyAssociatedTokenInstructionPda
+} from "./associated-token-account-pda.mjs";
 
 const MAX_ACCOUNT_KEYS = 256;
 const MAX_INSTRUCTIONS = 64;
@@ -36,6 +40,33 @@ function isCanonicalPublicKey(value) {
   const hex = decoded.toString(16);
   const significantBytes = decoded === 0n ? 0 : Math.ceil(hex.length / 2);
   return leadingZeroBytes + significantBytes === 32;
+}
+
+function assertDensePlainArray(value, maximum, label, minimum = 0) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length < minimum || value.length > maximum) {
+    throw new Error("Transaction message shape is invalid or exceeds parser limits");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length < value.length + 1) {
+    throw new Error(label === "Transaction compiled instructions"
+      ? "Transaction message contains a sparse compiled instruction list"
+      : "Transaction message contains an invalid account key");
+  }
+  if (keys.length > value.length + 1) {
+    throw new Error(label + " contains unsupported properties");
+  }
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+        Number(key) >= value.length) {
+      throw new Error(label + " contains unsupported properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed indexes");
+    }
+  }
 }
 
 function requireRole(roles, index, expected, label) {
@@ -97,20 +128,54 @@ function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
  * This is not a wire-format parser, does not verify signatures, lookup-table
  * contents, CPI effects, token deltas, or whole-transaction semantics.
  */
+const UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS = Object.freeze([
+  "meta",
+  "innerInstructions",
+  "logs",
+  "preTokenBalances",
+  "postTokenBalances",
+  "preBalances",
+  "postBalances",
+  "signature",
+  "signatures"
+]);
+
 export function parseSupportedInstructionMessage(message) {
-  if (!message || typeof message !== "object" || Array.isArray(message) ||
-      !Array.isArray(message.accountKeys) ||
-      message.accountKeys.length < 1 || message.accountKeys.length > MAX_ACCOUNT_KEYS ||
-      !Array.isArray(message.instructions) ||
-      message.instructions.length < 1 || message.instructions.length > MAX_INSTRUCTIONS) {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
     throw new Error("Transaction message shape is invalid or exceeds parser limits");
   }
 
-  for (let index = 0; index < message.instructions.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(message.instructions, index)) {
-      throw new Error("Transaction message contains a sparse compiled instruction list");
+  if (UNSUPPORTED_EXECUTION_EVIDENCE_FIELDS.some(field => field in message)) {
+    throw new Error("Transaction message parser does not accept execution metadata or CPI evidence");
+  }
+
+  // Accept only plain data records with an explicit schema. This prevents
+  // unknown metadata aliases, inherited fields, accessors, and symbol keys
+  // from being silently ignored or evaluated during parsing.
+  const prototype = Object.getPrototypeOf(message);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("Transaction message must be a plain data record");
+  }
+  const allowedFields = new Set([
+    "accountKeys",
+    "instructions",
+    "header",
+    "resolvedAddressTableLookups",
+    "staticAccountKeys",
+    "computeBudgetPolicy"
+  ]);
+  for (const field of Reflect.ownKeys(message)) {
+    if (typeof field !== "string" || !allowedFields.has(field)) {
+      throw new Error("Transaction message contains an unsupported field");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(message, field);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Transaction message fields must be plain data properties");
     }
   }
+
+  assertDensePlainArray(message.accountKeys, MAX_ACCOUNT_KEYS, "Transaction account keys", 1);
+  assertDensePlainArray(message.instructions, MAX_INSTRUCTIONS, "Transaction compiled instructions", 1);
 
   const accountKeys = message.accountKeys;
   const seenAccountKeys = new Set();
@@ -130,20 +195,46 @@ export function parseSupportedInstructionMessage(message) {
   const associatedTokenInstructions = [];
   const programIdIndexes = [];
   const decodedInstructions = message.instructions.map((instruction, position) => {
-    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
-        !Number.isInteger(instruction.programIdIndex) ||
+    if (!instruction || typeof instruction !== "object" || Array.isArray(instruction)) {
+      throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
+    }
+    const instructionPrototype = Object.getPrototypeOf(instruction);
+    if (instructionPrototype !== Object.prototype && instructionPrototype !== null) {
+      throw new Error("Transaction instruction " + position + " must be a plain data record");
+    }
+    const instructionFields = new Set(["programIdIndex", "accountKeyIndexes", "data"]);
+    for (const field of Reflect.ownKeys(instruction)) {
+      const descriptor = Object.getOwnPropertyDescriptor(instruction, field);
+      if (typeof field !== "string" || !instructionFields.has(field)) {
+        throw new Error("Transaction instruction " + position + " contains an unsupported field");
+      }
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+        throw new Error("Transaction instruction " + position + " fields must be plain data properties");
+      }
+    }
+    if (!Number.isInteger(instruction.programIdIndex) ||
         instruction.programIdIndex < 0 || instruction.programIdIndex >= accountKeys.length ||
         !Array.isArray(instruction.accountKeyIndexes) ||
+        Object.getPrototypeOf(instruction.accountKeyIndexes) !== Array.prototype ||
         instruction.accountKeyIndexes.length > MAX_ACCOUNT_KEYS ||
-        instruction.accountKeyIndexes.some(index =>
-          !Number.isInteger(index) || index < 0 || index >= accountKeys.length) ||
         typeof instruction.data !== "string") {
       throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
     }
 
+    const indexArrayKeys = Reflect.ownKeys(instruction.accountKeyIndexes);
+    if (indexArrayKeys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= instruction.accountKeyIndexes.length))) {
+      throw new Error("Transaction instruction " + position + " account indexes contain unsupported properties");
+    }
     for (let index = 0; index < instruction.accountKeyIndexes.length; index++) {
-      if (!Object.prototype.hasOwnProperty.call(instruction.accountKeyIndexes, index)) {
-        throw new Error("Transaction instruction " + position + " contains sparse account indexes");
+      const descriptor = Object.getOwnPropertyDescriptor(instruction.accountKeyIndexes, String(index));
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+        throw new Error("Transaction instruction " + position + " contains sparse account indexes or accessor-backed entries");
+      }
+      const accountIndex = descriptor.value;
+      if (!Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex >= accountKeys.length) {
+        throw new Error("Transaction instruction " + position + " has an invalid compiled layout");
       }
     }
 
@@ -156,7 +247,8 @@ export function parseSupportedInstructionMessage(message) {
       systemProgramInstructions.push(decoded);
       return decoded;
     }
-    if (programId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") {
+    if (programId === "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" ||
+        programId === "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") {
       const decoded = decodeSplTokenInstruction(programId, instruction.data, instruction.accountKeyIndexes);
       splTokenInstructions.push(decoded);
       return decoded;
@@ -187,6 +279,12 @@ export function parseSupportedInstructionMessage(message) {
   validateSystemProgramInstructionSet(systemProgramInstructions);
   validateSplTokenInstructionSet(splTokenInstructions);
   validateAssociatedTokenInstructionSet(associatedTokenInstructions);
+
+  if (message.header === undefined &&
+      (message.staticAccountKeys !== undefined ||
+       message.resolvedAddressTableLookups !== undefined)) {
+    throw new Error("Message account-role metadata requires a message header");
+  }
 
   let accountPrivilegeAnalysis = "not-provided";
   if (message.header !== undefined) {
@@ -223,6 +321,11 @@ export function parseSupportedInstructionMessage(message) {
       ? "not-provided"
       : Object.freeze({ status: "validated", ...computeBudgetPolicy }),
     accountPrivilegeAnalysis,
+    // Caller-supplied lookup addresses are only structurally cross-checked;
+    // this parser does not authenticate their table account or on-chain state.
+    lookupAddressAuthentication: message.resolvedAddressTableLookups?.length
+      ? "not-performed"
+      : "not-applicable",
     associatedAddressVerification: associatedTokenInstructions.length
       ? "not-performed"
       : "not-applicable",
@@ -230,5 +333,34 @@ export function parseSupportedInstructionMessage(message) {
     semanticVerification: "incomplete",
     signingPermitted: false,
     submissionPermitted: false
+  });
+}
+
+
+/**
+ * Async additive parser API. Preserves the synchronous syntax parser and adds
+ * an explicit ATA PDA-only check. A PDA match is not transaction approval.
+ */
+export async function parseAndVerifySupportedInstructionMessage(message) {
+  const parsed = parseSupportedInstructionMessage(message);
+  const ataInstructions = parsed.instructions.filter(instruction =>
+    instruction?.programId === ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  if (ataInstructions.length === 0) {
+    return Object.freeze({
+      ...parsed,
+      associatedAddressVerification: "not-applicable",
+      associatedAddressPdaChecks: Object.freeze([])
+    });
+  }
+
+  const checks = await Promise.all(
+    ataInstructions.map(instruction => verifyAssociatedTokenInstructionPda(instruction))
+  );
+  const allMatch = checks.every(check => check.performed === true && check.verified === true);
+  return Object.freeze({
+    ...parsed,
+    associatedAddressVerification: allMatch ? "pda-verified" : "pda-mismatch",
+    associatedAddressPdaChecks: Object.freeze(checks)
   });
 }

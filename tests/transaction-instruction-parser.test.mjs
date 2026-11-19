@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COMPUTE_BUDGET_PROGRAM } from "../compute-budget-decoder.mjs";
-import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
+import {
+  parseSupportedInstructionMessage,
+  parseAndVerifySupportedInstructionMessage
+} from "../transaction-instruction-parser.mjs";
 
 function data(tag, value) {
   const bytes = Buffer.alloc(5);
@@ -31,6 +34,174 @@ function transferData(lamports) {
 function message(instructions, accountKeys = [COMPUTE_BUDGET_PROGRAM]) {
   return { accountKeys, instructions };
 }
+
+test("transaction message parser rejects unverified execution metadata and CPI evidence", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  for (const field of [
+    "meta",
+    "innerInstructions",
+    "logs",
+    "preTokenBalances",
+    "postTokenBalances",
+    "preBalances",
+    "postBalances",
+    "signature",
+    "signatures"
+  ]) {
+    assert.throws(
+      () => parseSupportedInstructionMessage({ ...valid, [field]: [] }),
+      /does not accept execution metadata or CPI evidence/,
+      field
+    );
+  }
+  assert.throws(
+    () => parseSupportedInstructionMessage({ ...valid, meta: { innerInstructions: [] } }),
+    /does not accept execution metadata or CPI evidence/
+  );
+  const inheritedEvidence = Object.assign(
+    Object.create({ innerInstructions: [] }),
+    valid
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(inheritedEvidence),
+    /does not accept execution metadata or CPI evidence/
+  );
+});
+
+test("transaction parser rejects unknown metadata fields and non-plain message records", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  assert.throws(
+    () => parseSupportedInstructionMessage({ ...valid, transactionMeta: { innerInstructions: [] } }),
+    /unsupported field/
+  );
+  const symbolField = { ...valid, [Symbol("executionEvidence")]: {} };
+  assert.throws(() => parseSupportedInstructionMessage(symbolField), /unsupported field/);
+  assert.throws(
+    () => parseSupportedInstructionMessage(Object.assign(Object.create({ inheritedExtra: true }), valid)),
+    /plain data record/
+  );
+  let getterCalled = false;
+  const accessorMessage = {};
+  Object.defineProperty(accessorMessage, "accountKeys", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return valid.accountKeys;
+    }
+  });
+  Object.defineProperty(accessorMessage, "instructions", {
+    enumerable: true,
+    value: valid.instructions
+  });
+  assert.throws(() => parseSupportedInstructionMessage(accessorMessage), /plain data properties/);
+  assert.equal(getterCalled, false);
+});
+
+test("transaction parser rejects metadata and accessor fields nested in compiled instructions", () => {
+  const validInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  };
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([{
+      ...validInstruction,
+      executionEvidence: { innerInstructions: [] }
+    }])),
+    /unsupported field/
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([{
+      ...validInstruction,
+      [Symbol("meta")]: {}
+    }])),
+    /unsupported field/
+  );
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([
+      Object.assign(Object.create({ innerInstructions: [] }), validInstruction)
+    ])),
+    /plain data record/
+  );
+
+  let getterCalled = false;
+  const accessorInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: []
+  };
+  Object.defineProperty(accessorInstruction, "data", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return data(2, 200000);
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([accessorInstruction])),
+    /plain data properties/
+  );
+  assert.equal(getterCalled, false);
+});
+
+test("transaction parser rejects accessor-backed compiled account indexes without evaluating them", () => {
+  let getterCalled = false;
+  const indexes = [];
+  indexes.length = 1;
+  Object.defineProperty(indexes, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return 0;
+    }
+  });
+  const instruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: indexes,
+    data: data(2, 200000)
+  };
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([instruction])),
+    /sparse account indexes or accessor-backed entries/
+  );
+  assert.equal(getterCalled, false);
+});
+
+test("transaction parser rejects custom array iterators and methods on message collections", () => {
+  const validInstruction = {
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  };
+  const accountKeys = [COMPUTE_BUDGET_PROGRAM];
+  Object.defineProperty(accountKeys, Symbol.iterator, {
+    value() {
+      throw new Error("untrusted iterator must not run");
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message([validInstruction], accountKeys)),
+    /unsupported properties/
+  );
+
+  const instructions = [validInstruction];
+  Object.defineProperty(instructions, "map", {
+    value() {
+      throw new Error("untrusted map must not run");
+    }
+  });
+  assert.throws(
+    () => parseSupportedInstructionMessage(message(instructions)),
+    /unsupported properties/
+  );
+});
 
 test("transaction parser returns analysis-only result for registered Compute Budget instruction", () => {
   const parsed = parseSupportedInstructionMessage(message([{
@@ -141,17 +312,15 @@ test("transaction parser rejects malformed System Program account layouts and un
   }], [SYSTEM, SOURCE, DESTINATION])), /variant is unsupported/);
 });
 
-test("transaction parser rejects unsupported classic Token variants and all Token-2022 instructions", () => {
+test("transaction parser rejects unsupported Classic Token and Token-2022 instruction variants", () => {
   const classicToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  assert.throws(() => parseSupportedInstructionMessage(
-    message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(2, 200000) }], [classicToken]),
-  ), /SPL Token instruction variant is unsupported/);
-  const transfer = Buffer.from([3, ...Array(8).fill(0)]).toString("base64");
-  assert.throws(() => parseSupportedInstructionMessage(
-    message([{ programIdIndex: 0, accountKeyIndexes: [], data: transfer }],
-      [token2022]),
-  ), /Instruction registry rejects an unsupported program ID/);
+  for (const tokenProgram of [classicToken, token2022]) {
+    assert.throws(() => parseSupportedInstructionMessage(
+      message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(99, 0) }],
+        [tokenProgram]),
+    ), /SPL Token instruction variant is unsupported/);
+  }
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
@@ -314,6 +483,55 @@ test("parser rejects System Transfer when the source is readonly or not a signer
   }), /privilege requirements are not satisfied/);
 });
 
+test("parser rejects System CreateAccount when the new account signer is readonly", () => {
+  const createAccountData = Buffer.concat([
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(32, 7)
+  ]).toString("base64");
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [SOURCE, DESTINATION, SYSTEM],
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 1,
+      numReadonlyUnsignedAccounts: 1
+    },
+    instructions: [{
+      programIdIndex: 2,
+      accountKeyIndexes: [0, 1],
+      data: createAccountData
+    }]
+  }), /System instruction account privilege requirements are not satisfied/);
+});
+
+test("parser accepts structurally writable signer roles for System CreateAccount but remains analysis-only", () => {
+  const createAccountData = Buffer.concat([
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(8, 0),
+    Buffer.alloc(32, 7)
+  ]).toString("base64");
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: [SOURCE, DESTINATION, SYSTEM],
+    header: {
+      numRequiredSignatures: 2,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    instructions: [{
+      programIdIndex: 2,
+      accountKeyIndexes: [0, 1],
+      data: createAccountData
+    }]
+  });
+  assert.equal(parsed.instructions[0].variant, "createAccount");
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
 test("parser leaves System account privilege analysis explicitly absent without a message header", () => {
   const parsed = parseSupportedInstructionMessage(message([{
     programIdIndex: 0,
@@ -321,6 +539,7 @@ test("parser leaves System account privilege analysis explicitly absent without 
     data: transferData(10)
   }], [SYSTEM, SOURCE, DESTINATION]));
   assert.equal(parsed.accountPrivilegeAnalysis, "not-provided");
+  assert.equal(parsed.lookupAddressAuthentication, "not-applicable");
   assert.equal(parsed.semanticVerification, "incomplete");
   assert.equal(parsed.signingPermitted, false);
 });
@@ -387,18 +606,110 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
 });
 
 
-test("parser keeps Token-2022 fail-closed until its extension semantics are reviewed", () => {
+test("parser decodes bounded Token-2022 TransferChecked but never grants semantic trust", () => {
   const token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  assert.throws(() => parseSupportedInstructionMessage({
-    accountKeys: [token2022Program],
+  const authority = "11111111111111111111111111111112";
+  const source = "11111111111111111111111111111113";
+  const destination = "11111111111111111111111111111114";
+  const mint = "11111111111111111111111111111115";
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(250n, 1);
+  tokenData[9] = 6;
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: [authority, source, destination, mint, token2022Program],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 2
+    },
     instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [],
-      data: Buffer.from([3, ...Array(8).fill(0)]).toString("base64")
+      programIdIndex: 4,
+      accountKeyIndexes: [1, 3, 2, 0],
+      data: tokenData.toString("base64")
     }]
-  }), /unsupported program ID/);
+  });
+  assert.equal(parsed.instructions[0].programId, token2022Program);
+  assert.equal(parsed.instructions[0].variant, "transferChecked");
+  assert.equal(parsed.instructions[0].amount, 250n);
+  assert.equal(parsed.instructions[0].decimals, 6);
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
 });
 
+
+test("parser rejects SPL Token TransferChecked when source is readonly", () => {
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const destination = "11111111111111111111111111111113";
+  const source = "11111111111111111111111111111114";
+  const mint = "11111111111111111111111111111115";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, destination, source, mint, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 3
+    },
+    instructions: [{
+      programIdIndex: 4,
+      accountKeyIndexes: [2, 3, 1, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token source account privilege requirements are not satisfied/);
+});
+
+test("parser rejects SPL Token TransferChecked when mint is writable", () => {
+  const tokenData = Buffer.alloc(10);
+  tokenData[0] = 12;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const mint = "11111111111111111111111111111113";
+  const source = "11111111111111111111111111111114";
+  const destination = "11111111111111111111111111111115";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, mint, source, destination, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 1
+    },
+    instructions: [{
+      programIdIndex: 4,
+      accountKeyIndexes: [2, 1, 3, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token mint account privilege requirements are not satisfied/);
+});
+
+test("parser rejects SPL Token Transfer when destination is readonly", () => {
+  const tokenData = Buffer.alloc(9);
+  tokenData[0] = 3;
+  tokenData.writeBigUInt64LE(5n, 1);
+  const authority = "11111111111111111111111111111112";
+  const source = "11111111111111111111111111111113";
+  const destination = "11111111111111111111111111111114";
+  const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [authority, source, destination, tokenProgram],
+    header: {
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: 2
+    },
+    instructions: [{
+      programIdIndex: 3,
+      accountKeyIndexes: [1, 2, 0],
+      data: tokenData.toString("base64")
+    }]
+  }), /SPL Token destination account privilege requirements are not satisfied/);
+});
 
 test("parser integrates ATA CreateIdempotent and checks account privileges", () => {
   const keys = [
@@ -677,6 +988,7 @@ test("parser validates complete v0 account ordering before checking loaded writa
     }]
   });
   assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.lookupAddressAuthentication, "not-performed");
   assert.equal(parsed.instructions[0].lamports, 25n);
   assert.equal(parsed.signingPermitted, false);
   assert.equal(parsed.submissionPermitted, false);
@@ -721,4 +1033,162 @@ test("parser rejects v0 account keys that disagree with canonical static and loo
       data: transferData(25)
     }]
   }), /do not match static and lookup account ordering/);
+});
+
+
+const PDA_OWNER = "CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY";
+const PDA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const PDA_CLASSIC_ATA = "3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b";
+const PDA_TOKEN_2022_ATA = "J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr";
+const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const CLASSIC_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
+function ataMessageWithAddress(associatedAddress, tokenProgram = CLASSIC_TOKEN_PROGRAM) {
+  const payer = "11111111111111111111111111111112";
+  const system = "11111111111111111111111111111111";
+  const accountKeys = [
+    payer,
+    associatedAddress,
+    PDA_OWNER,
+    PDA_MINT,
+    system,
+    tokenProgram,
+    ATA_PROGRAM
+  ];
+  return {
+    accountKeys,
+    instructions: [{
+      programIdIndex: 6,
+      accountKeyIndexes: [0, 1, 2, 3, 4, 5],
+      data: Buffer.from([1]).toString("base64")
+    }]
+  };
+}
+
+test("async parser integrates a successful ATA PDA-only verification without granting semantic trust", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress(PDA_CLASSIC_ATA)
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-verified");
+  assert.equal(parsed.associatedAddressPdaChecks.length, 1);
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, true);
+  assert.equal(parsed.associatedAddressPdaChecks[0].scope, "pda-only");
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+  assert.ok(Object.isFrozen(parsed));
+  assert.ok(Object.isFrozen(parsed.associatedAddressPdaChecks));
+});
+
+test("async parser verifies Token-2022 ATA PDA end-to-end without granting semantic trust", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress(PDA_TOKEN_2022_ATA, TOKEN_2022_PROGRAM)
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-verified");
+  assert.equal(parsed.associatedAddressPdaChecks.length, 1);
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, true);
+  assert.equal(parsed.associatedAddressPdaChecks[0].tokenProgramId, TOKEN_2022_PROGRAM);
+  assert.equal(parsed.associatedAddressPdaChecks[0].bump, 254);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("async parser reports an ATA PDA mismatch and never promotes it to approval", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(
+    ataMessageWithAddress("11111111111111111111111111111113")
+  );
+  assert.equal(parsed.associatedAddressVerification, "pda-mismatch");
+  assert.equal(parsed.associatedAddressPdaChecks[0].verified, false);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+});
+
+test("async parser marks ATA PDA verification not applicable when no ATA instruction exists", async () => {
+  const parsed = await parseAndVerifySupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]));
+  assert.equal(parsed.associatedAddressVerification, "not-applicable");
+  assert.deepEqual(parsed.associatedAddressPdaChecks, []);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.signingPermitted, false);
+});
+
+
+test("parser rejects static keys or lookup resolutions without a message header", () => {
+  const base = {
+    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [1, 2],
+      data: transferData(25)
+    }]
+  };
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    staticAccountKeys: [SYSTEM, SOURCE, DESTINATION]
+  }), /Message account-role metadata requires a message header/);
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    resolvedAddressTableLookups: []
+  }), /Message account-role metadata requires a message header/);
+  assert.throws(() => parseSupportedInstructionMessage({
+    ...base,
+    staticAccountKeys: [SYSTEM, SOURCE],
+    resolvedAddressTableLookups: [{ writableAddresses: [DESTINATION], readonlyAddresses: [] }]
+  }), /Message account-role metadata requires a message header/);
+});
+
+test("transaction parser rejects an unreviewed program even when its data mimics Compute Budget", () => {
+  const unknownProgram = "11111111111111111111111111111112";
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [unknownProgram],
+    instructions: [{
+      programIdIndex: 0,
+      accountKeyIndexes: [],
+      data: data(2, 200000)
+    }]
+  }), /Instruction registry rejects an unsupported program ID/);
+});
+
+
+test("parser rejects caller-supplied claims that could impersonate semantic approval", () => {
+  const valid = message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]);
+  for (const field of [
+    "semanticVerification",
+    "semanticInstructionVerification",
+    "signingPermitted",
+    "submissionPermitted",
+    "routeVerification",
+    "messageAccountEffectsVerified"
+  ]) {
+    assert.throws(
+      () => parseSupportedInstructionMessage({ ...valid, [field]: true }),
+      /unsupported|not allowed|unexpected/i,
+      "must reject untrusted caller field " + field
+    );
+  }
+});
+
+test("parsed instruction evidence is permanently analysis-only even with decoded instructions", () => {
+  const parsed = parseSupportedInstructionMessage(message([{
+    programIdIndex: 0,
+    accountKeyIndexes: [],
+    data: data(2, 200000)
+  }]));
+  assert.equal(parsed.analysisOnly, true);
+  assert.equal(parsed.semanticVerification, "incomplete");
+  assert.equal(parsed.accountPrivilegeAnalysis, "not-provided");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+  assert.ok(Object.isFrozen(parsed));
+  assert.ok(Object.isFrozen(parsed.instructions));
 });

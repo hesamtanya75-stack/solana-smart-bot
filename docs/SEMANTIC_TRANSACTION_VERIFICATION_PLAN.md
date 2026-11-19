@@ -665,3 +665,502 @@ Source:
 
 No executable code, dependency, parser status, coordinator gate, signing,
 transaction submission, UI, deployment, or production data was changed.
+
+
+## Async ATA PDA verifier implementation branch: 2026-11-18
+
+A separate implementation branch, `feat/async-ata-pda-verifier`, now contains
+an initial SDK-backed verifier rather than changing the existing syntax parser.
+
+### Fixed paired vectors
+
+For owner
+`CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY` and mint
+`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, the canonical PDA derivation
+produces the already pinned upstream addresses and these bump candidates:
+
+| Token program | Expected ATA | Expected bump |
+|---|---|---:|
+| Classic Token | `3EjekkZPxiKdDB91mdJjUcjFjRmyWjP1Y4ySvfwSaQ4b` | 251 |
+| Token-2022 | `J1AgP9czKVx1tHY2TrQxMd73tguFUE7rVYynxEWsq8nr` | 254 |
+
+The addresses are explicitly present in the Solana Foundation Pay-Kit tests and
+cross-checked there against Ruby and `spl-token`. The bump values were computed
+from the same owner/mint/program tuples using the canonical PDA hash, seed order,
+and Ed25519 off-curve rejection procedure. The SDK-backed tests in this branch
+are intended to independently reproduce both address+bump pairs; they must
+pass in CI before the values are treated as runtime-validated by this project.
+
+### Code added
+
+- `associated-token-account-pda.mjs` imports `getAddressEncoder` and
+  `getProgramDerivedAddress` from exact dependency `@solana/addresses@8.6.0`.
+- The selected token program is explicit and restricted to Classic Token or
+  Token-2022. Seed order is owner, token program, mint, under the ATA program.
+- The helper is asynchronous; no synchronous custom PDA implementation is
+  introduced.
+- `verifyAssociatedTokenInstructionPda` accepts only a decoder-issued record
+  (guarded by the decoder's private WeakSet), and compares the derived address
+  to the instruction's associated-account key.
+- Result scope is explicitly `pda-only`; it does not claim on-chain existence,
+  account ownership, initialization, balance, transaction validity, or
+  semantic transaction verification.
+- Tests cover both pinned address+bump pairs, distinct outputs by token program,
+  malformed owner/mint, unsupported token program, wrong ATA/owner/mint, and
+  forged decoder records.
+
+### Validation status: 2026-11-18
+
+The latest implementation head `c296e7664f49d5df9856b246c271f7e393d5d4ec`
+has completed these pull-request CI jobs successfully:
+
+- Node tests: run `44385908865` — success. This includes the async parser
+  integration test for the fixed Token-2022 ATA address and bump 254.
+- Cloudflare Worker build validation: run `44385908988` — success. The job
+  installed from the committed lockfile with `npm ci` and completed the
+  Wrangler dry-run build without deploying.
+
+The read-only Devnet workflow on the follow-up documentation head
+`4dee1870f3ad4f7595626bb59cb2ee3dbbad0e1b` completed successfully:
+workflow run `44386026189`. Its unit tests, real Durable Objects runtime
+tests, Devnet genesis/health/confirmed-slot checks, reference mint and supply
+checks, and read-only RPC validation all passed. The separate funded Devnet
+lifecycle job was skipped because this was a pull-request run and no explicit
+workflow-dispatch opt-in was supplied. No signing or transaction submission
+occurred.
+
+The repository includes a committed npm lockfile v3 (`package-lock.json`)
+covering the exact `@solana/addresses@8.6.0` dependency and the resolved project
+dependency graph. The Cloudflare Worker validation workflow uses
+`npm ci --ignore-scripts --no-audit --no-fund`.
+
+These CI results validate the current SDK integration and Worker build only.
+They do not establish complete transaction semantics, CPI effects, on-chain
+ATA existence or initialization, signature verification, wallet safety, or
+permission to sign or submit transactions.
+
+No merge, deployment, signing, transaction submission, Mainnet trading, or UI
+design change is part of this branch. The syntax parser's semantic trust status
+and coordinator gates remain unchanged.
+
+## Token-2022 bounded transfer decoder follow-up (PR #43)
+
+The parser now recognizes only the base SPL Token `Transfer` (tag 3) and
+`TransferChecked` (tag 12) layouts for both Classic Token and Token-2022.
+This is a syntax-decoding increment, not a semantic approval.
+
+- Exact account counts are required; Token-2022 extension extra-account layouts
+  (including transfer-hook account layouts) are rejected until separately
+  reviewed.
+- Other Token-2022 extension instructions, authority changes, approvals,
+  confidential transfers, transfer-fee semantics, and CPI effects remain
+  unsupported and fail closed.
+- Decoded records retain the exact token program ID and are marked analysis-only.
+- Transaction semantic verification remains incomplete; signing and submission
+  remain disabled.
+
+A fresh CI run on the final code head is required before this increment can be
+considered validated.
+
+## CPI and execution-evidence boundary hardening (PR #43)
+
+The message-only syntax parser now rejects transaction execution metadata fields
+(`meta`, `innerInstructions`, logs, pre/post balances, pre/post token balances,
+and signatures) whether supplied as own or inherited properties, instead of silently ignoring them. This prevents callers from
+mistaking a parsed outer-message instruction list for validated execution or
+CPI evidence.
+
+This is a fail-closed input-boundary check only. It does not decode inner
+instructions, authenticate RPC transaction metadata, verify a transaction
+signature, resolve or authenticate address lookup tables, or establish token
+balance deltas. A future CPI verifier must bind confirmed transaction metadata
+to a verified signature and outer instruction index, validate each inner
+instruction group, and independently reconcile pre/post token balances before
+any semantic status can advance.
+
+The parser continues to report semantic verification as incomplete, with
+signing and submission disabled.
+
+## Strict message input schema hardening (PR #43)
+
+The analysis-only instruction parser now accepts only a plain data record with
+the explicit fields `accountKeys`, `instructions`, optional `header`,
+`resolvedAddressTableLookups`, `staticAccountKeys`, and
+`computeBudgetPolicy`. It rejects unknown string fields (including alternate
+execution-metadata containers), symbol keys, custom prototypes, and accessor
+properties before reading the message values. The existing explicit rejection
+of known execution/CPI metadata remains in place.
+
+This narrows the parser's input contract and prevents unrecognized evidence
+containers or getters from being silently ignored/evaluated. It does not
+authenticate transaction metadata, verify signatures, validate RPC provenance,
+or establish CPI effects or settlement. Semantic verification remains
+incomplete; signing and submission remain disabled.
+
+Compiled instruction records are subject to the same fail-closed boundary:
+only `programIdIndex`, `accountKeyIndexes`, and `data` are accepted.
+Unknown or symbol fields, custom prototypes, accessors, and sparse or
+non-data account-index arrays are rejected. This prevents execution evidence
+from being smuggled into nested instruction objects while the parser only
+inspects the outer message.
+Account-index arrays are inspected through own property descriptors before any
+index value is read, so accessor-backed indexes are rejected without invoking
+their getters. The parser also rejects sparse arrays and non-index own
+properties on these arrays.
+The top-level account-key and compiled-instruction collections are also
+validated as bounded, dense plain arrays before iteration. Custom iterators,
+overridden collection methods, symbol properties, extra properties, sparse
+slots, and accessor-backed indexes are rejected before the parser can invoke
+them.
+
+
+## Reject detached account-role metadata (PR #43)
+
+The analysis-only message parser now rejects `staticAccountKeys` or
+`resolvedAddressTableLookups` unless the caller also supplies the message
+header. Previously these optional fields could be accepted and silently ignored
+when no header was present, creating an ambiguous input contract in which
+callers might believe signer/writable analysis had consumed the supplied role
+metadata. The parser now fails closed instead. Regression tests cover each
+field independently and together.
+
+This remains structural input validation only. Supplied lookup addresses are
+still unauthenticated, the parser does not verify transaction signatures or RPC
+provenance, and `accountPrivilegeAnalysis` remains non-authoritative. Semantic
+verification remains incomplete; signing and submission remain disabled.
+
+
+## Direct SPL decoder input hardening (PR #43)
+
+The exported SPL Token decoder and instruction-set validator now independently
+snapshot only dense, plain arrays of own data properties before reading values.
+This closes a gap where callers bypassing the outer message parser could pass
+accessor-backed indexes or instruction collections and cause getters to run.
+Custom prototypes, symbol/extra properties, sparse entries, and accessors fail
+closed. Regression tests assert getters are not invoked.
+
+This hardens JavaScript input handling only. It does not authenticate account
+keys, transaction metadata, signatures, CPI execution, Token-2022 extension
+semantics, or balance deltas. Semantic verification remains incomplete and
+signing/submission remain disabled.
+
+
+## ATA instruction-set validation hardening (PR #43)
+
+The exported Associated Token instruction-set validator now independently
+requires a bounded plain array and snapshots own data-property entries before
+returning the validated records. Sparse entries, accessor-backed entries,
+custom prototypes, symbol keys, and extra properties fail closed. Regression
+tests verify that accessor getters are not invoked and that ordinary
+decoder-issued records continue to validate.
+
+This protects direct callers of the exported validator that bypass the
+transaction message parser. It remains JavaScript collection-shape validation
+only; it does not establish instruction execution, authenticated transaction
+metadata, CPI effects, account state, or settlement. Semantic verification
+remains incomplete and signing/submission remain disabled.
+
+
+## System and Compute Budget decoder collection hardening (PR #43)
+
+The exported System Program decoder now snapshots bounded, dense plain account
+index arrays through own data-property descriptors before reading indexes.
+Its instruction-set validator applies the same collection boundary to decoded
+records. Accessors, sparse entries, custom prototypes, symbols, and extra
+properties are rejected without invoking getters.
+
+The Compute Budget instruction-set validators now use the same bounded
+snapshot rule. The transaction decoder registry also requires a plain empty
+account-index array for the currently reviewed no-account Compute Budget
+instruction family. Regression tests cover accessor-backed collections,
+decorated arrays, and custom prototypes.
+
+These checks harden JavaScript input handling only. They do not authenticate
+transaction signatures or metadata, prove CPI execution, establish account
+state or balance deltas, or authorize signing/submission. Semantic verification
+remains incomplete and signing/submission remain disabled.
+
+
+## Message account-role input hardening (PR #43)
+
+The structural account-role helper now snapshots static account keys, the
+resolved lookup-table list, each lookup record, and writable/readonly address
+lists through own data-property descriptors. It rejects sparse arrays,
+accessor-backed entries or fields, custom prototypes, symbol keys, and
+unexpected properties before deriving signer/writable roles.
+
+This protects the local analysis boundary against hostile JavaScript objects.
+It does not authenticate the source of resolved lookup addresses, prove
+finalized lookup-table state, verify signatures, or establish execution or
+settlement. A caller-provided lookup result remains untrusted evidence until a
+separate trusted RPC resolver verifies its provenance and context.
+
+
+## Latest PR #43 validation snapshot — 2026-11-18
+
+The current branch head `9e88bcb43b84eaaf894c94e439f558b89aa8f0fa`
+completed all three pull-request validation workflows successfully:
+
+- Node tests: workflow run `44394619807` — success.
+- Cloudflare Worker build validation: workflow run `44394620013` — success.
+- Devnet read-only validation: workflow run `44394619937` — success.
+
+The Devnet job was read-only. This result is not evidence of a funded Devnet buy/sell lifecycle. No signing, transaction submission, production deployment, Mainnet trading, or UI design change occurred. PR #43 remains open and Draft.
+
+The current code still deliberately returns
+`semanticInstructionVerification: false` / `semanticVerification: "incomplete"`
+for parsed or structurally resolved Jupiter transactions. The LiveTradeCoordinator
+continues to reject any route that does not carry a separately established
+`semantically-verified` result. This is an intentional safety block, not a
+completed semantic verifier.
+
+
+## Exact PR #43 head audit — 2026-11-19
+
+Reviewed against PR #43 head `609affa13c00ce957f40693bb3307b627808eddb`.
+
+### Current CI evidence for this exact head
+
+- Node tests: run `44409146208` — success. The job includes the safety and Durable Objects runtime tests and the workerd conditional-export check for the ATA SDK.
+- Cloudflare Worker build validation: run `44409146196` — success. Wrangler dry-run build only; no deployment.
+- Devnet read-only validation: run `44409146240` — success. The job completed unit/runtime tests and Devnet cluster identity/read-only RPC verification.
+- Funded Devnet lifecycle: skipped by the workflow because explicit opt-in was not supplied. This is not an on-chain buy/sell test.
+- The combined commit status still reports `deploy/hesamtanya75-stack/solana-smart-bot-17` as failure. This is separate from the passing Cloudflare Worker build and does not establish a successful deployment.
+
+### Additional source-level blockers confirmed at this head
+
+- `fetchTrustedSellRoute()` deliberately makes a Jupiter Swap API V2 quote-only request with no taker and requires `transaction: null`. It does not produce an executable build transaction or decoded route evidence.
+- `fetchTrustedLiveEvidence()` returns quote and risk evidence but does not produce a `costs` object. The isolated `LiveTradeCoordinator` requires trusted `computeUnitPriceMicroLamports`, `computeUnitLimit`, `maxPriorityFeeLamports`, `baseFeeLamports`, `tipLamports`, `rentLamports`, and `otherOutflowLamports`; missing evidence blocks reservation. Do not fill these fields with browser estimates or guessed constants.
+- The coordinator also requires `semanticInstructionVerification: true` and `routeVerification: "semantically-verified"`. The current quote-only sell-route evidence explicitly reports semantic verification false, so reservation remains blocked before any signer action.
+- Token-2022 mint inspection is fail-closed: extension-bearing mints are not marked safe until every extension type has a dedicated reviewed policy. The current instruction decoder only recognizes base `Transfer` and `TransferChecked` layouts and rejects unsupported extra-account layouts.
+- The managed signer remains a plan only. No Turnkey/Keychain SDK, credentials, signer adapter, or signing route is installed.
+
+### Required next implementation sequence
+
+1. Implement a server-side Jupiter build/evidence path that binds the exact taker, intent, message digest, blockhash, and lookup-table context; keep the resulting evidence untrusted until every instruction is semantically decoded.
+2. Derive base network fee from the exact compiled message through trusted RPC; derive priority fee from the decoded Compute Budget instructions; derive rent and tips from decoded account-creation and transfer effects; reconcile every other SOL/token outflow. Reject incomplete or ambiguous evidence.
+3. Add reviewed Token-2022 extension parsing and explicit per-extension policy. Continue rejecting unknown, transfer-hook, fee-bearing, confidential, and other unsupported cases until their complete transfer effects and account layouts are independently covered.
+4. Complete Jupiter/router and CPI verification, immutable intent binding, and independent finalized settlement reconciliation.
+5. Only after the above, perform a provider-neutral mocked signer adapter compatibility test in workerd. Do not install real provider credentials or enable a real signer during this stage.
+
+### Safety disposition
+
+PR #43 remains open and Draft. These CI results do not mean the transaction verifier or live-trading system is complete. Keep semantic verification incomplete, reservation/signing/submission gates closed, and Mainnet trading disabled. No merge, production deployment, wallet signing, transaction submission, or funded Devnet lifecycle was performed as part of this audit.
+
+
+## Follow-up implementation review — 2026-11-19
+
+A focused review of `trusted-live-evidence.mjs` and `tests/trusted-live-evidence.test.mjs` confirms an important distinction:
+
+- A defensive `validateJupiterBuildResponse()` parser already exists. It snapshots plain records/arrays, bounds instruction and lookup-table resources, checks expected mint/amount intent, validates route-plan shape, and deliberately returns `semanticInstructionVerification: false` with `routeVerification: "build-envelope-only"`.
+- The current live evidence path does not call this parser. `fetchTrustedSellRoute()` still calls the Jupiter Swap V2 quote/order endpoint without a taker, requires `transaction: null`, and returns `quote-only-no-transaction`. `fetchTrustedLiveEvidence()` only returns `{ quote, risk, passed }`.
+- Therefore the existing /build parser is useful input validation, but it is not a build integration, compiled-message verification, instruction decoder, or evidence of an executable safe route. Do not flip its semantic flag or treat provider-supplied labels/program IDs as trusted semantics.
+
+### Safe next coding slice
+
+Implement a separate, server-side Jupiter build-evidence function and keep it disconnected from reservation/signing until the semantic verifier is complete. It must:
+1. Take a server-derived wallet/taker public key and immutable trade intent as explicit inputs; never accept a client-selected taker as authority.
+2. Request the documented build response, validate it with `validateJupiterBuildResponse()`, and bind input/output mints, amount, slippage, taker, request/intent ID, and response digest.
+3. Independently decode every compute-budget, setup, swap, cleanup, other, tip, and loaded-address instruction against reviewed program-specific decoders. Unknown programs, accounts, account roles, CPI effects, or instruction variants fail closed.
+4. Resolve v0 address lookup tables against trusted finalized RPC state and bind the resolved account list to the exact message.
+5. Derive base fee from the exact compiled message/RPC fee quote, priority fee from decoded compute-budget instructions, rent from actual account creations, tips from decoded transfers, and all other outflows. Reject missing or conflicting sources.
+6. Return evidence marked semantic only after every instruction and account effect is verified. Until then, the coordinator's reservation gate must continue to reject it.
+
+No production integration, key material, signer, transaction submission, or live-trading enablement is authorized by this plan.
+
+## Verified transaction-cost arithmetic helper (PR #43 follow-up)
+
+The branch now includes `verified-transaction-costs.mjs` and
+`tests/verified-transaction-costs.test.mjs`. The helper performs exact
+`BigInt` arithmetic for the compute-unit priority fee (rounding upward) and
+sums base fee, priority fee, tip, rent, and other outflows. It rejects values
+outside the canonical unsigned u64 representation and requires all three
+explicit evidence gates: semantic instruction verification, message-account
+effects verification, and a fee quote bound to the exact compiled-message
+digest.
+
+**Integration status: not integrated and not an authorization source.** The
+helper does not parse Jupiter instructions, resolve account privileges, prove
+recipient or token-account effects, authenticate a fee quote, or verify a
+compiled-message digest. Those proofs must be produced by the independent
+semantic verifier before this helper can be called. The current runtime route
+still reports `quote-only-no-transaction`; it must not set any of the helper's
+verification flags. The live-trade coordinator's existing trusted-cost
+validation remains unchanged. Do not adapt helper output into coordinator
+evidence until the verifier and message-bound fee source exist and are tested
+end-to-end.
+
+The new unit tests cover ceiling arithmetic, missing verification gates,
+non-canonical/negative/overflowing values, malformed message digests, and
+aggregate u64 overflow. These tests have been added to the Node test suite;
+their execution on the current PR head remains pending CI confirmation.
+
+## Parser non-authorization regression coverage
+
+The parser test suite now also asserts that caller-supplied approval claims
+(e.g. semantic verification, signing permission, submission permission, or
+message-effect verification) are rejected as unsupported message fields. A
+second regression test asserts that successful decoding still yields a frozen,
+analysis-only result with semantic verification incomplete and signing and
+submission disabled. This protects the boundary between instruction decoding
+and transaction authorization; it does not complete semantic verification.
+
+## Transaction-cost evidence record hardening
+
+The cost helper now snapshots only an exact plain-data schema before reading
+values. It rejects inherited records, accessor-backed properties, symbol keys,
+unexpected fields, and missing own fields. Regression tests verify that a
+hostile getter is rejected without being invoked. This is input-shape hardening
+only; it does not make caller-supplied verification booleans authoritative and
+does not replace the still-missing independent semantic verifier.
+
+The transaction-cost calculation result is explicitly marked
+`analysisOnly: true` and `semanticVerification: "incomplete"`, with both
+`signingPermitted` and `submissionPermitted` fixed to false. This prevents a
+successful arithmetic result from being mistaken for a transaction approval.
+Regression coverage asserts these fields and the frozen result object.
+
+## Quote-only Jupiter payload regression coverage — 2026-11-19
+
+The production trusted-evidence integration test continues to assert that the
+current Jupiter route is quote-only, semantically unverified, and has no
+all-in-cost evidence. The quote-only route regression now additionally rejects
+unexpected non-null transaction payloads (both string and object forms), not
+just a missing transaction field. This protects the deliberate no-taker quote
+path from silently accepting an executable-looking payload. It does not parse,
+authenticate, or semantically verify a Jupiter transaction, and it does not
+change the coordinator's fail-closed gate.
+
+## SPL Token decoder record provenance regression
+
+The SPL Token instruction-set validator accepts only record objects registered
+by the decoder module itself. Regression coverage now verifies that copying or
+freezing a shallow clone of a valid decoded record does not preserve that
+provenance and is rejected as unreviewed. This is still syntax/provenance
+hardening, not proof of token balance effects, Token-2022 extension behavior,
+CPI execution, or semantic transaction approval.
+
+## SPL Token account-privilege negative coverage
+
+Parser regression tests now reject three structurally unsafe layouts when a
+message header is supplied: readonly transfer source, readonly transfer
+destination, and writable TransferChecked mint. These checks validate only
+message-header privilege consistency. They do not prove token-account state,
+actual balance deltas, Token-2022 extension effects, CPI behavior, or semantic
+transaction safety; parser output remains analysis-only and non-authorizing.
+
+## System and Associated Token decoder provenance regression
+
+System Program and Associated Token instruction-set validator tests now also
+reject shallow copies and frozen shallow copies of valid decoder records.
+Only the exact record instances registered by each decoder are accepted by
+its validator. This is provenance hardening for analysis records only; it does
+not establish runtime execution, CPI effects, account-state correctness, or
+semantic transaction approval.
+
+## System CreateAccount privilege regression coverage
+
+Parser regression tests now exercise the System Program CreateAccount layout
+with message-header-derived privileges. They reject a new-account signer that
+is readonly and accept the structurally required writable signer roles while
+keeping the parse result analysis-only. This checks message-header structure;
+it does not verify account funding, runtime execution, ownership effects, or
+whole-transaction semantics.
+
+## Explicit address lookup authentication status
+
+The instruction parser now reports `lookupAddressAuthentication` as
+`not-performed` whenever caller-supplied resolved address lookup entries are
+present, and `not-applicable` when none are supplied. Matching the supplied
+static/loaded key ordering and deriving structural privileges does not prove
+which on-chain lookup table was read, its authority, or its state at execution.
+This status is diagnostic only and never enables signing or submission.
+
+## Duplicate loaded lookup-address regression
+
+The account-role helper test suite now rejects duplicate resolved addresses
+when the same key appears in both writable and readonly loaded groups, and
+when it is repeated across separate lookup-table entries. This protects the
+flattened v0 account-key list from ambiguous duplicate positions. It remains
+structural validation of caller-provided resolved addresses, not proof that
+those addresses were authenticated from on-chain lookup-table state.
+
+## Lookup-table decoder provenance boundary
+
+`resolveAddressLookupTableIndexes` now accepts only the exact immutable record
+instances produced by `decodeAddressLookupTableAccountData`. A shallow clone,
+frozen clone, or caller-constructed lookalike is rejected before index
+resolution. Regression tests cover both forged forms and the valid decoder
+record. This is an in-process provenance boundary only: it does not authenticate
+RPC origin, account ownership, finalized bank context, or SlotHashes ancestry.
+
+## Lookup resolver input snapshot hardening
+
+The lookup index resolver now snapshots its top-level input, index list, and
+SlotHashes list as plain data before using them. It rejects inherited/custom
+prototypes, unexpected properties, sparse arrays, accessor-backed fields or
+entries, out-of-range bank slots, and non-u64 SlotHashes values. Regression
+tests assert that getters are not invoked. This prevents caller-controlled
+JavaScript object behavior from changing validation while it runs; it does
+not authenticate the supplied SlotHashes or establish a same-bank finalized
+RPC context.
+
+## CI regression findings and corrective follow-up
+
+The PR #43 Node/Devnet CI attempt executed 378 Node tests: 374 passed and 4
+failed. Two failures exposed an over-escaped dense-array index regular
+expression in the lookup resolver input snapshot; this was corrected. The
+other two failures came from System CreateAccount test fixtures that marked
+the System Program account as a signer instead of modeling it as a readonly
+unsigned program account; the fixtures now place the program key after the two
+signer accounts and mark it readonly. These are test-fixture/validation
+corrections, not a change to UI or transaction execution. CI must be rerun on
+the updated head before these fixes can be considered verified.
+
+
+## Parser and ATA PDA boundary checkpoint — 2026-11-19
+
+The current parser implementation was re-reviewed at PR #43 head
+`3733ff0054cceb8090582661c36342719941d316`.
+
+- `parseSupportedInstructionMessage()` accepts only the currently registered
+  Compute Budget, System Program, SPL Token / Token-2022, and Associated Token
+  instruction decoders. Unsupported program IDs fail closed.
+- Header-derived account roles are structural checks only. Supplied address
+  lookup entries are explicitly marked `lookupAddressAuthentication:
+  "not-performed"`; they are not proof of authenticated on-chain lookup state.
+- `parseAndVerifySupportedInstructionMessage()` adds an ATA derivation/PDA
+  match only. Even a successful PDA match leaves
+  `semanticVerification: "incomplete"`, `signingPermitted: false`, and
+  `submissionPermitted: false`.
+- The parser rejects execution metadata and CPI evidence rather than
+  pretending to validate them. It does not decode arbitrary Jupiter route
+  programs, verify CPI/inner-instruction effects, authenticate token-account
+  state, or derive finalized balance deltas.
+
+A regression test was added to assert that `executeLiveOrder()` always
+throws and cannot sign or submit. On this head, Node tests and Cloudflare
+Worker build validation passed. Devnet read-only validation remains in
+progress at the time of this note. No funded Devnet lifecycle, merge, deploy,
+wallet enrollment, signing, or transaction submission was performed.
+
+### Next safe implementation unit
+
+Do not add a permissive fallback for unknown Jupiter programs. The next
+meaningful implementation must be a separately reviewed, version-pinned
+decoder/semantic verifier for a narrowly supported Jupiter route set, with
+exact program IDs, instruction layouts, account-role constraints, CPI
+expectations, token-program/extension behavior, and negative fixtures. Until
+that evidence is independently bound to the exact unsigned message and
+finalized execution, parser output must remain analysis-only.
+
+
+## Jupiter unsigned-order evidence cannot authorize execution — 2026-11-19
+
+The live-order response now explicitly carries `analysisOnly: true`,
+`signingPermitted: false`, and `submissionPermitted: false`, in addition to
+`semanticInstructionVerification: false` and
+`routeVerification: "unsigned-structure-and-alt-only"`. Regression coverage
+asserts all five properties for a structurally accepted unsigned Jupiter order.
+This is a fail-closed output contract; it does not implement route semantics,
+signing, or transaction submission.

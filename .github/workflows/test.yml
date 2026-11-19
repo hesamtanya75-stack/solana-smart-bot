@@ -57,3 +57,5 @@ jobs:
           NODE
       - name: Run safety and Durable Objects runtime tests
         run: npm test
+      - name: Verify ATA SDK workerd conditional export
+        run: node --conditions=workerd --test tests/associated-token-account-pda.test.mjs tests/transaction-instruction-parser.test.mjs

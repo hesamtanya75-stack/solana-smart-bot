@@ -6,6 +6,31 @@ const decodedRecords = new WeakSet();
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+function readDensePlainArray(value, maximum, exactLength, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum ||
+      (exactLength !== null && value.length !== exactLength)) {
+    throw new Error(label + " must be a bounded plain array");
+  }
+  const keys = Reflect.ownKeys(value);
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) throw new Error(label + " must not be sparse");
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " must not contain accessor-backed entries");
+    }
+    snapshot.push(descriptor.value);
+  }
+  if (keys.length !== value.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= value.length))) {
+    throw new Error(label + " contains unsupported properties");
+  }
+  return snapshot;
+}
+
 function isCanonicalPublicKey(value) {
   if (typeof value !== "string" || value.length === 0) return false;
   let decoded = 0n;
@@ -44,14 +69,21 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
       !Array.isArray(accountKeys)) {
     throw new Error("Associated Token account layout is unsupported");
   }
-  for (let index = 0; index < accountIndexes.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(accountIndexes, index) ||
-        !Number.isInteger(accountIndexes[index]) || accountIndexes[index] < 0 ||
-        accountIndexes[index] >= accountKeys.length) {
+  const indexes = readDensePlainArray(
+    accountIndexes, 6, 6, "Associated Token account indexes"
+  );
+  const keys = readDensePlainArray(
+    accountKeys, 256, null, "Associated Token account keys"
+  );
+  if (keys.length === 0) {
+    throw new Error("Associated Token account layout is unsupported");
+  }
+  for (const index of indexes) {
+    if (!Number.isInteger(index) || index < 0 || index >= keys.length) {
       throw new Error("Associated Token account indexes are invalid");
     }
   }
-  const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = accountIndexes;
+  const [payerIndex, associatedIndex, ownerIndex, mintIndex, systemIndex, tokenProgramIndex] = indexes;
   // Compiled message account keys are deduplicated. Solana therefore encodes
   // payer === owner as the SAME account index, not as duplicate key entries.
   // Permit only this documented role alias; every other role index is distinct.
@@ -64,7 +96,7 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
       }
     }
   }
-  const roleKeys = accountIndexes.map(index => accountKeys[index]);
+  const roleKeys = indexes.map(index => keys[index]);
   if (roleKeys.some(key => !isCanonicalPublicKey(key))) {
     throw new Error("Associated Token role accounts must be canonical 32-byte public keys");
   }
@@ -81,8 +113,8 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
   }
   // The only supported role alias is payer === owner, represented by one
   // shared compiled account index. The message-level key list is deduplicated.
-  if (accountKeys[systemIndex] !== SYSTEM_PROGRAM_ID ||
-      ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(accountKeys[tokenProgramIndex])) {
+  if (keys[systemIndex] !== SYSTEM_PROGRAM_ID ||
+      ![CLASSIC_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].includes(keys[tokenProgramIndex])) {
     throw new Error("Associated Token system or token program account is invalid");
   }
   const bytes = decodeCanonicalBase64(encodedData);
@@ -94,14 +126,17 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
     decoderVersion: 1,
     analysisOnly: true,
     variant,
-    accountIndexes: Object.freeze([...accountIndexes]),
+    accountIndexes: Object.freeze(indexes),
     payerAccountIndex: payerIndex,
     associatedAccountIndex: associatedIndex,
     ownerAccountIndex: ownerIndex,
     mintAccountIndex: mintIndex,
     systemProgramAccountIndex: systemIndex,
     tokenProgramAccountIndex: tokenProgramIndex,
-    tokenProgramId: accountKeys[tokenProgramIndex],
+    tokenProgramId: keys[tokenProgramIndex],
+    associatedAccountAddress: keys[associatedIndex],
+    ownerAddress: keys[ownerIndex],
+    mintAddress: keys[mintIndex],
     accountRoles: Object.freeze(["payer", "associatedAccount", "owner", "mint", "systemProgram", "tokenProgram"])
   });
   decodedRecords.add(record);
@@ -109,14 +144,36 @@ export function decodeAssociatedTokenInstruction(programId, encodedData, account
 }
 
 export function validateAssociatedTokenInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
+  if (!Array.isArray(instructions) ||
+      Object.getPrototypeOf(instructions) !== Array.prototype ||
+      instructions.length > 64) {
     throw new Error("Associated Token instruction set is invalid");
   }
+  const keys = Reflect.ownKeys(instructions);
+  const snapshot = [];
   for (let index = 0; index < instructions.length; index++) {
-    if (!Object.prototype.hasOwnProperty.call(instructions, index) ||
-        !instructions[index] || !decodedRecords.has(instructions[index])) {
+    const descriptor = Object.getOwnPropertyDescriptor(instructions, String(index));
+    if (!descriptor) {
       throw new Error("Associated Token instruction set contains an unreviewed record");
     }
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Associated Token instruction set is invalid");
+    }
+    if (!descriptor.value || !decodedRecords.has(descriptor.value)) {
+      throw new Error("Associated Token instruction set contains an unreviewed record");
+    }
+    snapshot.push(descriptor.value);
   }
-  return Object.freeze([...instructions]);
+  if (keys.length !== instructions.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= instructions.length))) {
+    throw new Error("Associated Token instruction set is invalid");
+  }
+  return Object.freeze(snapshot);
+}
+
+/** True only for records produced by this module's syntax decoder. */
+export function isDecodedAssociatedTokenInstruction(record) {
+  return Boolean(record && typeof record === "object" && decodedRecords.has(record));
 }

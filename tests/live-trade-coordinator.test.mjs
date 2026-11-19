@@ -48,19 +48,15 @@ function makeCoordinator(evidenceProvider = async () => trustedEvidence(), settl
     COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
     LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
     FETCH_TRUSTED_LIVE_EVIDENCE: evidenceProvider,
-    VERIFY_FINALIZED_SETTLEMENT: async args => {
-      const proof = await settlementVerifier(args);
-      if (proof && !Object.prototype.hasOwnProperty.call(proof, "costs")) {
-        const costs = trustedEvidence().costs;
-        const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
-          costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
-        return { ...proof, costs: { ...costs, totalFeeLamports,
-          totalLamports: Number(args.inputAmount) + totalFeeLamports } };
-      }
-      return proof;
-    }
+    VERIFY_FINALIZED_SETTLEMENT: settlementVerifier
   });
   return { coordinator, storage };
+}
+function fixtureSettlementCosts(inputAmount) {
+  const costs = trustedEvidence().costs;
+  const totalFeeLamports = costs.maxPriorityFeeLamports + costs.baseFeeLamports +
+    costs.tipLamports + costs.rentLamports + costs.otherOutflowLamports;
+  return { ...costs, totalFeeLamports, totalLamports: Number(inputAmount) + totalFeeLamports };
 }
 function validReservation(overrides = {}) {
   return {
@@ -400,7 +396,8 @@ test("confirmed positions cannot be closed or release daily spend without indepe
     verified: true, signature: args.signature, inputMint: args.inputMint,
     inputAmount: args.inputAmount, outputMint: args.outputMint,
     outputAmount: args.outputAmount, owner: args.expectedOwner,
-    confirmationStatus: "finalized"
+    confirmationStatus: "finalized",
+    costs: fixtureSettlementCosts(args.inputAmount)
   });
   const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -433,7 +430,8 @@ test("confirmation stores only independently verified finalized settlement evide
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -461,7 +459,8 @@ test("confirmed reservation rejects replay with a different finalized signature"
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -504,7 +503,8 @@ test("concurrent identical confirmations are idempotent after finalized settleme
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   const { coordinator } = makeCoordinator(undefined, verifier);
@@ -528,6 +528,28 @@ test("concurrent identical confirmations are idempotent after finalized settleme
   assert.equal(results.filter(result => result.body.duplicate === true).length, 1);
   assert.equal(results.every(result => result.body.reservation.status === "confirmed"), true);
   assert.equal((await coordinator.status()).openPositions, 1);
+});
+
+test("coordinator rejects finalized token settlement without independently verified all-in costs", async () => {
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized"
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "9".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /lacks matching independently verified all-in cost evidence/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
 });
 
 test("mismatched settlement proof cannot confirm a reservation", async () => {
@@ -816,7 +838,14 @@ test("kill switch activated during evidence retrieval blocks the in-flight reser
 
 
 test("active emergency stop blocks new reservations but permits finalized settlement reconciliation", async () => {
-  const { coordinator } = makeCoordinator();
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "finalized",
+    costs: fixtureSettlementCosts(args.inputAmount)
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   await post(coordinator, "/kill-switch", { enabled: true });
@@ -845,7 +874,8 @@ test("kill switch activated during settlement verification does not strand a sub
       verified: true, signature: args.signature, inputMint: args.inputMint,
       inputAmount: args.inputAmount, outputMint: args.outputMint,
       outputAmount: args.outputAmount, owner: args.expectedOwner,
-      confirmationStatus: "finalized"
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
     };
   };
   ({ coordinator } = makeCoordinator(undefined, verifier));
@@ -1043,7 +1073,11 @@ test("reservation fails closed unless trusted evidence attests complete semantic
     { semanticInstructionVerification: false, routeVerification: "unsigned-structure-and-alt-only" },
     { semanticInstructionVerification: false, routeVerification: "build-envelope-only" },
     { semanticInstructionVerification: true, routeVerification: "unsigned-structure-and-alt-only" },
-    null
+    { semanticInstructionVerification: true },
+    { semanticInstructionVerification: true, routeVerification: "semantically-verified-but-not-message-bound" },
+    { semanticInstructionVerification: "true", routeVerification: "semantically-verified" },
+    null,
+    undefined
   ]) {
     let evidenceCalls = 0;
     const { coordinator, storage } = makeCoordinator(async () => {
@@ -1064,4 +1098,55 @@ test("reservation fails closed unless trusted evidence attests complete semantic
     assert.equal(evidenceCalls, 1);
     assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 0);
   }
+});
+
+test("coordinator rejects non-SOL input mints before requesting trusted evidence", async () => {
+  let evidenceCalls = 0;
+  const { coordinator } = makeCoordinator(async () => {
+    evidenceCalls += 1;
+    return trustedEvidence();
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+
+  const result = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-non-sol-input",
+    inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  }));
+
+  assert.equal(result.status, 400);
+  assert.match(result.body.error, /Complete immutable order intent/);
+  assert.equal(evidenceCalls, 0);
+});
+
+
+test("coordinator rejects accessor-backed and noncanonical all-in cost evidence without invoking getters", async () => {
+  let getterCalled = false;
+  const accessorCosts = { ...trustedEvidence().costs };
+  Object.defineProperty(accessorCosts, "baseFeeLamports", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      getterCalled = true;
+      return 5000;
+    }
+  });
+  const cases = [
+    { name: "accessor-backed costs", costs: accessorCosts },
+    { name: "unexpected cost field", costs: { ...trustedEvidence().costs, unreviewedFee: 1 } },
+    { name: "inherited cost fields", costs: Object.assign(Object.create({ baseFeeLamports: 5000 }), {
+      computeUnitPriceMicroLamports: "10000", computeUnitLimit: 200000,
+      maxPriorityFeeLamports: 2000, tipLamports: 0, rentLamports: 0, otherOutflowLamports: 0
+    }) }
+  ];
+  for (const scenario of cases) {
+    const { coordinator, storage } = makeCoordinator(async () => trustedEvidence({ costs: scenario.costs }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "cost-shape-" + scenario.name.replace(/[^a-z]+/gi, "-").toLowerCase()
+    }));
+    assert.equal(result.status, 409, scenario.name);
+    assert.match(result.body.error, /Trusted all-in transaction cost evidence is missing/);
+    assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 0);
+  }
+  assert.equal(getterCalled, false);
 });

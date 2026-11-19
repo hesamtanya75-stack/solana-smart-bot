@@ -2,6 +2,35 @@ const COMPUTE_BUDGET_PROGRAM_ID = "ComputeBudget111111111111111111111111111111";
 const decodedInstructionRecords = new WeakSet();
 const decodedTransactionInstructionRecords = new WeakSet();
 
+function readDensePlainArray(value, maximum, label) {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum) {
+    throw new Error(label + " is invalid");
+  }
+  const keys = Reflect.ownKeys(value);
+  const snapshot = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) throw new Error(label + " contains a sparse entry");
+    if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains an accessor-backed entry");
+    }
+    snapshot.push(descriptor.value);
+  }
+  if (keys.length !== value.length + 1) {
+    throw new Error(label + " contains unsupported properties");
+  }
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const key = keys[keyIndex];
+    if (key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
+         Number(key) >= value.length)) {
+      throw new Error(label + " contains unsupported properties");
+    }
+  }
+  return snapshot;
+}
+
 function decodeCanonicalBase64(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 32 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
@@ -72,11 +101,9 @@ export function decodeComputeBudgetInstruction(programId, encodedData) {
  * This does not verify other instruction families or attest the whole transaction.
  */
 export function validateComputeBudgetInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
-    throw new Error("Compute Budget instruction collection is invalid");
-  }
+  const records = readDensePlainArray(instructions, 64, "Compute Budget instruction collection");
   const seen = new Set();
-  for (const instruction of instructions) {
+  for (const instruction of records) {
     if (!instruction || !decodedInstructionRecords.has(instruction) ||
         instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID ||
         instruction.decoderVersion !== 1 ||
@@ -85,7 +112,7 @@ export function validateComputeBudgetInstructionSet(instructions) {
     }
     seen.add(instruction.variant);
   }
-  return Object.freeze([...instructions]);
+  return Object.freeze(records);
 }
 
 export const COMPUTE_BUDGET_PROGRAM = COMPUTE_BUDGET_PROGRAM_ID;
@@ -102,8 +129,11 @@ export const INSTRUCTION_DECODER_REGISTRY_VERSION = 1;
 
 export function decodeSupportedTransactionInstruction({ programId, data, accountIndexes }) {
   if (typeof programId !== "string" || !Array.isArray(accountIndexes) ||
-      accountIndexes.length !== 0 || accountIndexes.some(index =>
-        !Number.isInteger(index) || index < 0 || index > 255)) {
+      accountIndexes.length !== 0) {
+    throw new Error("Instruction does not match a reviewed account-role schema");
+  }
+  const indexes = readDensePlainArray(accountIndexes, 0, "Instruction account indexes");
+  if (indexes.length !== 0) {
     throw new Error("Instruction does not match a reviewed account-role schema");
   }
   if (programId !== COMPUTE_BUDGET_PROGRAM_ID) {
@@ -123,11 +153,11 @@ export function decodeSupportedTransactionInstruction({ programId, data, account
 }
 
 export function validateSupportedTransactionInstructionSet(instructions) {
-  if (!Array.isArray(instructions) || instructions.length > 64) {
-    throw new Error("Supported transaction instruction collection is invalid");
-  }
+  const records = readDensePlainArray(
+    instructions, 64, "Supported transaction instruction collection"
+  );
   const decoded = [];
-  for (const instruction of instructions) {
+  for (const instruction of records) {
     if (!instruction || !decodedTransactionInstructionRecords.has(instruction) ||
         instruction.registryVersion !== INSTRUCTION_DECODER_REGISTRY_VERSION ||
         instruction.programId !== COMPUTE_BUDGET_PROGRAM_ID ||
@@ -140,7 +170,7 @@ export function validateSupportedTransactionInstructionSet(instructions) {
     decoded.push(instruction.decoded);
   }
   validateComputeBudgetInstructionSet(decoded);
-  return Object.freeze([...instructions]);
+  return Object.freeze(records);
 }
 
 
