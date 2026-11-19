@@ -571,7 +571,7 @@ export default {
         return json({ ok: false, error: String(error?.message || error) }, 500);
       }
     }
-    if (url.pathname === "/dashboard-test" && request.method === "GET") {
+    if (url.pathname === "/dashboard-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
       const assetUrl = new URL("/index.html", request.url);
       const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
       if (!asset.ok) return new Response("Dashboard asset unavailable", { status: 502 });
@@ -582,7 +582,7 @@ export default {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
       });
     }
-    if (url.pathname === "/screen-test" && request.method === "GET") {
+    if (url.pathname === "/screen-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
       return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Screen Test</title><style>html,body{margin:0;min-height:100%;background:#10152b;color:#fff;font:18px system-ui}main{margin:24px auto;padding:24px;max-width:520px;border:2px solid #27e7d3;border-radius:18px;background:linear-gradient(135deg,#24104d,#063b43);text-align:center}h1{color:#27e7d3}p{line-height:1.6}</style></head><body><main><h1>SCREEN TEST OK</h1><p>If you can read this, your browser can display a page from this Worker.</p><p>HTTP route: /screen-test</p></main></body></html>", {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
       });
