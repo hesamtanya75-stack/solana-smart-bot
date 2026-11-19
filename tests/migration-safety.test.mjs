@@ -46,3 +46,11 @@ test("post-import verification compares balance and exact trade history", () => 
   assert.equal(statesMatch(source, { balance: 95.25, trades: [] }), false);
   assert.equal(statesMatch(source, null), false);
 });
+
+test("default-like Deno state is flagged because GET cannot prove KV key existence", () => {
+  assert.equal(isDefaultLikeSourceState({ balance: 100, trades: [] }), true);
+  assert.equal(isDefaultLikeSourceState({ balance: "100", trades: [] }), true);
+  assert.equal(isDefaultLikeSourceState({ balance: 99, trades: [] }), false);
+  assert.equal(isDefaultLikeSourceState({ balance: 100, trades: [{ mint: "abc" }] }), false);
+  assert.equal(isDefaultLikeSourceState(null), false);
+});
