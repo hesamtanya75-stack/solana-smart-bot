@@ -145,15 +145,20 @@ export class MfaRateLimiter {
 
   async alarm() {
     const now = Date.now();
-    const entries = await this.storage.list({ prefix: "auth:" });
-    let nextExpiry = null;
-    for (const [key, value] of entries) {
-      if (!value || !Number.isFinite(value.expiresAt) || value.expiresAt <= now) {
-        await this.storage.delete(key);
-      } else {
-        nextExpiry = nextExpiry === null ? value.expiresAt : Math.min(nextExpiry, value.expiresAt);
+    // List, inspect, and delete in one transaction so a concurrent reservation
+    // cannot replace an expired counter between the list and delete operations.
+    const nextExpiry = await this.storage.transaction(async txn => {
+      const entries = await txn.list({ prefix: "auth:" });
+      let earliest = null;
+      for (const [key, value] of entries) {
+        if (!value || !Number.isFinite(value.expiresAt) || value.expiresAt <= now) {
+          await txn.delete(key);
+        } else {
+          earliest = earliest === null ? value.expiresAt : Math.min(earliest, value.expiresAt);
+        }
       }
-    }
+      return earliest;
+    });
     if (nextExpiry !== null) await this.storage.setAlarm(nextExpiry);
   }
 }
