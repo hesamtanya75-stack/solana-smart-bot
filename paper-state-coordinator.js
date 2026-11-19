@@ -23,6 +23,10 @@ const ALLOWED_PATCH_KEYS = new Set([
   "balance", "trades", "autoEnabled", "paused", "scannedMints",
   "deferredMints", "lastRunAt", "lastMessage", "lastScanReport"
 ]);
+const ALLOWED_STATE_KEYS = new Set([
+  "balance", "trades", "autoEnabled", "paused", "scannedMints",
+  "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
+]);
 
 function response(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -35,18 +39,31 @@ function validateState(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new TypeError("State must be an object");
   }
-  if (!Number.isFinite(Number(input.balance)) || Number(input.balance) < 0) {
+  const unknownKeys = Object.keys(input).filter(key => !ALLOWED_STATE_KEYS.has(key));
+  if (unknownKeys.length) {
+    throw new TypeError("State contains unsupported fields");
+  }
+  if (typeof input.balance !== "number" || !Number.isFinite(input.balance) || input.balance < 0) {
     throw new TypeError("Invalid balance");
+  }
+  if (typeof input.autoEnabled !== "boolean" || typeof input.paused !== "boolean") {
+    throw new TypeError("Invalid automation flags");
+  }
+  if (input.lastRunAt !== null && typeof input.lastRunAt !== "string") {
+    throw new TypeError("Invalid lastRunAt");
+  }
+  if (input.lastMessage !== undefined && typeof input.lastMessage !== "string") {
+    throw new TypeError("Invalid lastMessage");
+  }
+  if (input.updatedAt !== undefined && input.updatedAt !== null && typeof input.updatedAt !== "string") {
+    throw new TypeError("Invalid updatedAt");
   }
   for (const key of Object.keys(LIMITS)) {
     if (!Array.isArray(input[key]) || input[key].length > LIMITS[key]) {
       throw new TypeError("Invalid or oversized " + key);
     }
   }
-  if (typeof input.autoEnabled !== "boolean" || typeof input.paused !== "boolean") {
-    throw new TypeError("Invalid automation flags");
-  }
-  const state = { ...DEFAULT_STATE, ...input, balance: Number(input.balance) };
+  const state = { ...DEFAULT_STATE, ...input };
   // Never silently truncate data at the coordination boundary.
   for (const [key, limit] of Object.entries(LIMITS)) {
     if (state[key].length > limit) throw new TypeError("Oversized " + key);
