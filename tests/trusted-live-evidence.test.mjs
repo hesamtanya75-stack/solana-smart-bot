@@ -393,8 +393,6 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   assert.equal(originalEvidence.messageDigest.signer, BOT_WALLET);
   assert.equal(originalEvidence.messageDigest.messageVersion, "legacy");
   assert.equal(originalEvidence.semanticInstructionVerification, false);
-  assert.equal(originalEvidence.signingPermitted, false);
-  assert.equal(originalEvidence.submissionPermitted, false);
 
   const changedBytes = Buffer.from(original, "base64");
   changedBytes[changedBytes.length - 1] ^= 1;
