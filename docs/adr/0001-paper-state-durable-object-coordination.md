@@ -1,12 +1,12 @@
 # ADR: Single-writer coordination for paper-trading state
 
-Status: Proposed; not implemented
+Status: Accepted; branch implementation complete, remote Preview runtime validation pending
 Applies to: Cloudflare Worker migration branch
 Safety: paper-trading only; no wallet signing, swaps, or Mainnet transactions
 
 ## Context
 
-The Worker stores the canonical paper-trading document at KV key `bot_state`.
+Before this branch's refactor, the Worker stored the canonical paper-trading document at KV key `bot_state`. The migration branch now routes canonical paper-trading state through `PaperStateCoordinator`; Workers KV remains for unrelated sessions, profile data, and caches.
 The current code has multiple read-modify-write paths:
 - `PUT /api/state`
 - `POST /api/automation`
@@ -19,7 +19,7 @@ KV does not provide an atomic compare-and-swap for this read/modify/write sequen
 
 Use one Durable Object instance as the serialization and authoritative storage boundary for the paper-trading state. Do not treat KV as the writable canonical state after the cutover.
 
-The Durable Object API should expose narrowly scoped operations:
+The branch implementation exposes narrowly scoped operations:
 1. `GET snapshot`: return the current state and monotonically increasing version.
 2. `PATCH state`: apply an allow-listed user change inside a Durable Object Storage transaction.
 3. `COMMIT cycle`: accept a computed Cron result only when its expected version equals the current version; update state and increment version atomically. On conflict, reject the stale result. Do not blindly overwrite or automatically replay a cycle that may have calculated paper buys/sells from an old snapshot.
@@ -44,6 +44,12 @@ The coordinator must never hold an open Durable Object transaction while calling
 - Verify the complete document after import, excluding only the server-managed timestamp/version fields.
 - Do not copy sessions, passwords, API keys, or TOTP secrets.
 - Do not delete or disable Deno after import; require a separate manual dashboard verification and recovery window.
+
+## Validation status and remaining requirements
+
+The migration branch currently includes in-memory transactional coordinator tests, Worker routing tests, strict API payload validation, stale Cron commit rejection, Preview binding-isolation checks, and a Wrangler Worker/DO dry-run build. The CI run for the current pre-documentation head passed. These tests do not substitute for an actual Cloudflare Preview runtime test: the test coordinator uses an in-memory storage implementation rather than Cloudflare's deployed Durable Object runtime.
+
+Before considering the new path operational, deploy only an isolated Cloudflare Preview and verify its health route, first-time initialization, snapshot, PATCH, versioned COMMIT conflict, and persistence across Preview redeploys. Confirm the Preview KV namespace differs from Production. Do not use production bindings or Deno credentials in this test.
 
 ## Required tests before enabling the new path
 
