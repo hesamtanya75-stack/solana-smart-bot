@@ -95,3 +95,24 @@ test("Cron skips uninitialized state and commits initialized state with version 
   assert.equal(snapshot.version, 2);
   assert.ok(snapshot.state.lastRunAt);
 });
+
+test("state API rejects oversized arrays instead of silently truncating them", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/state", "PUT", { balance: 90, trades: Array.from({ length: 501 }, (_, i) => ({ id: i })) }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
+
+test("state API rejects coercible balances before persistence", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/state", "PUT", { balance: "88" }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
+
+test("state API rejects malformed automation flags before persistence", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/state", "PUT", { balance: 88, autoEnabled: "true" }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
