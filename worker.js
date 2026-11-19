@@ -1,3 +1,6 @@
+export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+export { MfaRateLimiter } from "./mfa-rate-limiter.js";
+
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
   balance: 100,
@@ -44,22 +47,95 @@ function cleanState(value) {
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
+const STATE_VERSION = Symbol("paperStateVersion");
+async function coordinatorRequest(env, path, body) {
+  if (!env.PAPER_STATE_COORDINATOR) throw new Error("Paper State Coordinator binding is unavailable");
+  const id = env.PAPER_STATE_COORDINATOR.idFromName("paper-state");
+  const stub = env.PAPER_STATE_COORDINATOR.get(id);
+  const response = await stub.fetch("https://paper-state.internal/" + path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    const error = new Error(result.error || "Paper State Coordinator request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+async function authRateLimitRequest(env, path, body) {
+  if (!env.AUTH_RATE_LIMITER) {
+    const error = new Error("Authentication rate limiter binding is unavailable");
+    error.status = 503;
+    throw error;
+  }
+  try {
+    const id = env.AUTH_RATE_LIMITER.idFromName("auth-rate-limit");
+    const stub = env.AUTH_RATE_LIMITER.get(id);
+    const response = await stub.fetch("https://auth-rate-limit.internal" + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const error = new Error(result.error || "Authentication rate limiter request failed");
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  } catch (error) {
+    if (error?.status) throw error;
+    const unavailable = new Error("Authentication rate limiter is unavailable");
+    unavailable.status = 503;
+    throw unavailable;
+  }
+}
 async function readStoredState(env) {
-  const stored = await env.BOT_STATE.get("bot_state", "json");
-  return stored === null || stored === undefined ? null : cleanState(stored);
+  const snapshot = await coordinatorRequest(env, "snapshot");
+  if (!snapshot.initialized || !snapshot.state) return null;
+  const state = cleanState(snapshot.state);
+  Object.defineProperty(state, STATE_VERSION, { value: snapshot.version, writable: true });
+  return state;
 }
 async function readState(env) {
   return (await readStoredState(env)) || cleanState(null);
 }
 async function saveState(env, state) {
-  state.updatedAt = new Date().toISOString();
-  await env.BOT_STATE.put("bot_state", JSON.stringify(state));
+  const expectedVersion = state[STATE_VERSION];
+  const candidate = cleanState(state);
+  candidate.updatedAt = new Date().toISOString();
+  if (Number.isSafeInteger(expectedVersion)) {
+    const result = await coordinatorRequest(env, "commit", { expectedVersion, state: candidate });
+    Object.defineProperty(state, STATE_VERSION, { value: result.version, writable: true });
+    return result;
+  }
+  const result = await coordinatorRequest(env, "import", candidate);
+  Object.defineProperty(state, STATE_VERSION, { value: result.version, writable: true });
+  return result;
+}
+async function patchPaperState(env, patch) {
+  const snapshot = await coordinatorRequest(env, "snapshot");
+  if (!snapshot.initialized) {
+    const initial = { ...cleanState(null), ...patch };
+    try {
+      await coordinatorRequest(env, "import", initial);
+      return { ok: true, state: initial, version: 1 };
+    } catch (error) {
+      if (error.status !== 409) throw error;
+    }
+  }
+  return coordinatorRequest(env, "patch", patch);
 }
 async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  if (!session || !(session.expiresAt > Date.now())) return false;
+  const profile = await readProfile(env);
+  return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
 }
 async function rpc(method, params, env) {
   const errors = [];
@@ -509,11 +585,12 @@ async function readProfile(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const buildId = env.CF_VERSION_METADATA?.id || "local-unversioned";
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV", build: "59ef112" });
+      return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: buildId });
     }
     if (url.pathname === "/version" && request.method === "GET") {
-      return json({ ok: true, build: "59ef112", frontend: "premium-dashboard-v2", asset: "index.html" });
+      return json({ ok: true, build: buildId, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/asset-check" && request.method === "GET") {
       try {
@@ -525,7 +602,7 @@ export default {
         return json({ ok: false, error: String(error?.message || error) }, 500);
       }
     }
-    if (url.pathname === "/dashboard-test" && request.method === "GET") {
+    if (url.pathname === "/dashboard-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
       const assetUrl = new URL("/index.html", request.url);
       const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
       if (!asset.ok) return new Response("Dashboard asset unavailable", { status: 502 });
@@ -536,7 +613,7 @@ export default {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
       });
     }
-    if (url.pathname === "/screen-test" && request.method === "GET") {
+    if (url.pathname === "/screen-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
       return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Screen Test</title><style>html,body{margin:0;min-height:100%;background:#10152b;color:#fff;font:18px system-ui}main{margin:24px auto;padding:24px;max-width:520px;border:2px solid #27e7d3;border-radius:18px;background:linear-gradient(135deg,#24104d,#063b43);text-align:center}h1{color:#27e7d3}p{line-height:1.6}</style></head><body><main><h1>SCREEN TEST OK</h1><p>If you can read this, your browser can display a page from this Worker.</p><p>HTTP route: /screen-test</p></main></body></html>", {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
       });
@@ -546,62 +623,126 @@ export default {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const loginKey = "login_fail:" + ip;
-        const failures = await env.BOT_STATE.get(loginKey, "json") || { count: 0 };
-        if (Number(failures.count || 0) >= 5) {
+        const ipHash = await hashText(ip);
+        const legacyFailures = await env.BOT_STATE.get("login_fail:" + ip, "json") || { count: 0 };
+        const loginLimit = await authRateLimitRequest(env, "/login-attempt", {
+          ipHash,
+          legacyCount: Number(legacyFailures.count || 0)
+        });
+        if (!loginLimit.allowed) {
           return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
         }
         if (!expected || typeof password !== "string" || password !== expected) {
-          await env.BOT_STATE.put(loginKey, JSON.stringify({
-            count: Number(failures.count || 0) + 1
-          }), { expirationTtl: 900 });
           return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(loginKey);
+        await authRateLimitRequest(env, "/login-clear", { ipHash });
+        await env.BOT_STATE.delete("login_fail:" + ip);
         const profile = await readProfile(env);
-        if (profile.totpEnabled && profile.totpSecret) {
+        // A damaged MFA profile must never downgrade to password-only login.
+        if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
+          return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+        }
+        if (profile.totpEnabled) {
           const challengeId = crypto.randomUUID();
           await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
-      } catch { return json({ error: "داواکاری هەڵەیە" }, 400); }
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        return json({ error: "داواکاری هەڵەیە" }, 400);
+      }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const ipHash = await hashText(ip);
+        const ipFailureKey = "totp_fail:" + ip;
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
+        const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
+        const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
+          ipHash,
+          challengeId,
+          legacyIpCount: Number(legacyIpFailures.count || 0),
+          legacyChallengeCount: Number(challenge.attempts || 0)
+        });
+        if (!mfaLimit.allowed) {
+          if (mfaLimit.reason === "challenge") {
+            await env.BOT_STATE.delete(key);
+            return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
+          }
+          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
         const profile = await readProfile(env);
-        let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
-        if (!valid && profile.backupHash) {
+        if (!profile.totpEnabled || typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) {
+          return json({ error: "Authenticator is not configured correctly" }, 401);
+        }
+        let valid = await verifyTotp(profile.totpSecret, code);
+        let credentialClaimHash = null;
+        let backupCodeUsed = false;
+        if (valid) {
+          // A TOTP value is claimable only once during its short validity window,
+          // including across separate login challenges.
+          credentialClaimHash = await hashText("totp:" + profile.totpSecret + ":" + code);
+        } else if (profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
           if (submittedHash === profile.backupHash) {
             valid = true;
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+            backupCodeUsed = true;
+            credentialClaimHash = await hashText("backup:" + profile.backupHash);
           }
         }
         if (!valid) {
-          challenge.attempts = Number(challenge.attempts || 0) + 1;
-          await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         }
-        await env.BOT_STATE.delete(key);
-        const token = crypto.randomUUID();
-        const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
-      } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400); }
+        const credentialClaim = await authRateLimitRequest(env, "/mfa-credential-claim", { credentialHash: credentialClaimHash });
+        if (!credentialClaim.claimed) {
+          return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدێکی نوێ بەکاربهێنە." }, 409);
+        }
+        const challengeClaim = await authRateLimitRequest(env, "/mfa-challenge-claim", { challengeId });
+        if (!challengeClaim.claimed) {
+          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
+          return json({ error: "ئەم داواکارییەی پشتڕاستکردنەوە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە." }, 409);
+        }
+        try {
+          if (backupCodeUsed) {
+            // The atomic credential claim prevents concurrent reuse while this
+            // one-time backup hash is removed from the profile.
+            profile.backupHash = null;
+            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          }
+          await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
+          await env.BOT_STATE.delete(ipFailureKey);
+          await env.BOT_STATE.delete(key);
+          const token = crypto.randomUUID();
+          const expiresAt = Date.now() + SESSION_MS;
+          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+          return json({ ok: true, token });
+        } catch (error) {
+          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
+          try { await authRateLimitRequest(env, "/mfa-challenge-release", { challengeId }); } catch {}
+          throw error;
+        }
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
+      }
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/logout" && request.method === "POST") {
+        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        if (token) await env.BOT_STATE.delete("session:" + token);
+        return json({ ok: true });
+      }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
         return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
@@ -640,20 +781,38 @@ export default {
         return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        let claimedSecretHash = null;
         try {
           const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          const ipHash = await hashText(ip);
+          const setupLimit = await authRateLimitRequest(env, "/totp-setup-attempt", { ipHash });
+          if (!setupLimit.allowed) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
+          claimedSecretHash = await hashText(p.pendingTotpSecret);
+          const claim = await authRateLimitRequest(env, "/totp-setup-claim", { secretHash: claimedSecretHash });
+          if (!claim.claimed) return json({ error: "ئەم setup ـە پێشتر پشتڕاست کراوەتەوە؛ تکایە دووبارە setup بکە." }, 409);
+          await authRateLimitRequest(env, "/totp-setup-clear", { ipHash });
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
+          // Rotate the session generation so all previously issued sessions
+          // become invalid immediately after MFA is enabled.
+          p.authVersion = Number(p.authVersion || 0) + 1;
           p.backupHash = await hashText(backupCode);
           delete p.pendingTotpSecret;
           delete p.pendingTotpAt;
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
-        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+        } catch (error) {
+          if (claimedSecretHash) {
+            try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
+          }
+          if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
+        }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
@@ -682,25 +841,80 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
-      if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
+      if (url.pathname === "/api/state/status" && request.method === "GET") {
+        return json(await coordinatorRequest(env, "status"));
+      }
+      if (url.pathname === "/api/state/import" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return json({ error: "Invalid state" }, 400);
+          }
+          const result = await coordinatorRequest(env, "import", body);
+          return json(result);
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State is already initialized" : "Invalid state" }, error.status || 400);
+        }
+      }
+      if (url.pathname === "/api/state" && request.method === "GET") {
+        const state = await readStoredState(env);
+        return json(state || cleanState(null));
+      }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return json({ error: "Invalid state" }, 400);
+          }
+          const allowedKeys = new Set([
+            "balance", "trades", "autoEnabled", "paused", "scannedMints",
+            "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
+          ]);
+          if (Object.keys(body).some(key => !allowedKeys.has(key))) {
+            return json({ error: "State contains unsupported fields" }, 400);
+          }
+          const stringFields = ["lastRunAt", "lastMessage", "updatedAt"];
+          for (const key of stringFields) {
+            if (body[key] !== undefined && body[key] !== null && typeof body[key] !== "string") {
+              return json({ error: "Invalid " + key }, 400);
+            }
+          }
+          const limits = { trades: 500, scannedMints: 1000, deferredMints: 1000, lastScanReport: 20 };
+          for (const [key, limit] of Object.entries(limits)) {
+            if (body[key] !== undefined && (!Array.isArray(body[key]) || body[key].length > limit)) {
+              return json({ error: "Invalid or oversized " + key }, 400);
+            }
+          }
+          if (body.balance !== undefined && (typeof body.balance !== "number" || !Number.isFinite(body.balance) || body.balance < 0)) {
+            return json({ error: "Invalid balance" }, 400);
+          }
+          for (const key of ["autoEnabled", "paused"]) {
+            if (body[key] !== undefined && typeof body[key] !== "boolean") {
+              return json({ error: "Invalid " + key }, 400);
+            }
+          }
           const current = await readState(env);
+          const expectedVersion = current[STATE_VERSION];
           const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
+          if (Number.isSafeInteger(expectedVersion)) Object.defineProperty(state, STATE_VERSION, { value: expectedVersion, writable: true });
           await saveState(env, state);
           return json({ ok: true, state });
-        } catch { return json({ error: "Invalid state" }, 400); }
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State changed; reload and retry" : "Invalid state" }, error.status || 400);
+        }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
           const body = await request.json();
-          const state = await readState(env);
-          if (typeof body.enabled === "boolean") state.autoEnabled = body.enabled;
-          if (typeof body.paused === "boolean") state.paused = body.paused;
-          await saveState(env, state);
-          return json({ ok: true, state });
-        } catch { return json({ error: "Invalid settings" }, 400); }
+          const patch = {};
+          if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
+          if (typeof body.paused === "boolean") patch.paused = body.paused;
+          if (!Object.keys(patch).length) return json({ error: "Invalid settings" }, 400);
+          const result = await patchPaperState(env, patch);
+          return json({ ok: true, state: result.state });
+        } catch (error) {
+          return json({ error: "Invalid settings" }, error.status || 400);
+        }
       }
       return json({ error: "Not found" }, 404);
     }
@@ -721,13 +935,13 @@ export default {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
-          "X-Solana-Smart-Bot-Build": "59ef112"
+          "X-Solana-Smart-Bot-Build": buildId
         }
       });
     }
 
     const assetHeaders = new Headers(assetResponse.headers);
-    assetHeaders.set("X-Solana-Smart-Bot-Build", "59ef112");
+    assetHeaders.set("X-Solana-Smart-Bot-Build", buildId);
     return new Response(assetResponse.body, {
       status: assetResponse.status,
       statusText: assetResponse.statusText,
@@ -788,7 +1002,17 @@ export default {
         ? "Server cycle completed with warning. Sold: " + sold + ". " +
           (buyMessage || "Auto-buy not completed.") + " " + warnings.join(" | ")
         : "Server cycle complete. Sold: " + sold + ". " + buyMessage) + rpcSummary + rpcErrors;
-      await saveState(env, state);
+      try {
+        await saveState(env, state);
+      } catch (error) {
+        if (error?.status === 409) {
+          console.warn("Server cycle discarded: paper state changed while this cycle was running.", {
+            durationMs: Date.now() - startedAt
+          });
+          return;
+        }
+        throw error;
+      }
 
       // Safe operational log: never include secrets, wallet data, or API keys.
       console.info("Server cycle finished", {
