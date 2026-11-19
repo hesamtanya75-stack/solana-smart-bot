@@ -95,6 +95,19 @@ test("post-import verification compares balance and exact trade history", () => 
   assert.equal(statesMatch(source, null), false);
 });
 
+test("post-import verification detects missing normalized Worker defaults", () => {
+  const legacy = {
+    balance: 92.5,
+    trades: [{ mint: "legacy-token" }],
+    updatedAt: "2026-11-18T10:00:00.000Z"
+  };
+  const expected = normalizeLegacySourceState(legacy);
+  assert.equal(statesMatch(expected, { ...expected, updatedAt: "2026-11-19T00:00:00.000Z" }), true);
+  const { lastMessage, ...missingDefault } = expected;
+  assert.equal(statesMatch(expected, { ...missingDefault, updatedAt: "2026-11-19T00:00:00.000Z" }), false);
+  assert.equal(statesMatch(expected, { ...expected, paused: true }), false);
+});
+
 test("default-like Deno state is flagged because GET cannot prove KV key existence", () => {
   assert.equal(isDefaultLikeSourceState({ balance: 100, trades: [] }), true);
   assert.equal(isDefaultLikeSourceState({ balance: "100", trades: [] }), true);
