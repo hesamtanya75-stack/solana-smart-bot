@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 test("dashboard inline scripts parse as valid JavaScript", () => {
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script\\s*>/gi)]
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)]
     .map(match => match[1].trim())
     .filter(Boolean);
 
