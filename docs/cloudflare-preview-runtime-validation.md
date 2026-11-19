@@ -93,3 +93,6 @@ The repository includes `.github/workflows/cloudflare-preview.yml`. It is delibe
 The workflow runs `npm test`, performs a Wrangler dry-run build, checks that both secrets are present without printing them, and then invokes Wrangler 4.135.0's `preview` command. It does not run `wrangler deploy` or select a Production environment. If the enablement variable is absent or false, the Preview job is skipped by design.
 
 Before enabling it, create a Cloudflare API token with only the permissions required to publish Worker Previews for this account. Add the token and account ID as GitHub repository Actions secrets, and set `CLOUDFLARE_PREVIEW_ENABLED=true` as a repository Actions variable. Never put credentials in workflow files, commits, issue comments, or chat. Once enabled, update this PR (or synchronize its branch) to trigger the guarded workflow. A successful job and the exact Preview URL in its logs are required evidence; a skipped job is not a deployment.
+
+
+After adding the repository Actions variable and secrets, note that GitHub does not rerun an earlier skipped workflow automatically. A new commit pushed to this pull request's source branch is required to emit a `synchronize` event and evaluate the Preview job again. Check the new run's result; do not treat the previous skipped run as deployment evidence.
