@@ -294,3 +294,60 @@ test("unauthenticated automation and profile API requests are rejected before st
   assert.equal((await coordinator.snapshot()).initialized, false);
   assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
 });
+
+
+test("password login throttles after five failures", async () => {
+  const { env } = environment();
+  const values = new Map();
+  env.BOT_LOGIN_PASSWORD = "preview-test-password";
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  for (let i = 0; i < 5; i++) {
+    const response = await worker.fetch(new Request("https://worker.test/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.10" },
+      body: JSON.stringify({ password: "wrong-password" })
+    }), env);
+    assert.equal(response.status, 401);
+  }
+  const blocked = await worker.fetch(new Request("https://worker.test/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.10" },
+    body: JSON.stringify({ password: "preview-test-password" })
+  }), env);
+  assert.equal(blocked.status, 429);
+  assert.equal(JSON.parse(values.get("login_fail:192.0.2.10")).count, 5);
+});
+
+test("MFA challenge is deleted after five invalid codes", async () => {
+  const { env } = environment();
+  const values = new Map([
+    ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null })],
+    ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  for (let i = 0; i < 5; i++) {
+    const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+    }), env);
+    assert.equal(response.status, 401);
+  }
+  const blocked = await worker.fetch(new Request("https://worker.test/api/login/totp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+  }), env);
+  assert.equal(blocked.status, 401);
+  assert.equal(values.has("mfa_challenge:test-challenge"), false);
+});
