@@ -49,13 +49,14 @@ function validateState(input) {
   if (typeof input.autoEnabled !== "boolean" || typeof input.paused !== "boolean") {
     throw new TypeError("Invalid automation flags");
   }
-  if (input.lastRunAt !== null && typeof input.lastRunAt !== "string") {
+  if (input.lastRunAt !== null && (typeof input.lastRunAt !== "string" || input.lastRunAt.length > 64)) {
     throw new TypeError("Invalid lastRunAt");
   }
-  if (input.lastMessage !== undefined && typeof input.lastMessage !== "string") {
+  if (input.lastMessage !== undefined && (typeof input.lastMessage !== "string" || input.lastMessage.length > 2000)) {
     throw new TypeError("Invalid lastMessage");
   }
-  if (input.updatedAt !== undefined && input.updatedAt !== null && typeof input.updatedAt !== "string") {
+  if (input.updatedAt !== undefined && input.updatedAt !== null &&
+      (typeof input.updatedAt !== "string" || input.updatedAt.length > 64)) {
     throw new TypeError("Invalid updatedAt");
   }
   for (const key of Object.keys(LIMITS)) {
@@ -68,19 +69,19 @@ function validateState(input) {
   // and numeric fields the paper-trading engine reads.
   if (input.trades.some(trade =>
     !trade || typeof trade !== "object" || Array.isArray(trade) ||
-    typeof trade.mint !== "string" || !trade.mint ||
+    typeof trade.mint !== "string" || !trade.mint || trade.mint.length > 64 ||
     typeof trade.buyPrice !== "number" || !Number.isFinite(trade.buyPrice) || trade.buyPrice <= 0 ||
     typeof trade.tokens !== "number" || !Number.isFinite(trade.tokens) || trade.tokens < 0 ||
     (trade.sold !== undefined && typeof trade.sold !== "boolean")
   )) {
     throw new TypeError("Invalid trade entry");
   }
-  if (input.scannedMints.some(mint => typeof mint !== "string" || !mint)) {
+  if (input.scannedMints.some(mint => typeof mint !== "string" || !mint || mint.length > 64)) {
     throw new TypeError("Invalid scanned mint entry");
   }
   if (input.deferredMints.some(item =>
     !item || typeof item !== "object" || Array.isArray(item) ||
-    typeof item.mint !== "string" || !item.mint ||
+    typeof item.mint !== "string" || !item.mint || item.mint.length > 64 ||
     !Number.isFinite(item.retryAt) || item.retryAt < 0
   )) {
     throw new TypeError("Invalid deferred mint entry");
@@ -88,8 +89,9 @@ function validateState(input) {
   if (input.lastScanReport.some(item =>
     !item || typeof item !== "object" || Array.isArray(item) ||
     typeof item.mint !== "string" || !item.mint ||
-    typeof item.status !== "string" || !Array.isArray(item.reasons) ||
-    item.reasons.some(reason => typeof reason !== "string")
+    typeof item.status !== "string" || !item.status || item.status.length > 64 ||
+    !Array.isArray(item.reasons) || item.reasons.length > 12 ||
+    item.reasons.some(reason => typeof reason !== "string" || reason.length > 500)
   )) {
     throw new TypeError("Invalid scan report entry");
   }
