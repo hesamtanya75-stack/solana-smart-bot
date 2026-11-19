@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { isValidSourceState, isUninitializedTargetState, statesMatch } from "./migration-safety.mjs";
+import { isValidSourceState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
@@ -44,6 +44,11 @@ const original = await request(sourceUrl + "/api/state", {
 });
 if (!isValidSourceState(original)) {
   throw new Error("Source state failed validation; nothing was imported.");
+}
+// Deno GET /api/state returns the same balance/trades as a pristine default
+// when its KV key is absent. Require an explicit operator decision in that case.
+if (isDefaultLikeSourceState(original) && process.env.CONFIRM_DEFAULT_SOURCE_STATE !== "YES") {
+  throw new Error("Source looks like the default state (balance 100, no trades). Deno GET cannot prove whether its KV key exists. Verify the Deno dashboard/KV state, then rerun with CONFIRM_DEFAULT_SOURCE_STATE=YES only if this is the intended source.");
 }
 await writeFile(backupPath, JSON.stringify(original, null, 2) + "\n", { flag: "wx" });
 console.log(`Backup saved: ${backupPath}`);
