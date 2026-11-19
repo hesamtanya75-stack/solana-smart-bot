@@ -677,24 +677,45 @@ export default {
         }
         const profile = await readProfile(env);
         let valid = profile.totpEnabled && profile.totpSecret && await verifyTotp(profile.totpSecret, code);
-        if (!valid && profile.backupHash) {
+        let credentialClaimHash = null;
+        let backupCodeUsed = false;
+        if (valid) {
+          // A TOTP value is claimable only once during its short validity window,
+          // including across separate login challenges.
+          credentialClaimHash = await hashText("totp:" + profile.totpSecret + ":" + code);
+        } else if (profile.backupHash) {
           const submittedHash = await hashText(String(code).trim().toUpperCase());
           if (submittedHash === profile.backupHash) {
             valid = true;
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+            backupCodeUsed = true;
+            credentialClaimHash = await hashText("backup:" + profile.backupHash);
           }
         }
         if (!valid) {
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         }
-        await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
-        await env.BOT_STATE.delete(ipFailureKey);
-        await env.BOT_STATE.delete(key);
-        const token = crypto.randomUUID();
-        const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
+        const credentialClaim = await authRateLimitRequest(env, "/mfa-credential-claim", { credentialHash: credentialClaimHash });
+        if (!credentialClaim.claimed) {
+          return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدێکی نوێ بەکاربهێنە." }, 409);
+        }
+        try {
+          if (backupCodeUsed) {
+            // The atomic credential claim prevents concurrent reuse while this
+            // one-time backup hash is removed from the profile.
+            profile.backupHash = null;
+            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+          }
+          await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
+          await env.BOT_STATE.delete(ipFailureKey);
+          await env.BOT_STATE.delete(key);
+          const token = crypto.randomUUID();
+          const expiresAt = Date.now() + SESSION_MS;
+          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+          return json({ ok: true, token });
+        } catch (error) {
+          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
+          throw error;
+        }
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
