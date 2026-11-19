@@ -118,6 +118,13 @@ test("invalid and oversized state is rejected without writing", async () => {
   assert.equal(storage.values.size, 0);
 });
 
+test("paper state rejects payloads larger than one megabyte", async () => {
+  const { coordinator, storage } = fixture();
+  const oversized = { ...initial, trades: [{ mint: "legacy-token", note: "x".repeat(1_000_001) }] };
+  await assert.rejects(() => coordinator.importOnce(oversized), /1 MB storage limit/);
+  assert.equal(storage.values.size, 0);
+});
+
 test("patch rejects attempts to alter version or import metadata", async () => {
   const { coordinator } = fixture();
   await coordinator.importOnce(initial);
