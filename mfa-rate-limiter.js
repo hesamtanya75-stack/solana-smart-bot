@@ -113,9 +113,10 @@ export class MfaRateLimiter {
       }
       return response({ error: "Not found" }, 404);
     } catch (error) {
-      // Internal Durable Object/storage failures must surface as unavailable,
-      // so callers can distinguish infrastructure failure from bad credentials.
-      return response({ error: String(error?.message || error) }, 503);
+      // Reject malformed internal requests as client errors; reserve 503 for
+      // Durable Object/storage failures so the Worker can fail closed clearly.
+      const status = error instanceof TypeError ? 400 : 503;
+      return response({ error: String(error?.message || error) }, status);
     }
   }
 
