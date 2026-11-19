@@ -824,6 +824,21 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
+      if (url.pathname === "/api/state/status" && request.method === "GET") {
+        return json(await coordinatorRequest(env, "status"));
+      }
+      if (url.pathname === "/api/state/import" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return json({ error: "Invalid state" }, 400);
+          }
+          const result = await coordinatorRequest(env, "import", body);
+          return json(result);
+        } catch (error) {
+          return json({ error: error.status === 409 ? "State is already initialized" : "Invalid state" }, error.status || 400);
+        }
+      }
       if (url.pathname === "/api/state" && request.method === "GET") {
         const state = await readStoredState(env);
         return json(state || cleanState(null));
