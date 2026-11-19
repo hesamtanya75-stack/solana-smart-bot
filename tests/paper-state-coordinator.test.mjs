@@ -141,11 +141,14 @@ test("valid legacy-shaped paper trades and scan metadata remain accepted", async
   const { coordinator } = fixture();
   const state = {
     ...initial,
-    trades: [{
-      mint: "So11111111111111111111111111111111111111112",
-      amount: 5, buyPrice: 1.25, currentPrice: 1.3, tokens: 4,
-      sold: false, boughtAt: "2026-01-01T00:00:00.000Z", mode: "paper"
-    }],
+    trades: [
+      { mint: "legacy-token", amount: 5 },
+      {
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 5, buyPrice: 1.25, currentPrice: 1.3, tokens: 4,
+        sold: false, boughtAt: "2026-01-01T00:00:00.000Z", mode: "paper"
+      }
+    ],
     scannedMints: ["So11111111111111111111111111111111111111112"],
     deferredMints: [{ mint: "So11111111111111111111111111111111111111112", retryAt: 123456 }],
     lastScanReport: [{
