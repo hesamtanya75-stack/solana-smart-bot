@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "worker.js"
+      - "index.html"
       - "paper-state-coordinator.js"
       - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
