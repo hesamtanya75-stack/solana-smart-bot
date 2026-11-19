@@ -36,6 +36,10 @@
         {
           "name": "PAPER_STATE_COORDINATOR",
           "class_name": "PaperStateCoordinator"
+        },
+        {
+          "name": "AUTH_RATE_LIMITER",
+          "class_name": "MfaRateLimiter"
         }
       ]
     }
@@ -50,11 +54,19 @@
       {
         "name": "PAPER_STATE_COORDINATOR",
         "class_name": "PaperStateCoordinator"
+      },
+      {
+        "name": "AUTH_RATE_LIMITER",
+        "class_name": "MfaRateLimiter"
       }
     ]
   },
   "exports": {
     "PaperStateCoordinator": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "MfaRateLimiter": {
       "type": "durable-object",
       "storage": "sqlite"
     }
