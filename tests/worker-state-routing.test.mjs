@@ -550,3 +550,52 @@ test("TOTP setup and confirmation routes require an authenticated admin session"
     assert.equal(response.status, 401, path + " must reject unauthenticated access");
   }
 });
+
+
+test("state status reports authoritative Durable Object initialization metadata", async () => {
+  const { env, coordinator } = environment();
+  const empty = await worker.fetch(request("/api/state/status"), env);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(await empty.json(), { initialized: false, version: 0, imported: false });
+
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  const initialized = await worker.fetch(request("/api/state/status"), env);
+  assert.deepEqual(await initialized.json(), { initialized: true, version: 1, imported: true });
+});
+
+test("migration import endpoint is atomic and cannot overwrite an initialized default-looking state", async () => {
+  const { env, coordinator } = environment();
+  const initial = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  };
+  await coordinator.importOnce(initial);
+  const before = await worker.fetch(request("/api/state"), env);
+  assert.equal((await before.json()).updatedAt, null);
+
+  const overwrite = await worker.fetch(request("/api/state/import", "POST", {
+    ...initial, lastMessage: "replacement"
+  }), env);
+  assert.equal(overwrite.status, 409);
+  assert.equal((await coordinator.snapshot()).state.lastMessage, "ready");
+});
+
+test("migration import endpoint initializes only once on a proven empty coordinator", async () => {
+  const { env, coordinator } = environment();
+  const initial = {
+    balance: 77, trades: [{ mint: "legacy-token", amount: 2 }],
+    autoEnabled: false, paused: false, scannedMints: [], deferredMints: [],
+    lastRunAt: null, lastMessage: "legacy import", lastScanReport: [], updatedAt: null
+  };
+  const response = await worker.fetch(request("/api/state/import", "POST", initial), env);
+  assert.equal(response.status, 200);
+  assert.equal((await coordinator.snapshot()).state.balance, 77);
+  const repeated = await worker.fetch(request("/api/state/import", "POST", initial), env);
+  assert.equal(repeated.status, 409);
+  assert.equal((await coordinator.snapshot()).state.balance, 77);
+});
