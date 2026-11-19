@@ -452,3 +452,18 @@ test("TOTP setup claim expires and can be acquired again", async () => {
   authStorage.values.set("auth:totp-setup-claim:" + secretHash, { expiresAt: Date.now() - 1 });
   assert.equal(await authLimiter.claimTotpSetup(secretHash), true);
 });
+
+test("TOTP setup and confirmation routes require an authenticated admin session", async () => {
+  const { env } = environment();
+  for (const [path, method, body] of [
+    ["/api/totp/setup", "POST", {}],
+    ["/api/totp/confirm", "POST", { code: "123456" }]
+  ]) {
+    const response = await worker.fetch(new Request("https://worker.test" + path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }), env);
+    assert.equal(response.status, 401, path + " must reject unauthenticated access");
+  }
+});
