@@ -148,3 +148,21 @@ test("Cron discards a stale result when dashboard state changes mid-cycle", asyn
   assert.equal(snapshot.state.paused, true);
   assert.equal(snapshot.state.lastRunAt, null);
 });
+
+test("state API rejects unknown fields instead of silently dropping them", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/state", "PUT", {
+    balance: 88, walletPrivateKey: "must-not-be-stored"
+  }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
+
+test("state API rejects malformed metadata before persistence", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/state", "PUT", {
+    balance: 88, lastRunAt: 123
+  }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
