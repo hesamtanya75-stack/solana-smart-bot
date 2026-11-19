@@ -33,3 +33,10 @@ test("Preview asset diagnostics are routed through the Worker", () => {
 test("Worker exposes Cloudflare-generated version metadata instead of a stale hardcoded build hash", () => {
   assert.equal(config.version_metadata?.binding, "CF_VERSION_METADATA");
 });
+test("Worker health and version routes use the runtime version ID", async () => {
+  const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+  assert.match(worker, /const buildId = env\.CF_VERSION_METADATA\?\.id \|\| "local-unversioned"/);
+  assert.match(worker, /storage: "Durable Object \(paper state\) \+ Workers KV \(sessions\/cache\)", build: buildId/);
+  assert.match(worker, /build: buildId, frontend: "premium-dashboard-v2"/);
+  assert.doesNotMatch(worker, /59ef112/);
+});
