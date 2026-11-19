@@ -133,7 +133,9 @@ async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  if (!session || !(session.expiresAt > Date.now())) return false;
+  const profile = await readProfile(env);
+  return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
 }
 async function rpc(method, params, env) {
   const errors = [];
@@ -647,7 +649,7 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
@@ -722,7 +724,7 @@ export default {
           await env.BOT_STATE.delete(key);
           const token = crypto.randomUUID();
           const expiresAt = Date.now() + SESSION_MS;
-          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
           return json({ ok: true, token });
         } catch (error) {
           try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
@@ -796,6 +798,9 @@ export default {
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
           p.totpSecret = p.pendingTotpSecret;
           p.totpEnabled = true;
+          // Rotate the session generation so all previously issued sessions
+          // become invalid immediately after MFA is enabled.
+          p.authVersion = Number(p.authVersion || 0) + 1;
           p.backupHash = await hashText(backupCode);
           delete p.pendingTotpSecret;
           delete p.pendingTotpAt;
