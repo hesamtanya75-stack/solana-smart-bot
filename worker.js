@@ -636,6 +636,10 @@ export default {
         await authRateLimitRequest(env, "/login-clear", { ipHash });
         await env.BOT_STATE.delete("login_fail:" + ip);
         const profile = await readProfile(env);
+        // A damaged MFA profile must never downgrade to password-only login.
+        if (profile.totpEnabled && !profile.totpSecret) {
+          return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+        }
         if (profile.totpEnabled && profile.totpSecret) {
           const challengeId = crypto.randomUUID();
           await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
