@@ -170,8 +170,7 @@ test("paper state rejects oversized metadata and collection strings", async () =
       status: "rejected", reasons: Array(13).fill("reason")
     }] },
     { ...initial, trades: [{
-      mint: "So11111111111111111111111111111111111111112",
-      buyPrice: 1, tokens: 1, sold: false, note: "x".repeat(10000)
+      mint, buyPrice: 1, tokens: 1, sold: false
     }] }
   ];
   for (const state of invalidStates) {
