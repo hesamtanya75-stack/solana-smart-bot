@@ -104,3 +104,21 @@ test("patch rejects attempts to alter version or import metadata", async () => {
   await assert.rejects(() => coordinator.patch({ version: 999 }), /unsupported fields/);
   assert.equal((await coordinator.snapshot()).version, 1);
 });
+
+
+test("import rejects unknown fields instead of silently persisting them", async () => {
+  const { coordinator, storage } = fixture();
+  await assert.rejects(
+    () => coordinator.importOnce({ ...initial, walletPrivateKey: "must-not-be-stored" }),
+    /unsupported fields/
+  );
+  assert.equal(storage.values.size, 0);
+});
+
+test("state validation rejects coercible balances and malformed metadata", async () => {
+  const { coordinator, storage } = fixture();
+  await assert.rejects(() => coordinator.importOnce({ ...initial, balance: "100" }), /Invalid balance/);
+  await assert.rejects(() => coordinator.importOnce({ ...initial, lastRunAt: 123 }), /Invalid lastRunAt/);
+  await assert.rejects(() => coordinator.importOnce({ ...initial, autoEnabled: 1 }), /Invalid automation flags/);
+  assert.equal(storage.values.size, 0);
+});
