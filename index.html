@@ -1634,13 +1634,49 @@ saveDemoState = function() {
     }, 500);
   }
 };
+function hasLegacyEmptyServerConflict(local, remote) {
+  if (!local || typeof local !== "object" || !remote || !remote.updatedAt) return false;
+
+  const localTrades = Array.isArray(local.trades) ? local.trades : [];
+  const remoteTrades = Array.isArray(remote.trades) ? remote.trades : [];
+  // Missing, null, or blank balances represent the legacy default, not zero.
+  // Preserve an explicit numeric zero as real paper-trading state.
+  const normalizeBalance = value => {
+    if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return 100;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 100;
+  };
+  const localBalance = normalizeBalance(local.balance);
+  const remoteBalance = normalizeBalance(remote.balance);
+
+  // A pristine local default is safe to replace with initialized server data.
+  // Once local trading history or a non-default balance exists, require an
+  // explicit reconciliation whenever the initialized server copy differs.
+  const localHasData = localTrades.length > 0 || localBalance !== 100;
+  if (!localHasData) return false;
+
+  const remoteHasData = remoteTrades.length > 0 || remoteBalance !== 100;
+  if (!remoteHasData) return true;
+
+  return localBalance !== remoteBalance ||
+    JSON.stringify(localTrades) !== JSON.stringify(remoteTrades);
+}
+
 async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
-  // Enable server persistence before migrating the browser's existing paper-trading
-  // state. Otherwise saveServerState() returns early and the next sync replaces
-  // the local history and balance with the empty server defaults.
+  // Preserve both copies when a legacy Cron-created server record may be empty
+  // while this browser still has paper-trading history. Never pick a winner silently.
+  let local = null;
+  try { local = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
+  if (hasLegacyEmptyServerConflict(local, remote)) {
+    serverToken = "";
+    localStorage.removeItem("solanaBotSession");
+    serverModeReady = false;
+    throw new Error("مێژووی مامەڵەی ئەم مۆبایلە لەگەڵ داتای سێرڤەر جیاوازە. هیچ داتایەک نەگۆڕدراوە؛ پێویستە پێش هاوکاتکردنەوە مێژووەکان بە دەستی بپشکنرێن.");
+  }
+  // Enable server persistence only after the local/remote history check passes.
   serverModeReady = true;
   if (!remote.updatedAt) {
     let old = null;

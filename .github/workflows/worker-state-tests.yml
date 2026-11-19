@@ -1,0 +1,28 @@
+name: Worker state initialization tests
+
+on:
+  pull_request:
+    paths:
+      - "worker.js"
+      - "tests/worker-state-initialization.test.mjs"
+      - "package.json"
+      - ".github/workflows/worker-state-tests.yml"
+  push:
+    branches:
+      - "fix/worker-empty-state-cron-guard"
+    paths:
+      - "worker.js"
+      - "tests/worker-state-initialization.test.mjs"
+      - "package.json"
+      - ".github/workflows/worker-state-tests.yml"
+
+jobs:
+  worker-state-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run Worker state regression tests
+        run: npm test
