@@ -340,7 +340,7 @@ test("password login throttles after five failures through the atomic auth Durab
 });
 
 test("MFA challenge is deleted after five invalid codes", async () => {
-  const { env } = environment();
+  const { env, authStorage } = environment();
   const values = new Map([
     ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null })],
     ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
