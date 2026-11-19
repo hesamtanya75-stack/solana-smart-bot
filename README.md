@@ -66,3 +66,8 @@ Safe resolution:
 4. Only retire the Deno project and its KV data after a separate manual confirmation that the Cloudflare dashboard contains the complete expected paper-trading state.
 
 A historical Deno failure status may remain attached to older commits. Do not treat it as evidence that Cloudflare Worker tests failed. Cloudflare Preview deployment and runtime validation remain separate required checks.
+
+
+## Automated isolated Preview
+
+A guarded GitHub Actions workflow is available at `.github/workflows/cloudflare-preview.yml`. It runs only for same-repository pull requests targeting the migration base branch and only when the repository Actions variable `CLOUDFLARE_PREVIEW_ENABLED` is exactly `true`. It requires the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository Actions secrets. The workflow runs tests and a Wrangler dry-run before invoking the Wrangler Preview command; it does not deploy Production. See [the Preview validation checklist](docs/cloudflare-preview-runtime-validation.md) for setup and isolation requirements.
