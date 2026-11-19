@@ -109,3 +109,18 @@ test("frontend blocks silent overwrite when initialized local and server paper-t
   assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 100, trades: [] }), false,
     "an uninitialized server record remains eligible for safe migration");
 });
+
+
+test("frontend stops repeated full-state saves after a version conflict and preserves local history", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const match = html.match(/async function saveServerState\(\) \{[\\s\\S]*?\n\}/);
+  assert.ok(match, "server state save helper must exist");
+  assert.match(match[0], /message\.includes\("State changed"\) \|\| message\.includes\("409"\)/,
+    "a stale-write conflict must be recognized");
+  assert.match(match[0], /serverModeReady = false/,
+    "server persistence must stop after a conflict instead of retrying a stale full-state write");
+  assert.match(match[0], /local browser copy untouched/,
+    "the conflict path must explicitly preserve local browser data");
+  assert.match(match[0], /داتای ئەم مۆبایلە پارێزراوە/,
+    "the user must be told that the local copy is preserved");
+});
