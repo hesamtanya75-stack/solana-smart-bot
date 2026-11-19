@@ -5,6 +5,7 @@ on:
     paths:
       - "worker.js"
       - "paper-state-coordinator.js"
+      - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
       - "tests/worker-state-routing.test.mjs"
       - "tests/paper-state-coordinator.test.mjs"
@@ -20,7 +21,16 @@ on:
       - "fix/worker-empty-state-cron-guard"
     paths:
       - "worker.js"
+      - "paper-state-coordinator.js"
+      - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
+      - "tests/worker-state-routing.test.mjs"
+      - "tests/paper-state-coordinator.test.mjs"
+      - "tests/wrangler-preview-isolation.test.mjs"
+      - "tests/paper-state-storage-boundary.test.mjs"
+      - "tests/migration-safety.test.mjs"
+      - "scripts/migration-safety.mjs"
+      - "scripts/migrate-deno-state.mjs"
       - "package.json"
       - ".github/workflows/worker-state-tests.yml"
 
