@@ -8,17 +8,24 @@ export function isValidSourceState(state) {
 
 export function isCompatibleWithWorkerState(state) {
   if (!isValidSourceState(state) || state.trades.length > 500) return false;
+  const allowedKeys = new Set([
+    "balance", "trades", "autoEnabled", "paused", "scannedMints",
+    "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
+  ]);
+  if (Object.keys(state).some(key => !allowedKeys.has(key))) return false;
+  if (typeof state.autoEnabled !== "boolean" || typeof state.paused !== "boolean") return false;
   const boundedArrays = [
     ["scannedMints", 1000],
     ["deferredMints", 1000],
     ["lastScanReport", 20]
   ];
   for (const [key, maxLength] of boundedArrays) {
-    if (Object.hasOwn(state, key) &&
-        (!Array.isArray(state[key]) || state[key].length > maxLength)) {
-      return false;
-    }
+    if (!Array.isArray(state[key]) || state[key].length > maxLength) return false;
   }
+  for (const key of ["lastRunAt", "lastMessage", "updatedAt"]) {
+    if (state[key] !== undefined && state[key] !== null && typeof state[key] !== "string") return false;
+  }
+  if (state.lastRunAt === undefined) return false;
   return true;
 }
 
