@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { isValidSourceState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
+import { isValidSourceState, isCompatibleWithWorkerState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
@@ -44,6 +44,9 @@ const original = await request(sourceUrl + "/api/state", {
 });
 if (!isValidSourceState(original)) {
   throw new Error("Source state failed validation; nothing was imported.");
+}
+if (!isCompatibleWithWorkerState(original)) {
+  throw new Error("Source state contains fields or array sizes that the Worker would normalize or truncate. Nothing was imported; preserve the backup and reconcile the state before retrying.");
 }
 // Deno GET /api/state returns the same balance/trades as a pristine default
 // when its KV key is absent. Require an explicit operator decision in that case.
