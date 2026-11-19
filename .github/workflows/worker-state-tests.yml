@@ -5,6 +5,8 @@ on:
     paths:
       - "worker.js"
       - "tests/worker-state-initialization.test.mjs"
+      - "tests/migration-safety.test.mjs"
+      - "scripts/migration-safety.mjs"
       - "package.json"
       - "scripts/migrate-deno-state.mjs"
       - ".github/workflows/worker-state-tests.yml"
