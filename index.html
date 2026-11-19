@@ -1536,6 +1536,9 @@ async function serverRequest(path, options = {}) {
   if (serverToken) headers.Authorization = "Bearer " + serverToken;
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && serverToken && !path.startsWith("/api/login")) {
+    clearExpiredServerSession();
+  }
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
   return data;
 }
@@ -1734,6 +1737,21 @@ if (serverLogoutButton) {
   });
 }
 let serverMfaChallenge = "";
+function clearExpiredServerSession() {
+  serverModeReady = false;
+  serverToken = "";
+  localStorage.removeItem("solanaBotSession");
+  serverMfaChallenge = "";
+  const logoutButton = document.getElementById("serverLogoutButton");
+  if (logoutButton) logoutButton.hidden = true;
+  const otp = document.getElementById("serverTotpCode");
+  if (otp) otp.remove();
+  const loginButton = document.getElementById("serverLoginButton");
+  if (loginButton) loginButton.textContent = "چوونەژوورەوە";
+  const loginError = document.getElementById("serverLoginError");
+  if (loginError) loginError.textContent = "دانیشتنەکەت بەسەرچووە یان MFA گۆڕاوە؛ تکایە بە وشەی نهێنی و کۆدی Authenticator دووبارە بچۆ ژوورەوە.";
+  serverLogin.style.display = "flex";
+}
 async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
@@ -1888,7 +1906,13 @@ if (serverToken) {
     }catch(e){status().textContent=e.message;}
   }
   button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
-  document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  document.getElementById("profileClose").onclick=()=>{
+    modal.style.display="none";
+    if(!serverModeReady){
+      serverLogin.style.display="flex";
+      document.getElementById("serverLoginError").textContent="پاراستنی دوو هەنگاوی چالاک کرا؛ ئێستا بە وشەی نهێنی و کۆدی Authenticator دووبارە بچۆ ژوورەوە.";
+    }
+  };
   modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
   document.getElementById("profileSave").onclick=async()=>{
     status().textContent="پاشەکەوت دەکرێت...";
@@ -1918,7 +1942,14 @@ if (serverToken) {
       document.getElementById("totpBackup").style.display="block";
       document.getElementById("totpState").textContent="Google Authenticator چالاک کرا.";
       document.getElementById("totpStart").style.display="none";
-      status().textContent=p.message;
+      // MFA activation increments authVersion server-side and invalidates this
+      // session. Preserve the one-time backup code on screen before re-login.
+      serverModeReady=false;
+      serverToken="";
+      localStorage.removeItem("solanaBotSession");
+      const logoutButton=document.getElementById("serverLogoutButton");
+      if(logoutButton) logoutButton.hidden=true;
+      status().textContent="پاراستنی دوو هەنگاوی چالاک کرا. کۆدی گەڕاندنەوەکە لە شوێنێکی پارێزراو پاشەکەوت بکە؛ پاش داخستنی ئەم پەنجەرەیە دووبارە بە وشەی نهێنی و کۆدی Authenticator بچۆ ژوورەوە.";
     }catch(e){status().textContent=e.message;}
   };
 })();
