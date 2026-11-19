@@ -982,13 +982,48 @@ export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fet
  * RPC state. The result remains structurally trusted only; instruction
  * semantics are deliberately never promoted by address resolution alone.
  */
+async function createUnsignedMessageDigest(encoded, parsed, expectedSigner) {
+  // Hash the exact serialized message bytes, excluding the transaction signature
+  // vector. The digest is an integrity identifier, not semantic approval.
+  const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+  let messageStart;
+  let messageEnd = bytes.length;
+  if (parsed.messageVersion === 1) {
+    messageStart = 1;
+    messageEnd -= parsed.signatureCount * 64;
+  } else {
+    const signatureHeader = readShortVector(bytes, 0);
+    messageStart = signatureHeader.offset + parsed.signatureCount * 64;
+  }
+  if (!Number.isSafeInteger(messageStart) || messageStart < 1 ||
+      messageEnd <= messageStart || messageEnd > bytes.length) {
+    throw new Error("Unable to isolate canonical serialized transaction message");
+  }
+  const messageBytes = bytes.slice(messageStart, messageEnd);
+  if (!globalThis.crypto?.subtle?.digest) {
+    throw new Error("Web Crypto SHA-256 is unavailable; message binding rejected");
+  }
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", messageBytes));
+  const value = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+  return Object.freeze({
+    algorithm: "SHA-256",
+    encoding: "hex",
+    value,
+    messageVersion: parsed.messageVersion,
+    signer: expectedSigner,
+    byteLength: messageBytes.length
+  });
+}
+
 export async function validateAndResolveUnsignedJupiterTransaction(
   encoded, expectedSigner, fetchImpl = fetch
 ) {
   const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
   if (parsed.addressLookupCount === 0) {
+    const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
     return Object.freeze({
       ...parsed,
+      messageDigest,
       lookupTableResolution: "not-required",
       resolvedWritableAddresses: Object.freeze([]),
       resolvedReadonlyAddresses: Object.freeze([])
@@ -1008,8 +1043,10 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   if (new Set(allMessageKeys).size !== allMessageKeys.length) {
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
+  const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
   return Object.freeze({
     ...parsed,
+    messageDigest,
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
