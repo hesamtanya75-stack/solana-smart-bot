@@ -436,6 +436,18 @@ test("concurrent MFA login requests cannot reuse the same backup code", async ()
   assert.equal(JSON.parse(values.get("admin_profile")).backupHash, null);
 });
 
+test("MFA login challenge claims are atomic and single-use", async () => {
+  const { authLimiter, authStorage } = environment();
+  const challengeId = "challenge-atomic-123";
+  const claims = await Promise.all(
+    Array.from({ length: 12 }, () => authLimiter.claimMfaChallenge(challengeId))
+  );
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(authStorage.values.has("auth:mfa-challenge-claim:" + challengeId), true);
+  await authLimiter.releaseMfaChallenge(challengeId);
+  assert.equal(authStorage.values.has("auth:mfa-challenge-claim:" + challengeId), false);
+});
+
 test("MFA credential claims are atomic and prevent concurrent replay", async () => {
   const { authLimiter, authStorage } = environment();
   const credentialHash = "f".repeat(64);
