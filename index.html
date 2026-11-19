@@ -1518,6 +1518,7 @@ setInterval(() => {
 let serverModeReady = false;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
+let serverSyncIntervalsStarted = false;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
 serverLogin.innerHTML = `
@@ -1706,6 +1707,7 @@ async function finishServerLogin(token) {
   }
   serverModeReady = true;
   serverLogin.style.display = "none";
+  document.getElementById("serverPassword").value = "";
   const logoutButton = document.getElementById("serverLogoutButton");
   if (logoutButton) logoutButton.hidden = false;
   renderServerControls(remote.updatedAt ? remote : {
@@ -1713,8 +1715,11 @@ async function finishServerLogin(token) {
   });
   await syncServerState();
   refreshServerPrices().catch(() => {});
-  setInterval(() => syncServerState().catch(() => {}), 15000);
-  setInterval(() => refreshServerPrices().catch(() => {}), 5000);
+  if (!serverSyncIntervalsStarted) {
+    serverSyncIntervalsStarted = true;
+    setInterval(() => syncServerState().catch(() => {}), 15000);
+    setInterval(() => refreshServerPrices().catch(() => {}), 5000);
+  }
 }
 const serverLogoutButton = document.getElementById("serverLogoutButton");
 if (serverLogoutButton) {
