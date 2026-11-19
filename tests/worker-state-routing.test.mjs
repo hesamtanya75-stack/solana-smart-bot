@@ -432,3 +432,23 @@ test("auth limiter storage failures return service unavailable", async () => {
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /storage unavailable/);
 });
+
+test("concurrent TOTP setup confirmations can claim a pending secret only once", async () => {
+  const { authLimiter, authStorage } = environment();
+  const secretHash = "d".repeat(64);
+  const claims = await Promise.all(
+    Array.from({ length: 10 }, () => authLimiter.claimTotpSetup(secretHash))
+  );
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(authStorage.values.has("auth:totp-setup-claim:" + secretHash), true);
+  await authLimiter.releaseTotpSetup(secretHash);
+  assert.equal(authStorage.values.has("auth:totp-setup-claim:" + secretHash), false);
+});
+
+test("TOTP setup claim expires and can be acquired again", async () => {
+  const { authLimiter, authStorage } = environment();
+  const secretHash = "e".repeat(64);
+  assert.equal(await authLimiter.claimTotpSetup(secretHash), true);
+  authStorage.values.set("auth:totp-setup-claim:" + secretHash, { expiresAt: Date.now() - 1 });
+  assert.equal(await authLimiter.claimTotpSetup(secretHash), true);
+});
