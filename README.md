@@ -39,7 +39,7 @@ This project remains in paper-trading mode. These repository changes do not auth
 
 ## Safe Deno KV state transfer
 
-A guarded migration helper is available at `scripts/migrate-deno-state.mjs`. It uses the existing authenticated `GET /api/state` endpoint on Deno and the authenticated `PUT /api/state` endpoint on Cloudflare. The Cloudflare endpoint initializes the Durable Object through its atomic one-time import operation; canonical paper state is not written to Workers KV. It writes a one-time local JSON backup before attempting the import, rejects source data that the Worker would normalize or truncate, then reads Cloudflare state back and compares every source field except the server-managed `updatedAt` timestamp.
+A guarded migration helper is available at `scripts/migrate-deno-state.mjs`. It uses the existing authenticated `GET /api/state` endpoint on Deno and the authenticated `PUT /api/state` endpoint on Cloudflare. The Cloudflare endpoint initializes the Durable Object through its atomic one-time import operation; canonical paper state is not written to Workers KV. It writes a one-time local JSON backup before attempting the import, validates the legacy source fields, fills Worker-only fields with explicit safe defaults (auto-buy disabled and unpaused), rejects unsupported fields or oversized arrays, then reads Cloudflare state back and compares every original source field except the server-managed `updatedAt` timestamp.
 
 Run it from a trusted computer with Node.js 20+; do not paste passwords into source code or commit them:
 
