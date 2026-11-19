@@ -41,6 +41,22 @@ test("target guard accepts only the exact pristine Worker default", () => {
   assert.equal(isUninitializedTargetState(null), false);
 });
 
+test("migration preflight rejects fields and metadata the Durable Object cannot import", () => {
+  const compatible = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  };
+  assert.equal(isCompatibleWithWorkerState(compatible), true);
+  assert.equal(isCompatibleWithWorkerState({ ...compatible, walletPrivateKey: "secret" }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...compatible, autoEnabled: "false" }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...compatible, paused: 0 }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...compatible, lastRunAt: 123 }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...compatible, scannedMints: "invalid" }), false);
+  const { lastRunAt, ...missingRequiredMetadata } = compatible;
+  assert.equal(isCompatibleWithWorkerState(missingRequiredMetadata), false);
+});
+
 test("post-import verification compares balance and exact trade history", () => {
   const source = { balance: 95.25, trades: [{ mint: "abc", sold: false }] };
   assert.equal(statesMatch(source, { balance: 95.25, trades: [{ mint: "abc", sold: false }] }), true);
