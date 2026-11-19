@@ -34,3 +34,5 @@ jobs:
         run: npm test
       - name: Check Deno-to-Cloudflare migration helper syntax
         run: node --check scripts/migrate-deno-state.mjs
+      - name: Validate Cloudflare Worker and Durable Object build
+        run: npm run build:check
