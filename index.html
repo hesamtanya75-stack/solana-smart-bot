@@ -1638,9 +1638,22 @@ async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
-  // Enable server persistence before migrating the browser's existing paper-trading
-  // state. Otherwise saveServerState() returns early and the next sync replaces
-  // the local history and balance with the empty server defaults.
+  // Preserve both copies when a legacy Cron-created server record may be empty
+  // while this browser still has paper-trading history. Never pick a winner silently.
+  let local = null;
+  try { local = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
+  const localHasTrades = !!(local && Array.isArray(local.trades) && local.trades.length);
+  const remoteHasTrades = Array.isArray(remote.trades) && remote.trades.length > 0;
+  const historiesDiffer = localHasTrades && remoteHasTrades &&
+    JSON.stringify(local.trades) !== JSON.stringify(remote.trades);
+  const remoteLooksEmpty = !!remote.updatedAt && !remoteHasTrades;
+  if (localHasTrades && (remoteLooksEmpty || historiesDiffer)) {
+    serverToken = "";
+    localStorage.removeItem("solanaBotSession");
+    serverModeReady = false;
+    throw new Error("مێژووی مامەڵەی ئەم مۆبایلە لەگەڵ داتای سێرڤەر جیاوازە. هیچ داتایەک نەگۆڕدراوە؛ پێویستە پێش هاوکاتکردنەوە مێژووەکان بە دەستی بپشکنرێن.");
+  }
+  // Enable server persistence only after the local/remote history check passes.
   serverModeReady = true;
   if (!remote.updatedAt) {
     let old = null;
