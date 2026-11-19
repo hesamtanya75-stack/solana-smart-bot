@@ -1635,9 +1635,26 @@ saveDemoState = function() {
   }
 };
 function hasLegacyEmptyServerConflict(local, remote) {
-  const localHasTrades = !!(local && Array.isArray(local.trades) && local.trades.length);
-  const remoteHasTrades = Array.isArray(remote && remote.trades) && remote.trades.length > 0;
-  return localHasTrades && !!(remote && remote.updatedAt) && !remoteHasTrades;
+  if (!local || typeof local !== "object" || !remote || !remote.updatedAt) return false;
+
+  const localTrades = Array.isArray(local.trades) ? local.trades : [];
+  const remoteTrades = Array.isArray(remote.trades) ? remote.trades : [];
+  const localBalanceValue = Number(local.balance);
+  const remoteBalanceValue = Number(remote.balance);
+  const localBalance = Number.isFinite(localBalanceValue) ? localBalanceValue : 100;
+  const remoteBalance = Number.isFinite(remoteBalanceValue) ? remoteBalanceValue : 100;
+
+  // A pristine local default is safe to replace with initialized server data.
+  // Once local trading history or a non-default balance exists, require an
+  // explicit reconciliation whenever the initialized server copy differs.
+  const localHasData = localTrades.length > 0 || localBalance !== 100;
+  if (!localHasData) return false;
+
+  const remoteHasData = remoteTrades.length > 0 || remoteBalance !== 100;
+  if (!remoteHasData) return true;
+
+  return localBalance !== remoteBalance ||
+    JSON.stringify(localTrades) !== JSON.stringify(remoteTrades);
 }
 
 async function finishServerLogin(token) {
