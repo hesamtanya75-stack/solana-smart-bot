@@ -257,3 +257,21 @@ test("unauthenticated requests cannot read or initialize paper state", async () 
   assert.equal(write.status, 401);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+
+test("health and version routes expose the bound Cloudflare runtime version", async () => {
+  const env = { CF_VERSION_METADATA: { id: "preview-version-test-123" } };
+  const health = await worker.fetch(new Request("https://worker.test/health"), env);
+  const version = await worker.fetch(new Request("https://worker.test/version"), env);
+  assert.equal(health.status, 200);
+  assert.equal(version.status, 200);
+  assert.equal((await health.json()).build, "preview-version-test-123");
+  assert.equal((await version.json()).build, "preview-version-test-123");
+});
+
+test("health and version routes use a safe local fallback without version metadata", async () => {
+  const health = await worker.fetch(new Request("https://worker.test/health"), {});
+  const version = await worker.fetch(new Request("https://worker.test/version"), {});
+  assert.equal((await health.json()).build, "local-unversioned");
+  assert.equal((await version.json()).build, "local-unversioned");
+});
