@@ -1642,7 +1642,7 @@ function hasLegacyEmptyServerConflict(local, remote) {
   // Missing, null, or blank balances represent the legacy default, not zero.
   // Preserve an explicit numeric zero as real paper-trading state.
   const normalizeBalance = value => {
-    if (value === null || value === undefined || value === "") return 100;
+    if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return 100;
     const number = Number(value);
     return Number.isFinite(number) ? number : 100;
   };
