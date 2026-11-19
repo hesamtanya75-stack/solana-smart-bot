@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { isValidSourceState, isCompatibleWithWorkerState, normalizeLegacySourceState, isUninitializedTargetState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
+import { isValidSourceState, isCompatibleWithWorkerState, normalizeLegacySourceState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
@@ -60,19 +60,19 @@ console.log(`Source balance: ${original.balance}; trades: ${original.trades.leng
 const importState = normalizeLegacySourceState(original);
 
 const targetToken = await login(targetUrl, targetPassword);
-const existing = await request(targetUrl + "/api/state", {
+const targetStatus = await request(targetUrl + "/api/state/status", {
   headers: { authorization: "Bearer " + targetToken }
 });
 
-// The Worker returns updatedAt:null only when the Durable Object has no state.
-// Never overwrite a state that appears initialized, even if it looks empty.
-const targetIsUninitialized = isUninitializedTargetState(existing);
-if (!targetIsUninitialized) {
-  throw new Error("Cloudflare state is already initialized or cannot be proven empty. Import aborted to prevent overwriting existing data.");
+// Require authoritative Durable Object metadata, not a default-looking state
+// document. The import endpoint performs the final atomic one-time check.
+if (!targetStatus || targetStatus.initialized !== false ||
+    targetStatus.version !== 0 || targetStatus.imported !== false) {
+  throw new Error("Cloudflare Durable Object is already initialized or its empty state cannot be proven. Import aborted.");
 }
 
-await request(targetUrl + "/api/state", {
-  method: "PUT",
+await request(targetUrl + "/api/state/import", {
+  method: "POST",
   headers: { authorization: "Bearer " + targetToken },
   body: JSON.stringify(importState)
 });
