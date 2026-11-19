@@ -54,3 +54,15 @@ node scripts/migrate-deno-state.mjs
 The script deliberately stops if either login does not return a session token (for example, if an additional MFA step is required), validates the source state, refuses to overwrite an existing backup file, and does not migrate login sessions or secrets. The target's one-time import is atomic inside the Durable Object, so a concurrent initializer cannot replace or partially overwrite it. The Worker API, automation updates, and Cron cycle now use the Durable Object's versioned commit boundary; stale Cron results are rejected. This repository-level test coverage does not replace a Cloudflare runtime test or a controlled Preview cutover. Therefore, do not run this helper against production or a shared namespace until the isolated Preview integration and data verification are complete. Keep Deno and its KV data intact until the Cloudflare dashboard is manually checked. Use a Cloudflare Preview environment and its isolated KV namespace first; do not point this helper at production during the test.
 
 This helper is an operator-run migration utility, not a deployment or an automated cutover. It does not deploy, merge, enable live trading, sign wallet transactions, or submit Solana transactions.
+
+## Legacy Deno Deploy status check
+
+The repository no longer contains a Deno application entrypoint or a Deno Deploy workflow. A GitHub commit status named `deploy/hesamtanya75-stack/solana-smart-bot-17` can still appear because the legacy Deno Deploy project is connected to this repository outside GitHub Actions. The current reported failure, `Organization suspended - resolve billing to deploy`, is returned by Deno Deploy; it is not a Worker test or Wrangler build failure and cannot be repaired by changing application source code.
+
+Safe resolution:
+1. Keep the Deno project and its KV data intact until the state cutover is completed and independently verified.
+2. If the Deno service must continue deploying during the transition, the Deno organization owner must resolve the suspension/billing issue in the Deno account. Do not add Deno runtime files back to this repository to mask the status.
+3. After the Cloudflare Preview has passed its isolation and persistence checks and the Deno state has been migrated and read back successfully, disconnect or disable the legacy Deno project's GitHub auto-deploy integration in the Deno project settings. This stops future Deno deployment attempts without requiring deletion of the Deno project or its KV data.
+4. Only retire the Deno project and its KV data after a separate manual confirmation that the Cloudflare dashboard contains the complete expected paper-trading state.
+
+A historical Deno failure status may remain attached to older commits. Do not treat it as evidence that Cloudflare Worker tests failed. Cloudflare Preview deployment and runtime validation remain separate required checks.
