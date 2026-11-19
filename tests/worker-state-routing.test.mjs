@@ -348,6 +348,6 @@ test("MFA challenge is deleted after five invalid codes", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
   }), env);
-  assert.equal(blocked.status, 401);
+  assert.equal(blocked.status, 429);
   assert.equal(values.has("mfa_challenge:test-challenge"), false);
 });
