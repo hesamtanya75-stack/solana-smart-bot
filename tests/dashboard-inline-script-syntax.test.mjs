@@ -12,8 +12,8 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
   assert.ok(scripts.length > 0, "expected at least one inline dashboard script");
   for (const [index, source] of scripts.entries()) {
     assert.doesNotThrow(
-      () => new vm.Script(source, { filename: \`index.html:inline-script-\${index + 1}\` }),
-      \`inline script \${index + 1} should parse\`
+      () => new vm.Script(source, { filename: "index.html:inline-script-" + (index + 1) }),
+      "inline script " + (index + 1) + " should parse"
     );
   }
 });
