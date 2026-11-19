@@ -21,6 +21,7 @@ on:
   push:
     branches:
       - "fix/worker-empty-state-cron-guard"
+      - "migration/cloudflare-only"
     paths:
       - "worker.js"
       - "index.html"
