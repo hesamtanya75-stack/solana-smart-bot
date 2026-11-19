@@ -26,7 +26,15 @@
         "binding": "BOT_STATE",
         "id": "e1c54bd4247d47ebba9c1db1fa7082e0"
       }
-    ]
+    ],
+    "durable_objects": {
+      "bindings": [
+        {
+          "name": "PAPER_STATE_COORDINATOR",
+          "class_name": "PaperStateCoordinator"
+        }
+      ]
+    }
   },
   "triggers": {
     "crons": [
