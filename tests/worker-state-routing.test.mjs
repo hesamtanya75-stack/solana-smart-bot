@@ -338,18 +338,18 @@ test("MFA challenge is deleted after five invalid codes", async () => {
   for (let i = 0; i < 5; i++) {
     const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
       body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
     }), env);
     assert.equal(response.status, 401);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login/totp", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
     body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
   }), env);
   assert.equal(blocked.status, 429);
-  assert.equal(values.has("mfa_challenge:test-challenge"), false);
+  assert.equal(values.has("mfa_challenge:test-challenge"), false);\n  assert.equal(JSON.parse(values.get("totp_fail:192.0.2.20")).count, 5);
 });
 
 
