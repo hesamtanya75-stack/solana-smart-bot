@@ -537,6 +537,16 @@ test("TOTP setup and confirmation routes require an authenticated admin session"
 });
 
 
+test("authenticated logout revokes the current server session", async () => {
+  const { env, touchedKvKeys } = environment();
+  const response = await worker.fetch(request("/api/logout", "POST"), env);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.ok(touchedKvKeys.some(([operation, key]) =>
+    operation === "delete" && key === "session:test-session"
+  ));
+});
+
 test("state status reports authoritative Durable Object initialization metadata", async () => {
   const { env, coordinator } = environment();
   const empty = await worker.fetch(request("/api/state/status"), env);
