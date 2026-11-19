@@ -23,3 +23,9 @@ export function statesMatch(source, imported) {
   return Number(imported?.balance) === Number(source?.balance) &&
     JSON.stringify(imported?.trades) === JSON.stringify(source?.trades);
 }
+
+export function isDefaultLikeSourceState(state) {
+  return !!state &&
+    Number(state.balance) === 100 &&
+    Array.isArray(state.trades) && state.trades.length === 0;
+}
