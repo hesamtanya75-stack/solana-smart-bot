@@ -81,6 +81,8 @@ test("frontend blocks silent overwrite when initialized local and server paper-t
     "a missing/null legacy balance must use the default rather than being treated as zero");
   assert.equal(guard({ balance: "", trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
     "a blank legacy balance must use the default rather than being treated as zero");
+  assert.equal(guard({ balance: "   ", trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), false,
+    "a whitespace-only legacy balance must use the default rather than being treated as zero");
   assert.equal(guard({ balance: 0, trades: [] }, { balance: 100, trades: [], updatedAt: timestamp }), true,
     "an explicit zero balance is meaningful local state and must not be overwritten");
   assert.equal(guard({ balance: 95, trades: [{ mint: "local" }] }, { balance: 90, trades: [{ mint: "remote" }], updatedAt: timestamp }), true,
