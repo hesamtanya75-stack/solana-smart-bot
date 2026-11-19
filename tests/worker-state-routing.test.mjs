@@ -275,3 +275,22 @@ test("health and version routes use a safe local fallback without version metada
   assert.equal((await health.json()).build, "local-unversioned");
   assert.equal((await version.json()).build, "local-unversioned");
 });
+
+
+test("unauthenticated automation and profile API requests are rejected before state access", async () => {
+  const { env, coordinator, touchedKvKeys } = environment();
+  env.BOT_STATE.get = async key => {
+    touchedKvKeys.push(["get", key]);
+    return null;
+  };
+  const automation = await worker.fetch(new Request("https://worker.test/api/automation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: true })
+  }), env);
+  const profile = await worker.fetch(new Request("https://worker.test/api/profile"), env);
+  assert.equal(automation.status, 401);
+  assert.equal(profile.status, 401);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+  assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
+});
