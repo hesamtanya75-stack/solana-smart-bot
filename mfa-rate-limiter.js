@@ -65,6 +65,16 @@ export class MfaRateLimiter {
         await this.clearMfa(body.ipHash, body.challengeId);
         return response({ ok: true });
       }
+      if (url.pathname === "/totp-setup-attempt" || url.pathname === "/totp-setup-clear") {
+        validateHash(body.ipHash, "IP hash");
+        if (url.pathname === "/totp-setup-attempt") {
+          const result = await this.reserveTotpSetup(body.ipHash);
+          await this.scheduleCleanup();
+          return response(result);
+        }
+        await this.clearTotpSetup(body.ipHash);
+        return response({ ok: true });
+      }
       return response({ error: "Not found" }, 404);
     } catch (error) {
       return response({ error: String(error?.message || error) }, 400);
@@ -116,6 +126,26 @@ export class MfaRateLimiter {
       await txn.put(challengeKey, { count: challengeEntry.count + 1, expiresAt: challengeEntry.expiresAt });
       return { allowed: true };
     });
+  }
+
+  async reserveTotpSetup(ipHash) {
+    validateHash(ipHash, "IP hash");
+    return this.storage.transaction(async txn => {
+      const now = Date.now();
+      const key = "auth:totp-setup:" + ipHash;
+      const current = await txn.get(key);
+      const entry = current && current.expiresAt > now
+        ? { count: legacyCount(current.count), expiresAt: current.expiresAt }
+        : { count: 0, expiresAt: now + IP_WINDOW_MS };
+      if (entry.count >= MAX_ATTEMPTS) return { allowed: false, reason: "ip" };
+      await txn.put(key, { count: entry.count + 1, expiresAt: entry.expiresAt });
+      return { allowed: true };
+    });
+  }
+
+  async clearTotpSetup(ipHash) {
+    validateHash(ipHash, "IP hash");
+    return this.storage.transaction(txn => txn.delete("auth:totp-setup:" + ipHash));
   }
 
   async clearLogin(ipHash) {
