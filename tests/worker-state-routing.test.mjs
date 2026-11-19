@@ -578,6 +578,54 @@ test("current session generation remains authorized after MFA activation", async
   assert.equal(response.status, 200);
 });
 
+test("expired and missing admin sessions cannot read paper state", async () => {
+  const { env, coordinator } = environment();
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  const sessions = new Map([
+    ["session:expired-session", { expiresAt: Date.now() - 1, authVersion: 0 }]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = sessions.get(key);
+    if (value == null) return null;
+    return type === "json" ? value : JSON.stringify(value);
+  };
+  for (const token of ["expired-session", "missing-session"]) {
+    const response = await worker.fetch(new Request("https://worker.test/api/state", {
+      headers: { Authorization: "Bearer " + token }
+    }), env);
+    assert.equal(response.status, 401, token + " must not access paper state");
+  }
+});
+
+test("session with a stale auth generation cannot mutate paper state", async () => {
+  const { env, coordinator } = environment();
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  const values = new Map([
+    ["session:stale-generation", { expiresAt: Date.now() + 60000, authVersion: 4 }],
+    ["admin_profile", { authVersion: 5, totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP" }]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    if (value == null) return null;
+    return type === "json" ? value : JSON.stringify(value);
+  };
+  const response = await worker.fetch(new Request("https://worker.test/api/state", {
+    method: "PUT",
+    headers: { Authorization: "Bearer stale-generation", "Content-Type": "application/json" },
+    body: JSON.stringify({ balance: 1 })
+  }), env);
+  assert.equal(response.status, 401);
+  assert.equal((await coordinator.snapshot()).state.balance, 100);
+});
+
 test("authenticated logout revokes the current server session", async () => {
   const { env, touchedKvKeys } = environment();
   const response = await worker.fetch(request("/api/logout", "POST"), env);
