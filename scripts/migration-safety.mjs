@@ -7,6 +7,22 @@ export function isValidSourceState(state) {
     Array.isArray(state.trades);
 }
 
+export function isCompatibleWithWorkerState(state) {
+  if (!isValidSourceState(state) || state.trades.length > 500) return false;
+  const boundedArrays = [
+    ["scannedMints", 1000],
+    ["deferredMints", 1000],
+    ["lastScanReport", 20]
+  ];
+  for (const [key, maxLength] of boundedArrays) {
+    if (Object.hasOwn(state, key) &&
+        (!Array.isArray(state[key]) || state[key].length > maxLength)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function isUninitializedTargetState(state) {
   return !!state &&
     state.updatedAt === null &&
@@ -20,8 +36,13 @@ export function isUninitializedTargetState(state) {
 }
 
 export function statesMatch(source, imported) {
-  return Number(imported?.balance) === Number(source?.balance) &&
-    JSON.stringify(imported?.trades) === JSON.stringify(source?.trades);
+  if (!source || !imported || typeof source !== "object" || typeof imported !== "object") return false;
+  return Object.keys(source)
+    .filter(key => key !== "updatedAt")
+    .every(key => {
+      if (key === "balance") return Number(imported.balance) === Number(source.balance);
+      return JSON.stringify(imported[key]) === JSON.stringify(source[key]);
+    });
 }
 
 export function isDefaultLikeSourceState(state) {
