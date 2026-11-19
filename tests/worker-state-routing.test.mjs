@@ -14,7 +14,8 @@ class MemoryStorage {
     const tx = {
       get: async key => this.values.get(key),
       put: async (key, value) => { this.values.set(key, structuredClone(value)); },
-      delete: async key => this.values.delete(key)
+      delete: async key => this.values.delete(key),
+      list: async ({ prefix = "" } = {}) => new Map([...this.values].filter(([key]) => key.startsWith(prefix)))
     };
     try { return await callback(tx); }
     finally { release(); }
@@ -370,6 +371,19 @@ test("MFA challenge is deleted after five invalid codes", async () => {
   const challengeCounter = authStorage.values.get("auth:mfa-challenge:test-challenge");
   assert.equal(ipCounter?.[1]?.count, 5);
   assert.equal(challengeCounter?.count, 5);
+});
+
+test("auth limiter alarm removes expired counters and preserves active windows", async () => {
+  const { authLimiter, authStorage } = environment();
+  const now = Date.now();
+  authStorage.values.set("auth:login:expired", { count: 5, expiresAt: now - 1 });
+  authStorage.values.set("auth:login:active", { count: 2, expiresAt: now + 60_000 });
+  authStorage.values.set("unrelated:key", { count: 99, expiresAt: now - 1 });
+  await authLimiter.alarm();
+  assert.equal(authStorage.values.has("auth:login:expired"), false);
+  assert.equal(authStorage.values.get("auth:login:active")?.count, 2);
+  assert.equal(authStorage.values.has("unrelated:key"), true);
+  assert.equal(authStorage.alarmAt, now + 60_000);
 });
 
 test("MFA attempt reservations are atomic under concurrent requests", async () => {
