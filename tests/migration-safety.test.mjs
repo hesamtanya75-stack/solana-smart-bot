@@ -5,7 +5,8 @@ import {
   isCompatibleWithWorkerState,
   isUninitializedTargetState,
   isDefaultLikeSourceState,
-  statesMatch
+  statesMatch,
+  normalizeLegacySourceState
 } from "../scripts/migration-safety.mjs";
 
 const emptyWorkerState = {
@@ -27,6 +28,28 @@ test("source state requires a finite nonnegative balance and a trades array", ()
   }
   assert.equal(isValidSourceState({ balance: 100, trades: {} }), false);
   assert.equal(isValidSourceState(null), false);
+});
+
+test("legacy Deno payload is expanded to the complete strict Durable Object schema", () => {
+  const legacy = {
+    balance: 87.25,
+    trades: [{ mint: "legacy-token", amount: 5 }],
+    updatedAt: "2026-11-18T10:00:00.000Z"
+  };
+  const normalized = normalizeLegacySourceState(legacy);
+  assert.deepEqual(normalized, {
+    balance: 87.25,
+    trades: legacy.trades,
+    updatedAt: legacy.updatedAt,
+    autoEnabled: false,
+    paused: false,
+    scannedMints: [],
+    deferredMints: [],
+    lastRunAt: null,
+    lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
+    lastScanReport: []
+  });
+  assert.equal(isCompatibleWithWorkerState(normalized), true);
 });
 
 test("target guard accepts only the exact pristine Worker default", () => {
