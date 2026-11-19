@@ -28,3 +28,8 @@ test("paper-state coordinator is configured as a SQLite Durable Object class", (
 test("Preview asset diagnostics are routed through the Worker", () => {
   assert.ok(config.assets?.run_worker_first?.includes("/asset-check"));
 });
+
+
+test("Worker exposes Cloudflare-generated version metadata instead of a stale hardcoded build hash", () => {
+  assert.equal(config.version_metadata?.binding, "CF_VERSION_METADATA");
+});
