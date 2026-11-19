@@ -758,7 +758,10 @@ export default {
           delete p.pendingTotpAt;
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
-        } catch { return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400); }
+        } catch (error) {
+          if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
+        }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
         try {
