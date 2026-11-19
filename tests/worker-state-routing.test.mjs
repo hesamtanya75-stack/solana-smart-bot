@@ -355,6 +355,7 @@ test("MFA challenge is deleted after five invalid codes", async () => {
 
 test("diagnostic screen route is hidden unless explicitly enabled", async () => {
   const { env } = environment();
+  env.ASSETS = { fetch: async () => new Response("Not found", { status: 404 }) };
   const hidden = await worker.fetch(new Request("https://worker.test/screen-test"), env);
   assert.equal(hidden.status, 404);
   env.ENABLE_DIAGNOSTIC_ROUTES = "true";
