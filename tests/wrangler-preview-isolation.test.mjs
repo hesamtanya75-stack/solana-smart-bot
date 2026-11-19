@@ -18,3 +18,9 @@ test("Preview binds the paper-state Durable Object coordinator", () => {
   assert.equal(production?.class_name, "PaperStateCoordinator");
   assert.equal(preview?.class_name, "PaperStateCoordinator", "Preview must route paper state through its own DO binding");
 });
+
+test("paper-state coordinator is configured as a SQLite Durable Object class", () => {
+  assert.equal(config.exports?.PaperStateCoordinator?.type, "durable-object");
+  assert.equal(config.exports?.PaperStateCoordinator?.storage, "sqlite");
+  assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "PAPER_STATE_COORDINATOR").length, 1);
+});
