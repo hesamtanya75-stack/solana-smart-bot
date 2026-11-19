@@ -620,6 +620,12 @@ export default {
       try {
         const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const ipFailureKey = "totp_fail:" + ip;
+        const ipFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
+        if (Number(ipFailures.count || 0) >= 5) {
+          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        }
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
         if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
@@ -637,8 +643,12 @@ export default {
         if (!valid) {
           challenge.attempts = Number(challenge.attempts || 0) + 1;
           await env.BOT_STATE.put(key, JSON.stringify(challenge), { expirationTtl: 300 });
+          await env.BOT_STATE.put(ipFailureKey, JSON.stringify({
+            count: Number(ipFailures.count || 0) + 1
+          }), { expirationTtl: 900 });
           return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
         }
+        await env.BOT_STATE.delete(ipFailureKey);
         await env.BOT_STATE.delete(key);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
