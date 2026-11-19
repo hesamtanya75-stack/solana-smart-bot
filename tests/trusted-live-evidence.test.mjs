@@ -395,7 +395,9 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   assert.equal(originalEvidence.semanticInstructionVerification, false);
 
   const changedBytes = Buffer.from(original, "base64");
-  changedBytes[changedBytes.length - 1] ^= 1;
+  // Mutate the recent blockhash byte so the message remains structurally valid.
+  // Serialized layout: signature-count + signature + legacy header + key-count + keys.
+  changedBytes[65 + 3 + 1 + 64] ^= 1;
   const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
     changedBytes.toString("base64"), BOT_WALLET
   );
