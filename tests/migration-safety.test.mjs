@@ -41,6 +41,13 @@ test("target guard accepts only the exact pristine Worker default", () => {
   assert.equal(isUninitializedTargetState(null), false);
 });
 
+test("legacy Deno state with only balance, trades, and updatedAt is import-compatible", () => {
+  assert.equal(isCompatibleWithWorkerState({
+    balance: 94.5, trades: [{ mint: "legacy-token" }], updatedAt: "2026-11-18T10:00:00.000Z"
+  }), true);
+  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], updatedAt: null }), true);
+});
+
 test("migration preflight rejects fields and metadata the Durable Object cannot import", () => {
   const compatible = {
     balance: 100, trades: [], autoEnabled: false, paused: false,
@@ -53,8 +60,8 @@ test("migration preflight rejects fields and metadata the Durable Object cannot 
   assert.equal(isCompatibleWithWorkerState({ ...compatible, paused: 0 }), false);
   assert.equal(isCompatibleWithWorkerState({ ...compatible, lastRunAt: 123 }), false);
   assert.equal(isCompatibleWithWorkerState({ ...compatible, scannedMints: "invalid" }), false);
-  const { lastRunAt, ...missingRequiredMetadata } = compatible;
-  assert.equal(isCompatibleWithWorkerState(missingRequiredMetadata), false);
+  const { lastRunAt, ...withoutOptionalWorkerMetadata } = compatible;
+  assert.equal(isCompatibleWithWorkerState(withoutOptionalWorkerMetadata), true);
 });
 
 test("post-import verification compares balance and exact trade history", () => {
