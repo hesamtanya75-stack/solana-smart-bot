@@ -133,7 +133,11 @@ export class PaperStateCoordinator {
       return response({ error: "Not found" }, 404);
     } catch (error) {
       const message = String(error?.message || error);
-      const status = message === "Version conflict" || message === "Already initialized" ? 409 : 400;
+      const status = message === "Version conflict" || message === "Already initialized"
+        ? 409
+        : error instanceof TypeError || error instanceof SyntaxError
+          ? 400
+          : 503;
       return response({ error: message }, status);
     }
   }
