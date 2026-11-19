@@ -58,6 +58,8 @@ Record the actual URL, response status, build identifier, and timestamp. Do not 
 Use a dedicated Preview-only login password configured as the `BOT_LOGIN_PASSWORD` secret in the Preview environment. Never use or copy the Production password.
 
 1. POST the Preview password to `/api/login`; if MFA is enabled, complete the configured TOTP challenge through `/api/login/totp`.
+2. If the Preview admin profile says MFA is enabled but its TOTP secret is missing or blank, confirm password login fails closed with HTTP 503 and creates neither a session nor an MFA challenge.
+3. Confirm `/api/login/totp` rejects backup-code authentication when MFA is disabled or its TOTP secret is missing; no session may be created.
 2. Keep the returned session token private and send it only as `Authorization: Bearer <token>`.
 3. Confirm unauthenticated `GET /api/state` and `PUT /api/state` both return HTTP 401.
 4. With the authenticated token, GET `/api/state` and record whether the Preview coordinator is initialized. Do not assume a default-looking response proves persistent initialization.
