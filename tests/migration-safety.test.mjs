@@ -74,14 +74,19 @@ test("default-like Deno state is flagged because GET cannot prove KV key existen
 });
 
 test("migration rejects source arrays that the Worker would truncate or normalize", () => {
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [] }), true);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: Array(500).fill({}) }), true);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: Array(501).fill({}) }), false);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: Array(1000).fill("x") }), true);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: Array(1001).fill("x") }), false);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], deferredMints: Array(1001).fill("x") }), false);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], lastScanReport: Array(21).fill({}) }), false);
-  assert.equal(isCompatibleWithWorkerState({ balance: 100, trades: [], scannedMints: "invalid" }), false);
+  const valid = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  };
+  assert.equal(isCompatibleWithWorkerState(valid), true);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, trades: Array(500).fill({}) }), true);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, trades: Array(501).fill({}) }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: Array(1000).fill("x") }), true);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: Array(1001).fill("x") }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, deferredMints: Array(1001).fill("x") }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, lastScanReport: Array(21).fill({}) }), false);
+  assert.equal(isCompatibleWithWorkerState({ ...valid, scannedMints: "invalid" }), false);
 });
 
 test("post-import verification compares every source field except server timestamp", () => {
