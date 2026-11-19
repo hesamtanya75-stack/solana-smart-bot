@@ -351,3 +351,14 @@ test("MFA challenge is deleted after five invalid codes", async () => {
   assert.equal(blocked.status, 429);
   assert.equal(values.has("mfa_challenge:test-challenge"), false);
 });
+
+
+test("diagnostic screen route is hidden unless explicitly enabled", async () => {
+  const { env } = environment();
+  const hidden = await worker.fetch(new Request("https://worker.test/screen-test"), env);
+  assert.equal(hidden.status, 404);
+  env.ENABLE_DIAGNOSTIC_ROUTES = "true";
+  const enabled = await worker.fetch(new Request("https://worker.test/screen-test"), env);
+  assert.equal(enabled.status, 200);
+  assert.match(await enabled.text(), /SCREEN TEST OK/);
+});
