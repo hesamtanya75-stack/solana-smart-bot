@@ -734,6 +734,23 @@ export default {
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
           const body = await request.json();
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return json({ error: "Invalid state" }, 400);
+          }
+          const limits = { trades: 500, scannedMints: 1000, deferredMints: 1000, lastScanReport: 20 };
+          for (const [key, limit] of Object.entries(limits)) {
+            if (body[key] !== undefined && (!Array.isArray(body[key]) || body[key].length > limit)) {
+              return json({ error: "Invalid or oversized " + key }, 400);
+            }
+          }
+          if (body.balance !== undefined && (typeof body.balance !== "number" || !Number.isFinite(body.balance) || body.balance < 0)) {
+            return json({ error: "Invalid balance" }, 400);
+          }
+          for (const key of ["autoEnabled", "paused"]) {
+            if (body[key] !== undefined && typeof body[key] !== "boolean") {
+              return json({ error: "Invalid " + key }, 400);
+            }
+          }
           const current = await readState(env);
           const expectedVersion = current[STATE_VERSION];
           const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
