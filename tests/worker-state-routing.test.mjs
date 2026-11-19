@@ -21,7 +21,7 @@ class MemoryStorage {
 function environment() {
   const storage = new MemoryStorage();
   const coordinator = new PaperStateCoordinator({ storage });
-  const stub = { fetch: request => coordinator.fetch(request) };
+  const stub = { fetch: (input, init) => coordinator.fetch(new Request(input, init)) };
   const touchedKvKeys = [];
   const env = {
     BOT_STATE: {
