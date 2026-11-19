@@ -382,6 +382,32 @@ test("malformed Jupiter instruction program index is rejected", () => {
 });
 
 
+test("combined validation binds a SHA-256 digest to the exact unsigned serialized message", async () => {
+  const original = validUnsignedTransaction();
+  const originalEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    original, BOT_WALLET
+  );
+  assert.equal(originalEvidence.messageDigest.algorithm, "SHA-256");
+  assert.equal(originalEvidence.messageDigest.encoding, "hex");
+  assert.match(originalEvidence.messageDigest.value, /^[a-f0-9]{64}$/);
+  assert.equal(originalEvidence.messageDigest.signer, BOT_WALLET);
+  assert.equal(originalEvidence.messageDigest.messageVersion, "legacy");
+  assert.equal(originalEvidence.semanticInstructionVerification, false);
+  assert.equal(originalEvidence.signingPermitted, false);
+  assert.equal(originalEvidence.submissionPermitted, false);
+
+  const changedBytes = Buffer.from(original, "base64");
+  changedBytes[changedBytes.length - 1] ^= 1;
+  const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    changedBytes.toString("base64"), BOT_WALLET
+  );
+  assert.notEqual(
+    changedEvidence.messageDigest.value,
+    originalEvidence.messageDigest.value,
+    "any serialized message change must produce a different digest"
+  );
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
