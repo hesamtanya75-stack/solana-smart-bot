@@ -7,7 +7,7 @@ const coordinatorSource = await readFile(new URL("../paper-state-coordinator.js"
 const coordinatorModuleUrl = "data:text/javascript;base64," + Buffer.from(coordinatorSource).toString("base64");
 const workerWithEmbeddedCoordinator = workerSource.replace(
   'export { PaperStateCoordinator } from "./paper-state-coordinator.js";',
-  "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + ");"
+  "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + "); export { PaperStateCoordinator };"
 );
 const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerWithEmbeddedCoordinator).toString("base64");
 const { default: worker, PaperStateCoordinator } = await import(workerModuleUrl);
