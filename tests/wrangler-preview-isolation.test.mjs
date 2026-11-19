@@ -19,6 +19,15 @@ test("Preview binds the paper-state Durable Object coordinator", () => {
   assert.equal(preview?.class_name, "PaperStateCoordinator", "Preview must route paper state through its own DO binding");
 });
 
+test("Preview binds the dedicated authentication rate limiter Durable Object", () => {
+  const production = config.durable_objects?.bindings?.find(binding => binding.name === "AUTH_RATE_LIMITER");
+  const preview = config.previews?.durable_objects?.bindings?.find(binding => binding.name === "AUTH_RATE_LIMITER");
+  assert.equal(production?.class_name, "MfaRateLimiter");
+  assert.equal(preview?.class_name, "MfaRateLimiter", "Preview must bind the authentication limiter");
+  assert.equal(config.exports?.MfaRateLimiter?.type, "durable-object");
+  assert.equal(config.exports?.MfaRateLimiter?.storage, "sqlite");
+});
+
 test("paper-state coordinator is configured as a SQLite Durable Object class", () => {
   assert.equal(config.exports?.PaperStateCoordinator?.type, "durable-object");
   assert.equal(config.exports?.PaperStateCoordinator?.storage, "sqlite");
