@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isValidSourceState,
   isUninitializedTargetState,
+  isDefaultLikeSourceState,
   statesMatch
 } from "../scripts/migration-safety.mjs";
 
