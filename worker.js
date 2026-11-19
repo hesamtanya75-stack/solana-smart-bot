@@ -698,6 +698,11 @@ export default {
         if (!credentialClaim.claimed) {
           return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدێکی نوێ بەکاربهێنە." }, 409);
         }
+        const challengeClaim = await authRateLimitRequest(env, "/mfa-challenge-claim", { challengeId });
+        if (!challengeClaim.claimed) {
+          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
+          return json({ error: "ئەم داواکارییەی پشتڕاستکردنەوە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە." }, 409);
+        }
         try {
           if (backupCodeUsed) {
             // The atomic credential claim prevents concurrent reuse while this
@@ -714,6 +719,7 @@ export default {
           return json({ ok: true, token });
         } catch (error) {
           try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
+          try { await authRateLimitRequest(env, "/mfa-challenge-release", { challengeId }); } catch {}
           throw error;
         }
       } catch (error) {
