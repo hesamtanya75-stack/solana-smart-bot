@@ -75,6 +75,16 @@ export class MfaRateLimiter {
         await this.clearTotpSetup(body.ipHash);
         return response({ ok: true });
       }
+      if (url.pathname === "/totp-setup-claim" || url.pathname === "/totp-setup-release") {
+        validateHash(body.secretHash, "TOTP setup secret hash");
+        if (url.pathname === "/totp-setup-claim") {
+          const claimed = await this.claimTotpSetup(body.secretHash);
+          await this.scheduleCleanup();
+          return response({ claimed });
+        }
+        await this.releaseTotpSetup(body.secretHash);
+        return response({ ok: true });
+      }
       return response({ error: "Not found" }, 404);
     } catch (error) {
       // Internal Durable Object/storage failures must surface as unavailable,
@@ -148,6 +158,22 @@ export class MfaRateLimiter {
   async clearTotpSetup(ipHash) {
     validateHash(ipHash, "IP hash");
     return this.storage.transaction(txn => txn.delete("auth:totp-setup:" + ipHash));
+  }
+
+  async claimTotpSetup(secretHash) {
+    validateHash(secretHash, "TOTP setup secret hash");
+    return this.storage.transaction(async txn => {
+      const key = "auth:totp-setup-claim:" + secretHash;
+      const current = await txn.get(key);
+      if (current && current.expiresAt > Date.now()) return false;
+      await txn.put(key, { expiresAt: Date.now() + 10 * 60 * 1000 });
+      return true;
+    });
+  }
+
+  async releaseTotpSetup(secretHash) {
+    validateHash(secretHash, "TOTP setup secret hash");
+    return this.storage.transaction(txn => txn.delete("auth:totp-setup-claim:" + secretHash));
   }
 
   async clearLogin(ipHash) {
