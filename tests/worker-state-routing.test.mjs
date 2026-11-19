@@ -554,6 +554,30 @@ test("enabling MFA invalidates sessions issued before MFA activation", async () 
   assert.equal(response.status, 401);
 });
 
+test("current session generation remains authorized after MFA activation", async () => {
+  const { env, coordinator } = environment();
+  await coordinator.importOnce({
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], deferredMints: [], lastRunAt: null,
+    lastMessage: "ready", lastScanReport: [], updatedAt: null
+  });
+  env.BOT_STATE.get = async (key, type) => {
+    if (key === "session:current-session") {
+      const session = { expiresAt: Date.now() + 60000, authVersion: 3 };
+      return type === "json" ? session : JSON.stringify(session);
+    }
+    if (key === "admin_profile") {
+      const profile = { totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", authVersion: 3 };
+      return type === "json" ? profile : JSON.stringify(profile);
+    }
+    return null;
+  };
+  const response = await worker.fetch(new Request("https://worker.test/api/state", {
+    headers: { Authorization: "Bearer current-session" }
+  }), env);
+  assert.equal(response.status, 200);
+});
+
 test("authenticated logout revokes the current server session", async () => {
   const { env, touchedKvKeys } = environment();
   const response = await worker.fetch(request("/api/logout", "POST"), env);
