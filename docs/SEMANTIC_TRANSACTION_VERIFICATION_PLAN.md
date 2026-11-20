@@ -1605,3 +1605,17 @@ in that identity. Query-string API-key endpoints are therefore unsupported by
 this adapter. This restriction narrows endpoint ambiguity but does not
 authenticate the remote provider, prove which bytes it simulated, or establish
 response provenance. Signing and submission remain disabled.
+
+### Duplicate JSON key rejection for simulation responses — PR #56 follow-up
+
+The bounded RPC JSON reader now has an opt-in duplicate-object-key check.
+The read-only simulation transport enables it before accepting the response
+envelope. This prevents JSON.parse last-key-wins behavior from silently
+collapsing repeated fields such as id or result, including repeated keys
+whose escaped JSON spellings decode to the same property name. Tests cover
+duplicate top-level keys, nested keys, and escaped-equivalent keys.
+
+This is parser-ambiguity hardening only. A clean JSON-RPC response still does
+not authenticate the RPC provider or prove that the provider simulated the
+exact transaction bytes. Simulation identity, CPI semantics, balance effects,
+signing, and submission remain unverified or disabled.
