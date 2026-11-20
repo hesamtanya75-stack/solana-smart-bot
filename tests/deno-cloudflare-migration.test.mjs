@@ -18,7 +18,7 @@ test("validates and preserves the legacy Deno paper state", () => {
   const imported = buildCloudflareImport(source);
   assert.equal(imported.balance, 87.5);
   assert.equal(imported.autoEnabled, false);
-  assert.equal(imported.paused, false);
+  assert.equal(imported.paused, true);
   assert.equal(imported.trades.length, 1);
   assert.equal(imported.trades[0].currentPrice, 2);
   assert.equal(imported.trades[0].sold, false);
