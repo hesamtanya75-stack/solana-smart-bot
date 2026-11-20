@@ -60,6 +60,7 @@ export async function createSimulationRpcRequest({
       encoding: "base64",
       sigVerify: false,
       replaceRecentBlockhash: true,
+      innerInstructions: true,
       commitment: "confirmed"
     }
   ];
