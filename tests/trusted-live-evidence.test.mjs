@@ -2893,3 +2893,45 @@ test("finalized v0 settlement rejects loaded-address counts inconsistent with lo
     signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
   }, fetchImpl), /do not match address-table lookup indexes/);
 });
+
+
+test("settlement proof rejects owned token balances without an account index", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(16));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 131,
+    transaction: {
+      signatures: [signature],
+      message: { accountKeys: [
+        BOT_WALLET,
+        "11111111111111111111111111111112",
+        "11111111111111111111111111111113"
+      ] }
+    },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+      preTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET,
+        uiTokenAmount: { amount: "2", decimals: 9 }
+      }],
+      postTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+        uiTokenAmount: { amount: "1", decimals: 9 }
+      }, {
+        mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
+        uiTokenAmount: { amount: "1", decimals: 6 }
+      }]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /missing its account index/);
+});
