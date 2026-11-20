@@ -38,7 +38,8 @@ test("read-only transport sends exact request and binds matching response id and
   assert.equal(result.requestId, 22);
   assert.equal(result.contextSlot, 900);
   assert.equal(result.responseRequestIdMatched, true);
-  assert.equal(result.responseEndpointMatched, true);
+  assert.equal(result.requestEndpointMatched, true);
+  assert.equal(Object.hasOwn(result, "responseEndpointMatched"), false);
   assert.equal(result.simulationInputIdentityVerified, false);
   assert.equal(result.signingPermitted, false);
   assert.equal(result.submissionPermitted, false);
