@@ -1257,3 +1257,25 @@ RPC response's provenance or semantic trust.
 
 
 Current validation on PR #56 head `4e597be17edb7efadeb71bebc72876fb3c61cb3b`: Node tests, Cloudflare Worker build validation, and read-only Devnet validation all completed successfully. The funded Devnet lifecycle job was skipped as required without explicit opt-in. PR #56 remains Draft and open; no merge, deployment, signing, transaction submission, funded Devnet lifecycle, or Mainnet trading was performed.
+
+
+
+## Immutable simulation response snapshot — PR #56 follow-up
+
+The read-only simulation transport now recursively freezes the parsed JSON-RPC
+simulation result before exposing it in the response record. This prevents
+callers from mutating nested context, value, or inner-instruction observations
+after the transport has validated the response. The regression test asserts
+that the result tree and nested inner-instruction arrays are frozen and that a
+mutation attempt throws.
+
+This is an in-process immutability safeguard only. It does not authenticate
+the remote RPC response, prove that the provider executed the exact submitted
+bytes, establish CPI semantics, or authorize signing or submission.
+
+Validation on PR #56 head `a6db09a2ff9317e75f5b91676b450525ccf23eea`:
+Node tests, Worker build validation, read-only Devnet validation, and the
+Cloudflare preview build check completed successfully. The
+`funded-devnet-lifecycle` job remained skipped. PR #56 remains open and Draft;
+no merge, production deployment, signing, transaction submission, funded
+Devnet lifecycle, or Mainnet trading was performed.
