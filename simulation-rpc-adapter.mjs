@@ -54,7 +54,7 @@ export async function createSimulationRpcRequest(input) {
     throw new Error("A valid HTTPS simulation RPC endpoint is required");
   }
   if (url.protocol !== "https:" || url.username || url.password ||
-      url.hash || url.hostname.length === 0) {
+      url.hash || url.search || url.hostname.length === 0) {
     throw new Error("Simulation RPC endpoint must be HTTPS without embedded credentials or fragment");
   }
   if (!Number.isSafeInteger(requestId) || requestId < 1) {
