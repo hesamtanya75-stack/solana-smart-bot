@@ -2667,8 +2667,8 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     meta: {
       ...baseResult.meta,
       postTokenBalances: [
-        { ...baseResult.meta.postTokenBalances[0] },
-        { ...baseResult.meta.postTokenBalances[1], accountIndex: 1 }
+        { ...baseResult.meta.postTokenBalances[1] },
+        { ...baseResult.meta.postTokenBalances[1] }
       ]
     }
   };
