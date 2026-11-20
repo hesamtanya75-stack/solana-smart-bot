@@ -2474,3 +2474,73 @@ test("CPI index resolution rejects accessor-backed observation fields without in
   }), /accessor-backed/);
   assert.equal(getterCalls, 0);
 });
+
+
+test("CPI resolution revalidates complete and incomplete stack-height declarations", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const makeObservation = instructions => normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1240 },
+      value: { err: null, innerInstructions: [{ index: 0, instructions }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+
+  const complete = makeObservation([
+    { programIdIndex: 1, stackHeight: 2 },
+    { programIdIndex: 1, stackHeight: 3 },
+    { programIdIndex: 1, stackHeight: 2 }
+  ]);
+  const completeResolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: complete,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(completeResolved.groups[0].stackHeightStructure, "complete");
+  assert.equal(completeResolved.semanticInstructionVerification, false);
+  assert.equal(completeResolved.signingPermitted, false);
+  assert.equal(completeResolved.submissionPermitted, false);
+
+  const incomplete = makeObservation([
+    { programIdIndex: 1, stackHeight: 2 },
+    { programIdIndex: 1 }
+  ]);
+  const incompleteResolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: incomplete,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(incompleteResolved.groups[0].stackHeightStructure, "incomplete");
+  assert.equal(incompleteResolved.semanticInstructionVerification, false);
+  assert.equal(incompleteResolved.signingPermitted, false);
+  assert.equal(incompleteResolved.submissionPermitted, false);
+
+  const forgedComplete = Object.freeze({
+    ...incomplete,
+    groups: Object.freeze([Object.freeze({
+      ...incomplete.groups[0],
+      stackHeightStructure: "complete"
+    })])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: forgedComplete,
+    trustedMessageEvidence: evidence
+  }), /stack-height structure is inconsistent/);
+
+  const forgedIncomplete = Object.freeze({
+    ...complete,
+    groups: Object.freeze([Object.freeze({
+      ...complete.groups[0],
+      stackHeightStructure: "incomplete"
+    })])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: forgedIncomplete,
+    trustedMessageEvidence: evidence
+  }), /stack-height structure is inconsistent/);
+});
