@@ -194,3 +194,27 @@ test("rejects token amounts above the u64 ceiling", () => {
     simulationResult: data, accountKeyCount: 2
   }), /exceeds u64/);
 });
+
+
+test("exposes a validated simulation fee as diagnostics without reconciling it", () => {
+  const data = fixture();
+  data.value.fee = 5000;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.feeLamports, 5000);
+  assert.equal(result.cpiEffectsReconciled, false);
+  assert.equal(result.tokenBalanceEffectsVerified, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("rejects malformed or unsafe simulation fee metadata", () => {
+  for (const fee of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "5000"]) {
+    const data = fixture();
+    data.value.fee = fee;
+    assert.throws(() => normalizeSimulationBalanceObservation({
+      simulationResult: data, accountKeyCount: 2
+    }), /fee is not a nonnegative safe integer/);
+  }
+});
