@@ -1370,6 +1370,71 @@ function validateDenseLamportBalances(value, expectedLength) {
   return true;
 }
 
+function validateStableTokenBalanceIdentities(preRows, postRows) {
+  const collect = rows => {
+    if (!Array.isArray(rows) || Object.getPrototypeOf(rows) !== Array.prototype) {
+      throw new Error("Finalized transaction token balance metadata is unavailable");
+    }
+    const byIndex = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(i));
+      const row = rowDescriptor?.value;
+      if (!rowDescriptor || !Object.prototype.hasOwnProperty.call(rowDescriptor, "value") ||
+          !row || typeof row !== "object" ||
+          (Object.getPrototypeOf(row) !== Object.prototype && Object.getPrototypeOf(row) !== null)) {
+        throw new Error("Finalized transaction token balance metadata is malformed");
+      }
+      const indexDescriptor = Object.getOwnPropertyDescriptor(row, "accountIndex");
+      if (!indexDescriptor) continue;
+      if (!Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
+          !Number.isInteger(indexDescriptor.value) || indexDescriptor.value < 0) {
+        throw new Error("Finalized transaction token balance account index is malformed");
+      }
+      const readOptional = key => {
+        const descriptor = Object.getOwnPropertyDescriptor(row, key);
+        if (!descriptor) return undefined;
+        if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+          throw new Error("Finalized transaction token balance metadata is malformed");
+        }
+        return descriptor.value;
+      };
+      const identity = {
+        mint: readOptional("mint"),
+        owner: readOptional("owner"),
+        programId: readOptional("programId"),
+        decimals: (() => {
+          const amountRecord = readOptional("uiTokenAmount");
+          if (!amountRecord || typeof amountRecord !== "object" ||
+              (Object.getPrototypeOf(amountRecord) !== Object.prototype &&
+               Object.getPrototypeOf(amountRecord) !== null)) return undefined;
+          const descriptor = Object.getOwnPropertyDescriptor(amountRecord, "decimals");
+          if (!descriptor) return undefined;
+          if (!Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+              !Number.isInteger(descriptor.value) || descriptor.value < 0 ||
+              descriptor.value > 255) {
+            throw new Error("Finalized transaction token balance decimals are malformed");
+          }
+          return descriptor.value;
+        })()
+      };
+      byIndex.set(indexDescriptor.value, identity);
+    }
+    return byIndex;
+  };
+  const before = collect(preRows);
+  const after = collect(postRows);
+  for (const [index, pre] of before) {
+    const post = after.get(index);
+    if (!post) continue;
+    for (const field of ["mint", "owner", "programId", "decimals"]) {
+      if (pre[field] !== undefined && post[field] !== undefined &&
+          pre[field] !== post[field]) {
+        throw new Error("Finalized token account identity changed across pre/post balances");
+      }
+    }
+  }
+}
+
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner = EXPECTED_BOT_WALLET
@@ -1421,6 +1486,7 @@ export async function verifyFinalizedJupiterSettlement({
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
+  validateStableTokenBalanceIdentities(meta.preTokenBalances, meta.postTokenBalances);
   const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings.length);
   const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
