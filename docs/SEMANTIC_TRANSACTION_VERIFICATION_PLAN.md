@@ -1308,3 +1308,27 @@ separately reviewed. All semantic verification and execution-permission
 flags remain false. PR #56 remains open and Draft. No merge, production
 deployment, signing, transaction submission, funded Devnet lifecycle, or
 Mainnet trading was performed.
+
+## Public simulation API argument snapshot hardening — PR #56 follow-up
+
+The three exported simulation-observation entry points now snapshot their
+top-level argument objects through own data-property descriptors before
+reading any argument values. Unexpected keys, symbol keys, inherited/custom
+prototypes, and accessor-backed properties are rejected. This closes the
+remaining top-level argument-object getter gap in the observation normalizer
+and CPI candidate-index resolver. Regression tests confirm that getters on
+the normalizer and message-bound normalizer inputs are rejected without being
+invoked.
+
+This is input-shape hardening only. It does not authenticate RPC response
+origin, prove that a provider simulated the exact submitted bytes, decode CPI
+instruction semantics, verify token balance effects, or authorize execution.
+
+On PR #56 head `e585829749dad50d9fe1858e71273f4bb09af69e`, Node tests and
+Cloudflare Worker build validation completed successfully. Read-only Devnet
+validation also completed successfully; the funded Devnet lifecycle job was
+skipped without explicit opt-in. The Deno deployment status remains blocked
+by the external `Organization suspended - resolve billing to deploy`
+condition. PR #56 remains open and Draft. No merge, production deployment,
+signing, transaction submission, funded Devnet lifecycle, or Mainnet trading
+was performed.
