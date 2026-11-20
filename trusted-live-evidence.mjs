@@ -1247,6 +1247,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     throw new Error("Finalized transaction token balance metadata is malformed");
   }
   let total = 0n;
+  const seenAccountIdentities = new Set();
   for (let index = 0; index < rows.length; index++) {
     const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(index));
     const row = rowDescriptor?.value;
@@ -1258,19 +1259,50 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     const mintDescriptor = Object.getOwnPropertyDescriptor(row, "mint");
     const ownerDescriptor = Object.getOwnPropertyDescriptor(row, "owner");
     const amountRecordDescriptor = Object.getOwnPropertyDescriptor(row, "uiTokenAmount");
+    const accountIndexDescriptor = Object.getOwnPropertyDescriptor(row, "accountIndex");
+    const programIdDescriptor = Object.getOwnPropertyDescriptor(row, "programId");
     if (!mintDescriptor || !Object.prototype.hasOwnProperty.call(mintDescriptor, "value") ||
         !ownerDescriptor || !Object.prototype.hasOwnProperty.call(ownerDescriptor, "value") ||
         !amountRecordDescriptor || !Object.prototype.hasOwnProperty.call(amountRecordDescriptor, "value") ||
+        (accountIndexDescriptor && !Object.prototype.hasOwnProperty.call(accountIndexDescriptor, "value")) ||
+        (programIdDescriptor && !Object.prototype.hasOwnProperty.call(programIdDescriptor, "value")) ||
         typeof mintDescriptor.value !== "string" || typeof ownerDescriptor.value !== "string") {
       throw new Error("Finalized transaction token balance metadata is malformed");
     }
-    if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
+    if (accountIndexDescriptor &&
+        (!Number.isInteger(accountIndexDescriptor.value) || accountIndexDescriptor.value < 0)) {
+      throw new Error("Finalized transaction token balance account index is malformed");
+    }
+    if (programIdDescriptor &&
+        (typeof programIdDescriptor.value !== "string" ||
+         !EXPECTED_TOKEN_PROGRAMS.has(programIdDescriptor.value))) {
+      throw new Error("Finalized transaction token balance program ID is unsupported");
+    }
     const amountRecord = amountRecordDescriptor.value;
     if (!amountRecord || typeof amountRecord !== "object" ||
         (Object.getPrototypeOf(amountRecord) !== Object.prototype && Object.getPrototypeOf(amountRecord) !== null)) {
-      throw new Error("Finalized transaction contains an invalid owned token balance");
+      if (mintDescriptor.value === mint && ownerDescriptor.value === owner) {
+        throw new Error("Finalized transaction contains an invalid owned token balance");
+      }
+      continue;
     }
     const amountDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "amount");
+    const decimalsDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "decimals");
+    if (decimalsDescriptor &&
+        (!Object.prototype.hasOwnProperty.call(decimalsDescriptor, "value") ||
+         !Number.isInteger(decimalsDescriptor.value) || decimalsDescriptor.value < 0 ||
+         decimalsDescriptor.value > 255)) {
+      throw new Error("Finalized transaction token balance decimals are malformed");
+    }
+    if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
+    if (accountIndexDescriptor) {
+      const identity = accountIndexDescriptor.value + ":" + mintDescriptor.value + ":" +
+        (programIdDescriptor?.value ?? "program-unreported");
+      if (seenAccountIdentities.has(identity)) {
+        throw new Error("Finalized transaction contains duplicate owned token account metadata");
+      }
+      seenAccountIdentities.add(identity);
+    }
     const amount = amountDescriptor?.value;
     if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
         typeof amount !== "string" || !/^(0|[1-9]\d*)$/.test(amount)) {
