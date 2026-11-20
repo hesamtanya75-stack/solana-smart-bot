@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
+import { normalizeSimulationObservation, resolveSimulationCpiIndexesAgainstTrustedMessage } from "../simulation-observation.mjs";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, resolveExecutableProgramAccounts, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -1270,24 +1271,24 @@ test("settlement proof requires finalized status and exact owner-scoped balance 
           slot: 123,
           transaction: {
             signatures: [signature],
-            message: { accountKeys: [BOT_WALLET] }
+            message: { accountKeys: [BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"] }
           },
           meta: {
             err: null,
             fee: 5000,
-            preBalances: [100_000_000],
-            postBalances: [89_995_000],
+            preBalances: [100_000_000, 0, 0],
+            postBalances: [89_995_000, 0, 0],
             preTokenBalances: [{
               mint: "So11111111111111111111111111111111111111112",
-              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+              owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
               {
                 mint: "So11111111111111111111111111111111111111112",
-                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+                owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
-                mint: outputMint, owner: BOT_WALLET,
+                mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
                 uiTokenAmount: { amount: "12345", decimals: 6 }
               }
             ]
@@ -1326,16 +1327,16 @@ test("settlement proof rejects sparse or accessor-backed native lamport balance 
   const signature = encodeBase58(new Uint8Array(64).fill(8));
   const baseResult = {
     slot: 124,
-    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"] } },
     meta: {
-      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
       preTokenBalances: [
-        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } },
-        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } }
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "1" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, accountIndex: 2, uiTokenAmount: { amount: "0" } }
       ],
       postTokenBalances: [
-        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } },
-        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } }
+        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "0" } },
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, accountIndex: 2, uiTokenAmount: { amount: "1" } }
       ]
     }
   };
@@ -1381,14 +1382,10 @@ test("settlement proof rejects accessor-backed and sparse finalized account keys
     transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
     meta: {
       err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
-      preTokenBalances: [
-        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } },
-        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } }
-      ],
-      postTokenBalances: [
-        { mint: "So11111111111111111111111111111111111111112", owner: BOT_WALLET, uiTokenAmount: { amount: "0" } },
-        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner: BOT_WALLET, uiTokenAmount: { amount: "1" } }
-      ]
+      // This test targets malformed account-key containers; keep token rows empty
+      // so the stricter accountIndex requirement does not mask the intended failure.
+      preTokenBalances: [],
+      postTokenBalances: []
     }
   };
   let responseResult = baseResult;
@@ -1533,20 +1530,20 @@ test("settlement proof rejects a finalized transaction with mismatched output", 
       ? { value: [{ err: null, confirmationStatus: "finalized" }] }
       : {
           slot: 124,
-          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"] } },
           meta: {
-            err: null, fee: 5000, preBalances: [100_000_000], postBalances: [89_995_000],
+            err: null, fee: 5000, preBalances: [100_000_000, 0, 0], postBalances: [89_995_000, 0, 0],
             preTokenBalances: [{
               mint: "So11111111111111111111111111111111111111112",
-              owner: BOT_WALLET, uiTokenAmount: { amount: "10000000", decimals: 9 }
+              owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "10000000", decimals: 9 }
             }],
             postTokenBalances: [
               {
                 mint: "So11111111111111111111111111111111111111112",
-                owner: BOT_WALLET, uiTokenAmount: { amount: "0", decimals: 9 }
+                owner: BOT_WALLET, accountIndex: 1, uiTokenAmount: { amount: "0", decimals: 9 }
               },
               {
-                mint: outputMint, owner: BOT_WALLET,
+                mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
                 uiTokenAmount: { amount: "12344", decimals: 6 }
               }
             ]
@@ -2252,4 +2249,685 @@ test("executable program resolver rejects malformed finalized context and accoun
       Response.json({ jsonrpc: "2.0", id: 1, result })
     ));
   }
+});
+
+
+test("CPI indexes resolve only against privately branded exact-message evidence", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const messageBytes = serialized.subarray(65);
+  const messageDigest = createHash("sha256").update(messageBytes).digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest,
+    simulationResult: {
+      context: { slot: 1234 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const resolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(resolved.groups[0].instructions[0].programIdCandidate, evidence.accountKeys[1]);
+  assert.deepEqual(resolved.groups[0].instructions[0].accountKeyCandidates, [evidence.accountKeys[0]]);
+  assert.equal(resolved.cpiIndexResolution, "resolved-against-trusted-message-candidate-only");
+  assert.equal(resolved.cpiProgramIdsVerified, false);
+  assert.equal(resolved.simulationInputIdentityVerified, false);
+  assert.equal(resolved.semanticInstructionVerification, false);
+  assert.equal(resolved.signingPermitted, false);
+  assert.equal(resolved.submissionPermitted, false);
+});
+
+test("CPI index resolution rejects unbranded or digest-mismatched evidence", () => {
+  const observation = {
+    scope: "simulation-observation-only",
+    messageDigest: "a".repeat(64),
+    groups: []
+  };
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: { accountKeys: ["11111111111111111111111111111111"] }
+  }), /privately branded/i);
+});
+
+
+test("CPI index resolution rejects a digest mismatch even with privately branded evidence", async () => {
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const observation = normalizeSimulationObservation({
+    messageDigest: "a".repeat(64),
+    simulationResult: {
+      context: { slot: 1234 },
+      value: { err: null, innerInstructions: [] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const completeObservation = Object.freeze({
+    ...observation,
+    messageDigestSource: "sha256-of-supplied-serialized-message",
+    simulationInputIdentityVerified: false
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: completeObservation,
+    trustedMessageEvidence: evidence
+  }), /digest does not match/);
+});
+
+test("CPI index resolution preserves v0 loaded writable/readonly account-key ordering", async () => {
+  const encoded = validUnsignedV0TransactionWithLookup();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockAltAndExecutableFetch()
+  );
+  assert.equal(evidence.accountKeys.length, 4);
+  const serialized = Buffer.from(encoded, "base64");
+  const messageDigest = createHash("sha256")
+    .update(serialized.subarray(65))
+    .digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest,
+    simulationResult: {
+      context: { slot: 1235 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 3, accounts: [2] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const resolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(resolved.groups[0].instructions[0].programIdCandidate, evidence.accountKeys[3]);
+  assert.deepEqual(resolved.groups[0].instructions[0].accountKeyCandidates, [evidence.accountKeys[2]]);
+  assert.equal(resolved.semanticInstructionVerification, false);
+  assert.equal(resolved.simulationInputIdentityVerified, false);
+  assert.equal(resolved.signingPermitted, false);
+  assert.equal(resolved.submissionPermitted, false);
+});
+
+
+test("CPI index resolution rejects forged status flags and inconsistent aggregate counts", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1236 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: { ...observation, signingPermitted: true },
+    trustedMessageEvidence: evidence
+  }), /cannot assert signingPermitted/);
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: { ...observation, innerInstructionCount: 2 },
+    trustedMessageEvidence: evidence
+  }), /aggregate instruction counts are inconsistent/);
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: {
+      ...observation,
+      groups: [observation.groups[0], observation.groups[0]],
+      innerInstructionGroupCount: 2,
+      innerInstructionCount: 2
+    },
+    trustedMessageEvidence: evidence
+  }), /duplicate top-level groups/);
+});
+
+test("CPI index resolution rejects root and group accessors without invoking getters", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const base = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1237 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  let getterCalls = 0;
+  const hostileRoot = { ...base };
+  Object.defineProperty(hostileRoot, "contextSlot", {
+    enumerable: true,
+    get() { getterCalls += 1; return 1237; }
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: hostileRoot,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+
+  const hostileGroup = { ...base.groups[0] };
+  Object.defineProperty(hostileGroup, "topLevelInstructionIndex", {
+    enumerable: true,
+    get() { getterCalls += 1; return 0; }
+  });
+  const hostileGroups = Object.freeze({
+    ...base,
+    groups: Object.freeze([hostileGroup])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: hostileGroups,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
+
+test("CPI index resolution rejects accessor-backed observation fields without invoking getters", async () => {
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(validUnsignedTransaction(), "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  let getterCalls = 0;
+  const hostileInstruction = { programIdIndex: 1, data: null, stackHeight: null };
+  Object.defineProperty(hostileInstruction, "accountIndexes", {
+    enumerable: true,
+    get() { getterCalls += 1; return [0]; }
+  });
+  const observation = {
+    scope: "simulation-observation-only",
+    messageDigest: digest,
+    groups: [{
+      topLevelInstructionIndex: 0,
+      innerInstructionCount: 1,
+      instructions: [hostileInstruction]
+    }]
+  };
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
+
+
+test("CPI resolution revalidates complete and incomplete stack-height declarations", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const makeObservation = instructions => normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1240 },
+      value: { err: null, innerInstructions: [{ index: 0, instructions }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+
+  const complete = makeObservation([
+    { programIdIndex: 1, stackHeight: 2 },
+    { programIdIndex: 1, stackHeight: 3 },
+    { programIdIndex: 1, stackHeight: 2 }
+  ]);
+  const completeResolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: complete,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(completeResolved.groups[0].stackHeightStructure, "complete");
+  assert.equal(completeResolved.semanticInstructionVerification, false);
+  assert.equal(completeResolved.signingPermitted, false);
+  assert.equal(completeResolved.submissionPermitted, false);
+
+  const incomplete = makeObservation([
+    { programIdIndex: 1, stackHeight: 2 },
+    { programIdIndex: 1 }
+  ]);
+  const incompleteResolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: incomplete,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(incompleteResolved.groups[0].stackHeightStructure, "incomplete");
+  assert.equal(incompleteResolved.semanticInstructionVerification, false);
+  assert.equal(incompleteResolved.signingPermitted, false);
+  assert.equal(incompleteResolved.submissionPermitted, false);
+
+  const forgedComplete = Object.freeze({
+    ...incomplete,
+    groups: Object.freeze([Object.freeze({
+      ...incomplete.groups[0],
+      stackHeightStructure: "complete"
+    })])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: forgedComplete,
+    trustedMessageEvidence: evidence
+  }), /stack-height structure is inconsistent/);
+
+  const forgedIncomplete = Object.freeze({
+    ...complete,
+    groups: Object.freeze([Object.freeze({
+      ...complete.groups[0],
+      stackHeightStructure: "incomplete"
+    })])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: forgedIncomplete,
+    trustedMessageEvidence: evidence
+  }), /stack-height structure is inconsistent/);
+});
+
+
+test("settlement proof rejects noncanonical or out-of-u64 reserved amounts before RPC", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(10));
+  const fetchImpl = async () => {
+    throw new Error("RPC must not be called for invalid reserved amounts");
+  };
+  const base = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+  for (const inputAmount of ["01", "18446744073709551616", "0", "-1"]) {
+    await assert.rejects(verifyFinalizedJupiterSettlement({
+      ...base, inputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+  for (const outputAmount of ["01", "18446744073709551616", "0", "-1"]) {
+    await assert.rejects(verifyFinalizedJupiterSettlement({
+      ...base, outputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+});
+
+
+test("settlement proof rejects an owned finalized token balance above u64", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(11));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 125,
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"] } },
+          meta: {
+            err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+            preTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+              uiTokenAmount: { amount: "18446744073709551616", decimals: 9 }
+            }],
+            postTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+              uiTokenAmount: { amount: "0", decimals: 9 }
+            }, {
+              mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
+              uiTokenAmount: { amount: "1", decimals: 6 }
+            }]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /token balance exceeds u64/);
+});
+
+
+test("settlement proof rejects malformed supplied token account indexes and program IDs", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(12));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const baseResult = {
+    slot: 127,
+    transaction: { signatures: [signature], message: { accountKeys: [
+      BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"
+    ] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+      preTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "1", decimals: 9 }
+      }],
+      postTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "0", decimals: 9 }
+      }, {
+        mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "1", decimals: 6 }
+      }]
+    }
+  };
+  let transactionResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : transactionResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  const request = { signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1" };
+
+  transactionResult = {
+    ...baseResult,
+    transaction: { signatures: [signature], message: { accountKeys: [
+      BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111112"
+    ] } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate account keys/);
+  transactionResult = baseResult;
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], accountIndex: -1 }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], accountIndex: 3 }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[1] },
+        { ...baseResult.meta.postTokenBalances[0], accountIndex: 2 }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate token account indexes/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], uiTokenAmount: { amount: "0", decimals: 8 } },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], mint: outputMint },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], owner: "11111111111111111111111111111112" },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0],
+          programId: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], programId: "11111111111111111111111111111111" }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /program ID is unsupported/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], uiTokenAmount: { amount: "1", decimals: 256 } }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /decimals are malformed/);
+});
+
+
+test("finalized settlement maps v0 token balance indexes after writable then readonly lookup addresses", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(13));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 128,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [
+          BOT_WALLET,
+          "11111111111111111111111111111112",
+          "11111111111111111111111111111113"
+        ],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111114",
+          writableIndexes: [0],
+          readonlyIndexes: [1]
+        }]
+      }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      preBalances: [100000, 0, 0, 0, 0],
+      postBalances: [95000, 0, 0, 0, 0],
+      loadedAddresses: {
+        writable: ["11111111111111111111111111111115"],
+        readonly: ["11111111111111111111111111111116"]
+      },
+      preTokenBalances: [
+        { mint: inputMint, owner: BOT_WALLET, accountIndex: 3,
+          uiTokenAmount: { amount: "10", decimals: 9 } },
+        { mint: outputMint, owner: BOT_WALLET, accountIndex: 4,
+          uiTokenAmount: { amount: "2", decimals: 6 } }
+      ],
+      postTokenBalances: [
+        { mint: inputMint, owner: BOT_WALLET, accountIndex: 3,
+          uiTokenAmount: { amount: "7", decimals: 9 } },
+        { mint: outputMint, owner: BOT_WALLET, accountIndex: 4,
+          uiTokenAmount: { amount: "5", decimals: 6 } }
+      ]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "3", outputAmount: "3"
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.proofScope, "finalized-owner-scoped-token-balance-deltas");
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.allInCostsVerified, false);
+});
+
+test("finalized settlement rejects v0 transactions missing loaded-address metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(14));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 129,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111112",
+          writableIndexes: [0],
+          readonlyIndexes: []
+        }]
+      }
+    },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /missing loaded address metadata/);
+});
+
+
+test("finalized v0 settlement rejects loaded-address counts inconsistent with lookup indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(15));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 130,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111112",
+          writableIndexes: [0, 1],
+          readonlyIndexes: [2]
+        }]
+      }
+    },
+    meta: {
+      err: null, fee: 5000,
+      preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+      loadedAddresses: {
+        writable: ["11111111111111111111111111111113"],
+        readonly: ["11111111111111111111111111111114"]
+      },
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /do not match address-table lookup indexes/);
+});
+
+
+test("settlement proof rejects owned token balances without an account index", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(16));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 131,
+    transaction: {
+      signatures: [signature],
+      message: { accountKeys: [
+        BOT_WALLET,
+        "11111111111111111111111111111112",
+        "11111111111111111111111111111113"
+      ] }
+    },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+      preTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET,
+        uiTokenAmount: { amount: "2", decimals: 9 }
+      }],
+      postTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
+        uiTokenAmount: { amount: "1", decimals: 9 }
+      }, {
+        mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
+        uiTokenAmount: { amount: "1", decimals: 6 }
+      }]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /missing its account index/);
 });

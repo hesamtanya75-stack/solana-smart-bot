@@ -1164,3 +1164,458 @@ The live-order response now explicitly carries `analysisOnly: true`,
 asserts all five properties for a structurally accepted unsigned Jupiter order.
 This is a fail-closed output contract; it does not implement route semantics,
 signing, or transaction submission.
+
+
+## CPI simulation observation boundary — PR #56 follow-up
+
+The `simulation-observation.mjs` helper normalizes bounded `simulateTransaction` response metadata. It records the RPC context slot, simulation error presence, top-level instruction indexes, and each inner instruction's `programIdIndex`. Sparse arrays, duplicate/out-of-range group indexes, malformed program indexes, accessor-backed fields, and malformed context metadata fail closed.
+
+`normalizeSimulationObservationForMessage()` snapshots a bounded serialized message byte array before computing SHA-256 and records that digest alongside the normalized observation. This binds the record to the supplied bytes only. It does **not** independently prove that the RPC simulated those exact bytes; the caller must preserve and later verify the request/response association.
+
+The result deliberately leaves `cpiProgramIdsVerified`, `semanticInstructionVerification`, and `tokenBalanceEffectsVerified` false, and keeps signing and submission disabled. Program indexes are not decoded into trusted program identities, CPI instruction data/accounts are not semantically interpreted, and simulation is not evidence of finalized execution or future execution success.
+
+### Next safe implementation unit
+
+Add a read-only adapter that constructs the exact `simulateTransaction` request from the same immutable serialized-message snapshot used for the digest, captures the RPC endpoint identity and response context, and rejects any mismatch between the submitted bytes and the digest input. Keep the adapter disconnected from transaction reservation, signing, and submission. Only after this request/response binding is independently tested should a separate reviewed decoder map CPI program indexes to authenticated message account keys and decode a narrowly version-pinned set of inner instructions. Unknown programs, instruction variants, account roles, and Token-2022 effects must remain fail-closed.
+
+PR #56 remains Draft while CI is running. No merge, deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading is authorized by this observation-only work.
+
+
+## Read-only simulation RPC request adapter — PR #56 follow-up
+
+Added `simulation-rpc-adapter.mjs` and `tests/simulation-rpc-adapter.test.mjs`.
+
+The adapter constructs a JSON-RPC `simulateTransaction` request from one bounded serialized-transaction byte snapshot. It hashes that exact snapshot and base64-encodes the same snapshot into the request body, with explicit `sigVerify: false`, `replaceRecentBlockhash: true`, `innerInstructions: true` (so the RPC is asked to return CPI observations), `innerInstructionsEncoding: "json"` (so inner instructions use compiled account/program indexes expected by the bounded parser), and `commitment: "confirmed"`. The transport rejects requests that omit either CPI capture or compiled-JSON encoding option. Solana's RPC schema permits `innerInstructions` to be `null`; a null value is not interpreted as proof that no CPI occurred and must remain unavailable/fail-closed for index resolution. It rejects non-HTTPS endpoints, embedded URL credentials, malformed byte inputs, oversized transaction bytes, and invalid request IDs. Endpoint identity omits query parameters to avoid persisting RPC credentials.
+
+This is request construction only: it does not perform network I/O, validate or associate a returned RPC response, prove execution identity, decode CPI semantics, sign, or submit. Its output explicitly keeps `responseIdentityVerified`, `signingPermitted`, and `submissionPermitted` false. The transaction-byte digest is not interchangeable with a serialized-message digest; the caller must not claim they are the same identity.
+
+Next safe step: implement a separately reviewed transport wrapper that sends only this immutable request, checks the JSON-RPC response ID/version and endpoint association, captures bounded response context, and passes the response into the diagnostic observation normalizer. It must remain disconnected from transaction reservation, signing, and submission.
+
+
+## Read-only simulation transport and response binding — PR #56 follow-up
+
+Added `simulation-rpc-transport.mjs` and focused mock-transport tests.
+
+The transport accepts only the adapter's simulation request shape, verifies the endpoint origin/path matches the request's sanitized endpoint identity, parses the request envelope, confirms the method/options/request ID, decodes the exact base64 transaction bytes, and recomputes SHA-256 before any network call. It sends the original immutable request body via HTTPS POST with redirects rejected. The response body is bounded to 2 MiB, parsed as JSON, and checked for JSON-RPC 2.0, matching request ID, explicit result, and a nonnegative safe context slot.
+
+The returned record binds the observed response to the request ID and records the sanitized endpoint to which the client sent the request, preserving the transaction digest and simulation result. Its `requestEndpointMatched` field describes only this local request-destination check; it is not independent attestation of the response's network origin. It deliberately reports `simulationInputIdentityVerified: false`: a matching JSON-RPC ID and configured endpoint do not cryptographically prove that the remote RPC executed those exact transaction bytes or that future execution will match. This wrapper is read-only observation plumbing, not semantic verification or execution authorization. No live coordinator, signer, or transaction submission path calls it.
+
+Tests cover successful mock transport, response ID mismatch, RPC errors, invalid context, endpoint mismatch, altered request bytes, HTTP failure, oversized response, and attempted execution-permission escalation.
+
+
+### Simulation transport metadata hardening
+
+The response-binding transport now snapshots an exact allowlisted set of own data properties from its request record before reading values. It rejects missing, extra, symbol-keyed, or accessor-backed request fields without invoking getters. It also requires the request's response-identity flag to remain false and checks the expected digest provenance label. A regression test proves an accessor-backed request body is rejected before transport and its getter is never invoked.
+
+
+### CPI account-index observation
+
+The simulation observation normalizer now optionally snapshots each inner instruction's accounts index list when the RPC includes it. Lists are bounded, dense, and every index must fall within the supplied message account-key count. Missing lists remain explicitly null rather than being fabricated. These are diagnostic indexes only: they are not resolved to public keys, do not prove that the supplied account-key ordering belongs to the simulated bytes, and do not change cpiProgramIdsVerified, semantic verification, signing, or submission permissions.
+
+
+### CPI observation schema hardening
+
+The normalizer now accepts only the documented inner-instruction group fields and the supported RPC inner-instruction fields (`programIdIndex`, optional `accounts`, `data`, and `stackHeight`). Unknown keys, symbol keys, and accessor-backed properties are rejected before use. Optional data is length-bounded and optional stack height is range-checked. This remains diagnostic parsing only; it does not decode CPI payload semantics or authenticate the RPC's account-key ordering.
+
+
+### Preserved CPI payload diagnostics
+
+For each supported inner-instruction observation, the normalizer now preserves optional base64 instruction data (after base58 alphabet and size checks) and optional stack height (after range checks), alongside the bounded account indexes and program index. Missing optional fields remain null. The payload is retained only as opaque diagnostic evidence: no discriminator decoding, program identity resolution, account-key authentication, or semantic trust is inferred from it.
+
+
+Solana UiCompiledInstruction.data is base58-encoded. The observation validator therefore accepts only the base58 alphabet and applies a strict size bound; it does not decode instruction payloads or infer trusted semantics.
+
+
+
+### Candidate CPI index resolution against privately branded message evidence
+
+Added `resolveSimulationCpiIndexesAgainstTrustedMessage()` in `simulation-observation.mjs`, with positive and negative coverage in `tests/trusted-live-evidence.test.mjs`.
+
+The resolver requires the private brand produced by the trusted unsigned-message validation path and requires the observation's serialized-message SHA-256 digest to match the trusted evidence digest. It then checks each observed top-level instruction group against the trusted compiled-instruction list and resolves the observed CPI `programIdIndex` and account indexes to candidate public keys from the trusted account-key ordering.
+
+This is deliberately limited to **candidate index resolution**. The RPC response does not itself carry a cryptographic proof that its inner-instruction indexes correspond to the exact message snapshot represented by the local trusted evidence. A matching locally supplied digest and privately branded parser evidence do not establish that remote association. Therefore the resolver continues to report:
+
+- `cpiProgramIdsVerified: false`
+- `simulationInputIdentityVerified: false`
+- `semanticInstructionVerification: false`
+- `tokenBalanceEffectsVerified: false`
+- `signingPermitted: false`
+- `submissionPermitted: false`
+
+Unknown/unbranded evidence and digest mismatches fail closed. The candidate public keys must not be treated as authenticated CPI program identities or semantic attestations.
+
+The resolver additionally validates the observation contract before resolving
+indexes: all verification and execution-permission flags must remain explicitly
+false; simulation status and context-slot metadata must be internally
+consistent; each group's declared inner-instruction count must match its
+bounded instruction array; aggregate group/instruction counts must match the
+actual contents; and duplicate top-level groups are rejected. Root, group,
+and inner-instruction records are inspected through own data-property
+descriptors, so accessor-backed fields are rejected without invoking getters.
+These checks establish structural consistency only and do not strengthen the
+RPC response's provenance or semantic trust.
+
+
+Current validation on PR #56 head `4e597be17edb7efadeb71bebc72876fb3c61cb3b`: Node tests, Cloudflare Worker build validation, and read-only Devnet validation all completed successfully. The funded Devnet lifecycle job was skipped as required without explicit opt-in. PR #56 remains Draft and open; no merge, deployment, signing, transaction submission, funded Devnet lifecycle, or Mainnet trading was performed.
+
+
+
+## Immutable simulation response snapshot — PR #56 follow-up
+
+The read-only simulation transport now recursively freezes the parsed JSON-RPC
+simulation result before exposing it in the response record. This prevents
+callers from mutating nested context, value, or inner-instruction observations
+after the transport has validated the response. The regression test asserts
+that the result tree and nested inner-instruction arrays are frozen and that a
+mutation attempt throws.
+
+This is an in-process immutability safeguard only. It does not authenticate
+the remote RPC response, prove that the provider executed the exact submitted
+bytes, establish CPI semantics, or authorize signing or submission.
+
+Validation on PR #56 head `a6db09a2ff9317e75f5b91676b450525ccf23eea`:
+Node tests, Worker build validation, read-only Devnet validation, and the
+Cloudflare preview build check completed successfully. The
+`funded-devnet-lifecycle` job remained skipped. PR #56 remains open and Draft;
+no merge, production deployment, signing, transaction submission, funded
+Devnet lifecycle, or Mainnet trading was performed.
+
+
+
+## PR #56 checkpoint — bounded CPI observations and validation — 2026-11-20
+
+The observation normalizer now enforces an aggregate ceiling of 4,096 inner
+instructions across all groups, in addition to the per-group and group-count
+bounds. A regression test exercises the aggregate-overflow case.
+
+The current PR head `d428894bfa4d60ad60b13875243b7d818145bb45` has completed
+all active checks successfully: Node tests, Worker validation, read-only
+Devnet validation, and the Cloudflare Workers preview build. The
+`funded-devnet-lifecycle` check is skipped because no explicit opt-in was
+provided.
+
+The read-only adapter and transport are now implemented and covered by mock
+tests. They bind the request body to its locally computed transaction digest,
+check the JSON-RPC response ID and local endpoint destination, cap response
+size, and freeze the returned JSON. These checks do not attest the remote
+provider's execution input or response origin.
+
+Remaining work is semantic, not transport plumbing: independently establish
+the RPC response's association with the exact message snapshot; decode a
+narrow, version-pinned set of CPI instructions and account roles; validate
+token-balance effects; and connect none of these claims to execution until
+separately reviewed. All semantic verification and execution-permission
+flags remain false. PR #56 remains open and Draft. No merge, production
+deployment, signing, transaction submission, funded Devnet lifecycle, or
+Mainnet trading was performed.
+
+## Public simulation API argument snapshot hardening — PR #56 follow-up
+
+The three exported simulation-observation entry points now snapshot their
+top-level argument objects through own data-property descriptors before
+reading any argument values. Unexpected keys, symbol keys, inherited/custom
+prototypes, and accessor-backed properties are rejected. This closes the
+remaining top-level argument-object getter gap in the observation normalizer
+and CPI candidate-index resolver. Regression tests confirm that getters on
+the normalizer and message-bound normalizer inputs are rejected without being
+invoked.
+
+This is input-shape hardening only. It does not authenticate RPC response
+origin, prove that a provider simulated the exact submitted bytes, decode CPI
+instruction semantics, verify token balance effects, or authorize execution.
+
+On PR #56 head `e585829749dad50d9fe1858e71273f4bb09af69e`, Node tests and
+Cloudflare Worker build validation completed successfully. Read-only Devnet
+validation also completed successfully; the funded Devnet lifecycle job was
+skipped without explicit opt-in. The Deno deployment status remains blocked
+by the external `Organization suspended - resolve billing to deploy`
+condition. PR #56 remains open and Draft. No merge, production deployment,
+signing, transaction submission, funded Devnet lifecycle, or Mainnet trading
+was performed.
+
+
+### Strict simulation JSON-RPC response envelope validation — PR #56 follow-up
+
+The read-only simulation transport now rejects response envelopes containing
+unknown top-level fields or conflicting success/error members. Successful
+responses must contain exactly `jsonrpc`, `id`, and `result`; error
+responses must contain exactly `jsonrpc`, `id`, and `error`. This prevents
+unreviewed response metadata or a mixed result/error envelope from being
+silently accepted as a normal simulation observation.
+
+Regression tests cover both an unexpected top-level field and a response
+containing both `result` and `error`. This is strict JSON-RPC envelope
+validation only: it does not authenticate the RPC provider, prove remote
+execution of the exact transaction bytes, establish CPI semantics, or change
+any verification or execution-permission flags.
+
+
+
+## Remote simulation provenance gate — PR #56 follow-up
+
+The standard Solana `simulateTransaction` JSON-RPC response schema exposes
+simulation output such as `context.slot`, `value.err`,
+`value.innerInstructions`, logs, balances, and compute usage. It does not
+define a signed receipt containing a digest of the exact request transaction
+bytes, a signature over the response, or a cryptographic request/response
+binding. See the upstream
+[simulateTransaction RPC method](https://solana.com/docs/rpc/http/simulatetransaction)
+and [RPC JSON structures](https://solana.com/docs/rpc/json-structures).
+
+Consequently, the current transport's local SHA-256 recomputation proves only
+that the locally constructed HTTP request body contains the bytes represented
+by the local digest. HTTPS endpoint validation, TLS transport, JSON-RPC
+version/ID matching, a context slot, strict envelope parsing, and immutable
+response snapshots are useful transport and input-integrity checks; none is
+a provider-signed statement that the server executed those bytes or that the
+returned CPI indexes describe those exact bytes. A request ID is a correlation
+value, not a cryptographic attestation.
+
+### Acceptance criteria before remote identity can be marked verified
+
+Do not set `simulationInputIdentityVerified` true unless a separately
+reviewed mechanism supplies and validates all of the following:
+
+1. A cryptographically authenticated attestation from a specifically
+   allowlisted simulation provider or independently controlled verifier.
+2. The attestation binds the chain/genesis identity, exact serialized
+   transaction-byte digest, simulation options, response digest, and
+   simulation context slot in one signed statement.
+3. The signing key identity and rotation/revocation policy are pinned and
+   independently checked; a provider name, HTTPS URL, API key, request ID,
+   or unsigned response header is not a substitute.
+4. Nonce/replay handling and canonical serialization are specified, and
+   malformed, stale, missing, mismatched, or unverifiable attestations fail
+   closed.
+5. Negative tests prove that a valid signature over different bytes, options,
+   chain identity, response, or slot is rejected.
+
+A provider-signed statement would establish what that provider attests to; it
+would not prove future on-chain execution or eliminate the need to trust the
+provider's implementation. An independently operated reproducible simulator
+could be evaluated as a separate trust model, but must have its own pinned
+runtime/state provenance and reproducibility evidence. Do not manufacture an
+attestation from the existing JSON-RPC fields or infer it from TLS.
+
+Until one of these trust models is implemented and independently reviewed,
+keep `simulationInputIdentityVerified`,
+`cpiProgramIdsVerified`, `semanticInstructionVerification`, and
+`tokenBalanceEffectsVerified` false. Keep signing and submission disabled.
+This gate is an explicit unresolved dependency, not a transport bug that can
+be closed by adding more JSON-RPC envelope checks.
+
+
+## CPI semantic-verification scope gate — PR #56 follow-up
+
+The current `transaction-instruction-parser.mjs` is a top-level compiled
+message parser. Its registered instruction families are Compute Budget,
+System Program, SPL Token / Token-2022, and Associated Token Account. It
+explicitly rejects execution metadata and CPI evidence as parser input, and
+returns `semanticVerification: "incomplete"`,
+`signingPermitted: false`, and `submissionPermitted: false`.
+
+The existing decoders therefore must not be described as CPI decoders. In
+particular, the current registry does not provide a version-pinned Jupiter
+route CPI decoder, and the presence of Jupiter route-plan metadata in an
+unsigned order is not proof of the inner instructions that a simulation
+reports. The CPI observation resolver only produces candidate public keys
+from index positions; because remote simulation identity remains unverified,
+those candidates are not trusted program identities or account roles.
+
+### Safe implementation boundary
+
+Before adding a CPI semantic verifier, create a separate registry with
+explicitly versioned entries for each supported invoked program and each
+instruction variant. Each entry must specify:
+
+- Exact program public key and supported deployment/version identity.
+- Exact binary discriminator/layout and canonical data decoding.
+- Exact account count, ordered account roles, signer/writable requirements,
+  and permitted aliasing rules.
+- Expected parent instruction relationship and permitted CPI nesting.
+- Token program compatibility, including explicitly supported Token-2022
+  extension behavior.
+- Expected token/lamport effects and fee/rent treatment, where applicable.
+- Positive fixtures captured from known-good transactions and negative
+  fixtures for unknown IDs, unknown variants, reordered/aliased accounts,
+  missing accounts, malformed payloads, and inconsistent parent-child links.
+
+The first implementation must not add Jupiter or arbitrary AMM support by
+guessing from labels, route metadata, program names, logs, or observed
+account indexes. Start only with instruction variants whose binary layouts
+and account semantics are pinned to authoritative program source/version
+and independently reviewed. Unsupported CPI programs or variants must
+produce an explicit unsupported result and block any later authorization.
+
+### Required test and output contract
+
+A future CPI verifier must accept only immutable, digest-bound message
+evidence plus a separately authenticated simulation input/response binding.
+It must reject observations whose context, top-level group, program index,
+account indexes, parent instruction, or inner-instruction ordering cannot be
+matched exactly. It must preserve the diagnostic/authorization distinction:
+candidate resolution is not verification; successful decoding is not
+transaction-wide semantic approval; and simulation is not finalized execution.
+
+Until the remote provenance gate and the above semantic registry are both
+satisfied, keep `cpiProgramIdsVerified`,
+`semanticInstructionVerification`, and
+`tokenBalanceEffectsVerified` false, with signing and submission disabled.
+
+
+## Simulation token/lamport balance-effects gate — PR #56 follow-up
+
+The current simulation normalizer does not parse or verify
+`preBalances`, `postBalances`, `preTokenBalances`, or
+`postTokenBalances`. The CPI observation record therefore makes no claim
+about the amount or direction of any token or SOL movement. A successful
+simulation status or a decoded top-level SPL Token instruction is not a
+substitute for observed and reconciled balance effects.
+
+### Required evidence model
+
+A future read-only balance-effects verifier must first receive a bounded,
+immutable simulation result and privately branded unsigned-message evidence
+whose exact message/account-key ordering is established. It must then:
+
+1. Require both pre- and post-SOL lamport arrays, each with exactly one
+   canonical nonnegative safe integer or bounded integer representation per
+   message account key. Reject missing, sparse, overlong, duplicate, or
+   non-integer values. Compute deltas with integer arithmetic, never floats.
+2. Require both pre- and post-token-balance arrays where token effects are
+   expected. Validate each record's account index, mint, token program ID,
+   optional owner, and `uiTokenAmount.amount` as an unsigned base-10 integer
+   string; validate decimals as a bounded integer. Reject duplicate
+   (account index, mint, program) entries, contradictory identities, malformed
+   owners, missing decimals, and any index outside the authenticated message
+   account-key list.
+3. Reconcile each pre/post token account by authenticated account index and
+   mint/program identity. Do not treat an omitted balance record as zero
+   unless the verifier separately proves account creation/closure and its
+   exact pre/post state. Account closure, rent, wrapped SOL, and native-token
+   behavior require explicit reviewed rules.
+4. Bind token-account ownership and mint/program relationships to trusted
+   account-state evidence at a specified bank context. A balance record's
+   self-reported owner or mint is not independent account-state proof.
+5. Treat Token-2022 extension-bearing accounts as unsupported until the
+   exact extension set and effects (including transfer fees, hooks, withheld
+   amounts, confidential transfers, permanent delegates, and native mint
+   behavior where applicable) have dedicated decoders and reviewed policies.
+6. Reconcile all per-account deltas with the decoded instruction/CPI effects,
+   transaction fee, rent movement, and any other supported system transfers.
+   Any unexplained residual, unavailable field, inconsistent context, or
+   unsupported instruction must fail closed.
+
+### Output and regression-test contract
+
+The verifier must expose raw integer deltas and an explicit completeness
+status, not a single optimistic boolean. Tests must cover mint/account swaps,
+duplicate entries, out-of-range indexes, amount overflow, decimals mismatch,
+owner/program mismatch, missing pre/post sides, newly created/closed accounts,
+fee/rent effects, Token-2022 extensions, native SOL wrapping, and a residual
+that cannot be explained by the decoded instruction set. Include getter,
+sparse-array, prototype, and mutation attacks for every public input boundary.
+
+Until remote simulation provenance, CPI semantic decoding, authenticated
+token-account state, and balance reconciliation are all independently
+reviewed, keep `tokenBalanceEffectsVerified` and all other semantic/execution
+flags false. This gate does not authorize signing, submission, or Mainnet use.
+
+
+### Bounded diagnostic balance observations — PR #56 follow-up
+
+Added `simulation-balance-observation.mjs` and focused tests. The helper
+snapshots a bounded `simulateTransaction` result and emits per-account SOL
+lamport deltas plus paired token amount deltas as `BigInt` values. It
+requires SOL arrays to match the supplied account-key count, rejects sparse
+or accessor-backed arrays, checks lamports as nonnegative JavaScript safe
+integers, validates token indexes and bounded base58-shaped identity strings,
+and accepts token amounts only as canonical unsigned decimal strings within
+u64. Token records are paired only by account index, mint, and token program
+ID. A missing side is reported as `unpaired-account-state`, never assumed
+zero; owner or decimals disagreement is reported as conflicting metadata.
+
+These outputs are **diagnostic observations only**, not a balance-effects
+verifier. The account-key count and token identity fields are caller/RPC
+metadata and are not independently authenticated. The base58-shaped string
+check is not a canonical public-key decoder. JavaScript safe-integer checks
+also intentionally reject SOL lamport values outside the exactly representable
+integer range. The helper does not authenticate account state, prove the RPC
+simulated the exact bytes, decode Token-2022 extensions, reconcile CPI effects,
+or account for fee/rent/native-SOL behavior.
+
+The output explicitly keeps
+`remoteSimulationIdentityVerified`,
+`accountStateIdentityVerified`, `cpiEffectsReconciled`,
+`tokenBalanceEffectsVerified`, `signingPermitted`, and
+`submissionPermitted` false. The verifier requirements above remain open;
+this diagnostic parser does not close the balance-effects gate.
+
+
+### Standard simulation response compatibility — PR #56 follow-up
+
+The balance observation parser now accepts the optional `context.apiVersion`
+string and optional `value.fee` field present in current Solana simulation
+response schemas. It validates the API-version field's type but does not use
+either field as provenance or authorization evidence. Regression fixtures
+include both fields to prevent valid standard RPC responses from being
+rejected by the bounded allowlist.
+
+
+### Missing token-program identity remains unpaired — PR #56 follow-up
+
+The diagnostic balance parser no longer pairs pre/post token-balance records
+when `programId` is absent. It retains each such record as
+`unpaired-account-state` with a null delta. This avoids treating a missing
+program identifier as an empty-string identity and accidentally matching
+records without enough information to distinguish token programs. Records
+with an explicit program ID continue to be paired only by account index, mint,
+and program ID, with owner/decimals consistency checked separately.
+
+This is conservative diagnostic matching only. It does not authenticate the
+program ID or account state, resolve the remote simulation provenance gate,
+or authorize token-balance effects, signing, or submission. Regression tests
+cover missing program IDs on both sides and duplicate unresolved identities.
+
+### Canonical simulation request envelope — PR #56 follow-up
+
+The read-only RPC transport now requires the serialized JSON-RPC request body
+to round-trip through JSON.parse and JSON.stringify byte-for-byte before
+the request is sent. This rejects duplicate JSON object keys and other
+non-canonical encodings that could otherwise be collapsed or interpreted
+differently by parsers. A regression test confirms an ambiguous duplicate
+sigVerify key is rejected before the injected fetch function is called.
+
+The recorded endpoint label contains only the HTTPS origin and pathname.
+The adapter and transport now reject query-bearing endpoint URLs, so query
+parameters cannot silently affect routing while remaining outside the recorded
+identity. This does not attest which RPC provider answered or prove response
+provenance. The transport continues to report
+simulationInputIdentityVerified: false, signingPermitted: false, and
+submissionPermitted: false.
+
+
+### RPC endpoint query-string restriction — PR #56 follow-up
+
+The read-only simulation adapter and transport reject RPC endpoint URLs with
+query strings. The transport's recorded endpoint identity intentionally binds
+only the HTTPS origin and path; allowing a query string would permit routing
+or provider parameters to affect the actual fetch without being represented
+in that identity. Query-string API-key endpoints are therefore unsupported by
+this adapter. This restriction narrows endpoint ambiguity but does not
+authenticate the remote provider, prove which bytes it simulated, or establish
+response provenance. Signing and submission remain disabled.
+
+### Duplicate JSON key rejection for simulation responses — PR #56 follow-up
+
+The bounded RPC JSON reader now has an opt-in duplicate-object-key check.
+The read-only simulation transport enables it before accepting the response
+envelope. This prevents JSON.parse last-key-wins behavior from silently
+collapsing repeated fields such as id or result, including repeated keys
+whose escaped JSON spellings decode to the same property name. Tests cover
+duplicate top-level keys, nested keys, and escaped-equivalent keys.
+
+This is parser-ambiguity hardening only. A clean JSON-RPC response still does
+not authenticate the RPC provider or prove that the provider simulated the
+exact transaction bytes. Simulation identity, CPI semantics, balance effects,
+signing, and submission remain unverified or disabled.

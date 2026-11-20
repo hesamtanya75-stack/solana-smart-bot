@@ -93,3 +93,32 @@ test("bounded provider JSON reader accepts a valid numeric Content-Length", asyn
   };
   assert.deepEqual(await readBoundedJsonResponse(response, 64), { ok: true });
 });
+
+
+test("bounded provider JSON reader can reject duplicate keys at every object depth", async () => {
+  const { readBoundedJsonResponse } = await import("../rpc-response.mjs");
+  await assert.rejects(
+    readBoundedJsonResponse(new Response('{"jsonrpc":"2.0","id":1,"id":2}'), 128, {
+      rejectDuplicateKeys: true
+    }),
+    /duplicate JSON object keys/
+  );
+  await assert.rejects(
+    readBoundedJsonResponse(new Response('{"result":{"value":1,"value":2}}'), 128, {
+      rejectDuplicateKeys: true
+    }),
+    /duplicate JSON object keys/
+  );
+  await assert.rejects(
+    readBoundedJsonResponse(new Response('{"result":{"id":1,"\\u0069d":2}}'), 128, {
+      rejectDuplicateKeys: true
+    }),
+    /duplicate JSON object keys/
+  );
+  assert.deepEqual(
+    await readBoundedJsonResponse(new Response('{"result":{"id":1,"value":2}}'), 128, {
+      rejectDuplicateKeys: true
+    }),
+    { result: { id: 1, value: 2 } }
+  );
+});
