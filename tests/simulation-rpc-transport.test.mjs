@@ -226,3 +226,13 @@ test("read-only transport rejects duplicate JSON request keys", async () => {
     fetchImpl: async () => { throw new Error("must not send ambiguous JSON"); }
   }), /not canonical JSON/);
 });
+
+
+test("read-only transport rejects query-bearing endpoints not covered by endpoint identity", async () => {
+  const request = await makeRequest();
+  await assert.rejects(performReadOnlySimulation({
+    request,
+    endpoint: "https://api.devnet.solana.com/?cluster=devnet",
+    fetchImpl: async () => { throw new Error("must not send query-routed request"); }
+  }), /endpoint identity/);
+});
