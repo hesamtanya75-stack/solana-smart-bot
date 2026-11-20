@@ -191,3 +191,29 @@ test("simulation observation rejects malformed or out-of-range CPI account index
     }])
   }), /sparse or extended/);
 });
+
+
+test("simulation observation rejects unknown and accessor-backed CPI fields", () => {
+  const base = { messageDigest: digest, topLevelInstructionCount: 1, accountKeyCount: 2 };
+  const unknown = simulation([{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], invented: true }] }]);
+  assert.throws(() => normalizeSimulationObservation({ ...base, simulationResult: unknown }), /unsupported properties/);
+  const accessorInstruction = { programIdIndex: 1, accounts: [0] };
+  Object.defineProperty(accessorInstruction, "stackHeight", { enumerable: true, get() { throw new Error("getter invoked"); } });
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{ index: 0, instructions: [accessorInstruction] }])
+  }), /accessor-backed properties/);
+});
+
+test("simulation observation accepts bounded RPC stack height and data fields", () => {
+  const result = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{ index: 0, instructions: [{
+      programIdIndex: 1, accounts: [0], data: "AQID", stackHeight: 2
+    }] }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 2
+  });
+  assert.deepEqual(result.groups[0].instructions[0].accountIndexes, [0]);
+  assert.equal(result.semanticInstructionVerification, false);
+});
