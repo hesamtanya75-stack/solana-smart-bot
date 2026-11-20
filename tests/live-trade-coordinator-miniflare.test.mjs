@@ -7,8 +7,11 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
 const INTERNAL_TOKEN = "coordinator-runtime-internal-token-longer-than-thirty-two";
 const OPERATOR_TOKEN = "coordinator-runtime-operator-token-longer-than-thirty-two";
+const INPUT_MINT = "So11111111111111111111111111111111111111112";
+const OUTPUT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 
-test("LiveTradeCoordinator preserves pending reservation and locked spend across a Miniflare runtime restart", async () => {
+test("LiveTradeCoordinator keeps a real reservation pending across settlement RPC outage and Miniflare runtime restart", async () => {
   const persistencePath = await mkdtemp(join(tmpdir(), "solana-coordinator-do-"));
   const createRuntime = () => new Miniflare(convertV4MiniflareOptions({
     modules: [
@@ -23,11 +26,9 @@ test("LiveTradeCoordinator preserves pending reservation and locked spend across
     durableObjects: { LIVE_TRADE_COORDINATOR: "LiveTradeCoordinator" },
     bindings: {
       COORDINATOR_INTERNAL_TOKEN: INTERNAL_TOKEN,
-      COORDINATOR_OPERATOR_TOKEN: OPERATOR_TOKEN
+      COORDINATOR_OPERATOR_TOKEN: OPERATOR_TOKEN,
+      LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000"
     },
-    // Miniflare 5 persists Durable Object SQLite state below this path.
-    // Reopening a new Miniflare instance against it exercises runtime restart,
-    // unlike reacquiring a namespace/stub in the same instance.
     resourcePersistencePath: persistencePath
   }));
 
@@ -37,8 +38,8 @@ test("LiveTradeCoordinator preserves pending reservation and locked spend across
     const namespace = await mf.getDurableObjectNamespace("LIVE_TRADE_COORDINATOR");
     const id = namespace.idFromName("coordinator-persistence-runtime");
     const stub = namespace.get(id);
-    const call = async (path, { method = "GET", body, operator = false } = {}) => {
-      const response = await stub.fetch("https://coordinator.internal" + path, {
+    const call = async (activeStub, path, { method = "GET", body, operator = false } = {}) => {
+      const response = await activeStub.fetch("https://coordinator.internal" + path, {
         method,
         headers: {
           Authorization: "Bearer " + INTERNAL_TOKEN,
@@ -50,31 +51,49 @@ test("LiveTradeCoordinator preserves pending reservation and locked spend across
       return { status: response.status, body: await response.json() };
     };
 
-    const initial = await call("/status");
+    const initial = await call(stub, "/status");
     assert.equal(initial.status, 200);
     assert.equal(initial.body.killSwitch, true);
 
-    const disabled = await call("/kill-switch", {
+    const disabled = await call(stub, "/kill-switch", {
       method: "POST", operator: true, body: { enabled: false, reason: "runtime persistence test" }
     });
     assert.equal(disabled.status, 200);
-    assert.equal(disabled.body.killSwitch, false);
 
-    // Seed the durable pending ledger left by an ambiguous settlement RPC
-    // outage. No failure proof exists, so spend and position capacity stay locked.
-    const seeded = await stub.fetch("https://coordinator.internal/__test/seed-pending", {
+    const reservation = await call(stub, "/reserve", {
       method: "POST",
-      headers: { Authorization: "Bearer " + INTERNAL_TOKEN }
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        inputMint: INPUT_MINT,
+        outputMint: OUTPUT_MINT,
+        destination: BOT_WALLET,
+        slippageBps: 50,
+        amountLamports: 10_000_000
+      }
     });
-    assert.equal(seeded.status, 200);
-    assert.deepEqual(await seeded.json(), { seeded: true });
+    assert.equal(reservation.status, 200);
+    assert.equal(reservation.body.reservation.status, "pending");
+    const reservedAmountCents = reservation.body.reservation.amountCents;
+    assert.ok(Number.isSafeInteger(reservedAmountCents) && reservedAmountCents > 0);
 
-    const beforeRestart = await call("/status");
+    // The fixture's settlement verifier throws an RPC outage. The coordinator
+    // must not mark this ambiguous order failed or release its spend capacity.
+    const outage = await call(stub, "/confirm", {
+      method: "POST",
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        signature: "5".repeat(88),
+        outputAmount: "1000000"
+      }
+    });
+    assert.equal(outage.status, 400);
+    assert.match(outage.body.error, /Simulated settlement RPC outage/);
+
+    const beforeRestart = await call(stub, "/status");
+    assert.equal(beforeRestart.status, 200);
     assert.equal(beforeRestart.body.openPositions, 1);
-    assert.equal(beforeRestart.body.dailySpendUsdCents, 200);
+    assert.equal(beforeRestart.body.dailySpendUsdCents, reservedAmountCents);
 
-    // Dispose the complete Miniflare/workerd runtime, then reopen the same
-    // Durable Object namespace and ID from the same persistent storage path.
     await mf.dispose();
     mf = undefined;
 
@@ -83,33 +102,34 @@ test("LiveTradeCoordinator preserves pending reservation and locked spend across
     const restartedStub = restartedNamespace.get(
       restartedNamespace.idFromName("coordinator-persistence-runtime")
     );
-    const restartedResponse = await restartedStub.fetch("https://coordinator.internal/status", {
-      headers: { Authorization: "Bearer " + INTERNAL_TOKEN }
-    });
-    assert.equal(restartedResponse.status, 200);
-    const restartedStatus = await restartedResponse.json();
-    assert.equal(restartedStatus.killSwitch, false);
-    assert.equal(restartedStatus.openPositions, 1);
-    assert.equal(restartedStatus.dailySpendUsdCents, 200);
+    const restartedStatus = await call(restartedStub, "/status");
+    assert.equal(restartedStatus.status, 200);
+    assert.equal(restartedStatus.body.killSwitch, false);
+    assert.equal(restartedStatus.body.openPositions, 1);
+    assert.equal(restartedStatus.body.dailySpendUsdCents, reservedAmountCents);
 
-    const stopResponse = await restartedStub.fetch("https://coordinator.internal/kill-switch", {
+    // A second reconciliation attempt still cannot release the pending
+    // reservation while the settlement provider remains unavailable.
+    const retry = await call(restartedStub, "/confirm", {
       method: "POST",
-      headers: {
-        Authorization: "Bearer " + INTERNAL_TOKEN,
-        "X-Operator-Token": OPERATOR_TOKEN,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ enabled: true, reason: "keep unresolved reservation locked" })
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        signature: "5".repeat(88),
+        outputAmount: "1000000"
+      }
     });
-    assert.equal(stopResponse.status, 200);
-    const stopped = await restartedStub.fetch("https://coordinator.internal/status", {
-      headers: { Authorization: "Bearer " + INTERNAL_TOKEN }
+    assert.equal(retry.status, 400);
+    assert.match(retry.body.error, /Simulated settlement RPC outage/);
+
+    const stop = await call(restartedStub, "/kill-switch", {
+      method: "POST", operator: true,
+      body: { enabled: true, reason: "keep unresolved reservation locked" }
     });
-    assert.equal(stopped.status, 200);
-    const stoppedStatus = await stopped.json();
-    assert.equal(stoppedStatus.killSwitch, true);
-    assert.equal(stoppedStatus.openPositions, 1);
-    assert.equal(stoppedStatus.dailySpendUsdCents, 200);
+    assert.equal(stop.status, 200);
+    const stoppedStatus = await call(restartedStub, "/status");
+    assert.equal(stoppedStatus.body.killSwitch, true);
+    assert.equal(stoppedStatus.body.openPositions, 1);
+    assert.equal(stoppedStatus.body.dailySpendUsdCents, reservedAmountCents);
   } finally {
     if (mf) await mf.dispose();
     await rm(persistencePath, { recursive: true, force: true });
