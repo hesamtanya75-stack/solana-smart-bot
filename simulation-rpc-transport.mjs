@@ -120,6 +120,13 @@ export async function performReadOnlySimulation(input) {
   try { envelope = JSON.parse(request.body); } catch {
     throw new Error("Simulation RPC request body is invalid JSON");
   }
+  // The adapter emits canonical JSON.stringify output. Re-serialization must
+  // match byte-for-byte so duplicate object keys, alternate encodings, and
+  // ambiguous parser interpretations cannot pass after JSON.parse collapses
+  // duplicate keys to their last value.
+  if (JSON.stringify(envelope) !== request.body) {
+    throw new Error("Simulation RPC request body is not canonical JSON");
+  }
   const expectedEnvelopeKeys = ["jsonrpc", "id", "method", "params"];
   const expectedOptionKeys = [
     "encoding", "sigVerify", "replaceRecentBlockhash",
