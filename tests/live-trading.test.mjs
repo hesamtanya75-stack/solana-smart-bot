@@ -184,6 +184,17 @@ function validUnsignedV0TransactionWithLookup() {
     1, ...new Array(64).fill(0), ...message
   ])).toString("base64");
 }
+function mockExecutableProgramsResponse(options) {
+  const request = JSON.parse(options.body);
+  return Response.json({ jsonrpc: "2.0", id: 1, result: {
+    context: { slot: 101 },
+    value: request.params[0].map(() => ({
+      owner: "NativeLoader1111111111111111111111111111111",
+      executable: true,
+      data: ["", "base64"]
+    }))
+  } });
+}
 function mockLookupTableAccount(owner = "AddressLookupTab1e1111111111111111111111111") {
   const data = Buffer.alloc(56 + 64);
   data.writeUInt32LE(1, 0);
@@ -212,6 +223,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       rpcRequest = JSON.parse(options.body);
+      if (rpcRequest.params[1]?.dataSlice) return mockExecutableProgramsResponse(options);
       return Response.json({ jsonrpc: "2.0", id: 1, result: {
         context: { slot: 100 }, value: [mockLookupTableAccount()]
       } });
@@ -257,7 +269,7 @@ test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table p
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, options = {}) => {
       if (String(url).startsWith("https://api.jup.ag/")) {
         return new Response(JSON.stringify({
           requestId: "req-v0-bad-alt", transaction: validUnsignedV0TransactionWithLookup(),
@@ -279,7 +291,8 @@ test("valid Jupiter order is parsed but never executed", async () => {
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
-    fetchImpl: async (url, options) => {
+    fetchImpl: async (url, options = {}) => {
+      if (!String(url).startsWith("https://api.jup.ag/")) return mockExecutableProgramsResponse(options);
       request = { url, options };
       return new Response(JSON.stringify({
         requestId: "req-test", transaction: validUnsignedLegacyTransaction(),
@@ -343,12 +356,15 @@ test("missing Jupiter feeBps remains unknown instead of being reported as zero",
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
-    fetchImpl: async () => new Response(JSON.stringify({
+    fetchImpl: async (url, options = {}) => {
+      if (!String(url).startsWith("https://api.jup.ag/")) return mockExecutableProgramsResponse(options);
+      return new Response(JSON.stringify({
       requestId: "req-missing-fee", transaction: validUnsignedLegacyTransaction(),
       inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
       routePlan: [validRoutePlanStep()], router: "metis"
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
   });
   assert.equal(result.feeBps, null);
   assert.equal(result.analysisOnly, true);
@@ -372,6 +388,7 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
           router: "metis", transactionVersion: 0, feeBps: 0
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
+      if (JSON.parse(options.body).params[1]?.dataSlice) return mockExecutableProgramsResponse(options);
       throw new Error("v1 transactions must not trigger ALT RPC lookup");
     }
   });
