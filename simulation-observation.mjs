@@ -319,7 +319,7 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage(input) {
   let resolvedInstructionTotal = 0;
   const resolvedGroups = groups.map(group => {
     assertAllowedDataFields(group,
-      ["topLevelInstructionIndex", "innerInstructionCount", "instructions"],
+      ["topLevelInstructionIndex", "innerInstructionCount", "stackHeightStructure", "instructions"],
       "Simulation observation group");
     const topLevelIndex = ownData(group, "topLevelInstructionIndex", "Top-level instruction index");
     if (!Number.isInteger(topLevelIndex) || topLevelIndex < 0 ||
@@ -330,6 +330,11 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage(input) {
       throw new Error("Simulation observation contains duplicate top-level groups");
     }
     seenTopLevelIndexes.add(topLevelIndex);
+    const stackHeightStructure = ownData(group, "stackHeightStructure",
+      "Simulation observation stack-height structure");
+    if (stackHeightStructure !== "complete" && stackHeightStructure !== "incomplete") {
+      throw new Error("Simulation observation stack-height structure is invalid");
+    }
     const instructions = readDenseArray(
       ownData(group, "instructions", "Simulation observation instructions"),
       512, "Simulation observation instructions"
@@ -343,6 +348,19 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage(input) {
     resolvedInstructionTotal += instructions.length;
     if (resolvedInstructionTotal > MAX_TOTAL_INNER_INSTRUCTIONS) {
       throw new Error("Simulation observation aggregate instruction count exceeds the supported bound");
+    }
+    if (stackHeightStructure === "complete") {
+      const heights = instructions.map(instruction => {
+        assertAllowedDataFields(instruction,
+          ["programIdIndex", "accountIndexes", "data", "stackHeight"],
+          "Simulation CPI instruction");
+        return ownData(instruction, "stackHeight", "Simulation CPI stack height");
+      });
+      if (heights.some(height => !Number.isInteger(height) || height < 2 || height > 256) ||
+          (heights.length > 0 && heights[0] !== 2) ||
+          heights.some((height, index) => index > 0 && height > heights[index - 1] + 1)) {
+        throw new Error("Simulation observation stack-height structure is inconsistent");
+      }
     }
     const resolvedInstructions = instructions.map(instruction => {
       assertAllowedDataFields(instruction,
