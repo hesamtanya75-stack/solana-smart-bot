@@ -9,16 +9,37 @@ function encodeBase64(bytes) {
   return btoa(binary);
 }
 
+function snapshotArguments(input, allowed, required, label) {
+  if (!input || typeof input !== "object" || Array.isArray(input) ||
+      (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)) {
+    throw new Error(label + " must be a plain data record");
+  }
+  const values = Object.create(null);
+  for (const key of Reflect.ownKeys(input)) {
+    if (typeof key !== "string" || !allowed.includes(key)) {
+      throw new Error(label + " contains unsupported properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed properties");
+    }
+    values[key] = descriptor.value;
+  }
+  for (const key of required) {
+    if (!Object.hasOwn(values, key)) throw new Error(label + " is missing " + key);
+  }
+  return values;
+}
+
 /**
  * Build a read-only simulateTransaction JSON-RPC envelope from one immutable
  * serialized-transaction snapshot. This does not send the request, verify the
  * RPC response, or authorize signing/submission.
  */
-export async function createSimulationRpcRequest({
-  serializedTransaction,
-  endpoint,
-  requestId = 1
-}) {
+export async function createSimulationRpcRequest(input) {
+  const { serializedTransaction, endpoint, requestId = 1 } = snapshotArguments(
+    input, ["serializedTransaction", "endpoint", "requestId"],
+    ["serializedTransaction", "endpoint"], "Simulation RPC adapter input");
   if (!(serializedTransaction instanceof Uint8Array) ||
       Object.getPrototypeOf(serializedTransaction) !== Uint8Array.prototype ||
       serializedTransaction.byteLength < 1 ||
