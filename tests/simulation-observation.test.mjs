@@ -76,7 +76,7 @@ test("simulation observation rejects malformed, duplicate, and out-of-range CPI 
   }), /program index is invalid/);
   assert.throws(() => normalizeSimulationObservation({
     ...base,
-    simulationResult: simulation()
+    simulationResult: { context: { slot: 1234 }, value: { err: null } }
   }), /innerInstructions/);
 });
 
