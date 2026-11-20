@@ -69,3 +69,15 @@ test("simulation RPC request rejects malformed bytes, endpoints and ids", async 
     ...common, serializedTransaction: Uint8Array.from([1]), requestId: 0
   }), /request id/);
 });
+
+
+test("simulation RPC adapter rejects accessor-backed top-level arguments without invoking getters", async () => {
+  let invoked = false;
+  const hostile = { endpoint: "https://api.devnet.solana.com" };
+  Object.defineProperty(hostile, "serializedTransaction", {
+    enumerable: true,
+    get() { invoked = true; return Uint8Array.from([1, 2, 3]); }
+  });
+  await assert.rejects(createSimulationRpcRequest(hostile), /accessor-backed/);
+  assert.equal(invoked, false);
+});
