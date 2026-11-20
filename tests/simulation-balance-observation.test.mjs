@@ -115,3 +115,29 @@ test("accepts standard simulation context apiVersion and fee metadata", () => {
   assert.equal(result.contextSlot, 123);
   assert.equal(result.simulationSucceeded, true);
 });
+
+
+test("does not pair token balances when token program identity is missing", () => {
+  const data = fixture();
+  delete data.value.preTokenBalances[0].programId;
+  delete data.value.postTokenBalances[0].programId;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas.length, 2);
+  assert.ok(result.tokenDeltas.every(item => item.status === "unpaired-account-state"));
+  assert.ok(result.tokenDeltas.every(item => item.delta === null));
+  assert.equal(result.tokenRecordsUnpaired, true);
+});
+
+test("rejects duplicate unresolved token identities", () => {
+  const data = fixture();
+  delete data.value.preTokenBalances[0].programId;
+  data.value.preTokenBalances.push({
+    ...data.value.preTokenBalances[0],
+    uiTokenAmount: { amount: "200", decimals: 9 }
+  });
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /duplicate/);
+});
