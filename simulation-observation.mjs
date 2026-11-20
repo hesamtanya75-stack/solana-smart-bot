@@ -349,18 +349,23 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage(input) {
     if (resolvedInstructionTotal > MAX_TOTAL_INNER_INSTRUCTIONS) {
       throw new Error("Simulation observation aggregate instruction count exceeds the supported bound");
     }
-    if (stackHeightStructure === "complete") {
-      const heights = instructions.map(instruction => {
-        assertAllowedDataFields(instruction,
-          ["programIdIndex", "accountIndexes", "data", "stackHeight"],
-          "Simulation CPI instruction");
-        return ownData(instruction, "stackHeight", "Simulation CPI stack height");
-      });
-      if (heights.some(height => !Number.isInteger(height) || height < 2 || height > 256) ||
-          (heights.length > 0 && heights[0] !== 2) ||
-          heights.some((height, index) => index > 0 && height > heights[index - 1] + 1)) {
+    const heights = instructions.map(instruction => {
+      assertAllowedDataFields(instruction,
+        ["programIdIndex", "accountIndexes", "data", "stackHeight"],
+        "Simulation CPI instruction");
+      const height = ownData(instruction, "stackHeight", "Simulation CPI stack height");
+      if (height !== null && (!Number.isInteger(height) || height < 2 || height > 256)) {
         throw new Error("Simulation observation stack-height structure is inconsistent");
       }
+      return height;
+    });
+    const hasMissingStackHeight = heights.some(height => height === null);
+    if ((stackHeightStructure === "complete" && hasMissingStackHeight) ||
+        (stackHeightStructure === "incomplete" && !hasMissingStackHeight) ||
+        (heights.length > 0 && heights[0] !== null && heights[0] !== 2) ||
+        heights.some((height, index) => index > 0 && height !== null &&
+          heights[index - 1] !== null && height > heights[index - 1] + 1)) {
+      throw new Error("Simulation observation stack-height structure is inconsistent");
     }
     const resolvedInstructions = instructions.map(instruction => {
       assertAllowedDataFields(instruction,
