@@ -1,3 +1,5 @@
+import { isTrustedUnsignedMessageEvidence } from "./trusted-live-evidence.mjs";
+
 const HEX_SHA256 = /^[a-f0-9]{64}$/;
 
 function isPlainRecord(value) {
@@ -209,3 +211,84 @@ export async function normalizeSimulationObservationForMessage({
 }
 
 export { normalizeSimulationObservation };
+
+
+/**
+ * Resolve observed CPI account indexes against a privately branded message
+ * parsed from serialized transaction bytes. This is index resolution only:
+ * simulateTransaction response identity is not cryptographically attested.
+ */
+export function resolveSimulationCpiIndexesAgainstTrustedMessage({
+  observation,
+  trustedMessageEvidence
+}) {
+  if (!isTrustedUnsignedMessageEvidence(trustedMessageEvidence)) {
+    throw new Error("Privately branded trusted unsigned-message evidence is required");
+  }
+  if (!isPlainRecord(observation) ||
+      ownData(observation, "scope", "Simulation observation scope") !== "simulation-observation-only") {
+    throw new Error("A normalized simulation observation is required");
+  }
+  const digest = ownData(observation, "messageDigest", "Simulation observation digest");
+  const trustedDigest = trustedMessageEvidence.messageDigest?.value;
+  if (typeof digest !== "string" || digest !== trustedDigest ||
+      !HEX_SHA256.test(digest)) {
+    throw new Error("Simulation observation digest does not match trusted serialized message evidence");
+  }
+  const accountKeys = trustedMessageEvidence.accountKeys;
+  const compiledInstructions = trustedMessageEvidence.compiledInstructions;
+  if (!Array.isArray(accountKeys) || accountKeys.length < 1 || accountKeys.length > 256 ||
+      !Array.isArray(compiledInstructions) || compiledInstructions.length < 1 ||
+      compiledInstructions.length > 256) {
+    throw new Error("Trusted message account keys or compiled instructions are unavailable");
+  }
+  const groups = readDenseArray(
+    ownData(observation, "groups", "Simulation observation groups"),
+    256, "Simulation observation groups"
+  );
+  const resolvedGroups = groups.map(group => {
+    if (!isPlainRecord(group)) throw new Error("Simulation observation group is malformed");
+    const topLevelIndex = ownData(group, "topLevelInstructionIndex", "Top-level instruction index");
+    if (!Number.isInteger(topLevelIndex) || topLevelIndex < 0 ||
+        topLevelIndex >= compiledInstructions.length) {
+      throw new Error("Simulation group does not map to a trusted top-level instruction");
+    }
+    const instructions = readDenseArray(
+      ownData(group, "instructions", "Simulation observation instructions"),
+      512, "Simulation observation instructions"
+    );
+    const resolvedInstructions = instructions.map(instruction => {
+      if (!isPlainRecord(instruction)) throw new Error("Simulation CPI instruction is malformed");
+      const programIndex = ownData(instruction, "programIdIndex", "CPI program index");
+      if (!Number.isInteger(programIndex) || programIndex < 0 ||
+          programIndex >= accountKeys.length) {
+        throw new Error("CPI program index is outside trusted message account keys");
+      }
+      const rawIndexes = ownData(instruction, "accountIndexes", "CPI account indexes");
+      const indexes = rawIndexes === null ? null :
+        readDenseArray(rawIndexes, 256, "CPI account indexes");
+      if (indexes && indexes.some(index => !Number.isInteger(index) ||
+          index < 0 || index >= accountKeys.length)) {
+        throw new Error("CPI account index is outside trusted message account keys");
+      }
+      return Object.freeze({
+        ...instruction,
+        programIdCandidate: accountKeys[programIndex],
+        accountKeyCandidates: indexes === null ? null :
+          Object.freeze(indexes.map(index => accountKeys[index]))
+      });
+    });
+    return Object.freeze({ ...group, instructions: Object.freeze(resolvedInstructions) });
+  });
+  return Object.freeze({
+    ...observation,
+    groups: Object.freeze(resolvedGroups),
+    cpiIndexResolution: "resolved-against-trusted-message-candidate-only",
+    cpiProgramIdsVerified: false,
+    simulationInputIdentityVerified: false,
+    semanticInstructionVerification: false,
+    tokenBalanceEffectsVerified: false,
+    signingPermitted: false,
+    submissionPermitted: false
+  });
+}
