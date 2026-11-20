@@ -420,6 +420,11 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
   assert.equal(parsed.lookupContextSlot, 100);
   assert.equal(parsed.resolvedWritableAddresses[0], encodeBase58(new Uint8Array(32).fill(7)));
   assert.equal(parsed.resolvedReadonlyAddresses[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.equal(parsed.messageDigest.algorithm, "SHA-256");
+  assert.equal(parsed.messageDigest.encoding, "hex");
+  assert.match(parsed.messageDigest.value, /^[a-f0-9]{64}$/);
+  assert.equal(parsed.messageDigest.messageVersion, 0);
+  assert.equal(parsed.messageDigest.signer, BOT_WALLET);
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
