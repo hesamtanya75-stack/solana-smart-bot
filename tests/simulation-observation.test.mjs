@@ -151,3 +151,43 @@ test("message-bound observation rejects malformed or oversized serialized messag
     ...common, serializedMessage: subclass
   }), /bounded Uint8Array/);
 });
+
+
+test("simulation observation records bounded CPI account indexes without resolving or trusting keys", () => {
+  const result = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [{ programIdIndex: 2, accounts: [0, 1, 3] }]
+    }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 4
+  });
+  assert.deepEqual(result.groups[0].instructions[0].accountIndexes, [0, 1, 3]);
+  assert.equal(result.cpiProgramIdsVerified, false);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("simulation observation rejects malformed or out-of-range CPI account indexes", () => {
+  const base = {
+    messageDigest: digest,
+    topLevelInstructionCount: 1,
+    accountKeyCount: 3
+  };
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [{ programIdIndex: 1, accounts: [0, 3] }]
+    }])
+  }), /account index is invalid/);
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [{ programIdIndex: 1, accounts: [0, , 2] }]
+    }])
+  }), /sparse or extended/);
+});
