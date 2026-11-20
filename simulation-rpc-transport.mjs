@@ -68,7 +68,8 @@ function snapshotArguments(input) {
  * semantic CPI effects, signing, or transaction submission.
  */
 export async function performReadOnlySimulation(input) {
-  const { request, endpoint, fetchImpl = fetch } = snapshotArguments(input);
+  const args = snapshotArguments(input);
+  let { request, endpoint, fetchImpl = fetch } = args;
   if (!request || typeof request !== "object" || Object.getPrototypeOf(request) !== Object.prototype &&
       Object.getPrototypeOf(request) !== null) {
     throw new Error("A plain simulation RPC request record is required");
