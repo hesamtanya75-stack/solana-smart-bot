@@ -45,6 +45,18 @@ test("read-only transport sends exact request and binds matching response id and
   assert.ok(Object.isFrozen(result));
 });
 
+test("read-only transport rejects requests that omit CPI inner-instruction capture", async () => {
+  const request = await makeRequest();
+  const envelope = JSON.parse(request.body);
+  delete envelope.params[1].innerInstructions;
+  const incomplete = { ...request, body: JSON.stringify(envelope) };
+  await assert.rejects(performReadOnlySimulation({
+    request: incomplete,
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send"); }
+  }), /envelope failed validation/);
+});
+
 test("read-only transport rejects response id mismatch, RPC errors and malformed context", async () => {
   const request = await makeRequest();
   await assert.rejects(performReadOnlySimulation({
