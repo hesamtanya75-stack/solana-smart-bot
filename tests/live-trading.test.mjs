@@ -278,6 +278,23 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
   assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
   assert.equal(result.instructionProgramInventory.instructionAccountIndexesVerified, true);
+  assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
+  assert.equal(result.instructionProgramInventory.messageAccountPrivileges.scope,
+    "compiled-message-header-and-alt-partitions-only");
+  assert.deepEqual(result.instructionProgramInventory.messageAccountPrivileges.accounts, [
+    {
+      pubkey: EXPECTED_BOT_WALLET,
+      isSigner: true,
+      isWritable: true,
+      source: "static-signer"
+    },
+    {
+      pubkey: "11111111111111111111111111111111",
+      isSigner: false,
+      isWritable: false,
+      source: "static-nonsigner"
+    }
+  ]);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
