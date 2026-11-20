@@ -8,6 +8,51 @@ const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 import { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
 
+function isCanonicalU64(value, allowZero = false) {
+  if (typeof value !== "string" || value.length > 20 ||
+      !/^(?:0|[1-9][0-9]*)$/.test(value)) return false;
+  const amount = BigInt(value);
+  return (allowZero || amount > 0n) && amount <= 18446744073709551615n;
+}
+
+/**
+ * Validate only the documented Jupiter V2 route-plan envelope.
+ * This is structural consistency, not DEX instruction or execution verification.
+ */
+function validateJupiterOrderRoutePlan(routePlan) {
+  if (!Array.isArray(routePlan) || Object.getPrototypeOf(routePlan) !== Array.prototype ||
+      routePlan.length === 0 || routePlan.length > 64) return false;
+  const keys = Reflect.ownKeys(routePlan);
+  if (keys.length !== routePlan.length + 1 ||
+      keys.some(key => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key) ||
+         Number(key) >= routePlan.length))) return false;
+
+  for (let index = 0; index < routePlan.length; index++) {
+    const stepDescriptor = Object.getOwnPropertyDescriptor(routePlan, String(index));
+    if (!stepDescriptor || !Object.prototype.hasOwnProperty.call(stepDescriptor, "value")) return false;
+    const step = stepDescriptor.value;
+    if (!step || typeof step !== "object" || Array.isArray(step) ||
+        (Object.getPrototypeOf(step) !== Object.prototype && Object.getPrototypeOf(step) !== null)) return false;
+    const stepKeys = Reflect.ownKeys(step);
+    if (stepKeys.some(key => !["swapInfo", "percent", "bps", "usdValue"].includes(key)) ||
+        !stepKeys.includes("swapInfo") || !stepKeys.includes("percent") || !stepKeys.includes("bps")) return false;
+    const info = step.swapInfo;
+    if (!info || typeof info !== "object" || Array.isArray(info) ||
+        (Object.getPrototypeOf(info) !== Object.prototype && Object.getPrototypeOf(info) !== null)) return false;
+    const infoKeys = Reflect.ownKeys(info);
+    if (infoKeys.some(key => !["ammKey", "label", "inputMint", "outputMint", "inAmount", "outAmount"].includes(key)) ||
+        !["ammKey", "label", "inputMint", "outputMint", "inAmount", "outAmount"].every(key => infoKeys.includes(key))) return false;
+    if (![info.ammKey, info.inputMint, info.outputMint].every(value => typeof value === "string" && BASE58.test(value)) ||
+        typeof info.label !== "string" || info.label.length === 0 || info.label.length > 128 ||
+        !isCanonicalU64(info.inAmount) || !isCanonicalU64(info.outAmount) ||
+        !Number.isFinite(step.percent) || step.percent < 0 || step.percent > 100 ||
+        !Number.isFinite(step.bps) || step.bps < 0 || step.bps > 10000 ||
+        (step.usdValue != null && (!Number.isFinite(step.usdValue) || step.usdValue < 0))) return false;
+  }
+  return true;
+}
+
 function finitePositive(value, name) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error(name + " must be a positive finite number");
@@ -130,7 +175,7 @@ async function getJupiterOrder({
       String(order.outAmount).length > 20 ||
       BigInt(order.outAmount) <= 0n || BigInt(order.outAmount) > 18446744073709551615n ||
       (order.feeBps != null && (!Number.isInteger(order.feeBps) || order.feeBps < 0 || order.feeBps > 10000)) ||
-      !Array.isArray(order.routePlan) || order.routePlan.length === 0 || order.routePlan.length > 64) {
+      !validateJupiterOrderRoutePlan(order.routePlan)) {
     throw new Error("Jupiter returned an incomplete or non-executable order");
   }
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
