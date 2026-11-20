@@ -205,11 +205,22 @@ test("simulation observation rejects unknown and accessor-backed CPI fields", ()
   }), /accessor-backed properties/);
 });
 
+
+
+test("simulation observation accepts base58 CPI instruction data", () => {
+  const result = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "Ldp" }] }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 2
+  });
+  assert.equal(result.groups[0].instructions[0].data, "Ldp");
+});
 test("simulation observation accepts bounded RPC stack height and data fields", () => {
   const result = normalizeSimulationObservation({
     messageDigest: digest,
     simulationResult: simulation([{ index: 0, instructions: [{
-      programIdIndex: 1, accounts: [0], data: "AQID", stackHeight: 2
+      programIdIndex: 1, accounts: [0], data: "Ldp", stackHeight: 2
     }] }]),
     topLevelInstructionCount: 1,
     accountKeyCount: 2
@@ -221,17 +232,17 @@ test("simulation observation accepts bounded RPC stack height and data fields", 
 });
 
 
-test("simulation observation rejects non-canonical CPI base64 payloads", () => {
+test("simulation observation rejects invalid CPI base58 payloads", () => {
   assert.throws(() => normalizeSimulationObservation({
     messageDigest: digest,
-    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQI" }] }]),
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "0OIl" }] }]),
     topLevelInstructionCount: 1,
     accountKeyCount: 2
   }), /data is malformed/);
 });
 
 
-test("simulation observation rejects non-zero unused base64 padding bits", () => {
+test("simulation observation accepts valid base58 and rejects forbidden alphabet characters", () => {
   const base = { messageDigest: digest, topLevelInstructionCount: 1, accountKeyCount: 2 };
   assert.throws(() => normalizeSimulationObservation({
     ...base,
