@@ -1164,3 +1164,18 @@ The live-order response now explicitly carries `analysisOnly: true`,
 asserts all five properties for a structurally accepted unsigned Jupiter order.
 This is a fail-closed output contract; it does not implement route semantics,
 signing, or transaction submission.
+
+
+## CPI simulation observation boundary — PR #56 follow-up
+
+The `simulation-observation.mjs` helper normalizes bounded `simulateTransaction` response metadata. It records the RPC context slot, simulation error presence, top-level instruction indexes, and each inner instruction's `programIdIndex`. Sparse arrays, duplicate/out-of-range group indexes, malformed program indexes, accessor-backed fields, and malformed context metadata fail closed.
+
+`normalizeSimulationObservationForMessage()` snapshots a bounded serialized message byte array before computing SHA-256 and records that digest alongside the normalized observation. This binds the record to the supplied bytes only. It does **not** independently prove that the RPC simulated those exact bytes; the caller must preserve and later verify the request/response association.
+
+The result deliberately leaves `cpiProgramIdsVerified`, `semanticInstructionVerification`, and `tokenBalanceEffectsVerified` false, and keeps signing and submission disabled. Program indexes are not decoded into trusted program identities, CPI instruction data/accounts are not semantically interpreted, and simulation is not evidence of finalized execution or future execution success.
+
+### Next safe implementation unit
+
+Add a read-only adapter that constructs the exact `simulateTransaction` request from the same immutable serialized-message snapshot used for the digest, captures the RPC endpoint identity and response context, and rejects any mismatch between the submitted bytes and the digest input. Keep the adapter disconnected from transaction reservation, signing, and submission. Only after this request/response binding is independently tested should a separate reviewed decoder map CPI program indexes to authenticated message account keys and decode a narrowly version-pinned set of inner instructions. Unknown programs, instruction variants, account roles, and Token-2022 effects must remain fail-closed.
+
+PR #56 remains Draft while CI is running. No merge, deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading is authorized by this observation-only work.
