@@ -310,6 +310,11 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.transactionEvidence.messageVersion, "legacy");
   assert.equal(result.transactionVersion, result.transactionEvidence.messageVersion);
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
+  assert.equal(result.transactionEvidence.programExecutableFlagsVerified, true);
+  assert.equal(result.transactionEvidence.programExecutableEvidence.scope,
+    "finalized-account-executable-flag-and-loader-owner-only");
+  assert.deepEqual(result.transactionEvidence.programExecutableEvidence.programs.map(item => item.programId),
+    [result.transactionEvidence.staticAccountKeys[1]]);
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
   assert.equal(result.instructionProgramInventory.scope, "compiled-program-id-inventory-only");
@@ -398,6 +403,11 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   assert.equal(result.transactionEvidence.messageVersion, 1);
   assert.equal(result.transactionVersion, 1);
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
+  assert.equal(result.transactionEvidence.programExecutableFlagsVerified, true);
+  assert.equal(result.transactionEvidence.programExecutableEvidence.scope,
+    "finalized-account-executable-flag-and-loader-owner-only");
+  assert.deepEqual(result.transactionEvidence.programExecutableEvidence.programs.map(item => item.programId),
+    [result.transactionEvidence.staticAccountKeys[1]]);
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.analysisOnly, true);
   assert.equal(result.signingPermitted, false);
