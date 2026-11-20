@@ -61,6 +61,65 @@ const REVIEWED_PROGRAM_IDS = new Set([
 ]);
 
 /**
+ * Derive Solana message-level signer/writable privileges from the message
+ * header and resolved v0 lookup partitions. This is not instruction semantic
+ * approval, runtime account state, or proof of program behavior.
+ */
+function deriveMessageAccountPrivileges(evidence) {
+  const header = evidence?.header;
+  const staticKeys = evidence?.staticAccountKeys;
+  const accountKeys = evidence?.accountKeys;
+  const loadedWritable = evidence?.resolvedWritableAddresses ?? [];
+  const loadedReadonly = evidence?.resolvedReadonlyAddresses ?? [];
+  const staticCount = evidence?.staticAccountCount;
+  const required = header?.numRequiredSignatures;
+  const readonlySigned = header?.numReadonlySignedAccounts;
+  const readonlyUnsigned = header?.numReadonlyUnsignedAccounts;
+  if (!header || !Array.isArray(staticKeys) || !Array.isArray(accountKeys) ||
+      !Array.isArray(loadedWritable) || !Array.isArray(loadedReadonly) ||
+      !Number.isInteger(staticCount) || staticCount < 1 || staticCount !== staticKeys.length ||
+      !Number.isInteger(required) || required < 1 || required > staticCount ||
+      !Number.isInteger(readonlySigned) || readonlySigned < 0 || readonlySigned > required ||
+      !Number.isInteger(readonlyUnsigned) || readonlyUnsigned < 0 ||
+      readonlyUnsigned > staticCount - required ||
+      accountKeys.length !== staticCount + loadedWritable.length + loadedReadonly.length ||
+      accountKeys.some((key, index) => typeof key !== "string" || !BASE58.test(key) ||
+        (index < staticCount && key !== staticKeys[index]) ||
+        (index >= staticCount && index < staticCount + loadedWritable.length &&
+          key !== loadedWritable[index - staticCount]) ||
+        (index >= staticCount + loadedWritable.length &&
+          key !== loadedReadonly[index - staticCount - loadedWritable.length])) ||
+      new Set(accountKeys).size !== accountKeys.length) {
+    throw new Error("Unsigned transaction account privilege metadata is incomplete or inconsistent");
+  }
+  const accounts = accountKeys.map((pubkey, index) => {
+    if (index < required) {
+      return Object.freeze({
+        pubkey, isSigner: true,
+        isWritable: index < required - readonlySigned,
+        source: "static-signer"
+      });
+    }
+    if (index < staticCount) {
+      return Object.freeze({
+        pubkey, isSigner: false,
+        isWritable: index < staticCount - readonlyUnsigned,
+        source: "static-nonsigner"
+      });
+    }
+    if (index < staticCount + loadedWritable.length) {
+      return Object.freeze({ pubkey, isSigner: false, isWritable: true, source: "lookup-writable" });
+    }
+    return Object.freeze({ pubkey, isSigner: false, isWritable: false, source: "lookup-readonly" });
+  });
+  return Object.freeze({
+    scope: "compiled-message-header-and-alt-partitions-only",
+    accounts: Object.freeze(accounts)
+  });
+}
+
+
+/**
  * Inventory compiled instruction program IDs after message/ALT validation.
  * This is identifier inventory only; it does not decode or approve semantics.
  */
@@ -80,7 +139,9 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       tokenBalanceEffectsVerified: false,
       accountPrivilegesVerified: false,
       programExecutableFlagsVerified: false,
-      instructionAccountIndexesVerified: false
+      instructionAccountIndexesVerified: false,
+      messageAccountPrivilegesDerived: false,
+      messageAccountPrivileges: Object.freeze([])
     });
   }
   if (!evidence || !Array.isArray(evidence.accountKeys) ||
@@ -89,6 +150,7 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       evidence.compiledInstructions.length > 256) {
     throw new Error("Unsigned transaction instruction inventory is incomplete");
   }
+  const messageAccountPrivileges = deriveMessageAccountPrivileges(evidence);
   const counts = new Map();
   for (const instruction of evidence.compiledInstructions) {
     if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
@@ -128,7 +190,9 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     tokenBalanceEffectsVerified: false,
     accountPrivilegesVerified: false,
     programExecutableFlagsVerified: false,
-    instructionAccountIndexesVerified: true
+    instructionAccountIndexesVerified: true,
+    messageAccountPrivilegesDerived: true,
+    messageAccountPrivileges
   });
 }
 
