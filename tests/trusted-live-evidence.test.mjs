@@ -499,7 +499,10 @@ test("parser consumes only immutable finalized ALT evidence bound to the exact c
   }), /do not match digest-bound finalized ALT evidence/);
 
   assert.throws(() => parseSupportedInstructionMessage({
-    accountKeys: evidence.accountKeys,
+    accountKeys: [
+      evidence.accountKeys[0], evidence.accountKeys[1],
+      evidence.resolvedReadonlyAddresses[0], evidence.resolvedWritableAddresses[0]
+    ],
     instructions: evidence.compiledInstructions,
     staticAccountKeys: evidence.staticAccountKeys,
     header: evidence.header,
