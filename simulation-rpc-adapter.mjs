@@ -61,6 +61,7 @@ export async function createSimulationRpcRequest({
       sigVerify: false,
       replaceRecentBlockhash: true,
       innerInstructions: true,
+      innerInstructionsEncoding: "json",
       commitment: "confirmed"
     }
   ];
