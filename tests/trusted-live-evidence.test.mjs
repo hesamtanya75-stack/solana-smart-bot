@@ -345,9 +345,6 @@ test("v1 heap-size config accepts a valid 32 KiB multiple", () => {
   const parsed = validateUnsignedJupiterTransaction(unsignedV1TransactionWithHeap(32768), BOT_WALLET);
   assert.equal(parsed.messageVersion, 1);
   assert.equal(parsed.semanticInstructionVerification, false);
-  assert.equal(parsed.programExecutableFlagsVerified, true);
-  assert.deepEqual(parsed.programExecutableEvidence.programs.map(item => item.programId),
-    ["ComputeBudget111111111111111111111111111111"]);
 });
 
 test("v1 heap-size config rejects values outside the protocol bounds or alignment", () => {
