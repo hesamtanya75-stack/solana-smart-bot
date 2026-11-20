@@ -222,6 +222,22 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
   assert.equal(result.transactionEvidence.lookupContextSlot, 100);
   assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx"]);
   assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf"]);
+  const privilegeAccounts = result.instructionProgramInventory.messageAccountPrivileges.accounts;
+  assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
+  assert.deepEqual(privilegeAccounts.slice(-2), [
+    {
+      pubkey: "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      isSigner: false,
+      isWritable: true,
+      source: "lookup-writable"
+    },
+    {
+      pubkey: "YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf",
+      isSigner: false,
+      isWritable: false,
+      source: "lookup-readonly"
+    }
+  ]);
   assert.equal(rpcRequest.method, "getMultipleAccounts");
   assert.deepEqual(rpcRequest.params[0], ["3qbR1eZRqXUWroWKKYhbDmR3FfqTHfqSU8zZSxtANzYh"]);
   assert.equal(rpcRequest.params[1].commitment, "finalized");
