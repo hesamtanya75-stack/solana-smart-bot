@@ -1179,3 +1179,14 @@ The result deliberately leaves `cpiProgramIdsVerified`, `semanticInstructionVeri
 Add a read-only adapter that constructs the exact `simulateTransaction` request from the same immutable serialized-message snapshot used for the digest, captures the RPC endpoint identity and response context, and rejects any mismatch between the submitted bytes and the digest input. Keep the adapter disconnected from transaction reservation, signing, and submission. Only after this request/response binding is independently tested should a separate reviewed decoder map CPI program indexes to authenticated message account keys and decode a narrowly version-pinned set of inner instructions. Unknown programs, instruction variants, account roles, and Token-2022 effects must remain fail-closed.
 
 PR #56 remains Draft while CI is running. No merge, deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading is authorized by this observation-only work.
+
+
+## Read-only simulation RPC request adapter — PR #56 follow-up
+
+Added `simulation-rpc-adapter.mjs` and `tests/simulation-rpc-adapter.test.mjs`.
+
+The adapter constructs a JSON-RPC `simulateTransaction` request from one bounded serialized-transaction byte snapshot. It hashes that exact snapshot and base64-encodes the same snapshot into the request body, with explicit `sigVerify: false`, `replaceRecentBlockhash: true`, and `commitment: "confirmed"`. It rejects non-HTTPS endpoints, embedded URL credentials, malformed byte inputs, oversized transaction bytes, and invalid request IDs. Endpoint identity omits query parameters to avoid persisting RPC credentials.
+
+This is request construction only: it does not perform network I/O, validate or associate a returned RPC response, prove execution identity, decode CPI semantics, sign, or submit. Its output explicitly keeps `responseIdentityVerified`, `signingPermitted`, and `submissionPermitted` false. The transaction-byte digest is not interchangeable with a serialized-message digest; the caller must not claim they are the same identity.
+
+Next safe step: implement a separately reviewed transport wrapper that sends only this immutable request, checks the JSON-RPC response ID/version and endpoint association, captures bounded response context, and passes the response into the diagnostic observation normalizer. It must remain disconnected from transaction reservation, signing, and submission.
