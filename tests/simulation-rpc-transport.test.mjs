@@ -174,3 +174,16 @@ test("read-only transport rejects accessor-backed request metadata without invok
   }), /own data properties/);
   assert.equal(invoked, false);
 });
+
+
+test("read-only transport rejects accessor-backed top-level arguments without invoking getters", async () => {
+  const request = await makeRequest();
+  let invoked = false;
+  const hostile = { request, endpoint: "https://api.devnet.solana.com" };
+  Object.defineProperty(hostile, "fetchImpl", {
+    enumerable: true,
+    get() { invoked = true; return async () => rpcResponse(); }
+  });
+  await assert.rejects(performReadOnlySimulation(hostile), /accessor-backed/);
+  assert.equal(invoked, false);
+});
