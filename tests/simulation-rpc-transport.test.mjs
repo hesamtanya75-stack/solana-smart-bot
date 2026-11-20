@@ -211,3 +211,18 @@ test("read-only transport rejects noncanonical JSON-RPC response envelopes", asy
     fetchImpl: async () => new Response(JSON.stringify(conflicting), { status: 200 })
   }), /unsupported or conflicting fields/);
 });
+
+
+test("read-only transport rejects duplicate JSON request keys", async () => {
+  const request = await makeRequest();
+  const ambiguousBody = request.body.replace(
+    '"sigVerify":false',
+    '"sigVerify":true,"sigVerify":false'
+  );
+  assert.notEqual(ambiguousBody, request.body);
+  await assert.rejects(performReadOnlySimulation({
+    request: { ...request, body: ambiguousBody },
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send ambiguous JSON"); }
+  }), /not canonical JSON/);
+});
