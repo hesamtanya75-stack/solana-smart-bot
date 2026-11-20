@@ -9,6 +9,7 @@ import {
   validateSystemProgramInstructionSet
 } from "./system-program-decoder.mjs";
 import { deriveMessageAccountRoles } from "./message-account-roles.mjs";
+import { isTrustedUnsignedMessageEvidence } from "./trusted-live-evidence.mjs";
 import {
   decodeSplTokenInstruction,
   validateSplTokenInstructionSet
@@ -123,7 +124,7 @@ function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
 /**
  * Parse a bounded, already-deserialized message instruction list for analysis.
  * Optional header/lookup inputs enable a structural signer/writable cross-check.
- * Lookup addresses are caller-supplied and are NOT authenticated by this parser.
+ * ALT-derived account roles require opaque finalized evidence produced from the exact unsigned message digest.
  *
  * This is not a wire-format parser, does not verify signatures, lookup-table
  * contents, CPI effects, token deltas, or whole-transaction semantics.
@@ -162,7 +163,8 @@ export function parseSupportedInstructionMessage(message) {
     "header",
     "resolvedAddressTableLookups",
     "staticAccountKeys",
-    "computeBudgetPolicy"
+    "computeBudgetPolicy",
+    "trustedMessageEvidence"
   ]);
   for (const field of Reflect.ownKeys(message)) {
     if (typeof field !== "string" || !allowedFields.has(field)) {
@@ -176,6 +178,30 @@ export function parseSupportedInstructionMessage(message) {
 
   assertDensePlainArray(message.accountKeys, MAX_ACCOUNT_KEYS, "Transaction account keys", 1);
   assertDensePlainArray(message.instructions, MAX_INSTRUCTIONS, "Transaction compiled instructions", 1);
+  const lookupTablesProvided = message.resolvedAddressTableLookups !== undefined;
+  const suppliedLookupTables = message.resolvedAddressTableLookups ?? [];
+  if (lookupTablesProvided) {
+    assertDensePlainArray(suppliedLookupTables, MAX_ACCOUNT_KEYS, "Resolved address lookup tables");
+    for (const table of suppliedLookupTables) {
+      if (!table || typeof table !== "object" || Array.isArray(table) ||
+          (Object.getPrototypeOf(table) !== Object.prototype && Object.getPrototypeOf(table) !== null)) {
+        throw new Error("Resolved address lookup table entry is malformed");
+      }
+      const keys = Reflect.ownKeys(table);
+      if (keys.length !== 2 || !keys.includes("writableAddresses") ||
+          !keys.includes("readonlyAddresses")) {
+        throw new Error("Resolved address lookup table entry is malformed");
+      }
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(table, key);
+        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+          throw new Error("Resolved address lookup table entry contains accessor-backed fields");
+        }
+      }
+      assertDensePlainArray(table.writableAddresses, MAX_ACCOUNT_KEYS, "Resolved writable lookup addresses");
+      assertDensePlainArray(table.readonlyAddresses, MAX_ACCOUNT_KEYS, "Resolved readonly lookup addresses");
+    }
+  }
 
   const accountKeys = message.accountKeys;
   const seenAccountKeys = new Set();
@@ -298,6 +324,30 @@ export function parseSupportedInstructionMessage(message) {
       header: message.header,
       resolvedAddressTableLookups: lookupTables
     });
+    if (lookupTables.length > 0) {
+      const evidence = message.trustedMessageEvidence;
+      if (!isTrustedUnsignedMessageEvidence(evidence) ||
+          evidence.lookupTableResolution !== "finalized-resolved" ||
+          !Number.isSafeInteger(evidence.lookupContextSlot) ||
+          evidence.lookupContextSlot < 1 ||
+          evidence.messageDigest?.algorithm !== "SHA-256" ||
+          !/^[a-f0-9]{64}$/.test(evidence.messageDigest.value || "")) {
+        throw new Error("ALT account roles require trusted finalized message evidence");
+      }
+      const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+      const suppliedInstructions = message.instructions.map(instruction => ({
+        programIdIndex: instruction.programIdIndex,
+        accountKeyIndexes: instruction.accountKeyIndexes,
+        data: instruction.data
+      }));
+      if (!same(message.accountKeys, evidence.accountKeys) ||
+          !same(message.staticAccountKeys, evidence.staticAccountKeys) ||
+          !same(message.header, evidence.header) ||
+          !same(lookupTables, evidence.resolvedAddressTableLookups) ||
+          !same(suppliedInstructions, evidence.compiledInstructions)) {
+        throw new Error("Parser message fields do not match digest-bound finalized ALT evidence");
+      }
+    }
     if (derived.roles.length !== accountKeys.length ||
         derived.roles.some((role, index) => role.publicKey !== accountKeys[index])) {
       throw new Error("Resolved message account keys do not match static and lookup account ordering");
@@ -321,10 +371,10 @@ export function parseSupportedInstructionMessage(message) {
       ? "not-provided"
       : Object.freeze({ status: "validated", ...computeBudgetPolicy }),
     accountPrivilegeAnalysis,
-    // Caller-supplied lookup addresses are only structurally cross-checked;
-    // this parser does not authenticate their table account or on-chain state.
-    lookupAddressAuthentication: message.resolvedAddressTableLookups?.length
-      ? "not-performed"
+    // A non-empty lookup set is accepted only when all layout fields match
+    // the private finalized-evidence brand and its exact unsigned-message digest.
+    lookupAddressAuthentication: lookupTablesProvided && suppliedLookupTables.length > 0
+      ? "finalized-message-digest-bound"
       : "not-applicable",
     associatedAddressVerification: associatedTokenInstructions.length
       ? "not-performed"
