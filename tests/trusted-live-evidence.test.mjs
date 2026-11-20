@@ -2353,6 +2353,44 @@ test("CPI index resolution preserves v0 loaded writable/readonly account-key ord
 });
 
 
+test("CPI index resolution rejects forged status flags and inconsistent aggregate counts", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1236 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: { ...observation, signingPermitted: true },
+    trustedMessageEvidence: evidence
+  }), /cannot assert signingPermitted/);
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: { ...observation, innerInstructionCount: 2 },
+    trustedMessageEvidence: evidence
+  }), /aggregate instruction counts are inconsistent/);
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: {
+      ...observation,
+      groups: [observation.groups[0], observation.groups[0]],
+      innerInstructionGroupCount: 2,
+      innerInstructionCount: 2
+    },
+    trustedMessageEvidence: evidence
+  }), /duplicate top-level groups/);
+});
+
 test("CPI index resolution rejects accessor-backed observation fields without invoking getters", async () => {
   const evidence = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
