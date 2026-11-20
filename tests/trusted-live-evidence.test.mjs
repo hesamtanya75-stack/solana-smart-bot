@@ -2693,6 +2693,32 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     meta: {
       ...baseResult.meta,
       postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], mint: outputMint },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], owner: "11111111111111111111111111111112" },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
         { ...baseResult.meta.postTokenBalances[0],
           programId: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" },
         baseResult.meta.postTokenBalances[1]
