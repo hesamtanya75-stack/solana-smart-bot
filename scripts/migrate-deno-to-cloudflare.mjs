@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -158,12 +158,21 @@ export function requireHttpsOrigin(value, name = "API URL") {
 async function main() {
   const denoUrl = requireHttpsOrigin(process.env.DENO_API_URL || "https://solana-smart-bot-17.hesamtanya75-stack.deno.net", "DENO_API_URL");
   const cloudflareUrl = requireHttpsOrigin(process.env.CLOUDFLARE_API_URL || "https://solana-smart-bot-new.hesamtanya75.workers.dev", "CLOUDFLARE_API_URL");
-  const denoPassword = required("DENO_LOGIN_PASSWORD");
   const cloudflarePassword = required("CLOUDFLARE_LOGIN_PASSWORD");
   const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
 
-  const denoToken = await login(denoUrl, denoPassword, false);
-  const source = validateDenoState(await api(denoUrl, "/api/state", { token: denoToken }));
+  // Prefer a verified direct KV export when the Deno app runtime is suspended.
+  // If no export file is supplied, retain the legacy authenticated API path.
+  let source;
+  if (process.env.DENO_STATE_FILE) {
+    const exported = JSON.parse(await readFile(resolve(process.env.DENO_STATE_FILE), "utf8"));
+    source = validateDenoState(exported);
+    console.log("Using validated state from the read-only Deno KV export file.");
+  } else {
+    const denoPassword = required("DENO_LOGIN_PASSWORD");
+    const denoToken = await login(denoUrl, denoPassword, false);
+    source = validateDenoState(await api(denoUrl, "/api/state", { token: denoToken }));
+  }
   const sourceIsDefault = source.balance === 100 && source.trades.length === 0;
   if (sourceIsDefault && process.env.CONFIRM_DEFAULT_SOURCE_STATE !== "YES") {
     throw new Error("Deno returned the default-looking state (balance 100, zero trades). The old API cannot prove whether the KV key exists. Inspect Deno KV/dashboard; if this empty state is intentional, set CONFIRM_DEFAULT_SOURCE_STATE=YES.");
