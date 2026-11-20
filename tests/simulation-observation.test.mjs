@@ -81,6 +81,15 @@ test("simulation observation rejects malformed, duplicate, and out-of-range CPI 
   }), /innerInstructions/);
 });
 
+test("simulation observation fails closed when RPC innerInstructions is null", () => {
+  assert.throws(() => normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation(null),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  }), /innerInstructions is malformed/);
+});
+
 test("simulation observation rejects accessor-backed metadata without invoking getters", () => {
   let invoked = false;
   const meta = { err: null, innerInstructions: [] };
