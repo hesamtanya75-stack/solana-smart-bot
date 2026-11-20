@@ -178,6 +178,30 @@ export function parseSupportedInstructionMessage(message) {
 
   assertDensePlainArray(message.accountKeys, MAX_ACCOUNT_KEYS, "Transaction account keys", 1);
   assertDensePlainArray(message.instructions, MAX_INSTRUCTIONS, "Transaction compiled instructions", 1);
+  const lookupTablesProvided = message.resolvedAddressTableLookups !== undefined;
+  const suppliedLookupTables = message.resolvedAddressTableLookups ?? [];
+  if (lookupTablesProvided) {
+    assertDensePlainArray(suppliedLookupTables, MAX_ACCOUNT_KEYS, "Resolved address lookup tables");
+    for (const table of suppliedLookupTables) {
+      if (!table || typeof table !== "object" || Array.isArray(table) ||
+          (Object.getPrototypeOf(table) !== Object.prototype && Object.getPrototypeOf(table) !== null)) {
+        throw new Error("Resolved address lookup table entry is malformed");
+      }
+      const keys = Reflect.ownKeys(table);
+      if (keys.length !== 2 || !keys.includes("writableAddresses") ||
+          !keys.includes("readonlyAddresses")) {
+        throw new Error("Resolved address lookup table entry is malformed");
+      }
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(table, key);
+        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+          throw new Error("Resolved address lookup table entry contains accessor-backed fields");
+        }
+      }
+      assertDensePlainArray(table.writableAddresses, MAX_ACCOUNT_KEYS, "Resolved writable lookup addresses");
+      assertDensePlainArray(table.readonlyAddresses, MAX_ACCOUNT_KEYS, "Resolved readonly lookup addresses");
+    }
+  }
 
   const accountKeys = message.accountKeys;
   const seenAccountKeys = new Set();
@@ -289,31 +313,6 @@ export function parseSupportedInstructionMessage(message) {
   }
 
   let accountPrivilegeAnalysis = "not-provided";
-  if (message.resolvedAddressTableLookups?.length > 0) {
-    const evidence = message.trustedMessageEvidence;
-    if (!isTrustedUnsignedMessageEvidence(evidence) ||
-        evidence.lookupTableResolution !== "finalized-resolved" ||
-        !Number.isSafeInteger(evidence.lookupContextSlot) ||
-        evidence.lookupContextSlot < 1 ||
-        evidence.messageDigest?.algorithm !== "SHA-256" ||
-        !/^[a-f0-9]{64}$/.test(evidence.messageDigest.value || "")) {
-      throw new Error("ALT account roles require trusted finalized message evidence");
-    }
-    const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-    const suppliedInstructions = message.instructions.map(instruction => ({
-      programIdIndex: instruction.programIdIndex,
-      accountKeyIndexes: instruction.accountKeyIndexes,
-      data: instruction.data
-    }));
-    if (!same(message.accountKeys, evidence.accountKeys) ||
-        !same(message.staticAccountKeys, evidence.staticAccountKeys) ||
-        !same(message.header, evidence.header) ||
-        !same(message.resolvedAddressTableLookups, evidence.resolvedAddressTableLookups) ||
-        !same(suppliedInstructions, evidence.compiledInstructions)) {
-      throw new Error("Parser message fields do not match digest-bound finalized ALT evidence");
-    }
-  }
-
   if (message.header !== undefined) {
     const lookupTables = message.resolvedAddressTableLookups ?? [];
     const staticAccountKeys = message.staticAccountKeys ?? accountKeys;
@@ -325,6 +324,30 @@ export function parseSupportedInstructionMessage(message) {
       header: message.header,
       resolvedAddressTableLookups: lookupTables
     });
+    if (lookupTables.length > 0) {
+      const evidence = message.trustedMessageEvidence;
+      if (!isTrustedUnsignedMessageEvidence(evidence) ||
+          evidence.lookupTableResolution !== "finalized-resolved" ||
+          !Number.isSafeInteger(evidence.lookupContextSlot) ||
+          evidence.lookupContextSlot < 1 ||
+          evidence.messageDigest?.algorithm !== "SHA-256" ||
+          !/^[a-f0-9]{64}$/.test(evidence.messageDigest.value || "")) {
+        throw new Error("ALT account roles require trusted finalized message evidence");
+      }
+      const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+      const suppliedInstructions = message.instructions.map(instruction => ({
+        programIdIndex: instruction.programIdIndex,
+        accountKeyIndexes: instruction.accountKeyIndexes,
+        data: instruction.data
+      }));
+      if (!same(message.accountKeys, evidence.accountKeys) ||
+          !same(message.staticAccountKeys, evidence.staticAccountKeys) ||
+          !same(message.header, evidence.header) ||
+          !same(lookupTables, evidence.resolvedAddressTableLookups) ||
+          !same(suppliedInstructions, evidence.compiledInstructions)) {
+        throw new Error("Parser message fields do not match digest-bound finalized ALT evidence");
+      }
+    }
     if (derived.roles.length !== accountKeys.length ||
         derived.roles.some((role, index) => role.publicKey !== accountKeys[index])) {
       throw new Error("Resolved message account keys do not match static and lookup account ordering");
@@ -350,7 +373,7 @@ export function parseSupportedInstructionMessage(message) {
     accountPrivilegeAnalysis,
     // A non-empty lookup set is accepted only when all layout fields match
     // the private finalized-evidence brand and its exact unsigned-message digest.
-    lookupAddressAuthentication: message.resolvedAddressTableLookups?.length
+    lookupAddressAuthentication: lookupTablesProvided && suppliedLookupTables.length > 0
       ? "finalized-message-digest-bound"
       : "not-applicable",
     associatedAddressVerification: associatedTokenInstructions.length
