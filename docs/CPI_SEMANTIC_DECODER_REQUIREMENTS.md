@@ -2,7 +2,7 @@
 
 ## Audit scope
 
-This note records the boundary of the current CPI observation and top-level instruction decoders at PR #56 head `d3e08f9a556928dc0fdbf0064b46e31c2ab85753`. It is a design/audit artifact only. It does not authorize reservations, signing, submission, deployment, or Mainnet trading.
+This note records the boundary of the current CPI observation and top-level instruction decoders at PR #56 head `5505659d71235c25d7f16d941fec9dab93cf2d41`. It is a design/audit artifact only. It does not authorize reservations, signing, submission, deployment, or Mainnet trading.
 
 ## Verified current implementation boundary
 
