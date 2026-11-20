@@ -135,11 +135,14 @@ export function normalizeSimulationBalanceObservation(input) {
   });
   const preTokens = normalizeTokenBalances(value.preTokenBalances, args.accountKeyCount, "preTokenBalances");
   const postTokens = normalizeTokenBalances(value.postTokenBalances, args.accountKeyCount, "postTokenBalances");
-  const preByIdentity = new Map(preTokens.map(record => [
-    record.accountIndex + ":" + record.mint + ":" + (record.programId ?? ""), record
+  // A missing token program ID is insufficient to establish a unique token
+  // account identity. Keep such records visible, but never pair them by an
+  // empty-string placeholder that could collapse distinct token programs.
+  const preByIdentity = new Map(preTokens.filter(record => record.programId !== null).map(record => [
+    record.accountIndex + ":" + record.mint + ":" + record.programId, record
   ]));
-  const postByIdentity = new Map(postTokens.map(record => [
-    record.accountIndex + ":" + record.mint + ":" + (record.programId ?? ""), record
+  const postByIdentity = new Map(postTokens.filter(record => record.programId !== null).map(record => [
+    record.accountIndex + ":" + record.mint + ":" + record.programId, record
   ]));
   const identities = new Set([...preByIdentity.keys(), ...postByIdentity.keys()]);
   const tokenDeltas = [...identities].sort().map(identity => {
@@ -154,6 +157,19 @@ export function normalizeSimulationBalanceObservation(input) {
     return Object.freeze({ identity, status: "paired-diagnostic-only", pre: before, post: after,
       delta: after.amount - before.amount });
   });
+  for (const [side, records] of [["pre", preTokens], ["post", postTokens]]) {
+    for (const record of records) {
+      if (record.programId === null) {
+        tokenDeltas.push(Object.freeze({
+          identity: side + ":unresolved-program:" + record.accountIndex + ":" + record.mint,
+          status: "unpaired-account-state",
+          pre: side === "pre" ? record : null,
+          post: side === "post" ? record : null,
+          delta: null
+        }));
+      }
+    }
+  }
   return Object.freeze({
     scope: "simulation-balance-observation-only",
     contextSlot: context.slot,
