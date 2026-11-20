@@ -84,6 +84,13 @@ The latest PR #56 head `e48ffcc78eaf509c3b5e04130c015aae16792b60` completed the 
 - Cloudflare Worker build validation run #1503: success. Wrangler target validation and Worker build passed; no deployment was performed.
 - Devnet signed lifecycle validation run #1570: success. The read-only preflight confirmed the Devnet genesis hash and RPC health. Signing was not performed and zero transactions were submitted. The funded Devnet lifecycle job was skipped because explicit workflow-dispatch opt-in was not supplied.
 - The Devnet preflight could not validate holder concentration: the public RPC rate-limited holder enumeration. Holder metrics were null and the output explicitly warned that this was not a complete holder census or token-safety verdict.
-- External Deno Deploy status `deploy/hesamtanya75-stack/solana-smart-bot-17` remains failure. The available GitHub status links to the Deno Deploy console but does not expose a diagnostic log or establish the cause.
+- External Deno Deploy status `deploy/hesamtanya75-stack/solana-smart-bot-17` remains failure. The GitHub commit-status API reports the explicit description `Organization suspended - resolve billing to deploy`; this identifies an organization billing/suspension blocker, not evidence of a Worker source-code failure. Deployment remains blocked until the organization billing/suspension state is resolved.
 
 These checks validate tests, a non-deploying Worker build, and read-only Devnet connectivity only. They do not close the semantic CPI, complete value-flow, or all-in cost release blockers described above. PR #56 remains open and Draft. No merge, production deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading has been performed.
+
+
+## Deno Deploy status diagnosis — 2026-11-21
+
+A direct read of the GitHub commit status for head `ec546d2bb1d9630d03f801ac6f48cd6e6c47ef83` returned status context `deploy/hesamtanya75-stack/solana-smart-bot-17`, state `failure`, and the explicit provider description `Organization suspended - resolve billing to deploy`. The linked provider target is the Deno Deploy console. This is an organization billing/suspension blocker; it is not evidence that the Worker build or source code failed. The Cloudflare Worker build validation on the same head passed without deploying.
+
+Resolution requires an authorized organization owner/admin to review and resolve the billing/suspension state in Deno Deploy. No billing change, deployment, or external account action was attempted from this workflow. Do not bypass the failed deployment status or treat it as resolved until the provider reports success.
