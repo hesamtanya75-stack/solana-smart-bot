@@ -607,6 +607,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   const instructionCount = instructionHeader.value;
   cursor = instructionHeader.offset;
   const instructionAccountIndexes = [];
+  const compiledInstructions = [];
   if (instructionCount < 1 || instructionCount > 256) {
     throw new Error("Jupiter transaction has no instructions or an invalid instruction count");
   }
@@ -622,14 +623,20 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     if (accountHeader.value > 256 || cursor + accountHeader.value > bytes.length) {
       throw new Error("Jupiter instruction account list is invalid");
     }
-    for (let j = 0; j < accountHeader.value; j++) {
-      instructionAccountIndexes.push(bytes[cursor++]);
-    }
+    const accountKeyIndexes = Array.from(bytes.slice(cursor, cursor + accountHeader.value));
+    instructionAccountIndexes.push(...accountKeyIndexes);
+    cursor += accountHeader.value;
     const dataHeader = readShortVector(bytes, cursor);
     cursor = dataHeader.offset;
     if (dataHeader.value > 1232 || cursor + dataHeader.value > bytes.length) {
       throw new Error("Jupiter instruction data is invalid");
     }
+    const instructionData = bytes.slice(cursor, cursor + dataHeader.value);
+    compiledInstructions.push(Object.freeze({
+      programIdIndex,
+      accountKeyIndexes: Object.freeze(accountKeyIndexes),
+      data: btoa(String.fromCharCode(...instructionData))
+    }));
     cursor += dataHeader.value;
   }
   let addressLookupCount = 0;
@@ -676,6 +683,7 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
     numReadonlyUnsignedAccounts: readonlyUnsigned,
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount,
     addressLookups,
