@@ -2853,3 +2853,43 @@ test("finalized settlement rejects v0 transactions missing loaded-address metada
     signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
   }, fetchImpl), /missing loaded address metadata/);
 });
+
+
+test("finalized v0 settlement rejects loaded-address counts inconsistent with lookup indexes", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(15));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 130,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111112",
+          writableIndexes: [0, 1],
+          readonlyIndexes: [2]
+        }]
+      }
+    },
+    meta: {
+      err: null, fee: 5000,
+      preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
+      loadedAddresses: {
+        writable: ["11111111111111111111111111111113"],
+        readonly: ["11111111111111111111111111111114"]
+      },
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /do not match address-table lookup indexes/);
+});
