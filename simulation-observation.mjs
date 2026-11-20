@@ -1,6 +1,7 @@
 import { isTrustedUnsignedMessageEvidence } from "./trusted-live-evidence.mjs";
 
 const HEX_SHA256 = /^[a-f0-9]{64}$/;
+const MAX_TOTAL_INNER_INSTRUCTIONS = 4096;
 
 function isPlainRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -80,6 +81,7 @@ function normalizeSimulationObservation({
     256, "Simulation innerInstructions"
   );
   const seenTopLevelIndexes = new Set();
+  let totalInnerInstructions = 0;
   const normalizedGroups = groups.map(group => {
     assertAllowedDataFields(group, ["index", "instructions"], "Simulation inner instruction group");
     const groupIndex = ownData(group, "index", "Simulation inner instruction group index");
@@ -95,6 +97,10 @@ function normalizeSimulationObservation({
       ownData(group, "instructions", "Simulation inner instruction list"),
       512, "Simulation inner instruction list"
     );
+    totalInnerInstructions += instructions.length;
+    if (totalInnerInstructions > MAX_TOTAL_INNER_INSTRUCTIONS) {
+      throw new Error("Simulation inner instruction total exceeds the supported bound");
+    }
     const normalizedInstructions = instructions.map(instruction => {
       assertAllowedDataFields(instruction,
         ["programIdIndex", "accounts", "data", "stackHeight"],
