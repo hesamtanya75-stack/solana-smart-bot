@@ -283,7 +283,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
   const orderUrl = new URL(request.url);
   assert.equal(orderUrl.searchParams.get("taker"), EXPECTED_BOT_WALLET);
   assert.equal(orderUrl.searchParams.has("receiver"), false);
-  assert.equal(orderUrl.searchParams.get("excludeRouters"), "jupiterz");
+  assert.equal(orderUrl.searchParams.get("excludeRouters"), "jupiterz,dflow,okx");
   assert.equal(request.options.headers["x-api-key"], "test-only");
   await assert.rejects(() => executeLiveOrder(), /not implemented/);
 });
