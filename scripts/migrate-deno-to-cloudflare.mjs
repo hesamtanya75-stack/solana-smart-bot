@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const SOURCE_FIELDS = new Set(["balance", "trades", "updatedAt"]);
 const TRADE_FIELDS = new Set([
@@ -186,7 +188,7 @@ async function main() {
   console.log("Keep Deno and its KV data until the dashboard is manually checked and signed off.");
 }
 
-const invokedPath = process.argv[1] ? new URL("file://" + process.argv[1]).href : "";
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
 if (invokedPath === import.meta.url) {
   main().catch(error => {
     console.error("Deno-to-Cloudflare migration stopped safely: " + String(error?.message || error));
