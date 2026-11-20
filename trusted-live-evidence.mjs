@@ -889,6 +889,80 @@ function snapshotLookupRpcAccount(account) {
   return Object.freeze({ owner, executable, data: Object.freeze([encoded, encoding]) });
 }
 
+const SOLANA_PROGRAM_LOADER_IDS = new Set([
+  "NativeLoader1111111111111111111111111111111",
+  "BPFLoader2111111111111111111111111111111111",
+  "BPFLoaderUpgradeab1e11111111111111111111111",
+  "BPFLoader1111111111111111111111111111111111"
+]);
+
+/**
+ * Read finalized account metadata for compiled instruction program IDs.
+ * This proves only that each referenced account is marked executable and
+ * owned by a recognized Solana loader at the returned finalized context.
+ * It does not verify code identity, upgrade authority, semantics, or CPI.
+ */
+export async function resolveExecutableProgramAccounts(programIds, fetchImpl = fetch) {
+  const ids = snapshotDensePlainArray(
+    programIds, 256, "Compiled instruction program IDs",
+    "Compiled instruction program IDs are malformed"
+  );
+  if (ids.length === 0 || ids.some(id => !isCanonicalPublicKey(id)) ||
+      new Set(ids).size !== ids.length) {
+    throw new Error("Compiled instruction program IDs are missing, invalid, or duplicated");
+  }
+  const resolved = [];
+  let minimumContextSlot = 0;
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const config = {
+      commitment: "finalized",
+      encoding: "base64",
+      dataSlice: { offset: 0, length: 0 },
+      ...(minimumContextSlot > 0 ? { minContextSlot: minimumContextSlot } : {})
+    };
+    const result = await rpc(fetchImpl, "getMultipleAccounts", [batch, config]);
+    const slot = result?.context?.slot;
+    const accounts = result?.value;
+    if (!Number.isSafeInteger(slot) || slot < 1 || slot < minimumContextSlot ||
+        !Array.isArray(accounts) || accounts.length !== batch.length) {
+      throw new Error("Finalized program account RPC context or account count is invalid");
+    }
+    minimumContextSlot = slot;
+    for (let index = 0; index < batch.length; index++) {
+      const account = accounts[index];
+      if (!account || typeof account !== "object" || Array.isArray(account) ||
+          (Object.getPrototypeOf(account) !== Object.prototype && Object.getPrototypeOf(account) !== null)) {
+        throw new Error("Referenced program account is missing or malformed");
+      }
+      const ownerDescriptor = Object.getOwnPropertyDescriptor(account, "owner");
+      const executableDescriptor = Object.getOwnPropertyDescriptor(account, "executable");
+      if (!ownerDescriptor || !Object.prototype.hasOwnProperty.call(ownerDescriptor, "value") ||
+          !executableDescriptor || !Object.prototype.hasOwnProperty.call(executableDescriptor, "value")) {
+        throw new Error("Referenced program account has missing or accessor-backed metadata");
+      }
+      const owner = ownerDescriptor.value;
+      const executable = executableDescriptor.value;
+      if (!isCanonicalPublicKey(owner) || executable !== true ||
+          !SOLANA_PROGRAM_LOADER_IDS.has(owner)) {
+        throw new Error("Referenced program is not confirmed executable under a recognized Solana loader");
+      }
+      resolved.push(Object.freeze({
+        programId: batch[index],
+        owner,
+        executable: true,
+        commitment: "finalized",
+        contextSlot: slot
+      }));
+    }
+  }
+  return Object.freeze({
+    scope: "finalized-account-executable-flag-and-loader-owner-only",
+    contextSlot: minimumContextSlot,
+    programs: Object.freeze(resolved)
+  });
+}
+
 export async function resolveJupiterAddressLookupTables(lookups, fetchImpl = fetch) {
   const lookupSnapshot = snapshotDensePlainArray(
     lookups, 64, "Jupiter address lookup descriptors",
