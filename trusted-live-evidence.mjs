@@ -1126,12 +1126,39 @@ async function createUnsignedMessageDigest(encoded, parsed, expectedSigner) {
   });
 }
 
+function collectCompiledInstructionProgramIds(parsed, accountKeys) {
+  if (!Array.isArray(parsed?.compiledInstructions) || parsed.compiledInstructions.length === 0 ||
+      !Array.isArray(accountKeys) || accountKeys.length === 0) {
+    throw new Error("Compiled instruction program evidence is incomplete");
+  }
+  const programIds = [];
+  const seen = new Set();
+  for (const instruction of parsed.compiledInstructions) {
+    const index = instruction?.programIdIndex;
+    if (!Number.isInteger(index) || index < 0 || index >= accountKeys.length) {
+      throw new Error("Compiled instruction program index is outside resolved message keys");
+    }
+    const programId = accountKeys[index];
+    if (!isCanonicalPublicKey(programId)) {
+      throw new Error("Compiled instruction program ID is invalid");
+    }
+    if (!seen.has(programId)) {
+      seen.add(programId);
+      programIds.push(programId);
+    }
+  }
+  return Object.freeze(programIds);
+}
+
 export async function validateAndResolveUnsignedJupiterTransaction(
   encoded, expectedSigner, fetchImpl = fetch
 ) {
   const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
   if (parsed.addressLookupCount === 0) {
     const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
+    const accountKeys = parsed.staticAccountKeys;
+    const programIds = collectCompiledInstructionProgramIds(parsed, accountKeys);
+    const programExecutableEvidence = await resolveExecutableProgramAccounts(programIds, fetchImpl);
     const evidence = Object.freeze({
       ...parsed,
       header: Object.freeze({
@@ -1139,12 +1166,14 @@ export async function validateAndResolveUnsignedJupiterTransaction(
         numReadonlySignedAccounts: 0,
         numReadonlyUnsignedAccounts: parsed.numReadonlyUnsignedAccounts
       }),
-      accountKeys: parsed.staticAccountKeys,
+      accountKeys,
       resolvedAddressTableLookups: Object.freeze([]),
       messageDigest,
       lookupTableResolution: "not-required",
       resolvedWritableAddresses: Object.freeze([]),
-      resolvedReadonlyAddresses: Object.freeze([])
+      resolvedReadonlyAddresses: Object.freeze([]),
+      programExecutableEvidence,
+      programExecutableFlagsVerified: true
     });
     TRUSTED_UNSIGNED_MESSAGE_EVIDENCE.add(evidence);
     return evidence;
@@ -1164,6 +1193,9 @@ export async function validateAndResolveUnsignedJupiterTransaction(
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
   const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
+  const accountKeys = Object.freeze(allMessageKeys);
+  const programIds = collectCompiledInstructionProgramIds(parsed, accountKeys);
+  const programExecutableEvidence = await resolveExecutableProgramAccounts(programIds, fetchImpl);
   const resolvedAddressTableLookups = Object.freeze(resolution.tables.map(table =>
     Object.freeze({
       writableAddresses: table.writable,
@@ -1177,13 +1209,15 @@ export async function validateAndResolveUnsignedJupiterTransaction(
       numReadonlySignedAccounts: 0,
       numReadonlyUnsignedAccounts: parsed.numReadonlyUnsignedAccounts
     }),
-    accountKeys: Object.freeze(allMessageKeys),
+    accountKeys,
     resolvedAddressTableLookups,
     messageDigest,
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
     resolvedWritableAddresses: resolution.writableAddresses,
     resolvedReadonlyAddresses: resolution.readonlyAddresses,
+    programExecutableEvidence,
+    programExecutableFlagsVerified: true,
     semanticInstructionVerification: false
   });
   TRUSTED_UNSIGNED_MESSAGE_EVIDENCE.add(evidence);
