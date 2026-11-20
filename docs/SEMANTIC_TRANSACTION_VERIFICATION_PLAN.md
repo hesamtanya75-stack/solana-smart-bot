@@ -1224,3 +1224,24 @@ For each supported inner-instruction observation, the normalizer now preserves o
 
 
 Solana UiCompiledInstruction.data is base58-encoded. The observation validator therefore accepts only the base58 alphabet and applies a strict size bound; it does not decode instruction payloads or infer trusted semantics.
+
+
+
+### Candidate CPI index resolution against privately branded message evidence
+
+Added `resolveSimulationCpiIndexesAgainstTrustedMessage()` in `simulation-observation.mjs`, with positive and negative coverage in `tests/trusted-live-evidence.test.mjs`.
+
+The resolver requires the private brand produced by the trusted unsigned-message validation path and requires the observation's serialized-message SHA-256 digest to match the trusted evidence digest. It then checks each observed top-level instruction group against the trusted compiled-instruction list and resolves the observed CPI `programIdIndex` and account indexes to candidate public keys from the trusted account-key ordering.
+
+This is deliberately limited to **candidate index resolution**. The RPC response does not itself carry a cryptographic proof that its inner-instruction indexes correspond to the exact message snapshot represented by the local trusted evidence. A matching locally supplied digest and privately branded parser evidence do not establish that remote association. Therefore the resolver continues to report:
+
+- `cpiProgramIdsVerified: false`
+- `simulationInputIdentityVerified: false`
+- `semanticInstructionVerification: false`
+- `tokenBalanceEffectsVerified: false`
+- `signingPermitted: false`
+- `submissionPermitted: false`
+
+Unknown/unbranded evidence and digest mismatches fail closed. The candidate public keys must not be treated as authenticated CPI program identities or semantic attestations.
+
+Current validation on PR #56 head `4e597be17edb7efadeb71bebc72876fb3c61cb3b`: Node tests, Cloudflare Worker build validation, and read-only Devnet validation all completed successfully. The funded Devnet lifecycle job was skipped as required without explicit opt-in. PR #56 remains Draft and open; no merge, deployment, signing, transaction submission, funded Devnet lifecycle, or Mainnet trading was performed.
