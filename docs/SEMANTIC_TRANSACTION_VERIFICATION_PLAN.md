@@ -1403,3 +1403,61 @@ keep `simulationInputIdentityVerified`,
 `tokenBalanceEffectsVerified` false. Keep signing and submission disabled.
 This gate is an explicit unresolved dependency, not a transport bug that can
 be closed by adding more JSON-RPC envelope checks.
+
+
+## CPI semantic-verification scope gate — PR #56 follow-up
+
+The current `transaction-instruction-parser.mjs` is a top-level compiled
+message parser. Its registered instruction families are Compute Budget,
+System Program, SPL Token / Token-2022, and Associated Token Account. It
+explicitly rejects execution metadata and CPI evidence as parser input, and
+returns `semanticVerification: "incomplete"`,
+`signingPermitted: false`, and `submissionPermitted: false`.
+
+The existing decoders therefore must not be described as CPI decoders. In
+particular, the current registry does not provide a version-pinned Jupiter
+route CPI decoder, and the presence of Jupiter route-plan metadata in an
+unsigned order is not proof of the inner instructions that a simulation
+reports. The CPI observation resolver only produces candidate public keys
+from index positions; because remote simulation identity remains unverified,
+those candidates are not trusted program identities or account roles.
+
+### Safe implementation boundary
+
+Before adding a CPI semantic verifier, create a separate registry with
+explicitly versioned entries for each supported invoked program and each
+instruction variant. Each entry must specify:
+
+- Exact program public key and supported deployment/version identity.
+- Exact binary discriminator/layout and canonical data decoding.
+- Exact account count, ordered account roles, signer/writable requirements,
+  and permitted aliasing rules.
+- Expected parent instruction relationship and permitted CPI nesting.
+- Token program compatibility, including explicitly supported Token-2022
+  extension behavior.
+- Expected token/lamport effects and fee/rent treatment, where applicable.
+- Positive fixtures captured from known-good transactions and negative
+  fixtures for unknown IDs, unknown variants, reordered/aliased accounts,
+  missing accounts, malformed payloads, and inconsistent parent-child links.
+
+The first implementation must not add Jupiter or arbitrary AMM support by
+guessing from labels, route metadata, program names, logs, or observed
+account indexes. Start only with instruction variants whose binary layouts
+and account semantics are pinned to authoritative program source/version
+and independently reviewed. Unsupported CPI programs or variants must
+produce an explicit unsupported result and block any later authorization.
+
+### Required test and output contract
+
+A future CPI verifier must accept only immutable, digest-bound message
+evidence plus a separately authenticated simulation input/response binding.
+It must reject observations whose context, top-level group, program index,
+account indexes, parent instruction, or inner-instruction ordering cannot be
+matched exactly. It must preserve the diagnostic/authorization distinction:
+candidate resolution is not verification; successful decoding is not
+transaction-wide semantic approval; and simulation is not finalized execution.
+
+Until the remote provenance gate and the above semantic registry are both
+satisfied, keep `cpiProgramIdsVerified`,
+`semanticInstructionVerification`, and
+`tokenBalanceEffectsVerified` false, with signing and submission disabled.
