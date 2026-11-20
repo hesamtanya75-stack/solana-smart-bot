@@ -2360,10 +2360,10 @@ test("CPI index resolution rejects accessor-backed observation fields without in
   const serialized = Buffer.from(validUnsignedTransaction(), "base64");
   const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
   let getterCalls = 0;
-  const hostileInstruction = { programIdIndex: 1, accountIndexes: [0], data: null, stackHeight: null };
-  Object.defineProperty(hostileInstruction, "unexpected", {
+  const hostileInstruction = { programIdIndex: 1, data: null, stackHeight: null };
+  Object.defineProperty(hostileInstruction, "accountIndexes", {
     enumerable: true,
-    get() { getterCalls += 1; return "unsafe"; }
+    get() { getterCalls += 1; return [0]; }
   });
   const observation = {
     scope: "simulation-observation-only",
