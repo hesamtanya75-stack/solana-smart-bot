@@ -2299,5 +2299,5 @@ test("CPI index resolution rejects unbranded or digest-mismatched evidence", () 
   assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
     observation,
     trustedMessageEvidence: { accountKeys: ["11111111111111111111111111111111"] }
-  }), /privately branded/);
+  }), /privately branded/i);
 });
