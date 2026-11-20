@@ -30,6 +30,15 @@ function assertAllowedDataFields(record, allowed, label) {
   }
 }
 
+function readInputArguments(input, allowed, label) {
+  assertAllowedDataFields(input, allowed, label);
+  const values = Object.create(null);
+  for (const key of allowed) {
+    values[key] = ownData(input, key, label + " " + key);
+  }
+  return values;
+}
+
 function isCanonicalBase58(value) {
   // Solana UiCompiledInstruction.data is base58, not base64.
   return typeof value === "string" && value.length <= 8192 &&
@@ -61,9 +70,11 @@ function readDenseArray(value, maximum, label) {
  * Normalize CPI data returned by simulateTransaction.
  * This is diagnostic evidence, not proof of future execution or approval.
  */
-function normalizeSimulationObservation({
-  messageDigest, simulationResult, topLevelInstructionCount, accountKeyCount
-}) {
+function normalizeSimulationObservation(input) {
+  const { messageDigest, simulationResult, topLevelInstructionCount, accountKeyCount } =
+    readInputArguments(input,
+      ["messageDigest", "simulationResult", "topLevelInstructionCount", "accountKeyCount"],
+      "Simulation observation input");
   if (typeof messageDigest !== "string" || !HEX_SHA256.test(messageDigest)) {
     throw new Error("Simulation observation requires a canonical message SHA-256 digest");
   }
@@ -185,9 +196,11 @@ function normalizeSimulationObservation({
  * an external RPC simulated the same bytes; the caller must preserve that
  * request/response association. The result remains diagnostic-only.
  */
-export async function normalizeSimulationObservationForMessage({
-  serializedMessage, simulationResult, topLevelInstructionCount, accountKeyCount
-}) {
+export async function normalizeSimulationObservationForMessage(input) {
+  const { serializedMessage, simulationResult, topLevelInstructionCount, accountKeyCount } =
+    readInputArguments(input,
+      ["serializedMessage", "simulationResult", "topLevelInstructionCount", "accountKeyCount"],
+      "Message-bound simulation observation input");
   if (!(serializedMessage instanceof Uint8Array) ||
       Object.getPrototypeOf(serializedMessage) !== Uint8Array.prototype ||
       serializedMessage.byteLength < 1 || serializedMessage.byteLength > 1232) {
@@ -224,10 +237,9 @@ export { normalizeSimulationObservation };
  * parsed from serialized transaction bytes. This is index resolution only:
  * simulateTransaction response identity is not cryptographically attested.
  */
-export function resolveSimulationCpiIndexesAgainstTrustedMessage({
-  observation,
-  trustedMessageEvidence
-}) {
+export function resolveSimulationCpiIndexesAgainstTrustedMessage(input) {
+  const { observation, trustedMessageEvidence } = readInputArguments(input,
+    ["observation", "trustedMessageEvidence"], "CPI resolution input");
   if (!isTrustedUnsignedMessageEvidence(trustedMessageEvidence)) {
     throw new Error("Privately branded trusted unsigned-message evidence is required");
   }
