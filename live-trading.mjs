@@ -200,6 +200,7 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     executableEvidence?.scope === "finalized-account-executable-flag-and-loader-owner-only" &&
     Number.isSafeInteger(executableEvidence.contextSlot) &&
     executableEvidence.contextSlot > 0 &&
+    Array.isArray(suppliedExecutablePrograms) &&
     suppliedExecutablePrograms.length === expectedExecutableProgramIds.length &&
     suppliedExecutableProgramIds.every((programId, index) =>
       programId === expectedExecutableProgramIds[index]) &&
