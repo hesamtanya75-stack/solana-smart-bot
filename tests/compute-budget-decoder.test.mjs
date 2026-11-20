@@ -246,3 +246,33 @@ test("Compute Budget registry rejects decorated empty account-index arrays", () 
     accountIndexes: indexes
   }), /unsupported properties/);
 });
+
+
+test("Compute Budget policy snapshots exact own data limits and rejects accessors without invoking them", () => {
+  const limit = decodeComputeBudgetInstruction(COMPUTE_BUDGET_PROGRAM, data(2, 200000));
+  const valid = {
+    maxComputeUnitLimit: 300000,
+    maxPriorityFeeLamports: 50000n,
+    maxHeapFrameBytes: 131072,
+    maxLoadedAccountDataBytes: 2097152
+  };
+  let getterCalls = 0;
+  const accessorLimits = { ...valid };
+  Object.defineProperty(accessorLimits, "maxPriorityFeeLamports", {
+    enumerable: true,
+    get() { getterCalls++; return 50000n; }
+  });
+  assert.throws(() => validateComputeBudgetPolicy([limit], accessorLimits),
+    /own data properties/);
+  assert.equal(getterCalls, 0);
+
+  const decoratedLimits = { ...valid, unexpected: true };
+  assert.throws(() => validateComputeBudgetPolicy([limit], decoratedLimits),
+    /invalid or incomplete/);
+
+  const customPrototype = Object.assign(Object.create({ inherited: true }), valid);
+  assert.throws(() => validateComputeBudgetPolicy([limit], customPrototype),
+    /invalid or incomplete/);
+
+  assert.equal(validateComputeBudgetPolicy([limit], valid).unitLimit, 200000);
+});
