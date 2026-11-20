@@ -90,6 +90,7 @@ export function canonicalJson(value) {
 
 export function stateMatches(source, destination) {
   if (!destination || destination.balance !== source.balance ||
+      destination.autoEnabled !== false || destination.paused !== true ||
       !Array.isArray(destination.trades) ||
       destination.trades.length !== source.trades.length) return false;
   const expectedTrades = buildCloudflareImport(source).trades;
