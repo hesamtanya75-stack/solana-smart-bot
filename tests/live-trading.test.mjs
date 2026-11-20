@@ -276,6 +276,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
   assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
+  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
@@ -339,6 +340,7 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
   assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
+  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
