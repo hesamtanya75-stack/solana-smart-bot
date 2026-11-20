@@ -2126,3 +2126,50 @@ test("referenced programs require finalized executable flags and recognized load
     /duplicated/
   );
 });
+
+
+test("executable program resolver bounds RPC batches and pins later batches to prior finalized context", async () => {
+  const ids = Array.from({ length: 101 }, (_, index) =>
+    encodeBase58(Uint8Array.from({ length: 32 }, (_, byte) => (index + byte + 1) % 256))
+  );
+  assert.equal(new Set(ids).size, ids.length);
+  const requests = [];
+  const evidence = await resolveExecutableProgramAccounts(ids, async (_url, options) => {
+    const request = JSON.parse(options.body);
+    requests.push(request);
+    const slot = requests.length === 1 ? 500 : 501;
+    return Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: {
+        context: { slot },
+        value: request.params[0].map(() => ({
+          owner: "BPFLoaderUpgradeab1e11111111111111111111111",
+          executable: true,
+          data: ["", "base64"]
+        }))
+      }
+    });
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].params[0].length, 100);
+  assert.equal(requests[1].params[0].length, 1);
+  assert.equal(requests[0].params[1].commitment, "finalized");
+  assert.equal(requests[1].params[1].minContextSlot, 500);
+  assert.equal(evidence.contextSlot, 501);
+  assert.equal(evidence.programs.length, 101);
+  assert.ok(evidence.programs.every(item => item.executable === true));
+});
+
+test("executable program resolver rejects malformed finalized context and account metadata", async () => {
+  const id = "11111111111111111111111111111111";
+  for (const result of [
+    { context: { slot: 0 }, value: [{ owner: "NativeLoader1111111111111111111111111111111", executable: true }] },
+    { context: { slot: 10 }, value: [] },
+    { context: { slot: 10 }, value: [{ owner: "NativeLoader1111111111111111111111111111111" }] },
+    { context: { slot: 10 }, value: [{ owner: "NativeLoader1111111111111111111111111111111", executable: true, get data() { throw new Error("unused getter"); } }] }
+  ]) {
+    await assert.rejects(resolveExecutableProgramAccounts([id], async () =>
+      Response.json({ jsonrpc: "2.0", id: 1, result })
+    ));
+  }
+});
