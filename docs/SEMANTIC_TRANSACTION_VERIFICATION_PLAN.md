@@ -1593,3 +1593,15 @@ does not attest which RPC provider answered, and must not be used as proof
 of response provenance. The transport continues to report
 simulationInputIdentityVerified: false, signingPermitted: false, and
 submissionPermitted: false.
+
+
+### RPC endpoint query-string restriction — PR #56 follow-up
+
+The read-only simulation adapter and transport reject RPC endpoint URLs with
+query strings. The transport's recorded endpoint identity intentionally binds
+only the HTTPS origin and path; allowing a query string would permit routing
+or provider parameters to affect the actual fetch without being represented
+in that identity. Query-string API-key endpoints are therefore unsupported by
+this adapter. This restriction narrows endpoint ambiguity but does not
+authenticate the remote provider, prove which bytes it simulated, or establish
+response provenance. Signing and submission remain disabled.
