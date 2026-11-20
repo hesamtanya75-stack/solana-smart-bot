@@ -6,7 +6,7 @@ A Solana token scanner with server-authoritative **paper trading**. The current 
 
 The security changes in PR #27 are not a production deployment approval. Keep the PR unmerged until the required Cloudflare configuration and operational checks below have been completed.
 
-### Required Cloudflare Worker secrets
+### Cloudflare Worker secrets
 
 Configure these in the Cloudflare dashboard or with Wrangler. Never commit their values, paste them into issues, or expose them in logs.
 
@@ -37,9 +37,9 @@ The Durable Object migrations in `wrangler.jsonc` must be applied in order. A lo
 ### Verification before any production release
 
 1. Confirm the production Worker name, route/domain, KV namespace ID, and all Durable Object bindings in the Cloudflare dashboard.
-2. Confirm both required secrets are present without revealing their values.
+2. Confirm the two required secrets are present without revealing their values. Phantom remains read-only and does not require a Jupiter quote-preview key.
 3. Run the repository test suite: `npm test`.
-4. Confirm the Cloudflare Worker build validation and Devnet read-only checks pass for the exact commit being considered. The funded signed Devnet transfer step is skipped unless a dedicated DEVNET_RPC_URL is configured; a successful workflow does not prove that a signed transfer was tested.
+4. Confirm the Cloudflare Worker build validation and Devnet read-only checks pass for the exact commit being considered. The funded signed Devnet transfer step runs only after an explicit `workflow_dispatch` opt-in (`run_funded_devnet_lifecycle: true`) and requires a dedicated `DEVNET_RPC_URL` secret; configuring the secret alone does not start a transfer. Pull-request runs always skip this funded step. A successful read-only workflow does not prove that a signed transfer was tested.
 5. Verify login, MFA enrollment and recovery, logout/revocation, paper buy, paper sell thresholds, and one-time legacy-state migration in a non-production environment.
 6. Review Cloudflare logs for errors without logging credentials, session tokens, MFA secrets, backup codes, or API keys.
 

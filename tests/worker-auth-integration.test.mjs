@@ -16,6 +16,7 @@ const workerContext = vm.createContext({
   crypto: webcrypto,
   Request,
   Response,
+  Headers,
   URL,
   TextEncoder,
   TextDecoder,
@@ -101,17 +102,26 @@ async function post(path, body, env, headers = {}) {
   }), env);
 }
 
-async function get(path, env, token) {
+function sessionCookie(response) {
+  const header = response.headers.get("set-cookie") || "";
+  const match = /(__Host-solana_bot_session=[^;]+)/.exec(header);
+  return match ? match[1] : "";
+}
+function sessionId(cookie) {
+  const match = /__Host-solana_bot_session=([0-9a-f-]{36})/i.exec(cookie || "");
+  return match ? match[1] : "";
+}
+async function get(path, env, cookie) {
   return worker.fetch(new Request("https://bot.example" + path, {
     method: "GET",
-    headers: token ? { Authorization: "Bearer " + token } : {}
+    headers: cookie ? { Cookie: cookie } : {}
   }), env);
 }
 
-async function put(path, body, env, token) {
+async function put(path, body, env, cookie) {
   return worker.fetch(new Request("https://bot.example" + path, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, Origin: "https://bot.example", "Sec-Fetch-Site": "same-origin" },
+    headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}), Origin: "https://bot.example", "Sec-Fetch-Site": "same-origin" },
     body: JSON.stringify(body)
   }), env);
 }
@@ -170,8 +180,11 @@ test("Worker login migrates legacy MFA and enforces one-time TOTP and backup cod
     code
   }, env);
   assert.equal(verified.status, 200);
-  const session = await verified.json();
-  assert.equal(typeof session.token, "string");
+  const verifiedBody = await verified.json();
+  assert.equal(verifiedBody.token, undefined, "MFA session token must never be exposed to JavaScript");
+  const cookie = sessionCookie(verified);
+  assert.match(cookie, /^__Host-solana_bot_session=[0-9a-f-]{36}$/i);
+  assert.match(verified.headers.get("set-cookie"), /HttpOnly; Secure; SameSite=Lax/);
 
   const replay = await post("/api/login/totp", {
     challengeId: challenge.challengeId,
@@ -201,8 +214,9 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
-  const { token } = await login.json();
-  const authHeader = { Authorization: "Bearer " + token };
+  const authCookie = sessionCookie(login);
+  assert.ok(authCookie);
+  const authHeader = { Cookie: authCookie };
 
   const setupWithoutPassword = await post("/api/totp/setup", {}, env, authHeader);
   assert.equal(setupWithoutPassword.status, 401);
@@ -214,8 +228,8 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
       "CF-Connecting-IP": "203.0.113.44"
     })
   ));
-  assert.equal(limitedSetupAttempts.filter(response => response.status === 401).length, 4);
-  assert.equal(limitedSetupAttempts.filter(response => response.status === 429).length, 1);
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 401).length, 3);
+  assert.equal(limitedSetupAttempts.filter(response => response.status === 429).length, 2);
   const setup = await post("/api/totp/setup", { password: LOGIN_PASSWORD }, env, authHeader);
   assert.equal(setup.status, 200);
   const setupBody = await setup.json();
@@ -227,7 +241,7 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const confirmed = await confirm.json();
   assert.equal(typeof confirmed.backupCode, "string");
 
-  const profile = await get("/api/profile", env, token);
+  const profile = await get("/api/profile", env, authCookie);
   assert.equal(profile.status, 200);
   assert.equal((await profile.json()).totpEnabled, true);
 
@@ -236,33 +250,68 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await nextLogin.json()).mfaRequired, true);
 });
 
-test("Worker logout revokes the bearer session immediately", async () => {
+test("legacy authenticated sessions contain no trading principal or wallet authority", async () => {
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
-  const { token } = await login.json();
+  const loginBody = await login.json();
+  assert.equal(loginBody.token, undefined, "session token must never be exposed to JavaScript");
+  const setCookie = login.headers.get("set-cookie") || "";
+  assert.match(setCookie, /^__Host-solana_bot_session=[0-9a-f-]{36}; Path=\/; Max-Age=\d+; HttpOnly; Secure; SameSite=Lax$/i);
+  const cookie = sessionCookie(login);
+  const token = sessionId(cookie);
+  assert.ok(token);
+  const record = await env.BOT_STATE.get("session:" + token, "json");
 
-  const beforeLogout = await get("/api/profile", env, token);
+  assert.deepEqual(Object.keys(record).sort(), ["expiresAt", "subject"]);
+  assert.equal(record.subject, "admin");
+  assert.equal(Number.isFinite(record.expiresAt), true);
+  assert.equal(record.principalId, undefined);
+  assert.equal(record.walletPublicKey, undefined);
+  assert.equal(record.walletBindingVersion, undefined);
+
+  // The legacy session can still reach its existing profile route, but
+  // must not expose any future wallet-binding or order-intent capability.
+  for (const route of [
+    "/api/live",
+    "/api/wallet/enroll",
+    "/api/wallet/bindings",
+    "/api/order-intents"
+  ]) {
+    const response = await get(route, env, cookie);
+    assert.equal(response.status, 404, `future trading route ${route} must remain absent`);
+  }
+});
+
+test("Worker logout revokes the HttpOnly cookie session immediately", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const cookie = sessionCookie(login);
+  const token = sessionId(cookie);
+
+  const beforeLogout = await get("/api/profile", env, cookie);
   assert.equal(beforeLogout.status, 200);
 
   const logout = await post("/api/logout", {}, env, {
-    Authorization: "Bearer " + token
+    Cookie: cookie
   });
   assert.equal(logout.status, 200);
   assert.equal(await env.BOT_STATE.get("session:" + token, "json"), null);
 
-  const afterLogout = await get("/api/profile", env, token);
+  assert.match(logout.headers.get("set-cookie"), /Max-Age=0/);
+  const afterLogout = await get("/api/profile", env, cookie);
   assert.equal(afterLogout.status, 401);
 });
 
-test("Worker rejects expired bearer sessions", async () => {
+test("Worker rejects expired cookie sessions", async () => {
   const { env } = makeEnvironment();
   const token = "123e4567-e89b-42d3-a456-426614174000";
   await env.BOT_STATE.put("session:" + token, JSON.stringify({
     expiresAt: Date.now() - 1
   }));
 
-  const response = await get("/api/profile", env, token);
+  const response = await get("/api/profile", env, "__Host-solana_bot_session=" + token);
   assert.equal(response.status, 401);
 });
 
@@ -310,6 +359,25 @@ test("Worker dashboard HTML responses use a fresh nonce-based CSP", async () => 
   assert.notEqual(nonce, "static-nonce");
 });
 
+
+test("Worker dashboard CSP nonce is unique for each HTML response", async () => {
+  const { env } = makeEnvironment();
+  env.ASSETS = {
+    fetch: async () => new Response("<!doctype html><script>window.app=1</script>", {
+      headers: { "Content-Type": "text/html; charset=utf-8" }
+    })
+  };
+  const first = await worker.fetch(new Request("https://bot.example/"), env);
+  const second = await worker.fetch(new Request("https://bot.example/"), env);
+  const firstPolicy = first.headers.get("content-security-policy");
+  const secondPolicy = second.headers.get("content-security-policy");
+  const firstNonce = firstPolicy.match(/script-src 'nonce-([^']+)'/)[1];
+  const secondNonce = secondPolicy.match(/script-src 'nonce-([^']+)'/)[1];
+  assert.notEqual(firstNonce, secondNonce, "separate responses must not reuse a CSP nonce");
+  assert.ok((await first.text()).includes('<script nonce="' + firstNonce + '">'));
+  assert.ok((await second.text()).includes('<script nonce="' + secondNonce + '">'));
+});
+
 test("Worker rejects malformed and oversized session identifiers before authorization", async () => {
   const { env } = makeEnvironment();
   for (const token of [
@@ -323,10 +391,11 @@ test("Worker rejects malformed and oversized session identifiers before authoriz
   }
 });
 
-test("Worker requires a strict Bearer header for dashboard sessions", async () => {
+test("Worker accepts only a valid administrator HttpOnly session cookie", async () => {
   const { env } = makeEnvironment();
   const token = "123e4567-e89b-42d3-a456-426614174000";
   await env.BOT_STATE.put("session:" + token, JSON.stringify({
+    subject: "admin",
     expiresAt: Date.now() + 60_000
   }));
 
@@ -343,9 +412,14 @@ test("Worker requires a strict Bearer header for dashboard sessions", async () =
     assert.equal(response.status, 401, authorization);
   }
 
-  const valid = await worker.fetch(new Request("https://bot.example/api/profile", {
-    headers: { Authorization: "Bearer " + token }
-  }), env);
+  const missingSubject = "123e4567-e89b-42d3-a456-426614174001";
+  await env.BOT_STATE.put("session:" + missingSubject, JSON.stringify({
+    expiresAt: Date.now() + 60_000
+  }));
+  const unbound = await get("/api/profile", env, "__Host-solana_bot_session=" + missingSubject);
+  assert.equal(unbound.status, 401);
+
+  const valid = await get("/api/profile", env, "__Host-solana_bot_session=" + token);
   assert.equal(valid.status, 200);
 });
 
@@ -427,8 +501,9 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
-  const { token } = await login.json();
-  const headers = { Authorization: "Bearer " + token };
+  const cookie = sessionCookie(login);
+  assert.ok(cookie);
+  const headers = { Cookie: cookie };
 
   const valid = await post("/api/automation", { enabled: true, paused: false }, env, headers);
   assert.equal(valid.status, 200);
@@ -443,7 +518,7 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
   const oversized = await post("/api/automation", { enabled: true, padding: "x".repeat(5000) }, env, headers);
   assert.equal(oversized.status, 400);
 
-  const state = await (await get("/api/state", env, token)).json();
+  const state = await (await get("/api/state", env, cookie)).json();
   assert.equal(state.autoEnabled, true);
   assert.equal(state.balance, 100);
 });
@@ -453,9 +528,10 @@ test("Worker exposes one-time paper-state migration and rejects stale repeat wri
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(login.status, 200);
-  const { token } = await login.json();
+  const cookie = sessionCookie(login);
+  assert.ok(cookie);
 
-  const initialResponse = await get("/api/state", env, token);
+  const initialResponse = await get("/api/state", env, cookie);
   assert.equal(initialResponse.status, 200);
   const initial = await initialResponse.json();
   assert.equal(initial.canMigrateLegacy, true);
@@ -468,7 +544,7 @@ test("Worker exposes one-time paper-state migration and rejects stale repeat wri
     autoEnabled: false,
     paused: false,
     scannedMints: []
-  }, env, token);
+  }, env, cookie);
   assert.equal(migration.status, 200);
   const migrated = await migration.json();
   assert.equal(migrated.state.balance, 82.5);
@@ -481,10 +557,10 @@ test("Worker exposes one-time paper-state migration and rejects stale repeat wri
     autoEnabled: false,
     paused: false,
     scannedMints: []
-  }, env, token);
+  }, env, cookie);
   assert.equal(stale.status, 409);
 
-  const currentResponse = await get("/api/state", env, token);
+  const currentResponse = await get("/api/state", env, cookie);
   const current = await currentResponse.json();
   assert.equal(current.balance, 82.5);
   assert.equal(current.canMigrateLegacy, false);

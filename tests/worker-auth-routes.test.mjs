@@ -12,9 +12,17 @@ const authGuard = workerSource.indexOf(
 const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/setup"');
 const totpConfirmRoute = workerSource.indexOf('if (url.pathname === "/api/totp/confirm"');
 
-test("worker session authorization requires one exact Bearer token without whitespace", () => {
-  assert.ok(workerSource.includes(String.raw`const match = /^Bearer ([^\s]+)$/i.exec(authorization);`));
-  assert.ok(workerSource.includes("if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token))"));
+test("worker session authorization parses only a bounded UUID from the HttpOnly cookie", () => {
+  assert.ok(workerSource.includes('request.headers.get("Cookie")'));
+  assert.ok(workerSource.includes('const token = match ? match[1] : ""'));
+  assert.ok(workerSource.includes("function sessionCookieResponse(data, token"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Lax"));
+});
+
+test("both password-only and MFA login paths issue the generated session token only as an HttpOnly cookie", () => {
+  assert.equal(workerSource.split('return sessionCookieResponse({ ok: true }, token);').length - 1, 2);
+  assert.equal(workerSource.includes('return json({ ok: true, token });'), false);
+  assert.ok(workerSource.includes('return sessionCookieResponse({ ok: true, message: "Session revoked" }, "", 0);'));
 });
 
 test("private API authentication guard precedes private route handlers", () => {
@@ -130,4 +138,52 @@ test("live coordinator remains isolated until semantic verification and all-in c
   assert.equal(workerSource.includes('url.pathname.startsWith("/api/live/")'), false);
   assert.equal(workerSource.includes('url.pathname === "/api/live"'), false);
   assert.ok(workerSource.includes('if (!isDashboardHtml) return json({ error: "Not found" }, 404);'));
+});
+
+
+test("all private API routes consume a transactional per-IP rate limit after session authentication", () => {
+  const router = workerSource.indexOf('if (url.pathname.startsWith("/api/"))');
+  const sessionGuard = workerSource.indexOf('if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);', router);
+  const rateLimit = workerSource.indexOf("const ratePolicy =", router);
+  const routeHandler = workerSource.indexOf('if (url.pathname === "/api/logout"', router);
+  assert.ok(sessionGuard > router);
+  assert.ok(rateLimit > sessionGuard, "rate limit must run after authentication");
+  assert.ok(routeHandler > rateLimit, "rate limit must run before route handlers");
+  assert.ok(workerSource.includes('scope: "api-paper-buy", limit: 5, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-market-prices", limit: 20, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-automation", limit: 10, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-write", limit: 30, windowMs: 60000'));
+  assert.ok(workerSource.includes('scope: "api-read", limit: 100, windowMs: 60000'));
+  assert.ok(workerSource.includes('operation: "consume-rate-limit", scope: bucket, limit, windowMs'));
+});
+
+test("login, TOTP, and TOTP enrollment have dedicated request throttles", () => {
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "login-request", 8, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-request", 8, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-setup", 3, 900000)'));
+  assert.ok(workerSource.includes('enforceApiRateLimit(env, request, "totp-confirm", 5, 900000)'));
+  assert.ok(workerSource.includes("Rate limiting is a security boundary: fail closed"));
+});
+
+test("sessions are bound to the administrator principal and reject unbound or malformed expiry state", () => {
+  assert.ok(workerSource.includes('session.subject === "admin"'));
+  assert.ok(workerSource.includes("Number.isSafeInteger(session.expiresAt) && session.expiresAt > Date.now()"));
+  assert.equal(workerSource.split('JSON.stringify({ subject: "admin", expiresAt })').length - 1, 2,
+    "password-only and MFA-completed login must issue identically bound sessions");
+  assert.equal(workerSource.includes("return !!session && session.expiresAt > Date.now();"), false,
+    "legacy sessions without an explicit principal must fail closed");
+});
+
+test("browser sessions use Secure HttpOnly SameSite cookies instead of JavaScript-readable bearer tokens", () => {
+  assert.ok(workerSource.includes("function sessionTokenFromCookie(request)"));
+  assert.ok(workerSource.includes("HttpOnly; Secure; SameSite=Lax"));
+  assert.ok(workerSource.includes('request.headers.get("Cookie")'));
+  assert.ok(workerSource.includes('session.subject === "admin"'));
+  assert.equal(workerSource.includes('const authorization = request.headers.get("Authorization")'), false,
+    "browser bearer authorization must not be accepted; internal AuthGuard authentication remains separate");
+  assert.ok(dashboardSource.includes('credentials: "same-origin"'));
+  assert.ok(dashboardSource.includes('localStorage.removeItem("solanaBotSession")'));
+  assert.ok(dashboardSource.includes("browser token.\nlocalStorage.removeItem"), "legacy token cleanup must execute, not remain inside a comment");
+  assert.equal(dashboardSource.includes('localStorage.setItem("solanaBotSession"'), false);
+  assert.equal(dashboardSource.includes("serverToken"), false);
 });

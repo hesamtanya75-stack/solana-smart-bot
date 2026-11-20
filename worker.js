@@ -148,17 +148,28 @@ function constantTimeTextEqual(left, right) {
   return difference === 0;
 }
 
-async function authorized(request, env) {
-  const authorization = request.headers.get("Authorization") || "";
-  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+function sessionTokenFromCookie(request) {
+  const cookie = request.headers.get("Cookie") || "";
+  const match = /(?:^|;\s*)__Host-solana_bot_session=([0-9a-f-]{36})(?:;|$)/i.exec(cookie);
   const token = match ? match[1] : "";
-  // Session identifiers are minted with crypto.randomUUID(); require the
-  // exact Bearer scheme and reject malformed or oversized values before KV.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
-    return false;
-  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)
+    ? token : "";
+}
+function sessionCookieResponse(data, token, maxAge = Math.ceil(SESSION_MS / 1000)) {
+  const response = json(data);
+  const headers = new Headers(response.headers);
+  const value = token
+    ? `__Host-solana_bot_session=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`
+    : `__Host-solana_bot_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+  headers.append("Set-Cookie", value);
+  return new Response(response.body, { status: response.status, headers });
+}
+async function authorized(request, env) {
+  const token = sessionTokenFromCookie(request);
+  if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  return !!session && session.expiresAt > Date.now();
+  return !!session && session.subject === "admin" &&
+    Number.isSafeInteger(session.expiresAt) && session.expiresAt > Date.now();
 }
 function sameOriginApiRequest(request, url) {
   if (!url.pathname.startsWith("/api/") ||
@@ -703,6 +714,25 @@ async function recordAuthFailure(env, scope) {
 async function authFailureScope(prefix, ip) {
   return prefix + ":" + await hashText(ip);
 }
+async function enforceApiRateLimit(env, request, scope, limit, windowMs) {
+  try {
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const bucket = scope + ":" + await hashText(ip);
+    const result = await authGuardCall(env, {
+      operation: "consume-rate-limit", scope: bucket, limit, windowMs
+    });
+    if (result.limited) {
+      return json({
+        error: "زۆر داواکاری نێردراوە؛ تکایە دوای چەند چرکەیەک دووبارە هەوڵ بدە.",
+        retryAfterSeconds: Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))
+      }, 429);
+    }
+    return null;
+  } catch {
+    // Rate limiting is a security boundary: fail closed if its Durable Object is unavailable.
+    return json({ error: "پاراستنی داواکارییەکان بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+  }
+}
 async function clearAuthFailures(env, scope) {
   return authGuardCall(env, { operation: "clear-failures", scope });
 }
@@ -723,6 +753,8 @@ export default {
       return json({ ok: true, build, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
+      const limited = await enforceApiRateLimit(env, request, "login-request", 8, 900000);
+      if (limited) return limited;
       try {
         const { password } = await readBoundedJson(request, 4096);
         const expected = env.BOT_LOGIN_PASSWORD;
@@ -747,11 +779,13 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return sessionCookieResponse({ ok: true }, token);
       } catch { return json({ error: "خزمەتگوزاری چوونەژوورەوە ئامادە نییە" }, 503); }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
+      const limited = await enforceApiRateLimit(env, request, "totp-request", 8, 900000);
+      if (limited) return limited;
       try {
         const { challengeId, code } = await readBoundedJson(request, 4096);
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
@@ -778,17 +812,28 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-        return json({ ok: true, token });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ subject: "admin", expiresAt }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return sessionCookieResponse({ ok: true }, token);
       } catch { return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 503); }
     }
     if (url.pathname.startsWith("/api/")) {
       if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      const ratePolicy = url.pathname === "/api/paper/buy"
+        ? { scope: "api-paper-buy", limit: 5, windowMs: 60000 }
+        : url.pathname === "/api/market-prices"
+          ? { scope: "api-market-prices", limit: 20, windowMs: 60000 }
+          : url.pathname === "/api/automation"
+            ? { scope: "api-automation", limit: 10, windowMs: 60000 }
+            : ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())
+              ? { scope: "api-write", limit: 30, windowMs: 60000 }
+              : { scope: "api-read", limit: 100, windowMs: 60000 };
+      const limited = await enforceApiRateLimit(env, request, ratePolicy.scope, ratePolicy.limit, ratePolicy.windowMs);
+      if (limited) return limited;
       if (url.pathname === "/api/logout" && request.method === "POST") {
-        const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+        const token = sessionTokenFromCookie(request);
         if (!token) return json({ error: "Unauthorized" }, 401);
         await env.BOT_STATE.delete("session:" + token);
-        return json({ ok: true, message: "Session revoked" });
+        return sessionCookieResponse({ ok: true, message: "Session revoked" }, "", 0);
       }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
@@ -817,6 +862,8 @@ export default {
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
+        const limited = await enforceApiRateLimit(env, request, "totp-setup", 3, 900000);
+        if (limited) return limited;
         let reauth;
         try { reauth = await readBoundedJson(request, 4096); }
         catch { return json({ error: "پشتڕاستکردنەوەی وشەی نهێنی پێویستە" }, 400); }
@@ -844,6 +891,8 @@ export default {
         return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
       }
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        const limited = await enforceApiRateLimit(env, request, "totp-confirm", 5, 900000);
+        if (limited) return limited;
         try {
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           const failureScope = await authFailureScope("totp", ip);

@@ -1018,3 +1018,50 @@ test("confirmation rejects finalized all-in cost evidence that differs from the 
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+
+
+test("reservation rejects compute-unit prices outside the Solana u64 range", async () => {
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    costs: {
+      ...trustedEvidence().costs,
+      computeUnitPriceMicroLamports: "18446744073709551616",
+      computeUnitLimit: 1,
+      maxPriorityFeeLamports: 18446744073710
+    }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const result = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-u64-price"
+  }));
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /compute budget evidence is invalid/);
+});
+
+
+test("reservation fails closed unless trusted evidence attests complete semantic route verification", async () => {
+  for (const sellRoute of [
+    { semanticInstructionVerification: false, routeVerification: "unsigned-structure-and-alt-only" },
+    { semanticInstructionVerification: false, routeVerification: "build-envelope-only" },
+    { semanticInstructionVerification: true, routeVerification: "unsigned-structure-and-alt-only" },
+    null
+  ]) {
+    let evidenceCalls = 0;
+    const { coordinator, storage } = makeCoordinator(async () => {
+      evidenceCalls += 1;
+      return trustedEvidence({
+        risk: {
+          ...trustedEvidence().risk,
+          sellRoute
+        }
+      });
+    });
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "semantic-gate-" + String(evidenceCalls).padStart(8, "0")
+    }));
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /instruction semantics and lookup tables are not verified/);
+    assert.equal(evidenceCalls, 1);
+    assert.equal(Object.keys((await storage.get("coordinator_state")).reservations).length, 0);
+  }
+});

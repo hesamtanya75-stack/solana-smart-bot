@@ -30,6 +30,72 @@ function makeGuard() {
   return { guard: new AuthGuard({ storage }, {}), storage };
 }
 
+test("quote rate limit is atomic, bounded, and expires its window", async () => {
+  const { guard, storage } = makeGuard();
+  const concurrent = await Promise.all(Array.from({ length: 20 }, () =>
+    guard.consumeRateLimit("quote:session-a", 1000, 5, 60000)
+  ));
+  assert.equal(concurrent.filter(result => !result.limited).length, 5);
+  assert.equal(concurrent.filter(result => result.limited).length, 15);
+  assert.equal(await guard.consumeRateLimit("quote:session-a", 60999, 5, 60000).then(result => result.limited), true);
+  assert.equal(await guard.consumeRateLimit("quote:session-a", 61000, 5, 60000).then(result => result.limited), false);
+  assert.equal(await guard.consumeRateLimit("quote:session-b", 61000, 5, 60000).then(result => result.limited), false);
+  const state = storage.values.get("auth_guard_state");
+  assert.equal(Object.keys(state.rateLimits).length, 2);
+  await assert.rejects(() => guard.consumeRateLimit("bad scope", 62000));
+  await assert.rejects(() => guard.consumeRateLimit("quote:session-a", 62000, 0, 60000));
+});
+
+test("quote rate-limit buckets fail closed on corrupted state and at capacity", async () => {
+  const { guard, storage } = makeGuard();
+  const state = {
+    initialized: false, backupHash: null, lastTotpCounter: -1,
+    failures: {}, challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null,
+    rateLimits: Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [
+      "scope:quote:" + i, { count: 1, resetAt: 61000 }
+    ]))
+  };
+  storage.values.set("auth_guard_state", state);
+  const full = await guard.consumeRateLimit("quote:new-session", 1000, 10, 60000);
+  assert.deepEqual(full, { limited: true, remaining: 0, resetAt: 61000 });
+
+  state.rateLimits = { "scope:quote:corrupt": { count: "bad", resetAt: 61000 } };
+  storage.values.set("auth_guard_state", state);
+  const corrupt = await guard.consumeRateLimit("quote:corrupt", 1000, 10, 60000);
+  assert.equal(corrupt.limited, true);
+  assert.equal(corrupt.remaining, 0);
+  assert.equal(state.rateLimits["scope:quote:corrupt"].count, Number.MAX_SAFE_INTEGER);
+
+  state.rateLimits = [];
+  storage.values.set("auth_guard_state", state);
+  await assert.rejects(() => guard.consumeRateLimit("quote:session", 1000, 10, 60000));
+});
+
+test("rate-limit buckets with malformed expiry or entry shape fail closed", async () => {
+  const { guard, storage } = makeGuard();
+  const state = {
+    initialized: false, backupHash: null, lastTotpCounter: -1,
+    failures: {}, challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null,
+    rateLimits: {
+      "scope:bad-expiry": { count: 0, resetAt: "later" },
+      "scope:null-entry": null
+    }
+  };
+  storage.values.set("auth_guard_state", state);
+
+  const badExpiry = await guard.consumeRateLimit("bad-expiry", 1000, 10, 60000);
+  assert.equal(badExpiry.limited, true);
+  assert.equal(state.rateLimits["scope:bad-expiry"].count, Number.MAX_SAFE_INTEGER);
+  assert.equal(state.rateLimits["scope:bad-expiry"].resetAt, 61000);
+
+  const nullEntry = await guard.consumeRateLimit("null-entry", 1000, 10, 60000);
+  assert.equal(nullEntry.limited, true);
+  assert.equal(state.rateLimits["scope:null-entry"].count, Number.MAX_SAFE_INTEGER);
+  assert.equal(state.rateLimits["scope:null-entry"].resetAt, 61000);
+});
+
 test("only one concurrent request can consume a backup code", async () => {
   const { guard } = makeGuard();
   const hash = "a".repeat(64);
@@ -350,4 +416,38 @@ test("malformed persisted MFA attempt counters fail closed and invalidate the ch
     failureScope: "totp:corrupt-state"
   }), { ok: false, reason: "invalid-state" });
   assert.equal(storage.values.get("auth_guard_state").challenges[id], undefined);
+});
+
+
+test("internal consume-rate-limit operation honors route-specific limits and windows", async () => {
+  const token = "r".repeat(40);
+  const guard = new AuthGuard({ storage: new TransactionalStorage() }, {
+    AUTH_GUARD_INTERNAL_TOKEN: token
+  });
+  const call = async (now) => {
+    const response = await guard.fetch(new Request("https://internal.invalid/", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "consume-rate-limit",
+        scope: "api:paper-buy:ip-hash",
+        now,
+        limit: 2,
+        windowMs: 60000
+      })
+    }));
+    return { status: response.status, body: await response.json() };
+  };
+  assert.deepEqual(await call(1000), {
+    status: 200, body: { limited: false, remaining: 1, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(1001), {
+    status: 200, body: { limited: false, remaining: 0, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(1002), {
+    status: 200, body: { limited: true, remaining: 0, resetAt: 61000 }
+  });
+  assert.deepEqual(await call(61000), {
+    status: 200, body: { limited: false, remaining: 1, resetAt: 121000 }
+  });
 });
