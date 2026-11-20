@@ -11,7 +11,7 @@ The current Deno API stores paper state at the tuple key `["bot_state"]`; Cloudf
 Run this from a trusted computer with Node.js 20+. Do not put passwords, TOTP codes, tokens, or the exported state in Git, chat, issue comments, or shell history. Use a private terminal and environment variables populated through a secure prompt or secret manager.
 
 Required environment:
-- `DENO_API_URL`: current Deno Deploy application origin.
+- `DENO_API_URL`: optional override; defaults to `https://solana-smart-bot-17.hesamtanya75-stack.deno.net`.
 - `CLOUDFLARE_API_URL`: Cloudflare Worker origin for the intended environment.
 - `DENO_LOGIN_PASSWORD`: Deno administrator password.
 - `CLOUDFLARE_LOGIN_PASSWORD`: Cloudflare administrator password.
