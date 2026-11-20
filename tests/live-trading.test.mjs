@@ -231,7 +231,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
   assert.equal(result.instructionProgramInventory.instructionAccountPrivileges[0].programId,
     result.instructionProgramInventory.programIds[0].programId);
   assert.deepEqual(result.instructionProgramInventory.instructionAccountPrivileges[0].accounts,
-    privilegeAccounts);
+    result.transactionEvidence.compiledInstructions[0].accountKeyIndexes.map(index => privilegeAccounts[index]));
   assert.deepEqual(privilegeAccounts.slice(-2), [
     {
       pubkey: "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
@@ -305,7 +305,8 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
   assert.equal(result.instructionProgramInventory.instructionAccountPrivilegesDerived, true);
   assert.deepEqual(result.instructionProgramInventory.instructionAccountPrivileges[0].accounts,
-    result.instructionProgramInventory.messageAccountPrivileges.accounts);
+    result.transactionEvidence.compiledInstructions[0].accountKeyIndexes.map(index =>
+      result.instructionProgramInventory.messageAccountPrivileges.accounts[index]));
   assert.equal(result.instructionProgramInventory.messageAccountPrivileges.scope,
     "compiled-message-header-and-alt-partitions-only");
   assert.deepEqual(result.instructionProgramInventory.messageAccountPrivileges.accounts, [
