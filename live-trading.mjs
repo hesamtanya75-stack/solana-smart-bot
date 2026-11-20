@@ -78,7 +78,8 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       semanticInstructionVerification: false,
       cpiProgramIdsVerified: false,
       tokenBalanceEffectsVerified: false,
-      accountPrivilegesVerified: false
+      accountPrivilegesVerified: false,
+      programExecutableFlagsVerified: false
     });
   }
   if (!evidence || !Array.isArray(evidence.accountKeys) ||
@@ -119,7 +120,8 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     semanticInstructionVerification: false,
     cpiProgramIdsVerified: false,
     tokenBalanceEffectsVerified: false,
-    accountPrivilegesVerified: false
+    accountPrivilegesVerified: false,
+    programExecutableFlagsVerified: false
   });
 }
 
