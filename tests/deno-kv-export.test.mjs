@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   denoKvConnectUrl,
   isDefaultLookingState
-} from "../scripts/export-deno-kv-paper-state.mjs";
+} from "../scripts/deno-kv-export-core.mjs";
 
 test("builds only the official HTTPS KV Connect URL from a database ID", () => {
   assert.equal(
