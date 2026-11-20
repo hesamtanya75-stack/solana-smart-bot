@@ -113,6 +113,9 @@ export function normalizeSimulationBalanceObservation(input) {
       "innerInstructions", "loadedAccountsDataSize", "preBalances", "postBalances",
       "preTokenBalances", "postTokenBalances"],
     "Simulation value");
+  if (!Object.prototype.hasOwnProperty.call(value, "err")) {
+    throw new Error("Simulation value is missing the required err field");
+  }
   const preLamports = snapshotArray(value.preBalances, MAX_ACCOUNT_KEYS, "preBalances");
   const postLamports = snapshotArray(value.postBalances, MAX_ACCOUNT_KEYS, "postBalances");
   if (preLamports.length !== args.accountKeyCount || postLamports.length !== args.accountKeyCount) {
