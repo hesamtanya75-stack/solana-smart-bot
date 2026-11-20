@@ -1586,11 +1586,11 @@ non-canonical encodings that could otherwise be collapsed or interpreted
 differently by parsers. A regression test confirms an ambiguous duplicate
 sigVerify key is rejected before the injected fetch function is called.
 
-The recorded endpoint label contains only the HTTPS origin and pathname;
-query parameters are intentionally excluded and may still be present on the
-actual fetch URL. Therefore endpointIdentity is not a complete URL identity,
-does not attest which RPC provider answered, and must not be used as proof
-of response provenance. The transport continues to report
+The recorded endpoint label contains only the HTTPS origin and pathname.
+The adapter and transport now reject query-bearing endpoint URLs, so query
+parameters cannot silently affect routing while remaining outside the recorded
+identity. This does not attest which RPC provider answered or prove response
+provenance. The transport continues to report
 simulationInputIdentityVerified: false, signingPermitted: false, and
 submissionPermitted: false.
 
