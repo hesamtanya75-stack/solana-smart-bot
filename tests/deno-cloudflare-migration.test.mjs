@@ -4,7 +4,8 @@ import {
   validateDenoState,
   buildCloudflareImport,
   stateMatches,
-  canonicalJson
+  canonicalJson,
+  requireHttpsOrigin
 } from "../scripts/migrate-deno-to-cloudflare.mjs";
 
 test("validates and preserves the legacy Deno paper state", () => {
@@ -56,4 +57,11 @@ test("read-back comparison accepts only the exact normalized trade history", () 
 
 test("canonical JSON is independent of object key insertion order", () => {
   assert.equal(canonicalJson({ b: 2, a: 1 }), canonicalJson({ a: 1, b: 2 }));
+});
+
+test("migration endpoints must be HTTPS origins without embedded credentials", () => {
+  assert.equal(requireHttpsOrigin("https://example.com/path?x=1".replace("/path?x=1", "")), "https://example.com");
+  assert.throws(() => requireHttpsOrigin("http://example.com"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("https://user:pass@example.com"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("not a URL"), /valid absolute URL/);
 });
