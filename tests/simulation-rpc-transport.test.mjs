@@ -44,6 +44,11 @@ test("read-only transport sends exact request and binds matching response id and
   assert.equal(result.signingPermitted, false);
   assert.equal(result.submissionPermitted, false);
   assert.ok(Object.isFrozen(result));
+  assert.ok(Object.isFrozen(result.simulationResult));
+  assert.ok(Object.isFrozen(result.simulationResult.context));
+  assert.ok(Object.isFrozen(result.simulationResult.value));
+  assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions));
+  assert.throws(() => { result.simulationResult.value.err = "mutated"; }, TypeError);
 });
 
 test("read-only transport rejects requests that omit CPI inner-instruction capture", async () => {
