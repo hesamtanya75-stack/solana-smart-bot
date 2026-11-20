@@ -1521,7 +1521,7 @@ export async function verifyFinalizedJupiterSettlement({
   if (new Set(keyStrings).size !== keyStrings.length ||
       !validateDenseLamportBalances(meta.preBalances, keyStrings.length) ||
       !validateDenseLamportBalances(meta.postBalances, keyStrings.length)) {
-    throw new Error("Finalized transaction account indexes or lamport balances are inconsistent");
+    throw new Error("Finalized transaction metadata is incomplete or account indexes and lamport balances are inconsistent");
   }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
   // Solana's first required signer is the fee payer. Require the pinned bot
