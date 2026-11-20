@@ -1211,3 +1211,48 @@ test("non-finalized RPC status cannot confirm or release an ambiguous reservatio
   assert.equal(status.dailySpendUsdCents, 201);
 });
 
+test("pending reservation survives coordinator recreation after RPC outage and can reconcile only with finalized proof", async () => {
+  const { coordinator, storage } = makeCoordinator(undefined, async () => {
+    throw new Error("RPC provider unavailable");
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const reserved = await post(coordinator, "/reserve", validReservation());
+  assert.equal(reserved.status, 200);
+
+  const interrupted = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "C".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.notEqual(interrupted.status, 200);
+  const beforeRestart = await coordinator.status();
+  assert.equal(beforeRestart.openPositions, 1);
+  assert.equal(beforeRestart.dailySpendUsdCents, 201);
+
+  const recovered = new LiveTradeCoordinator({ storage }, {
+    COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters",
+    COORDINATOR_OPERATOR_TOKEN: "test-only-operator-token-32-characters",
+    LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000",
+    FETCH_TRUSTED_LIVE_EVIDENCE: async () => trustedEvidence(),
+    VERIFY_FINALIZED_SETTLEMENT: async args => ({
+      verified: true, signature: args.signature, inputMint: args.inputMint,
+      inputAmount: args.inputAmount, outputMint: args.outputMint,
+      outputAmount: args.outputAmount, owner: args.expectedOwner,
+      confirmationStatus: "finalized",
+      costs: fixtureSettlementCosts(args.inputAmount)
+    })
+  });
+  const afterRestart = await recovered.status();
+  assert.equal(afterRestart.openPositions, 1);
+  assert.equal(afterRestart.dailySpendUsdCents, 201);
+
+  const reconciled = await post(recovered, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "C".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(reconciled.status, 200);
+  assert.equal(reconciled.body.reservation.status, "confirmed");
+  assert.equal((await recovered.status()).openPositions, 1);
+});
+
