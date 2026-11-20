@@ -50,9 +50,12 @@ test("read-back comparison accepts only the exact normalized trade history", () 
     trades: [{ mint: "mint", amount: 5, buyPrice: 2, tokens: 2.5 }]
   };
   const normalized = buildCloudflareImport(source);
-  assert.equal(stateMatches(source, { balance: 42, trades: normalized.trades }), true);
-  assert.equal(stateMatches(source, { balance: 41, trades: normalized.trades }), false);
-  assert.equal(stateMatches(source, { balance: 42, trades: [] }), false);
+  const verified = { balance: 42, trades: normalized.trades, autoEnabled: false, paused: true };
+  assert.equal(stateMatches(source, verified), true);
+  assert.equal(stateMatches(source, { ...verified, balance: 41 }), false);
+  assert.equal(stateMatches(source, { ...verified, trades: [] }), false);
+  assert.equal(stateMatches(source, { ...verified, autoEnabled: true }), false);
+  assert.equal(stateMatches(source, { ...verified, paused: false }), false);
 });
 
 test("canonical JSON is independent of object key insertion order", () => {
