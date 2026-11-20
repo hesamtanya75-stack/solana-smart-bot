@@ -1220,7 +1220,7 @@ The normalizer now accepts only the documented inner-instruction group fields an
 
 ### Preserved CPI payload diagnostics
 
-For each supported inner-instruction observation, the normalizer now preserves optional base64 instruction data (after canonical base64 and size checks) and optional stack height (after range checks), alongside the bounded account indexes and program index. Missing optional fields remain null. The payload is retained only as opaque diagnostic evidence: no discriminator decoding, program identity resolution, account-key authentication, or semantic trust is inferred from it.
+For each supported inner-instruction observation, the normalizer now preserves optional base64 instruction data (after base58 alphabet and size checks) and optional stack height (after range checks), alongside the bounded account indexes and program index. Missing optional fields remain null. The payload is retained only as opaque diagnostic evidence: no discriminator decoding, program identity resolution, account-key authentication, or semantic trust is inferred from it.
 
 
-Base64 validation also enforces zero-valued unused padding bits, so alternate non-canonical encodings of the same trailing bytes are rejected. This is input hygiene only; accepted CPI data remains opaque diagnostic material and is not decoded into trusted instruction semantics.
+Solana UiCompiledInstruction.data is base58-encoded. The observation validator therefore accepts only the base58 alphabet and applies a strict size bound; it does not decode instruction payloads or infer trusted semantics.
