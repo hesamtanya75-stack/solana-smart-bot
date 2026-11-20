@@ -2544,3 +2544,28 @@ test("CPI resolution revalidates complete and incomplete stack-height declaratio
     trustedMessageEvidence: evidence
   }), /stack-height structure is inconsistent/);
 });
+
+
+test("settlement proof rejects noncanonical or out-of-u64 reserved amounts before RPC", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(10));
+  const fetchImpl = async () => {
+    throw new Error("RPC must not be called for invalid reserved amounts");
+  };
+  const base = {
+    signature,
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputAmount: "1",
+    outputAmount: "1"
+  };
+  for (const inputAmount of ["01", "18446744073709551616", "0", "-1"]) {
+    await assert.rejects(verifyFinalizedJupiterSettlement({
+      ...base, inputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+  for (const outputAmount of ["01", "18446744073709551616", "0", "-1"]) {
+    await assert.rejects(verifyFinalizedJupiterSettlement({
+      ...base, outputAmount
+    }, fetchImpl), /incomplete or invalid/);
+  }
+});
