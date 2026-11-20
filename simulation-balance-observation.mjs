@@ -119,6 +119,10 @@ export function normalizeSimulationBalanceObservation(input) {
   if (!Object.prototype.hasOwnProperty.call(value, "err")) {
     throw new Error("Simulation value is missing the required err field");
   }
+  const feeLamports = value.fee === undefined ? null : value.fee;
+  if (feeLamports !== null && (!Number.isSafeInteger(feeLamports) || feeLamports < 0)) {
+    throw new Error("Simulation fee is not a nonnegative safe integer");
+  }
   const preLamports = snapshotArray(value.preBalances, MAX_ACCOUNT_KEYS, "preBalances");
   const postLamports = snapshotArray(value.postBalances, MAX_ACCOUNT_KEYS, "postBalances");
   if (preLamports.length !== args.accountKeyCount || postLamports.length !== args.accountKeyCount) {
@@ -174,6 +178,7 @@ export function normalizeSimulationBalanceObservation(input) {
     scope: "simulation-balance-observation-only",
     contextSlot: context.slot,
     simulationSucceeded: value.err === null,
+    feeLamports,
     solLamportDeltas: Object.freeze(lamportDeltas),
     tokenDeltas: Object.freeze(tokenDeltas),
     tokenRecordsUnpaired: tokenDeltas.some(item => item.status !== "paired-diagnostic-only"),
