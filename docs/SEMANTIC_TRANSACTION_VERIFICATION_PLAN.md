@@ -1201,3 +1201,8 @@ The transport accepts only the adapter's simulation request shape, verifies the 
 The returned record binds the observed response to the request ID and sanitized endpoint identity and preserves the transaction digest and simulation result. It deliberately reports `simulationInputIdentityVerified: false`: a matching JSON-RPC ID and endpoint do not cryptographically prove that the remote RPC executed those exact transaction bytes or that future execution will match. This wrapper is read-only observation plumbing, not semantic verification or execution authorization. No live coordinator, signer, or transaction submission path calls it.
 
 Tests cover successful mock transport, response ID mismatch, RPC errors, invalid context, endpoint mismatch, altered request bytes, HTTP failure, oversized response, and attempted execution-permission escalation.
+
+
+### Simulation transport metadata hardening
+
+The response-binding transport now snapshots an exact allowlisted set of own data properties from its request record before reading values. It rejects missing, extra, symbol-keyed, or accessor-backed request fields without invoking getters. It also requires the request's response-identity flag to remain false and checks the expected digest provenance label. A regression test proves an accessor-backed request body is rejected before transport and its getter is never invoked.
