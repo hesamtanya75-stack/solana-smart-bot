@@ -53,6 +53,57 @@ function validateJupiterOrderRoutePlan(routePlan) {
   return true;
 }
 
+const REVIEWED_PROGRAM_IDS = new Set([
+  "11111111111111111111111111111111",
+  "ComputeBudget111111111111111111111111111111",
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+]);
+
+/**
+ * Inventory compiled instruction program IDs after message/ALT validation.
+ * This is identifier inventory only; it does not decode or approve semantics.
+ */
+function inventoryUnsignedInstructionPrograms(evidence) {
+  if (!evidence || !Array.isArray(evidence.accountKeys) ||
+      !Array.isArray(evidence.compiledInstructions) ||
+      evidence.compiledInstructions.length === 0 ||
+      evidence.compiledInstructions.length > 256) {
+    throw new Error("Unsigned transaction instruction inventory is incomplete");
+  }
+  const counts = new Map();
+  for (const instruction of evidence.compiledInstructions) {
+    if (!instruction || !Number.isInteger(instruction.programIdIndex) ||
+        instruction.programIdIndex < 0 ||
+        instruction.programIdIndex >= evidence.accountKeys.length) {
+      throw new Error("Unsigned transaction contains an invalid program index");
+    }
+    const programId = evidence.accountKeys[instruction.programIdIndex];
+    if (typeof programId !== "string" || !BASE58.test(programId)) {
+      throw new Error("Unsigned transaction contains an invalid program address");
+    }
+    counts.set(programId, (counts.get(programId) || 0) + 1);
+  }
+  const programIds = [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([programId, instructionCount]) => Object.freeze({
+      programId,
+      instructionCount,
+      decoderRegistryRecognized: REVIEWED_PROGRAM_IDS.has(programId)
+    }));
+  const unsupportedProgramIds = programIds
+    .filter(item => !item.decoderRegistryRecognized)
+    .map(item => item.programId);
+  return Object.freeze({
+    scope: "compiled-program-id-inventory-only",
+    instructionCount: evidence.compiledInstructions.length,
+    programIds: Object.freeze(programIds),
+    unsupportedProgramIds: Object.freeze(unsupportedProgramIds),
+    allProgramsRecognized: unsupportedProgramIds.length === 0,
+    semanticInstructionVerification: false
+  });
+}
+
 function finitePositive(value, name) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error(name + " must be a positive finite number");
@@ -181,6 +232,7 @@ async function getJupiterOrder({
   const transactionEvidence = await validateAndResolveUnsignedJupiterTransaction(
     order.transaction, policy.wallet, fetchImpl
   );
+  const instructionProgramInventory = inventoryUnsignedInstructionPrograms(transactionEvidence);
   return Object.freeze({
     requestId: order.requestId, transaction: order.transaction,
     inputMint, outputMint, inputAmount: String(amountLamports),
@@ -188,6 +240,7 @@ async function getJupiterOrder({
     transactionVersion: transactionEvidence.messageVersion,
     feeBps: order.feeBps != null && Number.isFinite(Number(order.feeBps)) ? Number(order.feeBps) : null,
     transactionEvidence,
+    instructionProgramInventory,
     // An unsigned Jupiter payload is inspection evidence only. It is never
     // approval to sign or submit, even when structural/ALT checks pass.
     analysisOnly: true,
