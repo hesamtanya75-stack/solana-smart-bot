@@ -2758,3 +2758,98 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /decimals are malformed/);
 });
+
+
+test("finalized settlement maps v0 token balance indexes after writable then readonly lookup addresses", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(13));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 128,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [
+          BOT_WALLET,
+          "11111111111111111111111111111112",
+          "11111111111111111111111111111113"
+        ],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111114",
+          writableIndexes: [0],
+          readonlyIndexes: [1]
+        }]
+      }
+    },
+    meta: {
+      err: null,
+      fee: 5000,
+      preBalances: [100000, 0, 0, 0, 0],
+      postBalances: [95000, 0, 0, 0, 0],
+      loadedAddresses: {
+        writable: ["11111111111111111111111111111115"],
+        readonly: ["11111111111111111111111111111116"]
+      },
+      preTokenBalances: [
+        { mint: inputMint, owner: BOT_WALLET, accountIndex: 3,
+          uiTokenAmount: { amount: "10", decimals: 9 } },
+        { mint: outputMint, owner: BOT_WALLET, accountIndex: 4,
+          uiTokenAmount: { amount: "2", decimals: 6 } }
+      ],
+      postTokenBalances: [
+        { mint: inputMint, owner: BOT_WALLET, accountIndex: 3,
+          uiTokenAmount: { amount: "7", decimals: 9 } },
+        { mint: outputMint, owner: BOT_WALLET, accountIndex: 4,
+          uiTokenAmount: { amount: "5", decimals: 6 } }
+      ]
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  const proof = await verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "3", outputAmount: "3"
+  }, fetchImpl);
+  assert.equal(proof.verified, true);
+  assert.equal(proof.proofScope, "finalized-owner-scoped-token-balance-deltas");
+  assert.equal(proof.semanticInstructionVerification, false);
+  assert.equal(proof.allInCostsVerified, false);
+});
+
+test("finalized settlement rejects v0 transactions missing loaded-address metadata", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(14));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const result = {
+    slot: 129,
+    transaction: {
+      signatures: [signature],
+      message: {
+        accountKeys: [BOT_WALLET],
+        addressTableLookups: [{
+          accountKey: "11111111111111111111111111111112",
+          writableIndexes: [0],
+          readonlyIndexes: []
+        }]
+      }
+    },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [], postTokenBalances: []
+    }
+  };
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const value = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : result;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: value }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /missing loaded address metadata/);
+});
