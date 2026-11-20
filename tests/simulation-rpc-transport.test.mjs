@@ -236,3 +236,21 @@ test("read-only transport rejects query-bearing endpoints not covered by endpoin
     fetchImpl: async () => { throw new Error("must not send query-routed request"); }
   }), /endpoint identity/);
 });
+
+
+test("read-only transport rejects duplicate JSON keys in RPC response before accepting it", async () => {
+  const request = await makeRequest();
+  const duplicateId = '{"jsonrpc":"2.0","id":22,"id":22,"result":{"context":{"slot":900},"value":{"err":null,"innerInstructions":[]}}}';
+  await assert.rejects(performReadOnlySimulation({
+    request,
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => new Response(duplicateId, { status: 200 })
+  }), /duplicate JSON object keys/);
+
+  const duplicateResult = '{"jsonrpc":"2.0","id":22,"result":{"context":{"slot":900},"value":{"err":null,"innerInstructions":[]}},"result":{"context":{"slot":901},"value":{"err":null,"innerInstructions":[]}}}';
+  await assert.rejects(performReadOnlySimulation({
+    request,
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => new Response(duplicateResult, { status: 200 })
+  }), /duplicate JSON object keys/);
+});
