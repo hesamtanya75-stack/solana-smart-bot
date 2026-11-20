@@ -1279,3 +1279,32 @@ Cloudflare preview build check completed successfully. The
 `funded-devnet-lifecycle` job remained skipped. PR #56 remains open and Draft;
 no merge, production deployment, signing, transaction submission, funded
 Devnet lifecycle, or Mainnet trading was performed.
+
+
+
+## PR #56 checkpoint — bounded CPI observations and validation — 2026-11-20
+
+The observation normalizer now enforces an aggregate ceiling of 4,096 inner
+instructions across all groups, in addition to the per-group and group-count
+bounds. A regression test exercises the aggregate-overflow case.
+
+The current PR head `d428894bfa4d60ad60b13875243b7d818145bb45` has completed
+all active checks successfully: Node tests, Worker validation, read-only
+Devnet validation, and the Cloudflare Workers preview build. The
+`funded-devnet-lifecycle` check is skipped because no explicit opt-in was
+provided.
+
+The read-only adapter and transport are now implemented and covered by mock
+tests. They bind the request body to its locally computed transaction digest,
+check the JSON-RPC response ID and local endpoint destination, cap response
+size, and freeze the returned JSON. These checks do not attest the remote
+provider's execution input or response origin.
+
+Remaining work is semantic, not transport plumbing: independently establish
+the RPC response's association with the exact message snapshot; decode a
+narrow, version-pinned set of CPI instructions and account roles; validate
+token-balance effects; and connect none of these claims to execution until
+separately reviewed. All semantic verification and execution-permission
+flags remain false. PR #56 remains open and Draft. No merge, production
+deployment, signing, transaction submission, funded Devnet lifecycle, or
+Mainnet trading was performed.
