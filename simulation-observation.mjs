@@ -102,14 +102,17 @@ function normalizeSimulationObservation({
       const rawAccountIndexes = Object.hasOwn(instruction, "accounts")
         ? ownData(instruction, "accounts", "Simulation inner instruction account indexes")
         : null;
+      let data = null;
       if (Object.hasOwn(instruction, "data")) {
-        const data = ownData(instruction, "data", "Simulation inner instruction data");
-        if (typeof data !== "string" || data.length > 8192) {
+        data = ownData(instruction, "data", "Simulation inner instruction data");
+        if (typeof data !== "string" || data.length > 8192 ||
+            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
           throw new Error("Simulation inner instruction data is malformed");
         }
       }
+      let stackHeight = null;
       if (Object.hasOwn(instruction, "stackHeight")) {
-        const stackHeight = ownData(instruction, "stackHeight", "Simulation inner instruction stack height");
+        stackHeight = ownData(instruction, "stackHeight", "Simulation inner instruction stack height");
         if (!Number.isInteger(stackHeight) || stackHeight < 1 || stackHeight > 256) {
           throw new Error("Simulation inner instruction stack height is invalid");
         }
@@ -126,7 +129,9 @@ function normalizeSimulationObservation({
       }
       return Object.freeze({
         programIdIndex,
-        accountIndexes
+        accountIndexes,
+        data,
+        stackHeight
       });
     });
     return Object.freeze({
