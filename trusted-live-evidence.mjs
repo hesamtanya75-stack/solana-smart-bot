@@ -822,6 +822,13 @@ async function fetchTrustedSellRoute(mint, priceUsd, supplyAmount, decimals, fet
 
 const ADDRESS_LOOKUP_TABLE_PROGRAM_ID = "AddressLookupTab1e1111111111111111111111111";
 const ALT_DEACTIVATION_SLOT_NEVER = 18446744073709551615n;
+// Private provenance registry: only this module can brand finalized, digest-bound evidence.
+const TRUSTED_UNSIGNED_MESSAGE_EVIDENCE = new WeakSet();
+
+export function isTrustedUnsignedMessageEvidence(value) {
+  return Boolean(value && typeof value === "object" &&
+    TRUSTED_UNSIGNED_MESSAGE_EVIDENCE.has(value));
+}
 
 /**
  * Resolves v0 lookup descriptors against finalized mainnet account state.
@@ -1021,13 +1028,22 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   const parsed = validateUnsignedJupiterTransaction(encoded, expectedSigner);
   if (parsed.addressLookupCount === 0) {
     const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
-    return Object.freeze({
+    const evidence = Object.freeze({
       ...parsed,
+      header: Object.freeze({
+        numRequiredSignatures: 1,
+        numReadonlySignedAccounts: 0,
+        numReadonlyUnsignedAccounts: parsed.numReadonlyUnsignedAccounts
+      }),
+      accountKeys: parsed.staticAccountKeys,
+      resolvedAddressTableLookups: Object.freeze([]),
       messageDigest,
       lookupTableResolution: "not-required",
       resolvedWritableAddresses: Object.freeze([]),
       resolvedReadonlyAddresses: Object.freeze([])
     });
+    TRUSTED_UNSIGNED_MESSAGE_EVIDENCE.add(evidence);
+    return evidence;
   }
   if (!Array.isArray(parsed.addressLookups) ||
       parsed.addressLookups.length !== parsed.addressLookupCount) {
@@ -1044,8 +1060,21 @@ export async function validateAndResolveUnsignedJupiterTransaction(
     throw new Error("Jupiter address lookup tables duplicate a static transaction account key");
   }
   const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
-  return Object.freeze({
+  const resolvedAddressTableLookups = Object.freeze(resolution.tables.map(table =>
+    Object.freeze({
+      writableAddresses: table.writable,
+      readonlyAddresses: table.readonly
+    })
+  ));
+  const evidence = Object.freeze({
     ...parsed,
+    header: Object.freeze({
+      numRequiredSignatures: 1,
+      numReadonlySignedAccounts: 0,
+      numReadonlyUnsignedAccounts: parsed.numReadonlyUnsignedAccounts
+    }),
+    accountKeys: Object.freeze(allMessageKeys),
+    resolvedAddressTableLookups,
     messageDigest,
     lookupTableResolution: "finalized-resolved",
     lookupContextSlot: resolution.contextSlot,
@@ -1053,6 +1082,8 @@ export async function validateAndResolveUnsignedJupiterTransaction(
     resolvedReadonlyAddresses: resolution.readonlyAddresses,
     semanticInstructionVerification: false
   });
+  TRUSTED_UNSIGNED_MESSAGE_EVIDENCE.add(evidence);
+  return evidence;
 }
 
 async function rpc(fetchImpl, method, params) {
