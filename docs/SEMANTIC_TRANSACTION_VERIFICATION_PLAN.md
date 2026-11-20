@@ -1216,3 +1216,8 @@ The simulation observation normalizer now optionally snapshots each inner instru
 ### CPI observation schema hardening
 
 The normalizer now accepts only the documented inner-instruction group fields and the supported RPC inner-instruction fields (`programIdIndex`, optional `accounts`, `data`, and `stackHeight`). Unknown keys, symbol keys, and accessor-backed properties are rejected before use. Optional data is length-bounded and optional stack height is range-checked. This remains diagnostic parsing only; it does not decode CPI payload semantics or authenticate the RPC's account-key ordering.
+
+
+### Preserved CPI payload diagnostics
+
+For each supported inner-instruction observation, the normalizer now preserves optional base64 instruction data (after canonical base64 and size checks) and optional stack height (after range checks), alongside the bounded account indexes and program index. Missing optional fields remain null. The payload is retained only as opaque diagnostic evidence: no discriminator decoding, program identity resolution, account-key authentication, or semantic trust is inferred from it.
