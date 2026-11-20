@@ -1,3 +1,63 @@
+
+function rejectDuplicateJsonObjectKeys(source) {
+  let offset = 0;
+  const whitespace = () => {
+    while (offset < source.length && /[\\t\\n\\r ]/.test(source[offset])) offset++;
+  };
+  function readString() {
+    const start = offset++;
+    while (offset < source.length) {
+      const character = source[offset++];
+      if (character === '"') return JSON.parse(source.slice(start, offset));
+      if (character === "\\\\") offset++;
+    }
+    throw new Error("Malformed JSON string");
+  }
+  function readValue() {
+    whitespace();
+    const character = source[offset];
+    if (character === '"') { readString(); return; }
+    if (character === "{") {
+      offset++;
+      whitespace();
+      const keys = new Set();
+      if (source[offset] === "}") { offset++; return; }
+      while (offset < source.length) {
+        whitespace();
+        if (source[offset] !== '"') throw new Error("Malformed JSON object key");
+        const key = readString();
+        if (keys.has(key)) throw new Error("JSON object contains duplicate keys");
+        keys.add(key);
+        whitespace();
+        if (source[offset++] !== ":") throw new Error("Malformed JSON object");
+        readValue();
+        whitespace();
+        const separator = source[offset++];
+        if (separator === "}") return;
+        if (separator !== ",") throw new Error("Malformed JSON object");
+      }
+      throw new Error("Malformed JSON object");
+    }
+    if (character === "[") {
+      offset++;
+      whitespace();
+      if (source[offset] === "]") { offset++; return; }
+      while (offset < source.length) {
+        readValue();
+        whitespace();
+        const separator = source[offset++];
+        if (separator === "]") return;
+        if (separator !== ",") throw new Error("Malformed JSON array");
+      }
+      throw new Error("Malformed JSON array");
+    }
+    while (offset < source.length && !/[\\s,\\]}]/.test(source[offset])) offset++;
+  }
+  readValue();
+  whitespace();
+  if (offset !== source.length) throw new Error("Malformed JSON document");
+}
+
 export function parseRpcResponse(payload, expectedId) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
       payload.id !== expectedId) {
@@ -42,7 +102,7 @@ export function parseRpcBatchResponse(payload, count) {
 
 export const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
 
-export async function readBoundedJsonResponse(response, maxBytes = MAX_PROVIDER_RESPONSE_BYTES) {
+export async function readBoundedJsonResponse(response, maxBytes = MAX_PROVIDER_RESPONSE_BYTES, options = {}) {
   if (!response || !response.body || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new Error("Provider response is missing a readable body or valid size limit");
   }
@@ -83,9 +143,18 @@ export async function readBoundedJsonResponse(response, maxBytes = MAX_PROVIDER_
   } catch {
     throw new Error("Provider response is not valid UTF-8");
   }
+  let parsed;
   try {
-    return JSON.parse(source);
+    parsed = JSON.parse(source);
   } catch {
     throw new Error("Provider response contains invalid JSON");
   }
+  if (options?.rejectDuplicateKeys === true) {
+    try {
+      rejectDuplicateJsonObjectKeys(source);
+    } catch {
+      throw new Error("Provider response contains duplicate JSON object keys");
+    }
+  }
+  return parsed;
 }
