@@ -109,7 +109,7 @@ export function normalizeSimulationBalanceObservation(input) {
     throw new Error("Simulation context slot is invalid");
   }
   const value = snapshotRecord(root.value,
-    ["err", "logs", "accounts", "returnData", "computeUnitsConsumed",
+    ["err", "logs", "accounts", "returnData", "unitsConsumed", "replacementBlockhash",
       "innerInstructions", "loadedAccountsDataSize", "preBalances", "postBalances",
       "preTokenBalances", "postTokenBalances"],
     "Simulation value");
