@@ -112,7 +112,7 @@ export async function performReadOnlySimulation(input) {
     throw new Error("Simulation RPC endpoint is invalid");
   }
   if (url.protocol !== "https:" || url.username || url.password || url.hash ||
-      url.origin + url.pathname !== request.endpoint) {
+      url.search || url.origin + url.pathname !== request.endpoint) {
     throw new Error("Simulation RPC endpoint identity does not match the immutable request");
   }
 
