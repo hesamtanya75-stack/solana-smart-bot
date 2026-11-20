@@ -79,7 +79,20 @@ export function normalizeBoundSimulationDiagnostics(input) {
   }
   const result = snapshot.simulationResult;
   if (!result || typeof result !== "object" || Array.isArray(result) ||
-      !result.context || result.context.slot !== snapshot.contextSlot) {
+      (Object.getPrototypeOf(result) !== Object.prototype && Object.getPrototypeOf(result) !== null)) {
+    throw new Error("Simulation response result is malformed");
+  }
+  const contextDescriptor = Object.getOwnPropertyDescriptor(result, "context");
+  if (!contextDescriptor || !Object.prototype.hasOwnProperty.call(contextDescriptor, "value") ||
+      !contextDescriptor.value || typeof contextDescriptor.value !== "object" ||
+      Array.isArray(contextDescriptor.value) ||
+      (Object.getPrototypeOf(contextDescriptor.value) !== Object.prototype &&
+       Object.getPrototypeOf(contextDescriptor.value) !== null)) {
+    throw new Error("Simulation response context is malformed or accessor-backed");
+  }
+  const slotDescriptor = Object.getOwnPropertyDescriptor(contextDescriptor.value, "slot");
+  if (!slotDescriptor || !Object.prototype.hasOwnProperty.call(slotDescriptor, "value") ||
+      slotDescriptor.value !== snapshot.contextSlot) {
     throw new Error("Simulation response context slot does not match its envelope");
   }
 
