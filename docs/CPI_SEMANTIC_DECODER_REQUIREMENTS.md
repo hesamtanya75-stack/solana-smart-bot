@@ -2,7 +2,7 @@
 
 ## Audit scope
 
-This note records the boundary of the current CPI observation and top-level instruction decoders. The latest validation checkpoint is PR #56 head `2ce7654049e1f9b1c0de3f6b6f9e706e5209f9f4`. It is a design/audit artifact only. It does not authorize reservations, signing, submission, deployment, or Mainnet trading.
+This note records the boundary of the current CPI observation and top-level instruction decoders. The latest validation checkpoint is PR #56 head `e48ffcc78eaf509c3b5e04130c015aae16792b60`. It is a design/audit artifact only. It does not authorize reservations, signing, submission, deployment, or Mainnet trading.
 
 ## Verified current implementation boundary
 
@@ -74,3 +74,16 @@ Code review of the current coordinator confirms it still requires a trusted all-
 The simulation balance helper remains a diagnostic normalizer. It does not authenticate token-account state, remote simulation identity, CPI effects, or all-in native SOL costs. Finalized settlement checks verify owner-scoped token deltas but explicitly leave whole-message semantic verification and all-in cost verification false.
 
 PR #56 remains open and Draft. No merge, production deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading has been performed.
+
+
+## Validation checkpoint — 2026-11-21 (head e48ffcc)
+
+The latest PR #56 head `e48ffcc78eaf509c3b5e04130c015aae16792b60` completed the following GitHub Actions validations:
+
+- Node tests run #1997: success. All 478 tests passed, including the isolated Durable Objects runtime, dependency audit gate, and ATA SDK workerd conditional-export check.
+- Cloudflare Worker build validation run #1503: success. Wrangler target validation and Worker build passed; no deployment was performed.
+- Devnet signed lifecycle validation run #1570: success. The read-only preflight confirmed the Devnet genesis hash and RPC health. Signing was not performed and zero transactions were submitted. The funded Devnet lifecycle job was skipped because explicit workflow-dispatch opt-in was not supplied.
+- The Devnet preflight could not validate holder concentration: the public RPC rate-limited holder enumeration. Holder metrics were null and the output explicitly warned that this was not a complete holder census or token-safety verdict.
+- External Deno Deploy status `deploy/hesamtanya75-stack/solana-smart-bot-17` remains failure. The available GitHub status links to the Deno Deploy console but does not expose a diagnostic log or establish the cause.
+
+These checks validate tests, a non-deploying Worker build, and read-only Devnet connectivity only. They do not close the semantic CPI, complete value-flow, or all-in cost release blockers described above. PR #56 remains open and Draft. No merge, production deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading has been performed.
