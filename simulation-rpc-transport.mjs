@@ -38,17 +38,37 @@ async function sha256(bytes) {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function snapshotArguments(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) ||
+      (Object.getPrototypeOf(input) !== Object.prototype && Object.getPrototypeOf(input) !== null)) {
+    throw new Error("Simulation transport input must be a plain data record");
+  }
+  const allowed = ["request", "endpoint", "fetchImpl"];
+  const values = Object.create(null);
+  for (const key of Reflect.ownKeys(input)) {
+    if (typeof key !== "string" || !allowed.includes(key)) {
+      throw new Error("Simulation transport input contains unsupported properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Simulation transport input contains accessor-backed properties");
+    }
+    values[key] = descriptor.value;
+  }
+  if (!Object.hasOwn(values, "request") || !Object.hasOwn(values, "endpoint")) {
+    throw new Error("Simulation transport input is missing required fields");
+  }
+  return values;
+}
+
 /**
  * Send a previously built simulateTransaction request and bind the bounded
  * JSON-RPC response to its request id and sanitized endpoint identity.
  * This records RPC observations only; it does not attest future execution,
  * semantic CPI effects, signing, or transaction submission.
  */
-export async function performReadOnlySimulation({
-  request,
-  endpoint,
-  fetchImpl = fetch
-}) {
+export async function performReadOnlySimulation(input) {
+  const { request, endpoint, fetchImpl = fetch } = snapshotArguments(input);
   if (!request || typeof request !== "object" || Object.getPrototypeOf(request) !== Object.prototype &&
       Object.getPrototypeOf(request) !== null) {
     throw new Error("A plain simulation RPC request record is required");
