@@ -70,6 +70,25 @@ test("read-only transport rejects parsed CPI encoding instead of compiled JSON i
   }), /envelope failed validation/);
 });
 
+test("read-only transport rejects unexpected JSON-RPC envelope and simulation option fields", async () => {
+  const request = await makeRequest();
+  const extraEnvelope = JSON.parse(request.body);
+  extraEnvelope.unreviewed = true;
+  await assert.rejects(performReadOnlySimulation({
+    request: { ...request, body: JSON.stringify(extraEnvelope) },
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send"); }
+  }), /envelope failed validation/);
+
+  const extraOption = JSON.parse(request.body);
+  extraOption.params[1].accounts = { encoding: "base64", addresses: [] };
+  await assert.rejects(performReadOnlySimulation({
+    request: { ...request, body: JSON.stringify(extraOption) },
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send"); }
+  }), /envelope failed validation/);
+});
+
 test("read-only transport rejects response id mismatch, RPC errors and malformed context", async () => {
   const request = await makeRequest();
   await assert.rejects(performReadOnlySimulation({
