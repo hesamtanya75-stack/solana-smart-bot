@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -392,6 +393,12 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   assert.match(originalEvidence.messageDigest.value, /^[a-f0-9]{64}$/);
   assert.equal(originalEvidence.messageDigest.signer, BOT_WALLET);
   assert.equal(originalEvidence.messageDigest.messageVersion, "legacy");
+  const originalBytes = Buffer.from(original, "base64");
+  assert.equal(
+    originalEvidence.messageDigest.value,
+    createHash("sha256").update(originalBytes.subarray(65)).digest("hex"),
+    "digest must cover the exact serialized message bytes, excluding the signature vector"
+  );
   assert.equal(originalEvidence.semanticInstructionVerification, false);
 
   const changedBytes = Buffer.from(original, "base64");
@@ -425,6 +432,12 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
   assert.match(parsed.messageDigest.value, /^[a-f0-9]{64}$/);
   assert.equal(parsed.messageDigest.messageVersion, 0);
   assert.equal(parsed.messageDigest.signer, BOT_WALLET);
+  const serialized = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  assert.equal(
+    parsed.messageDigest.value,
+    createHash("sha256").update(serialized.subarray(65)).digest("hex"),
+    "v0 digest must cover the exact serialized message, including ALT descriptors"
+  );
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
