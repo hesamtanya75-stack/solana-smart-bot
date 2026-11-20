@@ -32,32 +32,22 @@ test("decodes exact classic SPL Token TransferChecked", () => {
   assert.deepEqual(result.accountRoles, ["source", "mint", "destination", "authority"]);
 });
 
-test("decodes only base TransferChecked under Token-2022 and preserves its program identity", () => {
-  const data = Buffer.alloc(10);
-  data[0] = 12;
-  data.writeBigUInt64LE(123456n, 1);
-  data[9] = 9;
-  const result = decodeSplTokenInstruction(TOKEN_2022, encoded(data), [4, 5, 6, 7]);
-  assert.equal(result.programId, TOKEN_2022);
-  assert.equal(result.extensionSemantics, "not-inspected");
-  assert.equal(result.variant, "transferChecked");
-  assert.equal(result.amount, 123456n);
-  assert.equal(result.decimals, 9);
-  assert.equal(result.analysisOnly, true);
-  assert.deepEqual(validateSplTokenInstructionSet([result]), [result]);
-});
-
-test("decodes only the base Token-2022 Transfer and marks extensions uninspected", () => {
-  const data = Buffer.alloc(9);
-  data[0] = 3;
-  data.writeBigUInt64LE(77n, 1);
-  const result = decodeSplTokenInstruction(TOKEN_2022, encoded(data), [2, 3, 4]);
-  assert.equal(result.variant, "transfer");
-  assert.equal(result.amount, 77n);
-  assert.equal(result.programId, TOKEN_2022);
-  assert.equal(result.extensionSemantics, "not-inspected");
-  assert.equal(result.analysisOnly, true);
-  assert.ok(Object.isFrozen(result));
+test("rejects all Token-2022 instructions until extension semantics are verified", () => {
+  const checked = Buffer.alloc(10);
+  checked[0] = 12;
+  checked.writeBigUInt64LE(123456n, 1);
+  checked[9] = 9;
+  const transfer = Buffer.alloc(9);
+  transfer[0] = 3;
+  transfer.writeBigUInt64LE(77n, 1);
+  assert.throws(
+    () => decodeSplTokenInstruction(TOKEN_2022, encoded(checked), [4, 5, 6, 7]),
+    /Token-2022 instructions are blocked until extension semantics are verified/
+  );
+  assert.throws(
+    () => decodeSplTokenInstruction(TOKEN_2022, encoded(transfer), [2, 3, 4]),
+    /Token-2022 instructions are blocked until extension semantics are verified/
+  );
 });
 
 test("rejects Token-2022 TransferChecked layouts with extension extra accounts", () => {
