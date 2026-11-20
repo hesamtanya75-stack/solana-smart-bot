@@ -1336,7 +1336,11 @@ export async function verifyFinalizedJupiterSettlement({
 }, fetchImpl = fetch) {
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
-  const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
+  const validAmount = value => {
+    if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) return false;
+    const amount = BigInt(value);
+    return amount > 0n && amount <= 18446744073709551615n;
+  };
   if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
       !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
       !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
