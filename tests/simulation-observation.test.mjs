@@ -242,14 +242,14 @@ test("simulation observation rejects invalid CPI base58 payloads", () => {
 });
 
 
-test("simulation observation accepts valid base58 and rejects forbidden alphabet characters", () => {
+test("simulation observation rejects forbidden base58 alphabet characters", () => {
   const base = { messageDigest: digest, topLevelInstructionCount: 1, accountKeyCount: 2 };
   assert.throws(() => normalizeSimulationObservation({
     ...base,
-    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQJ=" }] }])
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "0OIl" }] }])
   }), /data is malformed/);
   assert.throws(() => normalizeSimulationObservation({
     ...base,
-    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AR==" }] }])
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQJ=" }] }])
   }), /data is malformed/);
 });
