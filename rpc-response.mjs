@@ -1,10 +1,12 @@
 
 function rejectDuplicateJsonObjectKeys(source) {
   let offset = 0;
-  const whitespace = () => {
-    while (offset < source.length && /[\\t\\n\\r ]/.test(source[offset])) offset++;
+  const skipWhitespace = () => {
+    while (offset < source.length &&
+      (source[offset] === " " || source[offset] === "\\t" ||
+       source[offset] === "\\n" || source[offset] === "\\r")) offset++;
   };
-  function readString() {
+  const readString = () => {
     const start = offset++;
     while (offset < source.length) {
       const character = source[offset++];
@@ -12,26 +14,26 @@ function rejectDuplicateJsonObjectKeys(source) {
       if (character === "\\\\") offset++;
     }
     throw new Error("Malformed JSON string");
-  }
-  function readValue() {
-    whitespace();
+  };
+  const readValue = () => {
+    skipWhitespace();
     const character = source[offset];
     if (character === '"') { readString(); return; }
     if (character === "{") {
       offset++;
-      whitespace();
+      skipWhitespace();
       const keys = new Set();
       if (source[offset] === "}") { offset++; return; }
       while (offset < source.length) {
-        whitespace();
+        skipWhitespace();
         if (source[offset] !== '"') throw new Error("Malformed JSON object key");
         const key = readString();
         if (keys.has(key)) throw new Error("JSON object contains duplicate keys");
         keys.add(key);
-        whitespace();
+        skipWhitespace();
         if (source[offset++] !== ":") throw new Error("Malformed JSON object");
         readValue();
-        whitespace();
+        skipWhitespace();
         const separator = source[offset++];
         if (separator === "}") return;
         if (separator !== ",") throw new Error("Malformed JSON object");
@@ -40,21 +42,27 @@ function rejectDuplicateJsonObjectKeys(source) {
     }
     if (character === "[") {
       offset++;
-      whitespace();
+      skipWhitespace();
       if (source[offset] === "]") { offset++; return; }
       while (offset < source.length) {
         readValue();
-        whitespace();
+        skipWhitespace();
         const separator = source[offset++];
         if (separator === "]") return;
         if (separator !== ",") throw new Error("Malformed JSON array");
       }
       throw new Error("Malformed JSON array");
     }
-    while (offset < source.length && !/[\\s,\\]}]/.test(source[offset])) offset++;
-  }
+    const start = offset;
+    while (offset < source.length &&
+      source[offset] !== " " && source[offset] !== "\\t" &&
+      source[offset] !== "\\n" && source[offset] !== "\\r" &&
+      source[offset] !== "," && source[offset] !== "]" &&
+      source[offset] !== "}") offset++;
+    if (offset === start) throw new Error("Malformed JSON value");
+  };
   readValue();
-  whitespace();
+  skipWhitespace();
   if (offset !== source.length) throw new Error("Malformed JSON document");
 }
 
