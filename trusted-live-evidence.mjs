@@ -1322,7 +1322,59 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex 
 }
 function snapshotLoadedTransactionAddresses(meta, message) {
   const lookupsDescriptor = Object.getOwnPropertyDescriptor(message, "addressTableLookups");
+  if (lookupsDescriptor && !Object.prototype.hasOwnProperty.call(lookupsDescriptor, "value")) {
+    throw new Error("Finalized address-table lookup metadata is accessor-backed");
+  }
   const lookups = lookupsDescriptor?.value;
+  let expectedWritableCount = 0;
+  let expectedReadonlyCount = 0;
+  if (lookups !== undefined) {
+    if (!Array.isArray(lookups) || Object.getPrototypeOf(lookups) !== Array.prototype ||
+        Reflect.ownKeys(lookups).length !== lookups.length + 1) {
+      throw new Error("Finalized address-table lookup metadata is malformed");
+    }
+    for (let index = 0; index < lookups.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(lookups, String(index));
+      const lookup = descriptor?.value;
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+          !lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+          (Object.getPrototypeOf(lookup) !== Object.prototype &&
+           Object.getPrototypeOf(lookup) !== null) ||
+          Reflect.ownKeys(lookup).length !== 3) {
+        throw new Error("Finalized address-table lookup entry is malformed");
+      }
+      const accountKey = Object.getOwnPropertyDescriptor(lookup, "accountKey");
+      const writableIndexes = Object.getOwnPropertyDescriptor(lookup, "writableIndexes");
+      const readonlyIndexes = Object.getOwnPropertyDescriptor(lookup, "readonlyIndexes");
+      if (!accountKey || !Object.prototype.hasOwnProperty.call(accountKey, "value") ||
+          typeof accountKey.value !== "string" ||
+          !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(accountKey.value) ||
+          decodeBase58(accountKey.value).length !== 32 ||
+          !writableIndexes || !Object.prototype.hasOwnProperty.call(writableIndexes, "value") ||
+          !readonlyIndexes || !Object.prototype.hasOwnProperty.call(readonlyIndexes, "value")) {
+        throw new Error("Finalized address-table lookup entry is malformed");
+      }
+      for (const [indexes, label] of [
+        [writableIndexes.value, "writable"],
+        [readonlyIndexes.value, "readonly"]
+      ]) {
+        if (!Array.isArray(indexes) || Object.getPrototypeOf(indexes) !== Array.prototype ||
+            Reflect.ownKeys(indexes).length !== indexes.length + 1) {
+          throw new Error("Finalized address-table " + label + " indexes are malformed");
+        }
+        for (let item = 0; item < indexes.length; item++) {
+          const indexDescriptor = Object.getOwnPropertyDescriptor(indexes, String(item));
+          if (!indexDescriptor || !Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
+              !Number.isInteger(indexDescriptor.value) || indexDescriptor.value < 0 ||
+              indexDescriptor.value > 255) {
+            throw new Error("Finalized address-table " + label + " indexes are malformed");
+          }
+        }
+      }
+      expectedWritableCount += writableIndexes.value.length;
+      expectedReadonlyCount += readonlyIndexes.value.length;
+    }
+  }
   const hasLookups = Array.isArray(lookups) && lookups.length > 0;
   const loadedDescriptor = Object.getOwnPropertyDescriptor(meta, "loadedAddresses");
   if (!loadedDescriptor) {
@@ -1349,6 +1401,9 @@ function snapshotLoadedTransactionAddresses(meta, message) {
   }
   const writable = snapshotDenseAccountKeys(writableDescriptor.value);
   const readonly = snapshotDenseAccountKeys(readonlyDescriptor.value);
+  if (writable.length !== expectedWritableCount || readonly.length !== expectedReadonlyCount) {
+    throw new Error("Finalized loaded addresses do not match address-table lookup indexes");
+  }
   return Object.freeze([...writable, ...readonly]);
 }
 
