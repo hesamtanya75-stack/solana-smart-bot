@@ -1174,8 +1174,14 @@ test("RPC settlement outage leaves the reservation pending and keeps spend capac
   assert.equal(status.openPositions, 1);
   assert.equal(status.dailySpendUsdCents, 201);
   assert.equal(status.killSwitch, false);
+  const second = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-0002",
+    amountLamports: 14_900_000
+  }));
+  assert.equal(second.status, 200);
   const retry = await post(coordinator, "/reserve", validReservation({
-    idempotencyKey: "order-key-0002"
+    idempotencyKey: "order-key-0003",
+    amountLamports: 100_000
   }));
   assert.equal(retry.status, 409);
   assert.match(retry.body.error, /Daily USD spend limit exceeded/);
