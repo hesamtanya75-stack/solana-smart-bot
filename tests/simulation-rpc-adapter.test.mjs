@@ -24,6 +24,7 @@ test("simulation RPC request hashes the exact transaction bytes encoded in its b
     encoding: "base64",
     sigVerify: false,
     replaceRecentBlockhash: true,
+    innerInstructions: true,
     commitment: "confirmed"
   });
   assert.equal(request.responseIdentityVerified, false);
