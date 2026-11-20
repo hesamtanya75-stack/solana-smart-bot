@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
+import { normalizeSimulationObservation, resolveSimulationCpiIndexesAgainstTrustedMessage } from "../simulation-observation.mjs";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, resolveExecutableProgramAccounts, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -2252,4 +2253,51 @@ test("executable program resolver rejects malformed finalized context and accoun
       Response.json({ jsonrpc: "2.0", id: 1, result })
     ));
   }
+});
+
+
+test("CPI indexes resolve only against privately branded exact-message evidence", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const messageBytes = serialized.subarray(65);
+  const messageDigest = createHash("sha256").update(messageBytes).digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest,
+    simulationResult: {
+      context: { slot: 1234 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const resolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(resolved.groups[0].instructions[0].programIdCandidate, evidence.accountKeys[1]);
+  assert.deepEqual(resolved.groups[0].instructions[0].accountKeyCandidates, [evidence.accountKeys[0]]);
+  assert.equal(resolved.cpiIndexResolution, "resolved-against-trusted-message-candidate-only");
+  assert.equal(resolved.cpiProgramIdsVerified, false);
+  assert.equal(resolved.simulationInputIdentityVerified, false);
+  assert.equal(resolved.semanticInstructionVerification, false);
+  assert.equal(resolved.signingPermitted, false);
+  assert.equal(resolved.submissionPermitted, false);
+});
+
+test("CPI index resolution rejects unbranded or digest-mismatched evidence", () => {
+  const observation = {
+    scope: "simulation-observation-only",
+    messageDigest: "a".repeat(64),
+    groups: []
+  };
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: { accountKeys: ["11111111111111111111111111111111"] }
+  }), /privately branded/);
 });
