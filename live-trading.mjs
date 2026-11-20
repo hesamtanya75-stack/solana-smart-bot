@@ -75,7 +75,10 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       programIds: Object.freeze([]),
       unsupportedProgramIds: Object.freeze([]),
       allProgramsRecognized: false,
-      semanticInstructionVerification: false
+      semanticInstructionVerification: false,
+      cpiProgramIdsVerified: false,
+      tokenBalanceEffectsVerified: false,
+      accountPrivilegesVerified: false
     });
   }
   if (!evidence || !Array.isArray(evidence.accountKeys) ||
@@ -113,7 +116,10 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     programIds: Object.freeze(programIds),
     unsupportedProgramIds: Object.freeze(unsupportedProgramIds),
     allProgramsRecognized: unsupportedProgramIds.length === 0,
-    semanticInstructionVerification: false
+    semanticInstructionVerification: false,
+    cpiProgramIdsVerified: false,
+    tokenBalanceEffectsVerified: false,
+    accountPrivilegesVerified: false
   });
 }
 
