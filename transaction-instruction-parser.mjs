@@ -300,11 +300,17 @@ export function parseSupportedInstructionMessage(message) {
       throw new Error("ALT account roles require trusted finalized message evidence");
     }
     const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+    const suppliedInstructions = message.instructions.map(instruction => ({
+      programIdIndex: instruction.programIdIndex,
+      accountKeyIndexes: instruction.accountKeyIndexes,
+      data: instruction.data
+    }));
     if (!same(message.accountKeys, evidence.accountKeys) ||
         !same(message.staticAccountKeys, evidence.staticAccountKeys) ||
         !same(message.header, evidence.header) ||
-        !same(message.resolvedAddressTableLookups, evidence.resolvedAddressTableLookups)) {
-      throw new Error("Parser account layout does not match digest-bound finalized ALT evidence");
+        !same(message.resolvedAddressTableLookups, evidence.resolvedAddressTableLookups) ||
+        !same(suppliedInstructions, evidence.compiledInstructions)) {
+      throw new Error("Parser message fields do not match digest-bound finalized ALT evidence");
     }
   }
 
