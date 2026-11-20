@@ -7,8 +7,7 @@ const digest = "a".repeat(64);
 function simulation(innerInstructions = []) {
   return {
     context: { slot: 1234 },
-    value: undefined,
-    meta: { err: null, innerInstructions }
+    value: { err: null, innerInstructions }
   };
 }
 
@@ -43,7 +42,7 @@ test("simulation observation preserves failed simulation as diagnostic failure",
     messageDigest: digest,
     simulationResult: {
       context: { slot: 1235 },
-      meta: { err: { InstructionError: [0, "Custom"] }, innerInstructions: [] }
+      value: { err: { InstructionError: [0, "Custom"] }, innerInstructions: [] }
     },
     topLevelInstructionCount: 1,
     accountKeyCount: 1
@@ -90,7 +89,7 @@ test("simulation observation rejects accessor-backed metadata without invoking g
   });
   assert.throws(() => normalizeSimulationObservation({
     messageDigest: digest,
-    simulationResult: { context: { slot: 1 }, meta },
+    simulationResult: { context: { slot: 1 }, value: meta },
     topLevelInstructionCount: 1,
     accountKeyCount: 1
   }), /accessor-backed/);
