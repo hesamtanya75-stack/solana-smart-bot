@@ -66,6 +66,9 @@ test("simulation RPC request rejects malformed bytes, endpoints and ids", async 
     serializedTransaction: Uint8Array.from([1]), endpoint: "https://user:secret@rpc.example.test"
   }), /HTTPS/);
   await assert.rejects(createSimulationRpcRequest({
+    serializedTransaction: Uint8Array.from([1]), endpoint: "https://rpc.example.test/?token=secret"
+  }), /HTTPS/);
+  await assert.rejects(createSimulationRpcRequest({
     ...common, serializedTransaction: Uint8Array.from([1]), requestId: 0
   }), /request id/);
 });
