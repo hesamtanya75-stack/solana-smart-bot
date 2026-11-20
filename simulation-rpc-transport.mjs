@@ -35,11 +35,33 @@ export async function performReadOnlySimulation({
       Object.getPrototypeOf(request) !== null) {
     throw new Error("A plain simulation RPC request record is required");
   }
+  const expectedRequestFields = [
+    "method", "endpoint", "requestId", "transactionDigest", "digestSource",
+    "body", "simulationOnly", "responseIdentityVerified",
+    "signingPermitted", "submissionPermitted"
+  ];
+  const requestKeys = Reflect.ownKeys(request);
+  if (requestKeys.length !== expectedRequestFields.length ||
+      requestKeys.some(key => typeof key !== "string" || !expectedRequestFields.includes(key))) {
+    throw new Error("Simulation RPC request metadata is invalid");
+  }
+  const requestSnapshot = Object.create(null);
+  for (const key of expectedRequestFields) {
+    const descriptor = Object.getOwnPropertyDescriptor(request, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Simulation RPC request metadata must contain own data properties");
+    }
+    requestSnapshot[key] = descriptor.value;
+  }
+  request = requestSnapshot;
   if (request.method !== "POST" || request.simulationOnly !== true ||
+      request.responseIdentityVerified !== false ||
       request.signingPermitted !== false || request.submissionPermitted !== false ||
+      request.digestSource !== "sha256-of-exact-base64-rpc-transaction-bytes" ||
       !Number.isSafeInteger(request.requestId) || request.requestId < 1 ||
       typeof request.body !== "string" || request.body.length > 16 * 1024 ||
-      typeof request.transactionDigest !== "string" || !HEX_SHA256.test(request.transactionDigest)) {
+      typeof request.transactionDigest !== "string" || !HEX_SHA256.test(request.transactionDigest) ||
+      typeof request.endpoint !== "string") {
     throw new Error("Simulation RPC request metadata is invalid");
   }
   if (typeof endpoint !== "string" || endpoint.length > 2048 ||
