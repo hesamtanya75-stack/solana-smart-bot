@@ -8,9 +8,9 @@ const PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 function fixture() {
   return {
-    context: { slot: 123 },
+    context: { apiVersion: "2.3.3", slot: 123 },
     value: {
-      err: null,
+      err: null,\n      fee: 5000,
       preBalances: [1000, 2000],
       postBalances: [900, 2100],
       preTokenBalances: [{
@@ -104,4 +104,13 @@ test("rejects a simulation value with no explicit err field", () => {
   assert.throws(() => normalizeSimulationBalanceObservation({
     simulationResult: data, accountKeyCount: 2
   }), /required err field/);
+});
+
+test("accepts standard simulation context apiVersion and fee metadata", () => {
+  const data = fixture();
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.contextSlot, 123);
+  assert.equal(result.simulationSucceeded, true);
 });
