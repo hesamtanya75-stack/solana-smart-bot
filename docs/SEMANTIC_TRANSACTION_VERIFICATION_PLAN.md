@@ -1576,3 +1576,20 @@ This is conservative diagnostic matching only. It does not authenticate the
 program ID or account state, resolve the remote simulation provenance gate,
 or authorize token-balance effects, signing, or submission. Regression tests
 cover missing program IDs on both sides and duplicate unresolved identities.
+
+### Canonical simulation request envelope — PR #56 follow-up
+
+The read-only RPC transport now requires the serialized JSON-RPC request body
+to round-trip through JSON.parse and JSON.stringify byte-for-byte before
+the request is sent. This rejects duplicate JSON object keys and other
+non-canonical encodings that could otherwise be collapsed or interpreted
+differently by parsers. A regression test confirms an ambiguous duplicate
+sigVerify key is rejected before the injected fetch function is called.
+
+The recorded endpoint label contains only the HTTPS origin and pathname;
+query parameters are intentionally excluded and may still be present on the
+actual fetch URL. Therefore endpointIdentity is not a complete URL identity,
+does not attest which RPC provider answered, and must not be used as proof
+of response provenance. The transport continues to report
+simulationInputIdentityVerified: false, signingPermitted: false, and
+submissionPermitted: false.
