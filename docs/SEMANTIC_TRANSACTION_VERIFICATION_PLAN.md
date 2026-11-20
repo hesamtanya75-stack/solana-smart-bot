@@ -1560,3 +1560,19 @@ response schemas. It validates the API-version field's type but does not use
 either field as provenance or authorization evidence. Regression fixtures
 include both fields to prevent valid standard RPC responses from being
 rejected by the bounded allowlist.
+
+
+### Missing token-program identity remains unpaired — PR #56 follow-up
+
+The diagnostic balance parser no longer pairs pre/post token-balance records
+when `programId` is absent. It retains each such record as
+`unpaired-account-state` with a null delta. This avoids treating a missing
+program identifier as an empty-string identity and accidentally matching
+records without enough information to distinguish token programs. Records
+with an explicit program ID continue to be paired only by account index, mint,
+and program ID, with owner/decimals consistency checked separately.
+
+This is conservative diagnostic matching only. It does not authenticate the
+program ID or account state, resolve the remote simulation provenance gate,
+or authorize token-balance effects, signing, or submission. Regression tests
+cover missing program IDs on both sides and duplicate unresolved identities.
