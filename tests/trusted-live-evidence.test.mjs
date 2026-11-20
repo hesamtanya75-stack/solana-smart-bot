@@ -742,6 +742,24 @@ test("v1 transaction is structurally parsed but never semantically trusted", () 
   assert.equal(parsed.semanticInstructionVerification, false);
 });
 
+test("v1 transaction rejects an out-of-range instruction program index", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[114] = 2;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /instruction header is invalid/
+  );
+});
+
+test("v1 transaction rejects an out-of-range instruction account index", () => {
+  const bytes = Buffer.from(validUnsignedV1Transaction(), "base64");
+  bytes[118] = 2;
+  assert.throws(
+    () => validateUnsignedJupiterTransaction(bytes.toString("base64"), BOT_WALLET),
+    /instruction account index is invalid/
+  );
+});
+
 test("v1 priority fee requires both mask bits and preserves config offsets", () => {
   const parsed = validateUnsignedJupiterTransaction(
     unsignedV1TransactionWithPriorityFee(5000), BOT_WALLET

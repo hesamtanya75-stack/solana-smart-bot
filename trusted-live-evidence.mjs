@@ -433,13 +433,16 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     throw new Error("Jupiter transaction is not pinned to the expected bot wallet");
   }
   const uniqueAddresses = new Set();
+  const staticAccountKeys = [];
   for (let i = 0; i < addressCount; i++) {
     const start = addressesStart + i * 32;
-    const key = Array.from(bytes.subarray(start, start + 32), byte => byte.toString(16).padStart(2, "0")).join("");
+    const addressBytes = bytes.subarray(start, start + 32);
+    const key = Array.from(addressBytes, byte => byte.toString(16).padStart(2, "0")).join("");
     if (uniqueAddresses.has(key)) {
       throw new Error("V1 Jupiter transaction contains duplicate account addresses");
     }
     uniqueAddresses.add(key);
+    staticAccountKeys.push(encodeBase58(addressBytes));
   }
   cursor += addressCount * 32;
   const configBytes = ((configMask & 0x3) ? 8 : 0) +
@@ -495,16 +498,26 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     }
     headers.push({ programIdIndex, accountCount, dataLength });
   }
+  const compiledInstructions = [];
   for (const header of headers) {
     if (cursor + header.accountCount + header.dataLength > bytes.length) {
       throw new Error("V1 Jupiter instruction payload is truncated");
     }
+    const accountKeyIndexes = [];
     for (let i = 0; i < header.accountCount; i++) {
-      if (bytes[cursor++] >= addressCount) {
+      const accountIndex = bytes[cursor++];
+      if (accountIndex >= addressCount) {
         throw new Error("V1 Jupiter instruction account index is invalid");
       }
+      accountKeyIndexes.push(accountIndex);
     }
+    const instructionData = bytes.slice(cursor, cursor + header.dataLength);
     cursor += header.dataLength;
+    compiledInstructions.push(Object.freeze({
+      programIdIndex: header.programIdIndex,
+      accountKeyIndexes: Object.freeze(accountKeyIndexes),
+      data: btoa(String.fromCharCode(...instructionData))
+    }));
   }
   const signaturesLength = requiredSignatures * 64;
   if (cursor + signaturesLength !== bytes.length) {
@@ -519,6 +532,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
     numReadonlySignedAccounts: readonlySigned,
     numReadonlyUnsignedAccounts: readonlyUnsigned,
     staticAccountCount: addressCount,
+    staticAccountKeys: Object.freeze(staticAccountKeys),
+    accountKeys: Object.freeze(staticAccountKeys),
+    compiledInstructions: Object.freeze(compiledInstructions),
     instructionCount,
     addressLookupCount: 0,
     messageVersion: 1,
