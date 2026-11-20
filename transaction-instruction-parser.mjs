@@ -9,6 +9,7 @@ import {
   validateSystemProgramInstructionSet
 } from "./system-program-decoder.mjs";
 import { deriveMessageAccountRoles } from "./message-account-roles.mjs";
+import { isTrustedUnsignedMessageEvidence } from "./trusted-live-evidence.mjs";
 import {
   decodeSplTokenInstruction,
   validateSplTokenInstructionSet
@@ -123,7 +124,7 @@ function analyzeAssociatedTokenInstructionPrivileges(instructions, roles) {
 /**
  * Parse a bounded, already-deserialized message instruction list for analysis.
  * Optional header/lookup inputs enable a structural signer/writable cross-check.
- * Lookup addresses are caller-supplied and are NOT authenticated by this parser.
+ * ALT-derived account roles require opaque finalized evidence produced from the exact unsigned message digest.
  *
  * This is not a wire-format parser, does not verify signatures, lookup-table
  * contents, CPI effects, token deltas, or whole-transaction semantics.
@@ -162,7 +163,8 @@ export function parseSupportedInstructionMessage(message) {
     "header",
     "resolvedAddressTableLookups",
     "staticAccountKeys",
-    "computeBudgetPolicy"
+    "computeBudgetPolicy",
+    "trustedMessageEvidence"
   ]);
   for (const field of Reflect.ownKeys(message)) {
     if (typeof field !== "string" || !allowedFields.has(field)) {
@@ -287,6 +289,25 @@ export function parseSupportedInstructionMessage(message) {
   }
 
   let accountPrivilegeAnalysis = "not-provided";
+  if (message.resolvedAddressTableLookups?.length > 0) {
+    const evidence = message.trustedMessageEvidence;
+    if (!isTrustedUnsignedMessageEvidence(evidence) ||
+        evidence.lookupTableResolution !== "finalized-resolved" ||
+        !Number.isSafeInteger(evidence.lookupContextSlot) ||
+        evidence.lookupContextSlot < 1 ||
+        evidence.messageDigest?.algorithm !== "SHA-256" ||
+        !/^[a-f0-9]{64}$/.test(evidence.messageDigest.value || "")) {
+      throw new Error("ALT account roles require trusted finalized message evidence");
+    }
+    const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+    if (!same(message.accountKeys, evidence.accountKeys) ||
+        !same(message.staticAccountKeys, evidence.staticAccountKeys) ||
+        !same(message.header, evidence.header) ||
+        !same(message.resolvedAddressTableLookups, evidence.resolvedAddressTableLookups)) {
+      throw new Error("Parser account layout does not match digest-bound finalized ALT evidence");
+    }
+  }
+
   if (message.header !== undefined) {
     const lookupTables = message.resolvedAddressTableLookups ?? [];
     const staticAccountKeys = message.staticAccountKeys ?? accountKeys;
@@ -321,10 +342,10 @@ export function parseSupportedInstructionMessage(message) {
       ? "not-provided"
       : Object.freeze({ status: "validated", ...computeBudgetPolicy }),
     accountPrivilegeAnalysis,
-    // Caller-supplied lookup addresses are only structurally cross-checked;
-    // this parser does not authenticate their table account or on-chain state.
+    // A non-empty lookup set is accepted only when all layout fields match
+    // the private finalized-evidence brand and its exact unsigned-message digest.
     lookupAddressAuthentication: message.resolvedAddressTableLookups?.length
-      ? "not-performed"
+      ? "finalized-message-digest-bound"
       : "not-applicable",
     associatedAddressVerification: associatedTokenInstructions.length
       ? "not-performed"
