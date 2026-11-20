@@ -557,7 +557,7 @@ test("resolved ALT addresses cannot duplicate a static transaction account key",
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const account = mockLookupTableAccount();
   const data = Buffer.from(account.data[0], "base64");
-  data.fill(17, 56, 88); // Duplicate the second inline static account key.
+  data.set(decodeBase58("ComputeBudget111111111111111111111111111111"), 56); // Duplicate the second inline static account key.
   account.data = [data.toString("base64"), "base64"];
   await assert.rejects(validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
