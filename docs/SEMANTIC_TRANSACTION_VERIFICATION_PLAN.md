@@ -1461,3 +1461,62 @@ Until the remote provenance gate and the above semantic registry are both
 satisfied, keep `cpiProgramIdsVerified`,
 `semanticInstructionVerification`, and
 `tokenBalanceEffectsVerified` false, with signing and submission disabled.
+
+
+## Simulation token/lamport balance-effects gate — PR #56 follow-up
+
+The current simulation normalizer does not parse or verify
+`preBalances`, `postBalances`, `preTokenBalances`, or
+`postTokenBalances`. The CPI observation record therefore makes no claim
+about the amount or direction of any token or SOL movement. A successful
+simulation status or a decoded top-level SPL Token instruction is not a
+substitute for observed and reconciled balance effects.
+
+### Required evidence model
+
+A future read-only balance-effects verifier must first receive a bounded,
+immutable simulation result and privately branded unsigned-message evidence
+whose exact message/account-key ordering is established. It must then:
+
+1. Require both pre- and post-SOL lamport arrays, each with exactly one
+   canonical nonnegative safe integer or bounded integer representation per
+   message account key. Reject missing, sparse, overlong, duplicate, or
+   non-integer values. Compute deltas with integer arithmetic, never floats.
+2. Require both pre- and post-token-balance arrays where token effects are
+   expected. Validate each record's account index, mint, token program ID,
+   optional owner, and `uiTokenAmount.amount` as an unsigned base-10 integer
+   string; validate decimals as a bounded integer. Reject duplicate
+   (account index, mint, program) entries, contradictory identities, malformed
+   owners, missing decimals, and any index outside the authenticated message
+   account-key list.
+3. Reconcile each pre/post token account by authenticated account index and
+   mint/program identity. Do not treat an omitted balance record as zero
+   unless the verifier separately proves account creation/closure and its
+   exact pre/post state. Account closure, rent, wrapped SOL, and native-token
+   behavior require explicit reviewed rules.
+4. Bind token-account ownership and mint/program relationships to trusted
+   account-state evidence at a specified bank context. A balance record's
+   self-reported owner or mint is not independent account-state proof.
+5. Treat Token-2022 extension-bearing accounts as unsupported until the
+   exact extension set and effects (including transfer fees, hooks, withheld
+   amounts, confidential transfers, permanent delegates, and native mint
+   behavior where applicable) have dedicated decoders and reviewed policies.
+6. Reconcile all per-account deltas with the decoded instruction/CPI effects,
+   transaction fee, rent movement, and any other supported system transfers.
+   Any unexplained residual, unavailable field, inconsistent context, or
+   unsupported instruction must fail closed.
+
+### Output and regression-test contract
+
+The verifier must expose raw integer deltas and an explicit completeness
+status, not a single optimistic boolean. Tests must cover mint/account swaps,
+duplicate entries, out-of-range indexes, amount overflow, decimals mismatch,
+owner/program mismatch, missing pre/post sides, newly created/closed accounts,
+fee/rent effects, Token-2022 extensions, native SOL wrapping, and a residual
+that cannot be explained by the decoded instruction set. Include getter,
+sparse-array, prototype, and mutation attacks for every public input boundary.
+
+Until remote simulation provenance, CPI semantic decoding, authenticated
+token-account state, and balance reconciliation are all independently
+reviewed, keep `tokenBalanceEffectsVerified` and all other semantic/execution
+flags false. This gate does not authorize signing, submission, or Mainnet use.
