@@ -236,6 +236,33 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
   if (ownData(observation, "scope", "Simulation observation scope") !== "simulation-observation-only") {
     throw new Error("A normalized simulation observation is required");
   }
+  const requiredFalseFlags = [
+    "cpiProgramIdsVerified",
+    "semanticInstructionVerification",
+    "tokenBalanceEffectsVerified",
+    "signingPermitted",
+    "submissionPermitted",
+    "simulationInputIdentityVerified"
+  ];
+  for (const key of requiredFalseFlags) {
+    if (ownData(observation, key, "Simulation observation " + key) !== false) {
+      throw new Error("Simulation observation cannot assert " + key);
+    }
+  }
+  if (ownData(observation, "messageDigestSource", "Simulation observation digest source") !==
+      "sha256-of-supplied-serialized-message" ||
+      ownData(observation, "innerInstructionsObserved", "Simulation inner-instructions status") !== true) {
+    throw new Error("Simulation observation provenance or CPI status is invalid");
+  }
+  const contextSlot = ownData(observation, "contextSlot", "Simulation observation context slot");
+  const simulationSucceeded = ownData(observation, "simulationSucceeded", "Simulation success status");
+  const simulationErrorPresent = ownData(observation, "simulationErrorPresent", "Simulation error status");
+  if (!Number.isSafeInteger(contextSlot) || contextSlot < 0 ||
+      typeof simulationSucceeded !== "boolean" ||
+      typeof simulationErrorPresent !== "boolean" ||
+      simulationSucceeded === simulationErrorPresent) {
+    throw new Error("Simulation observation status metadata is invalid");
+  }
   const digest = ownData(observation, "messageDigest", "Simulation observation digest");
   const trustedDigest = trustedMessageEvidence.messageDigest?.value;
   if (typeof digest !== "string" || digest !== trustedDigest ||
@@ -253,6 +280,8 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
     ownData(observation, "groups", "Simulation observation groups"),
     256, "Simulation observation groups"
   );
+  const seenTopLevelIndexes = new Set();
+  let resolvedInstructionTotal = 0;
   const resolvedGroups = groups.map(group => {
     assertAllowedDataFields(group,
       ["topLevelInstructionIndex", "innerInstructionCount", "instructions"],
@@ -262,10 +291,21 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
         topLevelIndex >= compiledInstructions.length) {
       throw new Error("Simulation group does not map to a trusted top-level instruction");
     }
+    if (seenTopLevelIndexes.has(topLevelIndex)) {
+      throw new Error("Simulation observation contains duplicate top-level groups");
+    }
+    seenTopLevelIndexes.add(topLevelIndex);
     const instructions = readDenseArray(
       ownData(group, "instructions", "Simulation observation instructions"),
       512, "Simulation observation instructions"
     );
+    const declaredInstructionCount = ownData(group, "innerInstructionCount",
+      "Simulation observation group instruction count");
+    if (!Number.isSafeInteger(declaredInstructionCount) ||
+        declaredInstructionCount !== instructions.length) {
+      throw new Error("Simulation observation group instruction count is inconsistent");
+    }
+    resolvedInstructionTotal += instructions.length;
     const resolvedInstructions = instructions.map(instruction => {
       assertAllowedDataFields(instruction,
         ["programIdIndex", "accountIndexes", "data", "stackHeight"],
@@ -291,6 +331,12 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
     });
     return Object.freeze({ ...group, instructions: Object.freeze(resolvedInstructions) });
   });
+  if (ownData(observation, "innerInstructionGroupCount",
+      "Simulation observation group count") !== groups.length ||
+      ownData(observation, "innerInstructionCount",
+        "Simulation observation instruction count") !== resolvedInstructionTotal) {
+    throw new Error("Simulation observation aggregate instruction counts are inconsistent");
+  }
   return Object.freeze({
     ...observation,
     groups: Object.freeze(resolvedGroups),
