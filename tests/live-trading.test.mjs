@@ -289,7 +289,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
       source: "static-signer"
     },
     {
-      pubkey: "11111111111111111111111111111111",
+      pubkey: "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN",
       isSigner: false,
       isWritable: false,
       source: "static-nonsigner"
