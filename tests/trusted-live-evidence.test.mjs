@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
-import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
+import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, resolveExecutableProgramAccounts, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 test("raw mint account parsing requires bounded canonical base64 encoding", () => {
@@ -2062,4 +2062,67 @@ test("production trusted evidence integration never claims semantic trust or all
   assert.equal(evidence.risk.passed, false);
   assert.equal(evidence.passed, false);
   assert.equal(Object.hasOwn(evidence, "costs"), false);
+});
+
+
+test("referenced programs require finalized executable flags and recognized loader ownership", async () => {
+  const programIds = [
+    "11111111111111111111111111111111",
+    "ComputeBudget111111111111111111111111111111"
+  ];
+  let request;
+  const evidence = await resolveExecutableProgramAccounts(programIds, async (_url, options) => {
+    request = JSON.parse(options.body);
+    return Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: {
+        context: { slot: 250 },
+        value: programIds.map(() => ({
+          owner: "NativeLoader1111111111111111111111111111111",
+          executable: true,
+          data: ["", "base64"]
+        }))
+      }
+    });
+  });
+  assert.equal(request.method, "getMultipleAccounts");
+  assert.deepEqual(request.params[0], programIds);
+  assert.deepEqual(request.params[1], {
+    commitment: "finalized",
+    encoding: "base64",
+    dataSlice: { offset: 0, length: 0 }
+  });
+  assert.equal(evidence.scope, "finalized-account-executable-flag-and-loader-owner-only");
+  assert.equal(evidence.contextSlot, 250);
+  assert.deepEqual(evidence.programs.map(item => item.programId), programIds);
+  assert.ok(evidence.programs.every(item =>
+    item.executable === true && item.commitment === "finalized" && item.contextSlot === 250));
+
+  await assert.rejects(
+    resolveExecutableProgramAccounts(programIds, async () => Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: { context: { slot: 251 }, value: [null, null] }
+    })),
+    /missing or malformed/
+  );
+  await assert.rejects(
+    resolveExecutableProgramAccounts(programIds, async () => Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: {
+        context: { slot: 252 },
+        value: programIds.map(() => ({
+          owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          executable: false,
+          data: ["", "base64"]
+        }))
+      }
+    })),
+    /not confirmed executable/
+  );
+  await assert.rejects(
+    resolveExecutableProgramAccounts([programIds[0], programIds[0]], async () => {
+      throw new Error("RPC must not be called for duplicate IDs");
+    }),
+    /duplicated/
+  );
 });
