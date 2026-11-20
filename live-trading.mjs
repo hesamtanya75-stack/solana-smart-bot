@@ -141,6 +141,9 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       programExecutableFlagsVerified: false,
       instructionAccountIndexesVerified: false,
       messageAccountPrivilegesDerived: false,
+      instructionAccountPrivilegesDerived: false,
+      instructionAccountPrivilegesScope: "unavailable",
+      instructionAccountPrivileges: Object.freeze([]),
       messageAccountPrivileges: Object.freeze([])
     });
   }
@@ -179,6 +182,15 @@ function inventoryUnsignedInstructionPrograms(evidence) {
   const unsupportedProgramIds = programIds
     .filter(item => !item.decoderRegistryRecognized)
     .map(item => item.programId);
+  // Resolve each compiled instruction's account indexes to the already-derived
+  // message-level privileges. Preserve repeated indexes and original ordering.
+  const instructionAccountPrivileges = evidence.compiledInstructions.map((instruction, index) =>
+    Object.freeze({
+      instructionIndex: index,
+      programId: evidence.accountKeys[instruction.programIdIndex],
+      accounts: Object.freeze(instruction.accountKeyIndexes.map(accountIndex =>
+        messageAccountPrivileges.accounts[accountIndex]))
+    }));
   return Object.freeze({
     scope: "compiled-program-id-inventory-only",
     instructionCount: evidence.compiledInstructions.length,
@@ -192,6 +204,9 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     programExecutableFlagsVerified: false,
     instructionAccountIndexesVerified: true,
     messageAccountPrivilegesDerived: true,
+    instructionAccountPrivilegesDerived: true,
+    instructionAccountPrivilegesScope: "compiled-instruction-indexes-mapped-to-message-header-and-alt-privileges-only",
+    instructionAccountPrivileges: Object.freeze(instructionAccountPrivileges),
     messageAccountPrivileges
   });
 }
