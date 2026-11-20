@@ -101,3 +101,14 @@ test("rejects accessor-backed response metadata without invoking the getter", ()
 test("rejects a response envelope with unexpected fields", () => {
   assert.throws(() => run(response({ trusted: true })), /unsupported properties/);
 });
+
+test("rejects accessor-backed nested context slots without invoking the getter", () => {
+  const bad = response();
+  let calls = 0;
+  Object.defineProperty(bad.simulationResult.context, "slot", {
+    enumerable: true,
+    get() { calls++; return 123; }
+  });
+  assert.throws(() => run(bad), /accessor-backed/);
+  assert.equal(calls, 0);
+});
