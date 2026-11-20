@@ -127,7 +127,7 @@ export async function performReadOnlySimulation({
     contextSlot: result.context.slot,
     simulationResult: result,
     responseRequestIdMatched: true,
-    responseEndpointMatched: true,
+    requestEndpointMatched: true,
     simulationInputIdentityVerified: false,
     signingPermitted: false,
     submissionPermitted: false
