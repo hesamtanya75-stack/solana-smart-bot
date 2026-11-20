@@ -348,6 +348,11 @@ test("valid Jupiter order is parsed but never executed", async () => {
   ]);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
+  // Executable-account evidence is not program recognition or execution approval.
+  assert.equal(result.analysisOnly, true);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+  assert.equal(result.instructionProgramInventory.semanticInstructionVerification, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
     "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN"
   ]);
