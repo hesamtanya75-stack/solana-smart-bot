@@ -156,7 +156,7 @@ export function requireHttpsOrigin(value, name = "API URL") {
 
 async function main() {
   const denoUrl = requireHttpsOrigin(process.env.DENO_API_URL || "https://solana-smart-bot-17.hesamtanya75-stack.deno.net", "DENO_API_URL");
-  const cloudflareUrl = requireHttpsOrigin(required("CLOUDFLARE_API_URL"), "CLOUDFLARE_API_URL");
+  const cloudflareUrl = requireHttpsOrigin(process.env.CLOUDFLARE_API_URL || "https://solana-smart-bot-new.hesamtanya75.workers.dev", "CLOUDFLARE_API_URL");
   const denoPassword = required("DENO_LOGIN_PASSWORD");
   const cloudflarePassword = required("CLOUDFLARE_LOGIN_PASSWORD");
   const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
