@@ -187,3 +187,27 @@ test("read-only transport rejects accessor-backed top-level arguments without in
   await assert.rejects(performReadOnlySimulation(hostile), /accessor-backed/);
   assert.equal(invoked, false);
 });
+
+
+test("read-only transport rejects noncanonical JSON-RPC response envelopes", async () => {
+  const request = await makeRequest();
+  const extraField = {
+    jsonrpc: "2.0", id: 22,
+    result: { context: { slot: 900 }, value: { err: null, innerInstructions: [] } },
+    untrustedMetadata: true
+  };
+  await assert.rejects(performReadOnlySimulation({
+    request, endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => new Response(JSON.stringify(extraField), { status: 200 })
+  }), /unsupported or conflicting fields/);
+
+  const conflicting = {
+    jsonrpc: "2.0", id: 22,
+    result: { context: { slot: 900 }, value: { err: null, innerInstructions: [] } },
+    error: { message: "conflicting response" }
+  };
+  await assert.rejects(performReadOnlySimulation({
+    request, endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => new Response(JSON.stringify(conflicting), { status: 200 })
+  }), /unsupported or conflicting fields/);
+});
