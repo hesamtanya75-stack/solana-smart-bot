@@ -97,3 +97,20 @@ test("transport does not accept request records with execution permissions", asy
     fetchImpl: async () => { throw new Error("must not send"); }
   }), /metadata is invalid/);
 });
+
+
+test("read-only transport rejects accessor-backed request metadata without invoking it", async () => {
+  const request = await makeRequest();
+  let invoked = false;
+  const hostile = { ...request };
+  Object.defineProperty(hostile, "body", {
+    enumerable: true,
+    get() { invoked = true; return request.body; }
+  });
+  await assert.rejects(performReadOnlySimulation({
+    request: hostile,
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send"); }
+  }), /own data properties/);
+  assert.equal(invoked, false);
+});
