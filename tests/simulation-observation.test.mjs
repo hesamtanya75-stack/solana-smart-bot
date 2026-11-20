@@ -262,3 +262,18 @@ test("simulation observation rejects forbidden base58 alphabet characters", () =
     simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQJ=" }] }])
   }), /data is malformed/);
 });
+
+
+
+test("simulation observation enforces an aggregate inner-instruction bound", () => {
+  const groups = Array.from({ length: 9 }, (_, index) => ({
+    index,
+    instructions: Array.from({ length: 512 }, () => ({ programIdIndex: 0 }))
+  }));
+  assert.throws(() => normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation(groups),
+    topLevelInstructionCount: 9,
+    accountKeyCount: 1
+  }), /total exceeds the supported bound/);
+});
