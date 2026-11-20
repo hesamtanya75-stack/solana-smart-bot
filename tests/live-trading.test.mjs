@@ -273,6 +273,9 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
   assert.equal(result.instructionProgramInventory.scope, "compiled-program-id-inventory-only");
+  assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
+  assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
+  assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
