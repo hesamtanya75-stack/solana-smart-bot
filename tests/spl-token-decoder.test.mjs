@@ -57,7 +57,7 @@ test("rejects Token-2022 TransferChecked layouts with extension extra accounts",
   data[9] = 6;
   assert.throws(
     () => decodeSplTokenInstruction(TOKEN_2022, encoded(data), [0, 1, 2, 3, 4]),
-    /TransferChecked payload or account layout is unsupported/
+    /Token-2022 instructions are blocked until extension semantics are verified/
   );
 });
 
