@@ -79,7 +79,8 @@ function inventoryUnsignedInstructionPrograms(evidence) {
       cpiProgramIdsVerified: false,
       tokenBalanceEffectsVerified: false,
       accountPrivilegesVerified: false,
-      programExecutableFlagsVerified: false
+      programExecutableFlagsVerified: false,
+      instructionAccountIndexesVerified: false
     });
   }
   if (!evidence || !Array.isArray(evidence.accountKeys) ||
@@ -94,6 +95,11 @@ function inventoryUnsignedInstructionPrograms(evidence) {
         instruction.programIdIndex < 0 ||
         instruction.programIdIndex >= evidence.accountKeys.length) {
       throw new Error("Unsigned transaction contains an invalid program index");
+    }
+    if (!Array.isArray(instruction.accountKeyIndexes) ||
+        instruction.accountKeyIndexes.some(index =>
+          !Number.isInteger(index) || index < 0 || index >= evidence.accountKeys.length)) {
+      throw new Error("Unsigned transaction contains an invalid instruction account index");
     }
     const programId = evidence.accountKeys[instruction.programIdIndex];
     if (typeof programId !== "string" || !BASE58.test(programId)) {
@@ -121,7 +127,8 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     cpiProgramIdsVerified: false,
     tokenBalanceEffectsVerified: false,
     accountPrivilegesVerified: false,
-    programExecutableFlagsVerified: false
+    programExecutableFlagsVerified: false,
+    instructionAccountIndexesVerified: true
   });
 }
 
