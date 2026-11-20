@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeSimulationObservation } from "../simulation-observation.mjs";
+import { createHash } from "node:crypto";
+import { normalizeSimulationObservation, normalizeSimulationObservationForMessage } from "../simulation-observation.mjs";
 
 const digest = "a".repeat(64);
 
@@ -94,4 +95,59 @@ test("simulation observation rejects accessor-backed metadata without invoking g
     accountKeyCount: 1
   }), /accessor-backed/);
   assert.equal(invoked, false);
+});
+
+
+test("message-bound observation derives SHA-256 from an immutable byte snapshot", async () => {
+  const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
+  const expected = createHash("sha256").update(bytes).digest("hex");
+  const result = await normalizeSimulationObservationForMessage({
+    serializedMessage: bytes,
+    simulationResult: simulation([]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  });
+  assert.equal(result.messageDigest, expected);
+  assert.equal(result.messageDigestSource, "sha256-of-supplied-serialized-message");
+  assert.equal(result.simulationInputIdentityVerified, false);
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+  assert.ok(Object.isFrozen(result));
+});
+
+test("message-bound observation digest changes with serialized message bytes", async () => {
+  const common = {
+    simulationResult: simulation([]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  };
+  const first = await normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: Uint8Array.from([1, 2, 3])
+  });
+  const second = await normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: Uint8Array.from([1, 2, 4])
+  });
+  assert.notEqual(first.messageDigest, second.messageDigest);
+});
+
+test("message-bound observation rejects malformed or oversized serialized messages", async () => {
+  const common = {
+    simulationResult: simulation([]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  };
+  await assert.rejects(() => normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: new Uint8Array()
+  }), /bounded Uint8Array/);
+  await assert.rejects(() => normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: new Uint8Array(1233)
+  }), /bounded Uint8Array/);
+  await assert.rejects(() => normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: [1, 2, 3]
+  }), /bounded Uint8Array/);
+  const subclass = new (class extends Uint8Array {})([1, 2, 3]);
+  await assert.rejects(() => normalizeSimulationObservationForMessage({
+    ...common, serializedMessage: subclass
+  }), /bounded Uint8Array/);
 });
