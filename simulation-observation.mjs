@@ -84,7 +84,25 @@ function normalizeSimulationObservation({
           programIdIndex >= accountKeyCount) {
         throw new Error("Simulation inner instruction program index is invalid");
       }
-      return Object.freeze({ programIdIndex });
+      // RPC inner-instruction account indexes are useful diagnostic evidence,
+      // but are not trusted account-key resolution or semantic verification.
+      const rawAccountIndexes = Object.hasOwn(instruction, "accounts")
+        ? ownData(instruction, "accounts", "Simulation inner instruction account indexes")
+        : null;
+      let accountIndexes = null;
+      if (rawAccountIndexes !== null) {
+        const indexes = readDenseArray(rawAccountIndexes, 256,
+          "Simulation inner instruction account indexes");
+        if (indexes.some(index => !Number.isInteger(index) ||
+            index < 0 || index >= accountKeyCount)) {
+          throw new Error("Simulation inner instruction account index is invalid");
+        }
+        accountIndexes = Object.freeze(indexes);
+      }
+      return Object.freeze({
+        programIdIndex,
+        accountIndexes
+      });
     });
     return Object.freeze({
       topLevelInstructionIndex: groupIndex,
