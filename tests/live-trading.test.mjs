@@ -436,6 +436,45 @@ test("Jupiter order rejects invalid fee basis points", async () => {
 });
 
 
+test("Jupiter order rejects malformed route-plan metadata before transaction inspection", async () => {
+  const valid = {
+    requestId: "req-route-validation",
+    transaction: validUnsignedLegacyTransaction(),
+    inputMint: SOL_MINT,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000",
+    outAmount: "12345",
+    router: "metis",
+    feeBps: 0,
+    routePlan: [validRoutePlanStep()]
+  };
+  const invalidPlans = [
+    [{ ...validRoutePlanStep(), percent: 101 }],
+    [{ ...validRoutePlanStep(), bps: 10001 }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, inAmount: "01" } }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, outAmount: "18446744073709551616" } }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, ammKey: "not-a-public-key" } }],
+    [{ ...validRoutePlanStep(), unexpected: true }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, unexpected: true } }],
+    [Object.defineProperty(validRoutePlanStep(), "percent", { enumerable: true, get() { throw new Error("getter must not run"); } })]
+  ];
+  for (const routePlan of invalidPlans) {
+    let rpcCalled = false;
+    await assert.rejects(() => getJupiterOrder({
+      env: goodEnv, outputMint: valid.outputMint,
+      amountLamports: 1000000, eligibility: goodEligibility,
+      fetchImpl: async (url) => {
+        if (String(url).startsWith("https://api.jup.ag/")) {
+          return new Response(JSON.stringify({ ...valid, routePlan }), { status: 200 });
+        }
+        rpcCalled = true;
+        throw new Error("transaction inspection must not run for malformed route plans");
+      }
+    }), /incomplete or non-executable/);
+    assert.equal(rpcCalled, false);
+  }
+});
+
 test("Jupiter order rejects route plans exceeding the bounded entry count", async () => {
   await assert.rejects(() => getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
