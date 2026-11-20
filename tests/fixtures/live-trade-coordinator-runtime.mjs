@@ -1,31 +1,43 @@
 import { LiveTradeCoordinator as BaseLiveTradeCoordinator } from "../../live-trade-coordinator.mjs";
 
-export class LiveTradeCoordinator extends BaseLiveTradeCoordinator {
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (request.method === "POST" && url.pathname === "/__test/seed-pending") {
-      const expected = String(this.env?.COORDINATOR_INTERNAL_TOKEN || "");
-      if (!expected || request.headers.get("Authorization") !== "Bearer " + expected) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      const day = new Date().toISOString().slice(0, 10);
-      await this.ctx.storage.put("coordinator_state", {
-        killSwitch: false,
-        reservations: {
-          "rpc-outage-pending-01": {
-            idempotencyKey: "rpc-outage-pending-01",
-            intentFingerprint: "test-only-immutable-intent",
-            amountCents: 200,
-            day,
-            status: "pending",
-            createdAt: new Date().toISOString()
-          }
-        },
-        killSwitchAudit: []
-      });
-      return Response.json({ seeded: true });
+const INPUT_MINT = "So11111111111111111111111111111111111111112";
+const OUTPUT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+function runtimeTestEvidence() {
+  const fetchedAt = Date.now();
+  return {
+    passed: true,
+    quote: { provider: "Coinbase", pair: "SOL/USD", price: 200, fetchedAt, quoteId: "runtime-restart-test-quote" },
+    costs: {
+      computeUnitPriceMicroLamports: "10000",
+      computeUnitLimit: 200000,
+      maxPriorityFeeLamports: 2000,
+      baseFeeLamports: 5000,
+      tipLamports: 0,
+      rentLamports: 0,
+      otherOutflowLamports: 0
+    },
+    risk: {
+      passed: true, provider: "test-fixture", mint: OUTPUT_MINT, fetchedAt,
+      checks: {
+        mintAuthoritySafe: true, freezeAuthoritySafe: true, token2022ExtensionsSafe: true,
+        holderConcentrationSafe: true, sellRouteAvailable: true, marketLiquiditySafe: true,
+        marketVolumeSafe: true, rugCheckSafe: true
+      },
+      sellRoute: { semanticInstructionVerification: true, routeVerification: "semantically-verified" }
     }
-    return super.fetch(request);
+  };
+}
+
+export class LiveTradeCoordinator extends BaseLiveTradeCoordinator {
+  constructor(ctx, env) {
+    super(ctx, {
+      ...env,
+      FETCH_TRUSTED_LIVE_EVIDENCE: async () => runtimeTestEvidence(),
+      VERIFY_FINALIZED_SETTLEMENT: async () => {
+        throw new Error("Simulated settlement RPC outage");
+      }
+    });
   }
 }
 
