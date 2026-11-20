@@ -89,6 +89,7 @@ export async function performReadOnlySimulation({
       envelope.params[1]?.sigVerify !== false ||
       envelope.params[1]?.replaceRecentBlockhash !== true ||
       envelope.params[1]?.innerInstructions !== true ||
+      envelope.params[1]?.innerInstructionsEncoding !== "json" ||
       envelope.params[1]?.commitment !== "confirmed") {
     throw new Error("Simulation RPC request envelope failed validation");
   }
