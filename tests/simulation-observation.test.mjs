@@ -215,5 +215,17 @@ test("simulation observation accepts bounded RPC stack height and data fields", 
     accountKeyCount: 2
   });
   assert.deepEqual(result.groups[0].instructions[0].accountIndexes, [0]);
+  assert.equal(result.groups[0].instructions[0].data, "AQID");
+  assert.equal(result.groups[0].instructions[0].stackHeight, 2);
   assert.equal(result.semanticInstructionVerification, false);
+});
+
+
+test("simulation observation rejects non-canonical CPI base64 payloads", () => {
+  assert.throws(() => normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQI" }] }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 2
+  }), /data is malformed/);
 });
