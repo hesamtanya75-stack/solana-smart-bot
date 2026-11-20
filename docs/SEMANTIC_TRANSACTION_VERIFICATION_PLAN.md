@@ -1211,3 +1211,8 @@ The response-binding transport now snapshots an exact allowlisted set of own dat
 ### CPI account-index observation
 
 The simulation observation normalizer now optionally snapshots each inner instruction's accounts index list when the RPC includes it. Lists are bounded, dense, and every index must fall within the supplied message account-key count. Missing lists remain explicitly null rather than being fabricated. These are diagnostic indexes only: they are not resolved to public keys, do not prove that the supplied account-key ordering belongs to the simulated bytes, and do not change cpiProgramIdsVerified, semantic verification, signing, or submission permissions.
+
+
+### CPI observation schema hardening
+
+The normalizer now accepts only the documented inner-instruction group fields and the supported RPC inner-instruction fields (`programIdIndex`, optional `accounts`, `data`, and `stackHeight`). Unknown keys, symbol keys, and accessor-backed properties are rejected before use. Optional data is length-bounded and optional stack height is range-checked. This remains diagnostic parsing only; it does not decode CPI payload semantics or authenticate the RPC's account-key ordering.
