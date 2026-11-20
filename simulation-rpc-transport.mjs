@@ -169,7 +169,7 @@ export async function performReadOnlySimulation(input) {
     try { await response?.body?.cancel(); } catch {}
     throw new Error("Simulation RPC returned HTTP " + (Number.isInteger(response?.status) ? response.status : "failure"));
   }
-  const payload = await readBoundedJsonResponse(response, MAX_SIMULATION_RESPONSE_BYTES);
+  const payload = await readBoundedJsonResponse(response, MAX_SIMULATION_RESPONSE_BYTES, { rejectDuplicateKeys: true });
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Simulation RPC response envelope is malformed");
   }
