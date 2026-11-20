@@ -1206,3 +1206,8 @@ Tests cover successful mock transport, response ID mismatch, RPC errors, invalid
 ### Simulation transport metadata hardening
 
 The response-binding transport now snapshots an exact allowlisted set of own data properties from its request record before reading values. It rejects missing, extra, symbol-keyed, or accessor-backed request fields without invoking getters. It also requires the request's response-identity flag to remain false and checks the expected digest provenance label. A regression test proves an accessor-backed request body is rejected before transport and its getter is never invoked.
+
+
+### CPI account-index observation
+
+The simulation observation normalizer now optionally snapshots each inner instruction's accounts index list when the RPC includes it. Lists are bounded, dense, and every index must fall within the supplied message account-key count. Missing lists remain explicitly null rather than being fabricated. These are diagnostic indexes only: they are not resolved to public keys, do not prove that the supplied account-key ordering belongs to the simulated bytes, and do not change cpiProgramIdsVerified, semantic verification, signing, or submission permissions.
