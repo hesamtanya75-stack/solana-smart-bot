@@ -1480,12 +1480,17 @@ export async function verifyFinalizedJupiterSettlement({
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || signatures[0] !== signature ||
       !Array.isArray(accountKeys) ||
-      !validateDenseLamportBalances(meta.preBalances, accountKeys.length) ||
-      !validateDenseLamportBalances(meta.postBalances, accountKeys.length) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
-  const keyStrings = snapshotDenseAccountKeys(accountKeys);
+  const staticKeyStrings = snapshotDenseAccountKeys(accountKeys);
+  const loadedKeyStrings = snapshotLoadedTransactionAddresses(meta, message);
+  const keyStrings = Object.freeze([...staticKeyStrings, ...loadedKeyStrings]);
+  if (new Set(keyStrings).size !== keyStrings.length ||
+      !validateDenseLamportBalances(meta.preBalances, keyStrings.length) ||
+      !validateDenseLamportBalances(meta.postBalances, keyStrings.length)) {
+    throw new Error("Finalized transaction account indexes or lamport balances are inconsistent");
+  }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
   // Solana's first required signer is the fee payer. Require the pinned bot
   // wallet in that position so a third-party transaction cannot settle an order.
