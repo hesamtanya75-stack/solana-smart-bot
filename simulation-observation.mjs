@@ -118,4 +118,41 @@ function normalizeSimulationObservation({
   });
 }
 
+/**
+ * Derive the observation digest from a snapshot of the supplied serialized
+ * message bytes. This binds the record to those bytes, but does NOT prove that
+ * an external RPC simulated the same bytes; the caller must preserve that
+ * request/response association. The result remains diagnostic-only.
+ */
+export async function normalizeSimulationObservationForMessage({
+  serializedMessage, simulationResult, topLevelInstructionCount, accountKeyCount
+}) {
+  if (!(serializedMessage instanceof Uint8Array) ||
+      Object.getPrototypeOf(serializedMessage) !== Uint8Array.prototype ||
+      serializedMessage.byteLength < 1 || serializedMessage.byteLength > 1232) {
+    throw new Error("Serialized simulation message must be a bounded Uint8Array");
+  }
+  // Copy synchronously before awaiting WebCrypto so later caller mutation
+  // cannot change the bytes whose digest is recorded.
+  const messageSnapshot = new Uint8Array(serializedMessage);
+  if (!globalThis.crypto?.subtle?.digest) {
+    throw new Error("WebCrypto SHA-256 is unavailable; simulation observation blocked");
+  }
+  const digestBuffer = await globalThis.crypto.subtle.digest("SHA-256", messageSnapshot);
+  const messageDigest = Array.from(new Uint8Array(digestBuffer), byte =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  const observation = normalizeSimulationObservation({
+    messageDigest,
+    simulationResult,
+    topLevelInstructionCount,
+    accountKeyCount
+  });
+  return Object.freeze({
+    ...observation,
+    messageDigestSource: "sha256-of-supplied-serialized-message",
+    simulationInputIdentityVerified: false
+  });
+}
+
 export { normalizeSimulationObservation };
