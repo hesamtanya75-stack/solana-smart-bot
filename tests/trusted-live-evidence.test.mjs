@@ -2307,13 +2307,22 @@ test("CPI index resolution rejects a digest mismatch even with privately branded
   const evidence = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
   );
-  const observation = {
-    scope: "simulation-observation-only",
+  const observation = normalizeSimulationObservation({
     messageDigest: "a".repeat(64),
-    groups: []
-  };
+    simulationResult: {
+      context: { slot: 1234 },
+      value: { err: null, innerInstructions: [] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const completeObservation = Object.freeze({
+    ...observation,
+    messageDigestSource: "sha256-of-supplied-serialized-message",
+    simulationInputIdentityVerified: false
+  });
   assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
-    observation,
+    observation: completeObservation,
     trustedMessageEvidence: evidence
   }), /digest does not match/);
 });
