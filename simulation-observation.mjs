@@ -225,8 +225,15 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
   if (!isTrustedUnsignedMessageEvidence(trustedMessageEvidence)) {
     throw new Error("Privately branded trusted unsigned-message evidence is required");
   }
-  if (!isPlainRecord(observation) ||
-      ownData(observation, "scope", "Simulation observation scope") !== "simulation-observation-only") {
+  assertAllowedDataFields(observation, [
+    "scope", "messageDigest", "contextSlot", "simulationSucceeded",
+    "simulationErrorPresent", "innerInstructionsObserved",
+    "innerInstructionGroupCount", "innerInstructionCount", "groups",
+    "cpiProgramIdsVerified", "semanticInstructionVerification",
+    "tokenBalanceEffectsVerified", "signingPermitted", "submissionPermitted",
+    "messageDigestSource", "simulationInputIdentityVerified"
+  ], "Simulation observation");
+  if (ownData(observation, "scope", "Simulation observation scope") !== "simulation-observation-only") {
     throw new Error("A normalized simulation observation is required");
   }
   const digest = ownData(observation, "messageDigest", "Simulation observation digest");
@@ -247,7 +254,9 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
     256, "Simulation observation groups"
   );
   const resolvedGroups = groups.map(group => {
-    if (!isPlainRecord(group)) throw new Error("Simulation observation group is malformed");
+    assertAllowedDataFields(group,
+      ["topLevelInstructionIndex", "innerInstructionCount", "instructions"],
+      "Simulation observation group");
     const topLevelIndex = ownData(group, "topLevelInstructionIndex", "Top-level instruction index");
     if (!Number.isInteger(topLevelIndex) || topLevelIndex < 0 ||
         topLevelIndex >= compiledInstructions.length) {
@@ -258,7 +267,9 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
       512, "Simulation observation instructions"
     );
     const resolvedInstructions = instructions.map(instruction => {
-      if (!isPlainRecord(instruction)) throw new Error("Simulation CPI instruction is malformed");
+      assertAllowedDataFields(instruction,
+        ["programIdIndex", "accountIndexes", "data", "stackHeight"],
+        "Simulation CPI instruction");
       const programIndex = ownData(instruction, "programIdIndex", "CPI program index");
       if (!Number.isInteger(programIndex) || programIndex < 0 ||
           programIndex >= accountKeys.length) {
