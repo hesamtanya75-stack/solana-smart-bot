@@ -3,15 +3,15 @@ function rejectDuplicateJsonObjectKeys(source) {
   let offset = 0;
   const skipWhitespace = () => {
     while (offset < source.length &&
-      (source[offset] === " " || source[offset] === "\\t" ||
-       source[offset] === "\\n" || source[offset] === "\\r")) offset++;
+      (source[offset] === " " || source[offset] === "\t" ||
+       source[offset] === "\n" || source[offset] === "\r")) offset++;
   };
   const readString = () => {
     const start = offset++;
     while (offset < source.length) {
       const character = source[offset++];
       if (character === '"') return JSON.parse(source.slice(start, offset));
-      if (character === "\\\\") offset++;
+      if (character === "\\") offset++;
     }
     throw new Error("Malformed JSON string");
   };
@@ -55,8 +55,8 @@ function rejectDuplicateJsonObjectKeys(source) {
     }
     const start = offset;
     while (offset < source.length &&
-      source[offset] !== " " && source[offset] !== "\\t" &&
-      source[offset] !== "\\n" && source[offset] !== "\\r" &&
+      source[offset] !== " " && source[offset] !== "\t" &&
+      source[offset] !== "\n" && source[offset] !== "\r" &&
       source[offset] !== "," && source[offset] !== "]" &&
       source[offset] !== "}") offset++;
     if (offset === start) throw new Error("Malformed JSON value");
