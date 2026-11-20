@@ -209,6 +209,7 @@ function mockLookupTableAccount(owner = "AddressLookupTab1e111111111111111111111
 
 test("Jupiter v0 order resolves finalized ALT addresses before returning route evidence", async () => {
   let rpcRequest;
+  let altRpcRequest;
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
@@ -224,6 +225,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
       }
       rpcRequest = JSON.parse(options.body);
       if (rpcRequest.params[1]?.dataSlice) return mockExecutableProgramsResponse(options);
+      altRpcRequest = rpcRequest;
       return Response.json({ jsonrpc: "2.0", id: 1, result: {
         context: { slot: 100 }, value: [mockLookupTableAccount()]
       } });
@@ -258,9 +260,10 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
       source: "lookup-readonly"
     }
   ]);
-  assert.equal(rpcRequest.method, "getMultipleAccounts");
-  assert.deepEqual(rpcRequest.params[0], ["3qbR1eZRqXUWroWKKYhbDmR3FfqTHfqSU8zZSxtANzYh"]);
-  assert.equal(rpcRequest.params[1].commitment, "finalized");
+  assert.equal(altRpcRequest.method, "getMultipleAccounts");
+  assert.deepEqual(altRpcRequest.params[0], ["3qbR1eZRqXUWroWKKYhbDmR3FfqTHfqSU8zZSxtANzYh"]);
+  assert.equal(altRpcRequest.params[1].commitment, "finalized");
+  assert.equal(rpcRequest.params[1].dataSlice.length, 0);
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
 });
