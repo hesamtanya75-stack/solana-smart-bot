@@ -1190,3 +1190,14 @@ The adapter constructs a JSON-RPC `simulateTransaction` request from one bounded
 This is request construction only: it does not perform network I/O, validate or associate a returned RPC response, prove execution identity, decode CPI semantics, sign, or submit. Its output explicitly keeps `responseIdentityVerified`, `signingPermitted`, and `submissionPermitted` false. The transaction-byte digest is not interchangeable with a serialized-message digest; the caller must not claim they are the same identity.
 
 Next safe step: implement a separately reviewed transport wrapper that sends only this immutable request, checks the JSON-RPC response ID/version and endpoint association, captures bounded response context, and passes the response into the diagnostic observation normalizer. It must remain disconnected from transaction reservation, signing, and submission.
+
+
+## Read-only simulation transport and response binding — PR #56 follow-up
+
+Added `simulation-rpc-transport.mjs` and focused mock-transport tests.
+
+The transport accepts only the adapter's simulation request shape, verifies the endpoint origin/path matches the request's sanitized endpoint identity, parses the request envelope, confirms the method/options/request ID, decodes the exact base64 transaction bytes, and recomputes SHA-256 before any network call. It sends the original immutable request body via HTTPS POST with redirects rejected. The response body is bounded to 2 MiB, parsed as JSON, and checked for JSON-RPC 2.0, matching request ID, explicit result, and a nonnegative safe context slot.
+
+The returned record binds the observed response to the request ID and sanitized endpoint identity and preserves the transaction digest and simulation result. It deliberately reports `simulationInputIdentityVerified: false`: a matching JSON-RPC ID and endpoint do not cryptographically prove that the remote RPC executed those exact transaction bytes or that future execution will match. This wrapper is read-only observation plumbing, not semantic verification or execution authorization. No live coordinator, signer, or transaction submission path calls it.
+
+Tests cover successful mock transport, response ID mismatch, RPC errors, invalid context, endpoint mismatch, altered request bytes, HTTP failure, oversized response, and attempted execution-permission escalation.
