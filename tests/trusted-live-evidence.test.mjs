@@ -2603,3 +2603,70 @@ test("settlement proof rejects an owned finalized token balance above u64", asyn
     signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
   }, fetchImpl), /token balance exceeds u64/);
 });
+
+
+test("settlement proof rejects malformed supplied token account indexes and program IDs", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(12));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const baseResult = {
+    slot: 127,
+    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    meta: {
+      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      preTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 0,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "1", decimals: 9 }
+      }],
+      postTokenBalances: [{
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 0,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "0", decimals: 9 }
+      }, {
+        mint: outputMint, owner: BOT_WALLET, accountIndex: 0,
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        uiTokenAmount: { amount: "1", decimals: 6 }
+      }]
+    }
+  };
+  let transactionResult = baseResult;
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : transactionResult;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  const request = { signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1" };
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], accountIndex: -1 }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], programId: "11111111111111111111111111111111" }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /program ID is unsupported/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], uiTokenAmount: { amount: "1", decimals: 256 } }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /decimals are malformed/);
+});
