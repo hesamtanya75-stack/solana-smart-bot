@@ -14,6 +14,19 @@ function ownData(record, key, label) {
   return descriptor.value;
 }
 
+function assertAllowedDataFields(record, allowed, label) {
+  if (!isPlainRecord(record)) throw new Error(label + " is malformed");
+  for (const key of Reflect.ownKeys(record)) {
+    if (typeof key !== "string" || !allowed.includes(key)) {
+      throw new Error(label + " contains unsupported properties");
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error(label + " contains accessor-backed properties");
+    }
+  }
+}
+
 function readDenseArray(value, maximum, label) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
       value.length > maximum) throw new Error(label + " is malformed");
@@ -60,7 +73,7 @@ function normalizeSimulationObservation({
   );
   const seenTopLevelIndexes = new Set();
   const normalizedGroups = groups.map(group => {
-    if (!isPlainRecord(group)) throw new Error("Simulation inner instruction group is malformed");
+    assertAllowedDataFields(group, ["index", "instructions"], "Simulation inner instruction group");
     const groupIndex = ownData(group, "index", "Simulation inner instruction group index");
     if (!Number.isInteger(groupIndex) || groupIndex < 0 ||
         groupIndex >= topLevelInstructionCount) {
@@ -75,9 +88,9 @@ function normalizeSimulationObservation({
       512, "Simulation inner instruction list"
     );
     const normalizedInstructions = instructions.map(instruction => {
-      if (!isPlainRecord(instruction)) {
-        throw new Error("Simulation inner instruction is malformed");
-      }
+      assertAllowedDataFields(instruction,
+        ["programIdIndex", "accounts", "data", "stackHeight"],
+        "Simulation inner instruction");
       const programIdIndex = ownData(instruction, "programIdIndex",
         "Simulation inner instruction program index");
       if (!Number.isInteger(programIdIndex) || programIdIndex < 0 ||
@@ -89,6 +102,18 @@ function normalizeSimulationObservation({
       const rawAccountIndexes = Object.hasOwn(instruction, "accounts")
         ? ownData(instruction, "accounts", "Simulation inner instruction account indexes")
         : null;
+      if (Object.hasOwn(instruction, "data")) {
+        const data = ownData(instruction, "data", "Simulation inner instruction data");
+        if (typeof data !== "string" || data.length > 8192) {
+          throw new Error("Simulation inner instruction data is malformed");
+        }
+      }
+      if (Object.hasOwn(instruction, "stackHeight")) {
+        const stackHeight = ownData(instruction, "stackHeight", "Simulation inner instruction stack height");
+        if (!Number.isInteger(stackHeight) || stackHeight < 1 || stackHeight > 256) {
+          throw new Error("Simulation inner instruction stack height is invalid");
+        }
+      }
       let accountIndexes = null;
       if (rawAccountIndexes !== null) {
         const indexes = readDenseArray(rawAccountIndexes, 256,
