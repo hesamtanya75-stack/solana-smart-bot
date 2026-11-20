@@ -34,7 +34,7 @@ The script:
 4. Logs into Cloudflare (including the optional TOTP challenge).
 5. Requires the Cloudflare API to report `canMigrateLegacy: true` and a valid revision.
 6. Uses the existing authenticated, revision-checked one-time `PUT /api/state` legacy migration route. It does not write directly to Workers KV.
-7. Reads Cloudflare state back and compares the balance and complete normalized trade history. Automated paper buying remains disabled.
+7. Reads Cloudflare state back and compares the balance and complete normalized trade history. Automated paper buying remains disabled and the imported bot is paused for manual review.
 
 If any step fails, the script stops. Keep Deno running and retain the backup. Do not repeatedly retry against an initialized destination; investigate and reconcile first.
 
