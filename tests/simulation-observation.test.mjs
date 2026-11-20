@@ -226,7 +226,7 @@ test("simulation observation accepts bounded RPC stack height and data fields", 
     accountKeyCount: 2
   });
   assert.deepEqual(result.groups[0].instructions[0].accountIndexes, [0]);
-  assert.equal(result.groups[0].instructions[0].data, "AQID");
+  assert.equal(result.groups[0].instructions[0].data, "Ldp");
   assert.equal(result.groups[0].instructions[0].stackHeight, 2);
   assert.equal(result.semanticInstructionVerification, false);
 });
