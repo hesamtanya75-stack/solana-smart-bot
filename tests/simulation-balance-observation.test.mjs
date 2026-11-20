@@ -10,7 +10,8 @@ function fixture() {
   return {
     context: { apiVersion: "2.3.3", slot: 123 },
     value: {
-      err: null,\n      fee: 5000,
+      err: null,
+      fee: 5000,
       preBalances: [1000, 2000],
       postBalances: [900, 2100],
       preTokenBalances: [{
