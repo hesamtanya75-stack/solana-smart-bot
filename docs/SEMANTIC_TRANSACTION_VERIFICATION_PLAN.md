@@ -1332,3 +1332,19 @@ by the external `Organization suspended - resolve billing to deploy`
 condition. PR #56 remains open and Draft. No merge, production deployment,
 signing, transaction submission, funded Devnet lifecycle, or Mainnet trading
 was performed.
+
+
+### Strict simulation JSON-RPC response envelope validation — PR #56 follow-up
+
+The read-only simulation transport now rejects response envelopes containing
+unknown top-level fields or conflicting success/error members. Successful
+responses must contain exactly `jsonrpc`, `id`, and `result`; error
+responses must contain exactly `jsonrpc`, `id`, and `error`. This prevents
+unreviewed response metadata or a mixed result/error envelope from being
+silently accepted as a normal simulation observation.
+
+Regression tests cover both an unexpected top-level field and a response
+containing both `result` and `error`. This is strict JSON-RPC envelope
+validation only: it does not authenticate the RPC provider, prove remote
+execution of the exact transaction bytes, establish CPI semantics, or change
+any verification or execution-permission flags.
