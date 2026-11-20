@@ -27,6 +27,24 @@ function assertAllowedDataFields(record, allowed, label) {
   }
 }
 
+function isCanonicalBase64(value) {
+  if (typeof value !== "string" || value.length > 8192 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    return false;
+  }
+  if (value.endsWith("==")) {
+    const sextet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+      .indexOf(value[value.length - 3]);
+    return sextet >= 0 && (sextet & 15) === 0;
+  }
+  if (value.endsWith("=")) {
+    const sextet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+      .indexOf(value[value.length - 2]);
+    return sextet >= 0 && (sextet & 3) === 0;
+  }
+  return true;
+}
+
 function readDenseArray(value, maximum, label) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
       value.length > maximum) throw new Error(label + " is malformed");
@@ -105,8 +123,7 @@ function normalizeSimulationObservation({
       let data = null;
       if (Object.hasOwn(instruction, "data")) {
         data = ownData(instruction, "data", "Simulation inner instruction data");
-        if (typeof data !== "string" || data.length > 8192 ||
-            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
+        if (!isCanonicalBase64(data)) {
           throw new Error("Simulation inner instruction data is malformed");
         }
       }
