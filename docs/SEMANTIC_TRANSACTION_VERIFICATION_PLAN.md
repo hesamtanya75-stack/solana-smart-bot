@@ -1244,4 +1244,16 @@ This is deliberately limited to **candidate index resolution**. The RPC response
 
 Unknown/unbranded evidence and digest mismatches fail closed. The candidate public keys must not be treated as authenticated CPI program identities or semantic attestations.
 
+The resolver additionally validates the observation contract before resolving
+indexes: all verification and execution-permission flags must remain explicitly
+false; simulation status and context-slot metadata must be internally
+consistent; each group's declared inner-instruction count must match its
+bounded instruction array; aggregate group/instruction counts must match the
+actual contents; and duplicate top-level groups are rejected. Root, group,
+and inner-instruction records are inspected through own data-property
+descriptors, so accessor-backed fields are rejected without invoking getters.
+These checks establish structural consistency only and do not strengthen the
+RPC response's provenance or semantic trust.
+
+
 Current validation on PR #56 head `4e597be17edb7efadeb71bebc72876fb3c61cb3b`: Node tests, Cloudflare Worker build validation, and read-only Devnet validation all completed successfully. The funded Devnet lifecycle job was skipped as required without explicit opt-in. PR #56 remains Draft and open; no merge, deployment, signing, transaction submission, funded Devnet lifecycle, or Mainnet trading was performed.
