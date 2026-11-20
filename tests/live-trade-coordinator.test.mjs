@@ -1150,3 +1150,58 @@ test("coordinator rejects accessor-backed and noncanonical all-in cost evidence 
   }
   assert.equal(getterCalled, false);
 });
+
+test("RPC settlement outage leaves the reservation pending and keeps spend capacity locked", async () => {
+  let verificationCalls = 0;
+  const verifier = async () => {
+    verificationCalls += 1;
+    throw new Error("RPC request timed out");
+  };
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const reserved = await post(coordinator, "/reserve", validReservation());
+  assert.equal(reserved.status, 200);
+
+  const confirmation = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "A".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.notEqual(confirmation.status, 200);
+  assert.equal(verificationCalls, 1);
+
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+  assert.equal(status.killSwitch, false);
+  const retry = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "order-key-0002"
+  }));
+  assert.equal(retry.status, 409);
+  assert.match(retry.body.error, /Daily USD spend limit exceeded/);
+});
+
+test("non-finalized RPC status cannot confirm or release an ambiguous reservation", async () => {
+  const verifier = async args => ({
+    verified: true, signature: args.signature, inputMint: args.inputMint,
+    inputAmount: args.inputAmount, outputMint: args.outputMint,
+    outputAmount: args.outputAmount, owner: args.expectedOwner,
+    confirmationStatus: "confirmed",
+    costs: fixtureSettlementCosts(args.inputAmount)
+  });
+  const { coordinator } = makeCoordinator(undefined, verifier);
+  await post(coordinator, "/kill-switch", { enabled: false });
+  await post(coordinator, "/reserve", validReservation());
+
+  const result = await post(coordinator, "/confirm", {
+    idempotencyKey: "order-key-0001",
+    signature: "B".repeat(64),
+    outputAmount: "987654"
+  });
+  assert.equal(result.status, 409);
+  assert.match(result.body.error, /incomplete or mismatched/);
+  const status = await coordinator.status();
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 201);
+});
+
