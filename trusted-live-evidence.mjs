@@ -141,7 +141,6 @@ function snapshotDensePlainArray(value, maximum, label, malformedMessage = label
     throw new Error(malformedMessage);
   }
   const snapshot = [];
-  const seenKeys = new Set();
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor) throw new Error(malformedMessage);
@@ -1336,6 +1335,7 @@ function snapshotDenseAccountKeys(value) {
     throw new Error("Finalized transaction account keys are incomplete");
   }
   const snapshot = [];
+  const seenKeys = new Set();
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     const entry = descriptor?.value;
