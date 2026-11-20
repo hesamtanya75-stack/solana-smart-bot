@@ -307,3 +307,63 @@ test("public observation entry points reject accessor-backed argument objects wi
   await assert.rejects(() => normalizeSimulationObservationForMessage(messageInput), /accessor-backed/);
   assert.equal(messageGetterInvoked, false);
 });
+
+
+test("simulation observation validates complete CPI stack-height progression without semantic approval", () => {
+  const result = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [
+        { programIdIndex: 1, stackHeight: 2 },
+        { programIdIndex: 2, stackHeight: 3 },
+        { programIdIndex: 3, stackHeight: 2 }
+      ]
+    }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 4
+  });
+  assert.equal(result.groups[0].stackHeightStructure, "complete");
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("simulation observation rejects impossible CPI stack-height jumps", () => {
+  const base = { messageDigest: digest, topLevelInstructionCount: 1, accountKeyCount: 4 };
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [
+        { programIdIndex: 1, stackHeight: 2 },
+        { programIdIndex: 2, stackHeight: 4 }
+      ]
+    }])
+  }), /stack-height sequence is structurally impossible/);
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [{ programIdIndex: 1, stackHeight: 1 }]
+    }])
+  }), /stack-height sequence is structurally impossible/);
+});
+
+test("simulation observation marks partial CPI stack heights incomplete, not verified", () => {
+  const result = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: simulation([{
+      index: 0,
+      instructions: [
+        { programIdIndex: 1, stackHeight: 2 },
+        { programIdIndex: 2 }
+      ]
+    }]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 3
+  });
+  assert.equal(result.groups[0].stackHeightStructure, "incomplete");
+  assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.signingPermitted, false);
+});
