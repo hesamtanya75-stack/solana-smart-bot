@@ -2301,3 +2301,53 @@ test("CPI index resolution rejects unbranded or digest-mismatched evidence", () 
     trustedMessageEvidence: { accountKeys: ["11111111111111111111111111111111"] }
   }), /privately branded/i);
 });
+
+
+test("CPI index resolution rejects a digest mismatch even with privately branded evidence", async () => {
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const observation = {
+    scope: "simulation-observation-only",
+    messageDigest: "a".repeat(64),
+    groups: []
+  };
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  }), /digest does not match/);
+});
+
+test("CPI index resolution preserves v0 loaded writable/readonly account-key ordering", async () => {
+  const encoded = validUnsignedV0TransactionWithLookup();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockAltAndExecutableFetch()
+  );
+  assert.equal(evidence.accountKeys.length, 4);
+  const serialized = Buffer.from(encoded, "base64");
+  const messageDigest = createHash("sha256")
+    .update(serialized.subarray(65))
+    .digest("hex");
+  const observation = normalizeSimulationObservation({
+    messageDigest,
+    simulationResult: {
+      context: { slot: 1235 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 3, accounts: [2] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  const resolved = resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(resolved.groups[0].instructions[0].programIdCandidate, evidence.accountKeys[3]);
+  assert.deepEqual(resolved.groups[0].instructions[0].accountKeyCandidates, [evidence.accountKeys[2]]);
+  assert.equal(resolved.semanticInstructionVerification, false);
+  assert.equal(resolved.simulationInputIdentityVerified, false);
+  assert.equal(resolved.signingPermitted, false);
+  assert.equal(resolved.submissionPermitted, false);
+});
