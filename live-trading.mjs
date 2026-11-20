@@ -5,7 +5,10 @@
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-import { validateAndResolveUnsignedJupiterTransaction } from "./trusted-live-evidence.mjs";
+import {
+  validateAndResolveUnsignedJupiterTransaction,
+  isTrustedUnsignedMessageEvidence
+} from "./trusted-live-evidence.mjs";
 import { readBoundedJsonResponse } from "./rpc-response.mjs";
 
 function isCanonicalU64(value, allowZero = false) {
@@ -182,6 +185,29 @@ function inventoryUnsignedInstructionPrograms(evidence) {
   const unsupportedProgramIds = programIds
     .filter(item => !item.decoderRegistryRecognized)
     .map(item => item.programId);
+  // Bind the narrow finalized executable-account evidence to this exact
+  // compiled-message program-ID set. A plain caller-supplied object is never
+  // sufficient: the evidence must carry this module's private provenance brand.
+  const executableEvidence = evidence.programExecutableEvidence;
+  const expectedExecutableProgramIds = [...counts.keys()].sort();
+  const suppliedExecutablePrograms = executableEvidence?.programs;
+  const suppliedExecutableProgramIds = Array.isArray(suppliedExecutablePrograms)
+    ? suppliedExecutablePrograms.map(item => item?.programId).sort()
+    : [];
+  const programExecutableFlagsVerified =
+    isTrustedUnsignedMessageEvidence(evidence) &&
+    evidence.programExecutableFlagsVerified === true &&
+    executableEvidence?.scope === "finalized-account-executable-flag-and-loader-owner-only" &&
+    Number.isSafeInteger(executableEvidence.contextSlot) &&
+    executableEvidence.contextSlot > 0 &&
+    Array.isArray(suppliedExecutablePrograms) &&
+    suppliedExecutablePrograms.length === expectedExecutableProgramIds.length &&
+    suppliedExecutableProgramIds.every((programId, index) =>
+      programId === expectedExecutableProgramIds[index]) &&
+    suppliedExecutablePrograms.every(item =>
+      item?.executable === true && item?.commitment === "finalized" &&
+      item?.contextSlot === executableEvidence.contextSlot &&
+      typeof item?.owner === "string" && BASE58.test(item.owner));
   // Resolve each compiled instruction's account indexes to the already-derived
   // message-level privileges. Preserve repeated indexes and original ordering.
   const instructionAccountPrivileges = evidence.compiledInstructions.map((instruction, index) =>
@@ -201,7 +227,10 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     cpiProgramIdsVerified: false,
     tokenBalanceEffectsVerified: false,
     accountPrivilegesVerified: false,
-    programExecutableFlagsVerified: false,
+    programExecutableFlagsVerified,
+    programExecutableEvidenceScope: programExecutableFlagsVerified
+      ? executableEvidence.scope
+      : "not-verified",
     instructionAccountIndexesVerified: true,
     messageAccountPrivilegesDerived: true,
     instructionAccountPrivilegesDerived: true,

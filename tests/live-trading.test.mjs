@@ -321,7 +321,9 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
   assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
-  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
+  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, true);
+  assert.equal(result.instructionProgramInventory.programExecutableEvidenceScope,
+    "finalized-account-executable-flag-and-loader-owner-only");
   assert.equal(result.instructionProgramInventory.instructionAccountIndexesVerified, true);
   assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
   assert.equal(result.instructionProgramInventory.instructionAccountPrivilegesDerived, true);
@@ -346,6 +348,11 @@ test("valid Jupiter order is parsed but never executed", async () => {
   ]);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
+  // Executable-account evidence is not program recognition or execution approval.
+  assert.equal(result.analysisOnly, true);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+  assert.equal(result.instructionProgramInventory.semanticInstructionVerification, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
     "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN"
   ]);
@@ -416,7 +423,9 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
   assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
-  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
+  assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, true);
+  assert.equal(result.instructionProgramInventory.programExecutableEvidenceScope,
+    "finalized-account-executable-flag-and-loader-owner-only");
   assert.equal(result.instructionProgramInventory.instructionAccountIndexesVerified, true);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);

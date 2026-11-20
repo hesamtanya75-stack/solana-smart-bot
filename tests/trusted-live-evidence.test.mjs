@@ -2189,6 +2189,25 @@ test("referenced programs require finalized executable flags and recognized load
 });
 
 
+
+test("executable program resolver rejects executable accounts owned by non-loader programs", async () => {
+  const id = "11111111111111111111111111111111";
+  await assert.rejects(
+    resolveExecutableProgramAccounts([id], async () => Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: {
+        context: { slot: 253 },
+        value: [{
+          owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          executable: true,
+          data: ["", "base64"]
+        }]
+      }
+    })),
+    /recognized Solana loader/
+  );
+});
+
 test("executable program resolver bounds RPC batches and pins later batches to prior finalized context", async () => {
   const ids = Array.from({ length: 101 }, (_, index) =>
     encodeBase58(Uint8Array.from({ length: 32 }, (_, byte) => (index + byte + 1) % 256))
