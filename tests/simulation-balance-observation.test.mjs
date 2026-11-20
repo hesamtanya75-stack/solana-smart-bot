@@ -141,3 +141,31 @@ test("rejects duplicate unresolved token identities", () => {
     simulationResult: data, accountKeyCount: 2
   }), /duplicate/);
 });
+
+
+test("does not pair balances when pre/post token program identities differ", () => {
+  const data = fixture();
+  data.value.postTokenBalances[0].programId = OWNER;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas.length, 2);
+  assert.ok(result.tokenDeltas.every(item => item.status === "unpaired-account-state"));
+  assert.ok(result.tokenDeltas.every(item => item.delta === null));
+  assert.equal(result.tokenRecordsUnpaired, true);
+});
+
+test("does not calculate token deltas when owner or decimals metadata conflicts", () => {
+  for (const patch of [
+    data => { data.value.postTokenBalances[0].owner = MINT; },
+    data => { data.value.postTokenBalances[0].uiTokenAmount.decimals = 8; }
+  ]) {
+    const data = fixture();
+    patch(data);
+    const result = normalizeSimulationBalanceObservation({
+      simulationResult: data, accountKeyCount: 2
+    });
+    assert.equal(result.tokenDeltas[0].status, "conflicting-account-metadata");
+    assert.equal(result.tokenDeltas[0].delta, null);
+  }
+});
