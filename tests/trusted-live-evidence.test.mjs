@@ -2644,6 +2644,16 @@ test("settlement proof rejects malformed supplied token account indexes and prog
 
   transactionResult = {
     ...baseResult,
+    transaction: { signatures: [signature], message: { accountKeys: [
+      BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111112"
+    ] } }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate account keys/);
+  transactionResult = baseResult;
+
+  transactionResult = {
+    ...baseResult,
     meta: {
       ...baseResult.meta,
       preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], accountIndex: -1 }]
