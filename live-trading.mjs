@@ -65,9 +65,8 @@ const REVIEWED_PROGRAM_IDS = new Set([
  * This is identifier inventory only; it does not decode or approve semantics.
  */
 function inventoryUnsignedInstructionPrograms(evidence) {
-  // The current v1 wire parser validates layout/configuration but deliberately
-  // does not yet expose decoded addresses or compiled instruction records.
-  // Report that limitation explicitly instead of treating it as an empty list.
+  // Defensive compatibility path: current V1 parsing exposes these fields,
+  // but older or partial evidence must never be mistaken for an empty inventory.
   if (evidence?.messageVersion === 1 &&
       (!Array.isArray(evidence.accountKeys) || !Array.isArray(evidence.compiledInstructions))) {
     return Object.freeze({
