@@ -229,3 +229,16 @@ test("simulation observation rejects non-canonical CPI base64 payloads", () => {
     accountKeyCount: 2
   }), /data is malformed/);
 });
+
+
+test("simulation observation rejects non-zero unused base64 padding bits", () => {
+  const base = { messageDigest: digest, topLevelInstructionCount: 1, accountKeyCount: 2 };
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AQJ=" }] }])
+  }), /data is malformed/);
+  assert.throws(() => normalizeSimulationObservation({
+    ...base,
+    simulationResult: simulation([{ index: 0, instructions: [{ programIdIndex: 1, data: "AR==" }] }])
+  }), /data is malformed/);
+});
