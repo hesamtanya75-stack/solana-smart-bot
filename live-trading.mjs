@@ -211,12 +211,12 @@ async function getJupiterOrder({
 
   // Do not set receiver: Jupiter requires it to differ from taker, while this
   // single-wallet flow pins both signing and settlement to the bot wallet.
-  // Exclude JupiterZ and accept only an explicitly returned Metis order below;
-  // every other router remains fail-closed.
+  // Ask Jupiter to exclude every non-Metis router; still verify the returned
+  // router because provider-side query filters are not an authorization boundary.
   const params = new URLSearchParams({
     inputMint, outputMint, amount: String(amountLamports),
     taker: policy.wallet,
-    excludeRouters: "jupiterz",
+    excludeRouters: "jupiterz,dflow,okx",
     slippageBps: String(policy.maxSlippageBps)
   });
   const response = await fetchImpl("https://api.jup.ag/swap/v2/order?" + params.toString(), {
