@@ -2679,6 +2679,19 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     ...baseResult,
     meta: {
       ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0], uiTokenAmount: { amount: "0", decimals: 8 } },
+        baseResult.meta.postTokenBalances[1]
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /identity changed across pre\/post balances/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
       preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], programId: "11111111111111111111111111111111" }]
     }
   };
