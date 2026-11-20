@@ -241,16 +241,19 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
     "semanticInstructionVerification",
     "tokenBalanceEffectsVerified",
     "signingPermitted",
-    "submissionPermitted",
-    "simulationInputIdentityVerified"
+    "submissionPermitted"
   ];
   for (const key of requiredFalseFlags) {
     if (ownData(observation, key, "Simulation observation " + key) !== false) {
       throw new Error("Simulation observation cannot assert " + key);
     }
   }
-  if (ownData(observation, "messageDigestSource", "Simulation observation digest source") !==
-      "sha256-of-supplied-serialized-message" ||
+  if ((Object.hasOwn(observation, "simulationInputIdentityVerified") &&
+       ownData(observation, "simulationInputIdentityVerified",
+         "Simulation observation identity status") !== false) ||
+      (Object.hasOwn(observation, "messageDigestSource") &&
+       ownData(observation, "messageDigestSource", "Simulation observation digest source") !==
+         "sha256-of-supplied-serialized-message") ||
       ownData(observation, "innerInstructionsObserved", "Simulation inner-instructions status") !== true) {
     throw new Error("Simulation observation provenance or CPI status is invalid");
   }
