@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
-    "@solana/addresses": "8.6.0",
-    "@deno/kv": "0.14.0"
+    "@solana/addresses": "8.6.0"
   }
 }
