@@ -315,6 +315,9 @@ export function resolveSimulationCpiIndexesAgainstTrustedMessage({
       throw new Error("Simulation observation group instruction count is inconsistent");
     }
     resolvedInstructionTotal += instructions.length;
+    if (resolvedInstructionTotal > MAX_TOTAL_INNER_INSTRUCTIONS) {
+      throw new Error("Simulation observation aggregate instruction count exceeds the supported bound");
+    }
     const resolvedInstructions = instructions.map(instruction => {
       assertAllowedDataFields(instruction,
         ["programIdIndex", "accountIndexes", "data", "stackHeight"],
