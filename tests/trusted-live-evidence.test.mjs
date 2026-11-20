@@ -2166,7 +2166,7 @@ test("executable program resolver rejects malformed finalized context and accoun
     { context: { slot: 0 }, value: [{ owner: "NativeLoader1111111111111111111111111111111", executable: true }] },
     { context: { slot: 10 }, value: [] },
     { context: { slot: 10 }, value: [{ owner: "NativeLoader1111111111111111111111111111111" }] },
-    { context: { slot: 10 }, value: [{ owner: "NativeLoader1111111111111111111111111111111", executable: true, get data() { throw new Error("unused getter"); } }] }
+    { context: { slot: 10 }, value: [Object.defineProperty({ executable: true }, "owner", { get() { throw new Error("owner getter must not run"); } })] }
   ]) {
     await assert.rejects(resolveExecutableProgramAccounts([id], async () =>
       Response.json({ jsonrpc: "2.0", id: 1, result })
