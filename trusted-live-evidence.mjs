@@ -141,6 +141,7 @@ function snapshotDensePlainArray(value, maximum, label, malformedMessage = label
     throw new Error(malformedMessage);
   }
   const snapshot = [];
+  const seenKeys = new Set();
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor) throw new Error(malformedMessage);
@@ -1353,6 +1354,10 @@ function snapshotDenseAccountKeys(value) {
         decodeBase58(key).length !== 32) {
       throw new Error("Finalized transaction account keys are malformed");
     }
+    if (seenKeys.has(key)) {
+      throw new Error("Finalized transaction contains duplicate account keys");
+    }
+    seenKeys.add(key);
     snapshot.push(key);
   }
   return Object.freeze(snapshot);
