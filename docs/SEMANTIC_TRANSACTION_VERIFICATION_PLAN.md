@@ -1550,3 +1550,13 @@ The output explicitly keeps
 `tokenBalanceEffectsVerified`, `signingPermitted`, and
 `submissionPermitted` false. The verifier requirements above remain open;
 this diagnostic parser does not close the balance-effects gate.
+
+
+### Standard simulation response compatibility — PR #56 follow-up
+
+The balance observation parser now accepts the optional `context.apiVersion`
+string and optional `value.fee` field present in current Solana simulation
+response schemas. It validates the API-version field's type but does not use
+either field as provenance or authorization evidence. Regression fixtures
+include both fields to prevent valid standard RPC responses from being
+rejected by the bounded allowlist.
