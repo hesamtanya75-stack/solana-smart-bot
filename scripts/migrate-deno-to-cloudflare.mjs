@@ -50,11 +50,26 @@ export function validateDenoState(state) {
   return state;
 }
 
+export function normalizeTradeForCloudflare(trade) {
+  return {
+    mint: trade.mint.trim(),
+    amount: trade.amount,
+    buyPrice: trade.buyPrice,
+    currentPrice: Number.isFinite(trade.currentPrice) && trade.currentPrice > 0 ? trade.currentPrice : trade.buyPrice,
+    tokens: trade.tokens,
+    sold: trade.sold === true,
+    sellPrice: Number.isFinite(trade.sellPrice) ? trade.sellPrice : 0,
+    saleValue: Number.isFinite(trade.saleValue) ? trade.saleValue : 0,
+    boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
+    soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
+  };
+}
+
 export function buildCloudflareImport(source) {
   validateDenoState(source);
   return {
     balance: source.balance,
-    trades: source.trades,
+    trades: source.trades.map(normalizeTradeForCloudflare),
     autoEnabled: false,
     paused: false,
     scannedMints: []
@@ -75,7 +90,8 @@ export function stateMatches(source, destination) {
   if (!destination || destination.balance !== source.balance ||
       !Array.isArray(destination.trades) ||
       destination.trades.length !== source.trades.length) return false;
-  return canonicalJson(destination.trades) === canonicalJson(source.trades);
+  const expectedTrades = buildCloudflareImport(source).trades;
+  return canonicalJson(destination.trades) === canonicalJson(expectedTrades);
 }
 
 async function api(baseUrl, path, { method = "GET", token, body, cloudflare = false } = {}) {
