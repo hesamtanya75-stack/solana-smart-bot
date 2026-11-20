@@ -2611,20 +2611,22 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const baseResult = {
     slot: 127,
-    transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+    transaction: { signatures: [signature], message: { accountKeys: [
+      BOT_WALLET, "11111111111111111111111111111112", "11111111111111111111111111111113"
+    ] } },
     meta: {
-      err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+      err: null, fee: 5000, preBalances: [100000, 0, 0], postBalances: [95000, 0, 0],
       preTokenBalances: [{
-        mint: inputMint, owner: BOT_WALLET, accountIndex: 0,
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
         programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         uiTokenAmount: { amount: "1", decimals: 9 }
       }],
       postTokenBalances: [{
-        mint: inputMint, owner: BOT_WALLET, accountIndex: 0,
+        mint: inputMint, owner: BOT_WALLET, accountIndex: 1,
         programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         uiTokenAmount: { amount: "0", decimals: 9 }
       }, {
-        mint: outputMint, owner: BOT_WALLET, accountIndex: 0,
+        mint: outputMint, owner: BOT_WALLET, accountIndex: 2,
         programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         uiTokenAmount: { amount: "1", decimals: 6 }
       }]
@@ -2649,6 +2651,29 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /account index is malformed/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [{ ...baseResult.meta.preTokenBalances[0], accountIndex: 3 }]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      postTokenBalances: [
+        { ...baseResult.meta.postTokenBalances[0] },
+        { ...baseResult.meta.postTokenBalances[1], accountIndex: 1 }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate token account indexes/);
 
   transactionResult = {
     ...baseResult,
