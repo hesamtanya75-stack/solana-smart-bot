@@ -73,7 +73,7 @@ export function buildCloudflareImport(source) {
     balance: source.balance,
     trades: source.trades.map(normalizeTradeForCloudflare),
     autoEnabled: false,
-    paused: false,
+    paused: true,
     scannedMints: []
   };
 }
@@ -194,7 +194,7 @@ async function main() {
     throw new Error("Read-back verification failed. Keep Deno online and retain the private backup; do not retry or delete source data.");
   }
   console.log("VERIFIED: Cloudflare balance and every supported trade field match the Deno export.");
-  console.log("Cloudflare state is initialized; auto-buy remains disabled and paused remains false.");
+  console.log("Cloudflare state is initialized with auto-buy disabled and paused for operator review.");
   console.log("Keep Deno and its KV data until the dashboard is manually checked and signed off.");
 }
 
