@@ -2400,6 +2400,53 @@ test("CPI index resolution rejects forged status flags and inconsistent aggregat
   }), /duplicate top-level groups/);
 });
 
+test("CPI index resolution rejects root and group accessors without invoking getters", async () => {
+  const encoded = validUnsignedTransaction();
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(encoded, "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  const base = normalizeSimulationObservation({
+    messageDigest: digest,
+    simulationResult: {
+      context: { slot: 1237 },
+      value: { err: null, innerInstructions: [{
+        index: 0,
+        instructions: [{ programIdIndex: 1, accounts: [0] }]
+      }] }
+    },
+    topLevelInstructionCount: evidence.compiledInstructions.length,
+    accountKeyCount: evidence.accountKeys.length
+  });
+  let getterCalls = 0;
+  const hostileRoot = { ...base };
+  Object.defineProperty(hostileRoot, "contextSlot", {
+    enumerable: true,
+    get() { getterCalls += 1; return 1237; }
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: hostileRoot,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+
+  const hostileGroup = { ...base.groups[0] };
+  Object.defineProperty(hostileGroup, "topLevelInstructionIndex", {
+    enumerable: true,
+    get() { getterCalls += 1; return 0; }
+  });
+  const hostileGroups = Object.freeze({
+    ...base,
+    groups: Object.freeze([hostileGroup])
+  });
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation: hostileGroups,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
+
 test("CPI index resolution rejects accessor-backed observation fields without invoking getters", async () => {
   const evidence = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
