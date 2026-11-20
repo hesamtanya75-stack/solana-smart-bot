@@ -222,6 +222,30 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
   assert.equal(result.transactionEvidence.lookupContextSlot, 100);
   assert.deepEqual(result.transactionEvidence.resolvedWritableAddresses, ["US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx"]);
   assert.deepEqual(result.transactionEvidence.resolvedReadonlyAddresses, ["YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf"]);
+  const privilegeAccounts = result.instructionProgramInventory.messageAccountPrivileges.accounts;
+  assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
+  assert.equal(result.instructionProgramInventory.instructionAccountPrivilegesDerived, true);
+  assert.equal(result.instructionProgramInventory.instructionAccountPrivilegesScope,
+    "compiled-instruction-indexes-mapped-to-message-header-and-alt-privileges-only");
+  assert.equal(result.instructionProgramInventory.instructionAccountPrivileges.length, 1);
+  assert.equal(result.instructionProgramInventory.instructionAccountPrivileges[0].programId,
+    result.instructionProgramInventory.programIds[0].programId);
+  assert.deepEqual(result.instructionProgramInventory.instructionAccountPrivileges[0].accounts,
+    result.transactionEvidence.compiledInstructions[0].accountKeyIndexes.map(index => privilegeAccounts[index]));
+  assert.deepEqual(privilegeAccounts.slice(-2), [
+    {
+      pubkey: "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+      isSigner: false,
+      isWritable: true,
+      source: "lookup-writable"
+    },
+    {
+      pubkey: "YMN9Qj5jPNp7j14VPcML1B6xGgcPWVZUGLFU3Mnyfaf",
+      isSigner: false,
+      isWritable: false,
+      source: "lookup-readonly"
+    }
+  ]);
   assert.equal(rpcRequest.method, "getMultipleAccounts");
   assert.deepEqual(rpcRequest.params[0], ["3qbR1eZRqXUWroWKKYhbDmR3FfqTHfqSU8zZSxtANzYh"]);
   assert.equal(rpcRequest.params[1].commitment, "finalized");
@@ -278,6 +302,27 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
   assert.equal(result.instructionProgramInventory.programExecutableFlagsVerified, false);
   assert.equal(result.instructionProgramInventory.instructionAccountIndexesVerified, true);
+  assert.equal(result.instructionProgramInventory.messageAccountPrivilegesDerived, true);
+  assert.equal(result.instructionProgramInventory.instructionAccountPrivilegesDerived, true);
+  assert.deepEqual(result.instructionProgramInventory.instructionAccountPrivileges[0].accounts,
+    result.transactionEvidence.compiledInstructions[0].accountKeyIndexes.map(index =>
+      result.instructionProgramInventory.messageAccountPrivileges.accounts[index]));
+  assert.equal(result.instructionProgramInventory.messageAccountPrivileges.scope,
+    "compiled-message-header-and-alt-partitions-only");
+  assert.deepEqual(result.instructionProgramInventory.messageAccountPrivileges.accounts, [
+    {
+      pubkey: EXPECTED_BOT_WALLET,
+      isSigner: true,
+      isWritable: true,
+      source: "static-signer"
+    },
+    {
+      pubkey: "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN",
+      isSigner: false,
+      isWritable: false,
+      source: "static-nonsigner"
+    }
+  ]);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
