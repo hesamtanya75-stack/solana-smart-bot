@@ -332,7 +332,13 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   assert.equal(result.transactionVersion, 1);
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
   assert.equal(result.semanticInstructionVerification, false);
+  assert.equal(result.analysisOnly, true);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
   assert.equal(result.instructionProgramInventory.scope, "compiled-program-id-inventory-only");
+  assert.equal(result.instructionProgramInventory.cpiProgramIdsVerified, false);
+  assert.equal(result.instructionProgramInventory.tokenBalanceEffectsVerified, false);
+  assert.equal(result.instructionProgramInventory.accountPrivilegesVerified, false);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
