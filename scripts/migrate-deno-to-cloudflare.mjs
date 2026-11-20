@@ -145,8 +145,8 @@ function required(name) {
 }
 
 async function main() {
-  const denoUrl = required("DENO_API_URL").replace(/\\/+$/, "");
-  const cloudflareUrl = required("CLOUDFLARE_API_URL").replace(/\\/+$/, "");
+  const denoUrl = new URL(required("DENO_API_URL")).origin;
+  const cloudflareUrl = new URL(required("CLOUDFLARE_API_URL")).origin;
   const denoPassword = required("DENO_LOGIN_PASSWORD");
   const cloudflarePassword = required("CLOUDFLARE_LOGIN_PASSWORD");
   const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
