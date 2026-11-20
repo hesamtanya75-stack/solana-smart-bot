@@ -329,9 +329,12 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   assert.equal(result.transactionVersion, 1);
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
   assert.equal(result.semanticInstructionVerification, false);
-  assert.equal(result.instructionProgramInventory.scope, "unavailable-v1-instruction-addresses-not-exposed");
+  assert.equal(result.instructionProgramInventory.scope, "compiled-program-id-inventory-only");
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
+  assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
+    "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2"
+  ]);
 });
 
 test("Jupiter order rejects every router except a returned Metis route", async () => {
