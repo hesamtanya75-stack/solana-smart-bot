@@ -29,7 +29,7 @@ function readDenseArray(value, maximum, label) {
   }
   for (const key of keys) {
     if (key === "length") continue;
-    if (typeof key !== "string" || !/^(0|[1-9]\\d*)$/.test(key) ||
+    if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) ||
         Number(key) >= value.length) throw new Error(label + " contains unexpected properties");
   }
   return result;
@@ -51,11 +51,11 @@ function normalizeSimulationObservation({
     throw new Error("Simulation observation message bounds are invalid");
   }
   if (!isPlainRecord(simulationResult)) throw new Error("Simulation RPC result is malformed");
-  const meta = ownData(simulationResult, "meta", "Simulation metadata");
-  if (!isPlainRecord(meta)) throw new Error("Simulation RPC result metadata is unavailable");
-  const errorValue = ownData(meta, "err", "Simulation error status");
+  const value = ownData(simulationResult, "value", "Simulation RPC value");
+  if (!isPlainRecord(value)) throw new Error("Simulation RPC value is unavailable");
+  const errorValue = ownData(value, "err", "Simulation error status");
   const groups = readDenseArray(
-    ownData(meta, "innerInstructions", "Simulation innerInstructions"),
+    ownData(value, "innerInstructions", "Simulation innerInstructions"),
     256, "Simulation innerInstructions"
   );
   const seenTopLevelIndexes = new Set();
