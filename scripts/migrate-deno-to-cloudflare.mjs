@@ -144,9 +144,19 @@ function required(name) {
   return value;
 }
 
+export function requireHttpsOrigin(value, name = "API URL") {
+  let url;
+  try { url = new URL(value); }
+  catch { throw new Error(name + " must be a valid absolute URL"); }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    throw new Error(name + " must be an HTTPS origin without embedded credentials, query, or fragment");
+  }
+  return url.origin;
+}
+
 async function main() {
-  const denoUrl = new URL(required("DENO_API_URL")).origin;
-  const cloudflareUrl = new URL(required("CLOUDFLARE_API_URL")).origin;
+  const denoUrl = requireHttpsOrigin(required("DENO_API_URL"), "DENO_API_URL");
+  const cloudflareUrl = requireHttpsOrigin(required("CLOUDFLARE_API_URL"), "CLOUDFLARE_API_URL");
   const denoPassword = required("DENO_LOGIN_PASSWORD");
   const cloudflarePassword = required("CLOUDFLARE_LOGIN_PASSWORD");
   const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
