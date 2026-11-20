@@ -2,6 +2,7 @@ import { openKv } from "@deno/kv";
 import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { validateDenoState } from "./migrate-deno-to-cloudflare.mjs";
 
 export function denoKvConnectUrl(databaseId) {
@@ -46,7 +47,7 @@ async function main() {
   }
 }
 
-const invokedPath = process.argv[1] ? new URL(`file://${resolve(process.argv[1])}`).href : "";
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
 if (invokedPath === import.meta.url) {
   main().catch(error => {
     console.error("Deno KV export stopped safely: " + String(error?.message || error));
