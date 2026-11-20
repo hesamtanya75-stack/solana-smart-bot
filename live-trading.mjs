@@ -65,6 +65,20 @@ const REVIEWED_PROGRAM_IDS = new Set([
  * This is identifier inventory only; it does not decode or approve semantics.
  */
 function inventoryUnsignedInstructionPrograms(evidence) {
+  // The current v1 wire parser validates layout/configuration but deliberately
+  // does not yet expose decoded addresses or compiled instruction records.
+  // Report that limitation explicitly instead of treating it as an empty list.
+  if (evidence?.messageVersion === 1 &&
+      (!Array.isArray(evidence.accountKeys) || !Array.isArray(evidence.compiledInstructions))) {
+    return Object.freeze({
+      scope: "unavailable-v1-instruction-addresses-not-exposed",
+      instructionCount: evidence.instructionCount,
+      programIds: Object.freeze([]),
+      unsupportedProgramIds: Object.freeze([]),
+      allProgramsRecognized: false,
+      semanticInstructionVerification: false
+    });
+  }
   if (!evidence || !Array.isArray(evidence.accountKeys) ||
       !Array.isArray(evidence.compiledInstructions) ||
       evidence.compiledInstructions.length === 0 ||
