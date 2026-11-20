@@ -276,7 +276,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.instructionProgramInventory.instructionCount, 1);
   assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
   assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
-    "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fuoZuut5w9N"
+    "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fzuXRQPizuN"
   ]);
   assert.equal(result.inputMint, SOL_MINT);
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
