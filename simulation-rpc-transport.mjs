@@ -163,6 +163,18 @@ export async function performReadOnlySimulation(input) {
     throw new Error("Simulation RPC returned HTTP " + (Number.isInteger(response?.status) ? response.status : "failure"));
   }
   const payload = await readBoundedJsonResponse(response, MAX_SIMULATION_RESPONSE_BYTES);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Simulation RPC response envelope is malformed");
+  }
+  const responseKeys = Object.keys(payload);
+  const isErrorResponse = Object.hasOwn(payload, "error");
+  const expectedResponseKeys = isErrorResponse
+    ? ["jsonrpc", "id", "error"]
+    : ["jsonrpc", "id", "result"];
+  if (responseKeys.length !== expectedResponseKeys.length ||
+      responseKeys.some(key => !expectedResponseKeys.includes(key))) {
+    throw new Error("Simulation RPC response envelope contains unsupported or conflicting fields");
+  }
   const result = parseRpcResponse(payload, request.requestId);
   if (!result || typeof result !== "object" || Array.isArray(result) ||
       !result.context || typeof result.context !== "object" ||
