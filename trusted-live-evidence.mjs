@@ -1269,6 +1269,10 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex 
         typeof mintDescriptor.value !== "string" || typeof ownerDescriptor.value !== "string") {
       throw new Error("Finalized transaction token balance metadata is malformed");
     }
+    if (mintDescriptor.value === mint && ownerDescriptor.value === owner &&
+        !accountIndexDescriptor) {
+      throw new Error("Finalized owned token balance is missing its account index");
+    }
     if (accountIndexDescriptor &&
         (!Number.isInteger(accountIndexDescriptor.value) || accountIndexDescriptor.value < 0 ||
          accountIndexDescriptor.value >= accountKeyCount ||
