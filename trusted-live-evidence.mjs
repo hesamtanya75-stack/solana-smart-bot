@@ -1276,7 +1276,11 @@ function sumOwnedTokenBalance(rows, mint, owner) {
         typeof amount !== "string" || !/^(0|[1-9]\d*)$/.test(amount)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
-    total += BigInt(amount);
+    const parsedAmount = BigInt(amount);
+    if (parsedAmount > 18446744073709551615n) {
+      throw new Error("Finalized transaction token balance exceeds u64");
+    }
+    total += parsedAmount;
   }
   return total;
 }
