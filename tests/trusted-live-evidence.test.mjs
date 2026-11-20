@@ -453,6 +453,23 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   );
 });
 
+test("combined v1 transaction validation binds executable evidence to its inline instruction program", async () => {
+  const encoded = validUnsignedV1Transaction();
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.lookupTableResolution, "not-required");
+  assert.equal(parsed.programExecutableFlagsVerified, true);
+  assert.equal(parsed.programExecutableEvidence.scope,
+    "finalized-account-executable-flag-and-loader-owner-only");
+  assert.deepEqual(
+    parsed.programExecutableEvidence.programs.map(item => item.programId),
+    [parsed.staticAccountKeys[1]]
+  );
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
