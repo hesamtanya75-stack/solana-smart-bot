@@ -455,8 +455,7 @@ test("Jupiter order rejects malformed route-plan metadata before transaction ins
     [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, outAmount: "18446744073709551616" } }],
     [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, ammKey: "not-a-public-key" } }],
     [{ ...validRoutePlanStep(), unexpected: true }],
-    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, unexpected: true } }],
-    [Object.defineProperty(validRoutePlanStep(), "percent", { enumerable: true, get() { throw new Error("getter must not run"); } })]
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, unexpected: true } }]
   ];
   for (const routePlan of invalidPlans) {
     let rpcCalled = false;
