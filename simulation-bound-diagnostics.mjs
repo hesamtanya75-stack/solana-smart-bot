@@ -91,8 +91,10 @@ export function normalizeBoundSimulationDiagnostics(input) {
     throw new Error("Simulation response context is malformed or accessor-backed");
   }
   const slotDescriptor = Object.getOwnPropertyDescriptor(contextDescriptor.value, "slot");
-  if (!slotDescriptor || !Object.prototype.hasOwnProperty.call(slotDescriptor, "value") ||
-      slotDescriptor.value !== snapshot.contextSlot) {
+  if (slotDescriptor && !Object.prototype.hasOwnProperty.call(slotDescriptor, "value")) {
+    throw new Error("Simulation response context slot is accessor-backed");
+  }
+  if (!slotDescriptor || slotDescriptor.value !== snapshot.contextSlot) {
     throw new Error("Simulation response context slot does not match its envelope");
   }
 
