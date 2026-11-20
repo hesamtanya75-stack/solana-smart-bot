@@ -12,7 +12,7 @@ Run this from a trusted computer with Node.js 20+. Do not put passwords, TOTP co
 
 Required environment:
 - `DENO_API_URL`: optional override; defaults to `https://solana-smart-bot-17.hesamtanya75-stack.deno.net`.
-- `CLOUDFLARE_API_URL`: Cloudflare Worker origin for the intended environment.
+- `CLOUDFLARE_API_URL`: optional override; defaults to the confirmed production Worker `https://solana-smart-bot-new.hesamtanya75.workers.dev`.
 - `DENO_LOGIN_PASSWORD`: Deno administrator password.
 - `CLOUDFLARE_LOGIN_PASSWORD`: Cloudflare administrator password.
 - `CLOUDFLARE_TOTP_CODE`: only if Cloudflare MFA is enabled; one current code.
