@@ -1280,6 +1280,16 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex 
          !EXPECTED_TOKEN_PROGRAMS.has(programIdDescriptor.value))) {
       throw new Error("Finalized transaction token balance program ID is unsupported");
     }
+    // accountIndex identifies the token account in this transaction. It must
+    // be unique across the entire pre/post metadata array, not just for the
+    // mint/owner currently being summed.
+    if (accountIndexDescriptor) {
+      const accountIndex = accountIndexDescriptor.value;
+      if (seenAccountIndexes.has(accountIndex)) {
+        throw new Error("Finalized transaction contains duplicate token account indexes");
+      }
+      seenAccountIndexes.add(accountIndex);
+    }
     const amountRecord = amountRecordDescriptor.value;
     if (!amountRecord || typeof amountRecord !== "object" ||
         (Object.getPrototypeOf(amountRecord) !== Object.prototype && Object.getPrototypeOf(amountRecord) !== null)) {
@@ -1297,13 +1307,6 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex 
       throw new Error("Finalized transaction token balance decimals are malformed");
     }
     if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
-    if (accountIndexDescriptor) {
-      const accountIndex = accountIndexDescriptor.value;
-      if (seenAccountIndexes.has(accountIndex)) {
-        throw new Error("Finalized transaction contains duplicate token account indexes");
-      }
-      seenAccountIndexes.add(accountIndex);
-    }
     const amount = amountDescriptor?.value;
     if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
         typeof amount !== "string" || !/^(0|[1-9]\d*)$/.test(amount)) {
