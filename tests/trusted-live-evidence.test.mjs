@@ -2351,3 +2351,32 @@ test("CPI index resolution preserves v0 loaded writable/readonly account-key ord
   assert.equal(resolved.signingPermitted, false);
   assert.equal(resolved.submissionPermitted, false);
 });
+
+
+test("CPI index resolution rejects accessor-backed observation fields without invoking getters", async () => {
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedTransaction(), BOT_WALLET, mockExecutableProgramFetch()
+  );
+  const serialized = Buffer.from(validUnsignedTransaction(), "base64");
+  const digest = createHash("sha256").update(serialized.subarray(65)).digest("hex");
+  let getterCalls = 0;
+  const hostileInstruction = { programIdIndex: 1, accountIndexes: [0], data: null, stackHeight: null };
+  Object.defineProperty(hostileInstruction, "unexpected", {
+    enumerable: true,
+    get() { getterCalls += 1; return "unsafe"; }
+  });
+  const observation = {
+    scope: "simulation-observation-only",
+    messageDigest: digest,
+    groups: [{
+      topLevelInstructionIndex: 0,
+      innerInstructionCount: 1,
+      instructions: [hostileInstruction]
+    }]
+  };
+  assert.throws(() => resolveSimulationCpiIndexesAgainstTrustedMessage({
+    observation,
+    trustedMessageEvidence: evidence
+  }), /accessor-backed/);
+  assert.equal(getterCalls, 0);
+});
