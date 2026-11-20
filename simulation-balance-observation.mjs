@@ -104,12 +104,15 @@ export function normalizeSimulationBalanceObservation(input) {
     throw new Error("Balance observation account-key count is invalid");
   }
   const root = snapshotRecord(args.simulationResult, ["context", "value"], "Simulation result");
-  const context = snapshotRecord(root.context, ["slot"], "Simulation context");
+  const context = snapshotRecord(root.context, ["slot", "apiVersion"], "Simulation context");
+  if (context.apiVersion !== undefined && typeof context.apiVersion !== "string") {
+    throw new Error("Simulation context API version is invalid");
+  }
   if (!Number.isSafeInteger(context.slot) || context.slot < 0) {
     throw new Error("Simulation context slot is invalid");
   }
   const value = snapshotRecord(root.value,
-    ["err", "logs", "accounts", "returnData", "unitsConsumed", "replacementBlockhash",
+    ["err", "logs", "accounts", "returnData", "unitsConsumed", "fee", "replacementBlockhash",
       "innerInstructions", "loadedAccountsDataSize", "preBalances", "postBalances",
       "preTokenBalances", "postTokenBalances"],
     "Simulation value");
