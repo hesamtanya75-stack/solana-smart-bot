@@ -277,3 +277,33 @@ test("simulation observation enforces an aggregate inner-instruction bound", () 
     accountKeyCount: 1
   }), /total exceeds the supported bound/);
 });
+
+test("public observation entry points reject accessor-backed argument objects without invoking getters", async () => {
+  let invoked = false;
+  const input = {
+    messageDigest: digest,
+    simulationResult: simulation([]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  };
+  Object.defineProperty(input, "simulationResult", {
+    enumerable: true,
+    get() { invoked = true; return simulation([]); }
+  });
+  assert.throws(() => normalizeSimulationObservation(input), /accessor-backed/);
+  assert.equal(invoked, false);
+
+  let messageGetterInvoked = false;
+  const messageInput = {
+    serializedMessage: Uint8Array.from([1]),
+    simulationResult: simulation([]),
+    topLevelInstructionCount: 1,
+    accountKeyCount: 1
+  };
+  Object.defineProperty(messageInput, "serializedMessage", {
+    enumerable: true,
+    get() { messageGetterInvoked = true; return Uint8Array.from([1]); }
+  });
+  await assert.rejects(() => normalizeSimulationObservationForMessage(messageInput), /accessor-backed/);
+  assert.equal(messageGetterInvoked, false);
+});
