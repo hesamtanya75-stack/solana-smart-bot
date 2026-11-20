@@ -1348,3 +1348,58 @@ containing both `result` and `error`. This is strict JSON-RPC envelope
 validation only: it does not authenticate the RPC provider, prove remote
 execution of the exact transaction bytes, establish CPI semantics, or change
 any verification or execution-permission flags.
+
+
+
+## Remote simulation provenance gate — PR #56 follow-up
+
+The standard Solana `simulateTransaction` JSON-RPC response schema exposes
+simulation output such as `context.slot`, `value.err`,
+`value.innerInstructions`, logs, balances, and compute usage. It does not
+define a signed receipt containing a digest of the exact request transaction
+bytes, a signature over the response, or a cryptographic request/response
+binding. See the upstream
+[simulateTransaction RPC method](https://solana.com/docs/rpc/http/simulatetransaction)
+and [RPC JSON structures](https://solana.com/docs/rpc/json-structures).
+
+Consequently, the current transport's local SHA-256 recomputation proves only
+that the locally constructed HTTP request body contains the bytes represented
+by the local digest. HTTPS endpoint validation, TLS transport, JSON-RPC
+version/ID matching, a context slot, strict envelope parsing, and immutable
+response snapshots are useful transport and input-integrity checks; none is
+a provider-signed statement that the server executed those bytes or that the
+returned CPI indexes describe those exact bytes. A request ID is a correlation
+value, not a cryptographic attestation.
+
+### Acceptance criteria before remote identity can be marked verified
+
+Do not set `simulationInputIdentityVerified` true unless a separately
+reviewed mechanism supplies and validates all of the following:
+
+1. A cryptographically authenticated attestation from a specifically
+   allowlisted simulation provider or independently controlled verifier.
+2. The attestation binds the chain/genesis identity, exact serialized
+   transaction-byte digest, simulation options, response digest, and
+   simulation context slot in one signed statement.
+3. The signing key identity and rotation/revocation policy are pinned and
+   independently checked; a provider name, HTTPS URL, API key, request ID,
+   or unsigned response header is not a substitute.
+4. Nonce/replay handling and canonical serialization are specified, and
+   malformed, stale, missing, mismatched, or unverifiable attestations fail
+   closed.
+5. Negative tests prove that a valid signature over different bytes, options,
+   chain identity, response, or slot is rejected.
+
+A provider-signed statement would establish what that provider attests to; it
+would not prove future on-chain execution or eliminate the need to trust the
+provider's implementation. An independently operated reproducible simulator
+could be evaluated as a separate trust model, but must have its own pinned
+runtime/state provenance and reproducibility evidence. Do not manufacture an
+attestation from the existing JSON-RPC fields or infer it from TLS.
+
+Until one of these trust models is implemented and independently reviewed,
+keep `simulationInputIdentityVerified`,
+`cpiProgramIdsVerified`, `semanticInstructionVerification`, and
+`tokenBalanceEffectsVerified` false. Keep signing and submission disabled.
+This gate is an explicit unresolved dependency, not a transport bug that can
+be closed by adding more JSON-RPC envelope checks.
