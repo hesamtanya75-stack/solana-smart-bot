@@ -63,7 +63,13 @@ function readU64LE(bytes, offset) {
  * this record is never a semantic approval or proof of actual token deltas.
  */
 export function decodeSplTokenInstruction(programId, encodedData, accountIndexes) {
-  if (!SUPPORTED_TOKEN_PROGRAMS.has(programId)) {
+  if (programId === TOKEN_2022_PROGRAM_ID) {
+    // Token-2022 base transfer layouts do not establish effective transfer semantics.
+    // Fees, hooks, confidential transfers and permanent delegates require state inspection.
+    // Fail closed until a dedicated extension verifier is implemented.
+    throw new Error("Token-2022 instructions are blocked until extension semantics are verified");
+  }
+  if (programId !== TOKEN_PROGRAM_ID) {
     throw new Error("SPL Token decoder rejects unknown program IDs");
   }
   const indexes = readDensePlainArray(
