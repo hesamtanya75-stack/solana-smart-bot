@@ -226,7 +226,10 @@ function inventoryUnsignedInstructionPrograms(evidence) {
     cpiProgramIdsVerified: false,
     tokenBalanceEffectsVerified: false,
     accountPrivilegesVerified: false,
-    programExecutableFlagsVerified: false,
+    programExecutableFlagsVerified,
+    programExecutableEvidenceScope: programExecutableFlagsVerified
+      ? executableEvidence.scope
+      : "not-verified",
     instructionAccountIndexesVerified: true,
     messageAccountPrivilegesDerived: true,
     instructionAccountPrivilegesDerived: true,
