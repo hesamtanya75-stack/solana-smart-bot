@@ -57,6 +57,18 @@ test("read-only transport rejects requests that omit CPI inner-instruction captu
   }), /envelope failed validation/);
 });
 
+test("read-only transport rejects parsed CPI encoding instead of compiled JSON indexes", async () => {
+  const request = await makeRequest();
+  const envelope = JSON.parse(request.body);
+  delete envelope.params[1].innerInstructionsEncoding;
+  const incomplete = { ...request, body: JSON.stringify(envelope) };
+  await assert.rejects(performReadOnlySimulation({
+    request: incomplete,
+    endpoint: "https://api.devnet.solana.com",
+    fetchImpl: async () => { throw new Error("must not send"); }
+  }), /envelope failed validation/);
+});
+
 test("read-only transport rejects response id mismatch, RPC errors and malformed context", async () => {
   const request = await makeRequest();
   await assert.rejects(performReadOnlySimulation({
