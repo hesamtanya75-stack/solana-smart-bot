@@ -455,6 +455,11 @@ test("parser consumes only immutable finalized ALT evidence bound to the exact c
   assert.equal(evidence.messageDigest.algorithm, "SHA-256");
   assert.equal(evidence.header.numReadonlyUnsignedAccounts, 1);
   assert.equal(evidence.accountKeys.length, 4);
+  assert.equal(Object.isFrozen(evidence), true);
+  assert.equal(Object.isFrozen(evidence.accountKeys), true);
+  assert.equal(Object.isFrozen(evidence.header), true);
+  assert.equal(Object.isFrozen(evidence.compiledInstructions), true);
+  assert.equal(Object.isFrozen(evidence.compiledInstructions[0].accountKeyIndexes), true);
   assert.deepEqual(evidence.resolvedAddressTableLookups, [{
     writableAddresses: evidence.resolvedWritableAddresses,
     readonlyAddresses: evidence.resolvedReadonlyAddresses
@@ -488,11 +493,17 @@ test("parser consumes only immutable finalized ALT evidence bound to the exact c
     accountKeys: evidence.accountKeys,
     instructions: evidence.compiledInstructions,
     staticAccountKeys: evidence.staticAccountKeys,
+    header: { ...evidence.header, numReadonlyUnsignedAccounts: 0 },
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
+    trustedMessageEvidence: evidence
+  }), /do not match digest-bound finalized ALT evidence/);
+
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: evidence.accountKeys,
+    instructions: evidence.compiledInstructions,
+    staticAccountKeys: evidence.staticAccountKeys,
     header: evidence.header,
-    resolvedAddressTableLookups: [{
-      writableAddresses: [evidence.resolvedReadonlyAddresses[0]],
-      readonlyAddresses: [evidence.resolvedWritableAddresses[0]]
-    }],
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
     trustedMessageEvidence: evidence
   }), /do not match digest-bound finalized ALT evidence/);
 });
