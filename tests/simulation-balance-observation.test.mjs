@@ -97,3 +97,11 @@ test("rejects mismatched account-key count and unsafe lamport values", () => {
     simulationResult: data, accountKeyCount: 2
   }), /safe integer/);
 });
+
+test("rejects a simulation value with no explicit err field", () => {
+  const data = fixture();
+  delete data.value.err;
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /required err field/);
+});
