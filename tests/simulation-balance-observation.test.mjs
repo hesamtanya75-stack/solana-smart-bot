@@ -169,3 +169,28 @@ test("does not calculate token deltas when owner or decimals metadata conflicts"
     assert.equal(result.tokenDeltas[0].delta, null);
   }
 });
+
+
+test("accepts the exact u64 token amount ceiling without Number precision loss", () => {
+  const data = fixture();
+  const maximum = "18446744073709551615";
+  data.value.preTokenBalances[0].uiTokenAmount.amount = maximum;
+  data.value.postTokenBalances[0].uiTokenAmount.amount = maximum;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas[0].pre.amount, 18446744073709551615n);
+  assert.equal(result.tokenDeltas[0].post.amount, 18446744073709551615n);
+  assert.equal(result.tokenDeltas[0].delta, 0n);
+  assert.equal(result.tokenBalanceEffectsVerified, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("rejects token amounts above the u64 ceiling", () => {
+  const data = fixture();
+  data.value.postTokenBalances[0].uiTokenAmount.amount = "18446744073709551616";
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /exceeds u64/);
+});
