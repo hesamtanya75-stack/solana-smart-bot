@@ -1320,6 +1320,38 @@ function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex 
   }
   return total;
 }
+function snapshotLoadedTransactionAddresses(meta, message) {
+  const lookupsDescriptor = Object.getOwnPropertyDescriptor(message, "addressTableLookups");
+  const lookups = lookupsDescriptor?.value;
+  const hasLookups = Array.isArray(lookups) && lookups.length > 0;
+  const loadedDescriptor = Object.getOwnPropertyDescriptor(meta, "loadedAddresses");
+  if (!loadedDescriptor) {
+    if (hasLookups) {
+      throw new Error("Finalized v0 transaction is missing loaded address metadata");
+    }
+    return Object.freeze([]);
+  }
+  if (!Object.prototype.hasOwnProperty.call(loadedDescriptor, "value")) {
+    throw new Error("Finalized loaded address metadata is accessor-backed");
+  }
+  const loaded = loadedDescriptor.value;
+  if (!loaded || typeof loaded !== "object" || Array.isArray(loaded) ||
+      (Object.getPrototypeOf(loaded) !== Object.prototype &&
+       Object.getPrototypeOf(loaded) !== null)) {
+    throw new Error("Finalized loaded address metadata is malformed");
+  }
+  const writableDescriptor = Object.getOwnPropertyDescriptor(loaded, "writable");
+  const readonlyDescriptor = Object.getOwnPropertyDescriptor(loaded, "readonly");
+  if (!writableDescriptor || !Object.prototype.hasOwnProperty.call(writableDescriptor, "value") ||
+      !readonlyDescriptor || !Object.prototype.hasOwnProperty.call(readonlyDescriptor, "value") ||
+      Reflect.ownKeys(loaded).length !== 2) {
+    throw new Error("Finalized loaded address metadata is incomplete");
+  }
+  const writable = snapshotDenseAccountKeys(writableDescriptor.value);
+  const readonly = snapshotDenseAccountKeys(readonlyDescriptor.value);
+  return Object.freeze([...writable, ...readonly]);
+}
+
 /**
  * Independently verifies a finalized swap using signature status and the
  * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
