@@ -515,6 +515,9 @@ function validateUnsignedJupiterV1(bytes, expectedSigner) {
   }
   return {
     signatureCount: requiredSignatures,
+    numRequiredSignatures: requiredSignatures,
+    numReadonlySignedAccounts: readonlySigned,
+    numReadonlyUnsignedAccounts: readonlyUnsigned,
     staticAccountCount: addressCount,
     instructionCount,
     addressLookupCount: 0,
@@ -668,6 +671,9 @@ export function validateUnsignedJupiterTransaction(encoded, expectedSigner) {
   if (cursor !== bytes.length) throw new Error("Jupiter transaction contains trailing or unparsed bytes");
   return {
     signatureCount,
+    numRequiredSignatures: requiredSignatures,
+    numReadonlySignedAccounts: readonlySigned,
+    numReadonlyUnsignedAccounts: readonlyUnsigned,
     staticAccountCount: keyCount,
     staticAccountKeys: Object.freeze(staticAccountKeys),
     instructionCount,
