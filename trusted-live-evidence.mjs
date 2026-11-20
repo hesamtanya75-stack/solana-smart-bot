@@ -1238,7 +1238,7 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
-function sumOwnedTokenBalance(rows, mint, owner) {
+function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex = 0) {
   if (!Array.isArray(rows) || Object.getPrototypeOf(rows) !== Array.prototype) {
     throw new Error("Finalized transaction token balance metadata is unavailable");
   }
@@ -1247,7 +1247,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     throw new Error("Finalized transaction token balance metadata is malformed");
   }
   let total = 0n;
-  const seenAccountIdentities = new Set();
+  const seenAccountIndexes = new Set();
   for (let index = 0; index < rows.length; index++) {
     const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(index));
     const row = rowDescriptor?.value;
@@ -1270,7 +1270,9 @@ function sumOwnedTokenBalance(rows, mint, owner) {
       throw new Error("Finalized transaction token balance metadata is malformed");
     }
     if (accountIndexDescriptor &&
-        (!Number.isInteger(accountIndexDescriptor.value) || accountIndexDescriptor.value < 0)) {
+        (!Number.isInteger(accountIndexDescriptor.value) || accountIndexDescriptor.value < 0 ||
+         accountIndexDescriptor.value >= accountKeyCount ||
+         accountIndexDescriptor.value === feePayerIndex)) {
       throw new Error("Finalized transaction token balance account index is malformed");
     }
     if (programIdDescriptor &&
@@ -1296,12 +1298,11 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     }
     if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
     if (accountIndexDescriptor) {
-      const identity = accountIndexDescriptor.value + ":" + mintDescriptor.value + ":" +
-        (programIdDescriptor?.value ?? "program-unreported");
-      if (seenAccountIdentities.has(identity)) {
-        throw new Error("Finalized transaction contains duplicate owned token account metadata");
+      const accountIndex = accountIndexDescriptor.value;
+      if (seenAccountIndexes.has(accountIndex)) {
+        throw new Error("Finalized transaction contains duplicate token account indexes");
       }
-      seenAccountIdentities.add(identity);
+      seenAccountIndexes.add(accountIndex);
     }
     const amount = amountDescriptor?.value;
     if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
@@ -1417,8 +1418,8 @@ export async function verifyFinalizedJupiterSettlement({
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings.length);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -1426,8 +1427,8 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings.length);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings.length);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
