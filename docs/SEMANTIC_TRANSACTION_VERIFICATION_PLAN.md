@@ -1520,3 +1520,33 @@ Until remote simulation provenance, CPI semantic decoding, authenticated
 token-account state, and balance reconciliation are all independently
 reviewed, keep `tokenBalanceEffectsVerified` and all other semantic/execution
 flags false. This gate does not authorize signing, submission, or Mainnet use.
+
+
+### Bounded diagnostic balance observations — PR #56 follow-up
+
+Added `simulation-balance-observation.mjs` and focused tests. The helper
+snapshots a bounded `simulateTransaction` result and emits per-account SOL
+lamport deltas plus paired token amount deltas as `BigInt` values. It
+requires SOL arrays to match the supplied account-key count, rejects sparse
+or accessor-backed arrays, checks lamports as nonnegative JavaScript safe
+integers, validates token indexes and bounded base58-shaped identity strings,
+and accepts token amounts only as canonical unsigned decimal strings within
+u64. Token records are paired only by account index, mint, and token program
+ID. A missing side is reported as `unpaired-account-state`, never assumed
+zero; owner or decimals disagreement is reported as conflicting metadata.
+
+These outputs are **diagnostic observations only**, not a balance-effects
+verifier. The account-key count and token identity fields are caller/RPC
+metadata and are not independently authenticated. The base58-shaped string
+check is not a canonical public-key decoder. JavaScript safe-integer checks
+also intentionally reject SOL lamport values outside the exactly representable
+integer range. The helper does not authenticate account state, prove the RPC
+simulated the exact bytes, decode Token-2022 extensions, reconcile CPI effects,
+or account for fee/rent/native-SOL behavior.
+
+The output explicitly keeps
+`remoteSimulationIdentityVerified`,
+`accountStateIdentityVerified`, `cpiEffectsReconciled`,
+`tokenBalanceEffectsVerified`, `signingPermitted`, and
+`submissionPermitted` false. The verifier requirements above remain open;
+this diagnostic parser does not close the balance-effects gate.
