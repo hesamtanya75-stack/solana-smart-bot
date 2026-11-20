@@ -81,16 +81,29 @@ export async function performReadOnlySimulation({
   try { envelope = JSON.parse(request.body); } catch {
     throw new Error("Simulation RPC request body is invalid JSON");
   }
-  if (!envelope || envelope.jsonrpc !== "2.0" ||
+  const expectedEnvelopeKeys = ["jsonrpc", "id", "method", "params"];
+  const expectedOptionKeys = [
+    "encoding", "sigVerify", "replaceRecentBlockhash",
+    "innerInstructions", "innerInstructionsEncoding", "commitment"
+  ];
+  const optionKeys = envelope?.params?.[1] && typeof envelope.params[1] === "object" &&
+    !Array.isArray(envelope.params[1]) ? Object.keys(envelope.params[1]) : [];
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope) ||
+      Object.keys(envelope).length !== expectedEnvelopeKeys.length ||
+      Object.keys(envelope).some(key => !expectedEnvelopeKeys.includes(key)) ||
+      envelope.jsonrpc !== "2.0" ||
       envelope.id !== request.requestId ||
       envelope.method !== "simulateTransaction" ||
       !Array.isArray(envelope.params) || envelope.params.length !== 2 ||
-      envelope.params[1]?.encoding !== "base64" ||
-      envelope.params[1]?.sigVerify !== false ||
-      envelope.params[1]?.replaceRecentBlockhash !== true ||
-      envelope.params[1]?.innerInstructions !== true ||
-      envelope.params[1]?.innerInstructionsEncoding !== "json" ||
-      envelope.params[1]?.commitment !== "confirmed") {
+      typeof envelope.params[0] !== "string" ||
+      optionKeys.length !== expectedOptionKeys.length ||
+      optionKeys.some(key => !expectedOptionKeys.includes(key)) ||
+      envelope.params[1].encoding !== "base64" ||
+      envelope.params[1].sigVerify !== false ||
+      envelope.params[1].replaceRecentBlockhash !== true ||
+      envelope.params[1].innerInstructions !== true ||
+      envelope.params[1].innerInstructionsEncoding !== "json" ||
+      envelope.params[1].commitment !== "confirmed") {
     throw new Error("Simulation RPC request envelope failed validation");
   }
 
