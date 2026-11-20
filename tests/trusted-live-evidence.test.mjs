@@ -2569,3 +2569,37 @@ test("settlement proof rejects noncanonical or out-of-u64 reserved amounts befor
     }, fetchImpl), /incomplete or invalid/);
   }
 });
+
+
+test("settlement proof rejects an owned finalized token balance above u64", async () => {
+  const signature = encodeBase58(new Uint8Array(64).fill(11));
+  const inputMint = "So11111111111111111111111111111111111111112";
+  const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const fetchImpl = async (_url, options) => {
+    const { method } = JSON.parse(options.body);
+    const result = method === "getSignatureStatuses"
+      ? { value: [{ err: null, confirmationStatus: "finalized" }] }
+      : {
+          slot: 125,
+          transaction: { signatures: [signature], message: { accountKeys: [BOT_WALLET] } },
+          meta: {
+            err: null, fee: 5000, preBalances: [100000], postBalances: [95000],
+            preTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "18446744073709551616", decimals: 9 }
+            }],
+            postTokenBalances: [{
+              mint: inputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "0", decimals: 9 }
+            }, {
+              mint: outputMint, owner: BOT_WALLET,
+              uiTokenAmount: { amount: "1", decimals: 6 }
+            }]
+          }
+        };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement({
+    signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1"
+  }, fetchImpl), /token balance exceeds u64/);
+});
