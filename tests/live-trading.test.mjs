@@ -272,6 +272,12 @@ test("valid Jupiter order is parsed but never executed", async () => {
   assert.equal(result.transactionEvidence.lookupTableResolution, "not-required");
   assert.equal(result.semanticInstructionVerification, false);
   assert.equal(result.routeVerification, "unsigned-structure-and-alt-only");
+  assert.equal(result.instructionProgramInventory.scope, "compiled-program-id-inventory-only");
+  assert.equal(result.instructionProgramInventory.instructionCount, 1);
+  assert.equal(result.instructionProgramInventory.allProgramsRecognized, false);
+  assert.deepEqual(result.instructionProgramInventory.unsupportedProgramIds, [
+    "cGfHiC6Kgg3FpFZvgwGcswsCRtp4aBP2fuoZuut5w9N"
+  ]);
   assert.equal(result.inputMint, SOL_MINT);
   assert.match(request.url, /taker=BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy/);
   const orderUrl = new URL(request.url);
