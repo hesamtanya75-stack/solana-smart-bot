@@ -25,6 +25,7 @@ test("simulation RPC request hashes the exact transaction bytes encoded in its b
     sigVerify: false,
     replaceRecentBlockhash: true,
     innerInstructions: true,
+    innerInstructionsEncoding: "json",
     commitment: "confirmed"
   });
   assert.equal(request.responseIdentityVerified, false);
