@@ -58,3 +58,19 @@ The test-fixture correction in this checkpoint isolates malformed account-key ca
 The following release blockers remain intentionally unresolved: authenticated association of the remote simulation response with exact transaction bytes; version-pinned CPI program identity and instruction decoding; complete invocation-tree and account-role validation; reconciliation of all SOL, WSOL, SPL Token, and Token-2022 value effects; and independently verified all-in costs. No standard JSON-RPC request ID, HTTPS endpoint, local digest, or successful simulation is treated as provider attestation.
 
 PR #56 remains open and Draft. These passing checks do not authorize merge, production deployment, wallet signing, transaction submission, funded Devnet execution, or Mainnet trading.
+
+
+## Follow-up CI checkpoint — 2026-11-21
+
+The documentation checkpoint commit `ec9fe078e501926f4b4bd1c8ac2e58ae633d0953` completed its pull-request checks:
+
+- Node tests run #1996: success. The isolated Durable Objects runtime tests, dependency audit gate, and ATA SDK workerd conditional-export check all passed.
+- Cloudflare Worker build run #1502: success. Wrangler target validation and build completed; the workflow did not deploy.
+- Devnet lifecycle validation run #1569: success. The real read-only cluster identity/RPC check passed. The funded lifecycle job was skipped, as required without explicit opt-in.
+- External Deno Deploy status `deploy/hesamtanya75-stack/solana-smart-bot-17`: failure. The GitHub status points to the Deno Deploy console; this status alone does not identify a source-code failure or expose a diagnostic log.
+
+Code review of the current coordinator confirms it still requires a trusted all-in cost record and `semanticInstructionVerification === true` plus `routeVerification === "semantically-verified"` before reservation. The current quote-only evidence path does not supply an executable transaction or semantic CPI proof. The coordinator therefore remains fail-closed; do not manufacture cost or route evidence to make tests pass.
+
+The simulation balance helper remains a diagnostic normalizer. It does not authenticate token-account state, remote simulation identity, CPI effects, or all-in native SOL costs. Finalized settlement checks verify owner-scoped token deltas but explicitly leave whole-message semantic verification and all-in cost verification false.
+
+PR #56 remains open and Draft. No merge, production deployment, wallet signing, transaction submission, funded Devnet lifecycle, or Mainnet trading has been performed.
