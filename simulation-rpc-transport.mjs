@@ -12,6 +12,24 @@ function decodeBase64(value) {
   return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
 
+function deepFreezeJson(value) {
+  const pending = [value];
+  const seen = new Set();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+    for (const key of Reflect.ownKeys(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+      if (descriptor && Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+        pending.push(descriptor.value);
+      }
+    }
+    Object.freeze(current);
+  }
+  return value;
+}
+
 async function sha256(bytes) {
   if (!globalThis.crypto?.subtle?.digest) {
     throw new Error("WebCrypto SHA-256 is unavailable; simulation transport blocked");
@@ -130,6 +148,8 @@ export async function performReadOnlySimulation({
       !Number.isSafeInteger(result.context.slot) || result.context.slot < 0) {
     throw new Error("Simulation RPC result or context slot is malformed");
   }
+
+  deepFreezeJson(result);
 
   return Object.freeze({
     scope: "read-only-simulation-response",
