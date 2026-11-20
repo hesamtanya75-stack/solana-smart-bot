@@ -1486,7 +1486,6 @@ export async function verifyFinalizedJupiterSettlement({
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
-  validateStableTokenBalanceIdentities(meta.preTokenBalances, meta.postTokenBalances);
   const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings.length);
   const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
@@ -1501,6 +1500,8 @@ export async function verifyFinalizedJupiterSettlement({
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
+
+  validateStableTokenBalanceIdentities(meta.preTokenBalances, meta.postTokenBalances);
 
   return Object.freeze({
     // "verified" is deliberately scoped to the exact finalized, owner-scoped
