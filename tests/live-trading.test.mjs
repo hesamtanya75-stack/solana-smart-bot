@@ -379,7 +379,7 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
   const result = await getJupiterOrder({
     env: goodEnv, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountLamports: 1000000, eligibility: goodEligibility,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, options = {}) => {
       if (String(url).startsWith("https://api.jup.ag/")) {
         return new Response(JSON.stringify({
           requestId: "req-v1", transaction: validUnsignedV1Transaction(),
