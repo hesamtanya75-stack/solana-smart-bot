@@ -223,6 +223,36 @@ function unsignedV1TransactionWithPriorityFeeAndHeap(priorityFeeLamports, heapSi
   heap.writeUInt32LE(heapSize, 0);
   return Buffer.concat([bytes.subarray(0, 122), heap, bytes.subarray(122)]).toString("base64");
 }
+function mockExecutableProgramRpcResponse(options, slot = 101, mutate = account => account) {
+  const request = JSON.parse(options.body);
+  const ids = request.params[0];
+  return Response.json({
+    jsonrpc: "2.0", id: 1,
+    result: {
+      context: { slot },
+      value: ids.map(programId => mutate({
+        owner: "NativeLoader1111111111111111111111111111111",
+        executable: true,
+        data: ["", "base64"]
+      }, programId))
+    }
+  });
+}
+function mockExecutableProgramFetch(slot = 101, mutate) {
+  return async (_url, options) => mockExecutableProgramRpcResponse(options, slot, mutate);
+}
+function mockAltAndExecutableFetch(slot = 101) {
+  return async (_url, options) => {
+    const request = JSON.parse(options.body);
+    if (request.params[1]?.dataSlice) {
+      return mockExecutableProgramRpcResponse(options, slot);
+    }
+    return Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } });
+  };
+}
+
 function validUnsignedTransaction(programIdBytes = new Array(32).fill(0), signatureByte = 0) {
   const key = decodeBase58(BOT_WALLET);
   const systemProgram = new Array(32).fill(0);
@@ -389,7 +419,7 @@ test("malformed Jupiter instruction program index is rejected", () => {
 test("combined validation binds a SHA-256 digest to the exact unsigned serialized message", async () => {
   const original = validUnsignedTransaction();
   const originalEvidence = await validateAndResolveUnsignedJupiterTransaction(
-    original, BOT_WALLET
+    original, BOT_WALLET, mockExecutableProgramFetch()
   );
   assert.equal(originalEvidence.messageDigest.algorithm, "SHA-256");
   assert.equal(originalEvidence.messageDigest.encoding, "hex");
@@ -403,13 +433,18 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
     "digest must cover the exact serialized message bytes, excluding the signature vector"
   );
   assert.equal(originalEvidence.semanticInstructionVerification, false);
+  assert.equal(originalEvidence.programExecutableFlagsVerified, true);
+  assert.equal(originalEvidence.programExecutableEvidence.scope,
+    "finalized-account-executable-flag-and-loader-owner-only");
+  assert.deepEqual(originalEvidence.programExecutableEvidence.programs.map(item => item.programId),
+    ["11111111111111111111111111111111"]);
 
   const changedBytes = Buffer.from(original, "base64");
   // Mutate the recent blockhash byte so the message remains structurally valid.
   // Serialized layout: signature-count + signature + legacy header + key-count + keys.
   changedBytes[65 + 3 + 1 + 64] ^= 1;
   const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
-    changedBytes.toString("base64"), BOT_WALLET
+    changedBytes.toString("base64"), BOT_WALLET, mockExecutableProgramFetch()
   );
   assert.notEqual(
     changedEvidence.messageDigest.value,
@@ -418,12 +453,27 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   );
 });
 
+test("combined v1 transaction validation binds executable evidence to its inline instruction program", async () => {
+  const encoded = validUnsignedV1Transaction();
+  const parsed = await validateAndResolveUnsignedJupiterTransaction(
+    encoded, BOT_WALLET, mockExecutableProgramFetch()
+  );
+  assert.equal(parsed.messageVersion, 1);
+  assert.equal(parsed.lookupTableResolution, "not-required");
+  assert.equal(parsed.programExecutableFlagsVerified, true);
+  assert.equal(parsed.programExecutableEvidence.scope,
+    "finalized-account-executable-flag-and-loader-owner-only");
+  assert.deepEqual(
+    parsed.programExecutableEvidence.programs.map(item => item.programId),
+    [parsed.staticAccountKeys[1]]
+  );
+  assert.equal(parsed.semanticInstructionVerification, false);
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
-    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
-      context: { slot: 100 }, value: [mockLookupTableAccount()]
-    } })
+    mockAltAndExecutableFetch()
   );
   assert.equal(parsed.messageVersion, 0);
   assert.equal(parsed.lookupTableResolution, "finalized-resolved");
@@ -447,11 +497,11 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
 test("parser consumes only immutable finalized ALT evidence bound to the exact compiled message", async () => {
   const evidence = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
-    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
-      context: { slot: 100 }, value: [mockLookupTableAccount()]
-    } })
+    mockAltAndExecutableFetch()
   );
   assert.equal(evidence.lookupTableResolution, "finalized-resolved");
+  assert.equal(evidence.programExecutableFlagsVerified, true);
+  assert.equal(evidence.programExecutableEvidence.contextSlot, 101);
   assert.equal(evidence.messageDigest.algorithm, "SHA-256");
   assert.equal(evidence.header.numReadonlyUnsignedAccounts, 1);
   assert.equal(evidence.accountKeys.length, 4);
@@ -2064,6 +2114,17 @@ test("production trusted evidence integration never claims semantic trust or all
   assert.equal(Object.hasOwn(evidence, "costs"), false);
 });
 
+
+
+test("combined transaction validation fails closed when any referenced program is not executable", async () => {
+  await assert.rejects(
+    validateAndResolveUnsignedJupiterTransaction(
+      validUnsignedTransaction(), BOT_WALLET,
+      mockExecutableProgramFetch(102, account => ({ ...account, executable: false }))
+    ),
+    /not confirmed executable/
+  );
+});
 
 test("referenced programs require finalized executable flags and recognized loader ownership", async () => {
   const programIds = [
