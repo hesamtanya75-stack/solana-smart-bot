@@ -158,9 +158,23 @@ function normalizeSimulationObservation(input) {
         stackHeight
       });
     });
+    // When every stack height is present, enforce only the RPC invocation-depth
+    // shape: the first CPI is depth 2 and a nested call may increase depth by
+    // at most one. This does not establish parent program semantics.
+    const stackHeights = normalizedInstructions.map(instruction => instruction.stackHeight);
+    const stackHeightStructure = stackHeights.length === 0 || stackHeights.some(height => height === null)
+      ? "incomplete"
+      : "complete";
+    if (stackHeightStructure === "complete") {
+      if (stackHeights[0] !== 2 || stackHeights.some((height, index) =>
+          height < 2 || (index > 0 && height > stackHeights[index - 1] + 1))) {
+        throw new Error("Simulation CPI stack-height sequence is structurally impossible");
+      }
+    }
     return Object.freeze({
       topLevelInstructionIndex: groupIndex,
       innerInstructionCount: normalizedInstructions.length,
+      stackHeightStructure,
       instructions: Object.freeze(normalizedInstructions)
     });
   }).sort((left, right) => left.topLevelInstructionIndex - right.topLevelInstructionIndex);
