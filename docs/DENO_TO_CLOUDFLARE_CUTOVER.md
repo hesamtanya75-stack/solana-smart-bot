@@ -23,6 +23,21 @@ It fails closed if the production key is missing, the state is invalid, or the r
 
 If the export succeeds, point the existing guarded migration at that verified file by setting `DENO_STATE_FILE` to its path, then run `node scripts/migrate-deno-to-cloudflare.mjs` with the Cloudflare login/MFA environment configured securely. The migration script creates a second private backup before attempting the one-time Cloudflare import and performs full read-back verification. If the KV Connect request is denied by the suspended organization, stop; do not detach/delete the database or upgrade/pay without the account owner's decision.
 
+## Console-exported production database (iPhone-friendly fallback)
+
+The Deno Console export UI may provide a completed SQLite-format Deno KV database file. The export completion table is only confirmation that the file was generated; save the downloaded file privately from Safari Downloads/Files first.
+
+1. Confirm the export row says database `f91810-production`, format `SQLite`, and status `completed`. Do not use `f91810-local`.
+2. Download the file to the iPhone Files app. Treat it as sensitive production data; do not attach it to chat, commit it, or upload it to a public repository.
+3. In a private GitHub Codespace or trusted Deno terminal, place the file in a private workspace path (not a tracked repository path). Run the offline read-only extractor against that exact file:
+   ```sh
+   deno run --allow-read=/work/private/deno-kv-export.sqlite --allow-write=. scripts/extract-deno-kv-export.ts /work/private/deno-kv-export.sqlite
+   ```
+   Replace the path with the actual downloaded file path. The script opens the exported KV database locally, reads only the exact `["bot_state"]` key, validates supported fields, and writes a private JSON state backup with SHA-256 and trade count. It does not print the state, modify the SQLite file, connect to Deno, or write to Cloudflare.
+4. If the extraction succeeds, keep both the original SQLite export and the JSON backup private. The next migration step requires a separate explicit operator action; do not run the Cloudflare import until the extracted balance/trade count are checked and the destination's eligibility/revision are confirmed.
+
+If the exported file cannot be opened by the pinned/current Deno KV runtime, stop and preserve it. Do not try to edit the SQLite file or use generic SQLite tools to rewrite it.
+
 ## One-time controlled migration
 
 Run this from a trusted computer with Node.js 20+. Do not put passwords, TOTP codes, tokens, or the exported state in Git, chat, issue comments, or shell history. Use a private terminal and environment variables populated through a secure prompt or secret manager.
