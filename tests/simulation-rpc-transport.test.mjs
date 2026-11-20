@@ -12,7 +12,13 @@ async function makeRequest() {
   });
 }
 
-function rpcResponse(id = 22, result = { context: { slot: 900 }, value: { err: null, innerInstructions: [] } }) {
+function rpcResponse(id = 22, result = {
+  context: { slot: 900 },
+  value: {
+    err: null,
+    innerInstructions: [{ index: 0, instructions: [{ programIdIndex: 1, accounts: [0], data: "2" }] }]
+  }
+}) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
     status: 200, headers: { "Content-Type": "application/json" }
   });
@@ -48,7 +54,12 @@ test("read-only transport sends exact request and binds matching response id and
   assert.ok(Object.isFrozen(result.simulationResult.context));
   assert.ok(Object.isFrozen(result.simulationResult.value));
   assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions));
+  assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions[0]));
+  assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions[0].instructions));
+  assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions[0].instructions[0]));
+  assert.ok(Object.isFrozen(result.simulationResult.value.innerInstructions[0].instructions[0].accounts));
   assert.throws(() => { result.simulationResult.value.err = "mutated"; }, TypeError);
+  assert.throws(() => { result.simulationResult.value.innerInstructions[0].instructions[0].programIdIndex = 9; }, TypeError);
 });
 
 test("read-only transport rejects requests that omit CPI inner-instruction capture", async () => {
