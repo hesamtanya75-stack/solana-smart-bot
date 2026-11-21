@@ -16,7 +16,7 @@ If the Deno app endpoint is suspended but the managed KV database still permits 
 4. Run the read-only exporter:
 
 ```sh
-deno run --allow-env=DENO_KV_DATABASE_ID,DENO_KV_ACCESS_TOKEN,STATE_BACKUP_FILE,CONFIRM_DEFAULT_SOURCE_STATE --allow-net=api.deno.com --allow-write=. scripts/export-deno-kv-paper-state.ts
+deno run --unstable-kv --allow-env=DENO_KV_DATABASE_ID,DENO_KV_ACCESS_TOKEN,STATE_BACKUP_FILE,CONFIRM_DEFAULT_SOURCE_STATE --allow-net=api.deno.com --allow-write=. scripts/export-deno-kv-paper-state.ts
 ```
 
 It fails closed if the production key is missing, the state is invalid, or the result looks like the default (balance 100, no trades) without explicit confirmation. It creates a new owner-only backup file, prints its SHA-256 and trade count, and never prints the state or token. It performs no KV mutation, Cloudflare write, deployment, or cutover.
@@ -31,7 +31,7 @@ The Deno Console export UI may provide a completed SQLite-format Deno KV databas
 2. Download the file to the iPhone Files app. Treat it as sensitive production data; do not attach it to chat, commit it, or upload it to a public repository.
 3. In the repository's GitHub Codespace (opened on the migration branch), create a folder named `private-export` in the Explorer. Use the Explorer `...` menu → **Upload Files** (or right-click the folder → **Upload**) and select the SQLite file from iPhone Files → Downloads. Keep it inside `private-export`; this folder is ignored by `.gitignore`. Do not use GitHub's repository upload/commit UI. Confirm the filename in the Explorer. The workspace path is `/workspaces/solana-smart-bot/private-export/<actual-file-name>`. Run the offline read-only extractor against that file:
    ```sh
-   deno run --allow-read=./private-export --allow-write=. scripts/extract-deno-kv-export.ts ./private-export/<actual-file-name>
+   deno run --unstable-kv --allow-env=STATE_BACKUP_FILE,CONFIRM_DEFAULT_SOURCE_STATE --allow-read=./private-export --allow-write=. scripts/extract-deno-kv-export.ts ./private-export/<actual-file-name>
    ```
    Replace `<actual-file-name>` with the exact filename shown in Codespaces. The generated JSON backup is also ignored by `.gitignore`. The script opens the exported KV database locally, reads only the exact `["bot_state"]` key, validates supported fields, and writes a private JSON state backup with SHA-256 and trade count. It does not print the state, modify the SQLite file, connect to Deno, or write to Cloudflare.
 4. If the extraction succeeds, keep both the original SQLite export and the JSON backup private. The next migration step requires a separate explicit operator action; do not run the Cloudflare import until the extracted balance/trade count are checked and the destination's eligibility/revision are confirmed.
