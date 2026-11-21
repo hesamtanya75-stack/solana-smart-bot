@@ -36,7 +36,7 @@ jobs:
         run: |
           test -n "$DENO_KV_DATABASE_ID" || (echo "Missing repository secret DENO_KV_DATABASE_ID" && exit 1)
           test -n "$DENO_KV_ACCESS_TOKEN" || (echo "Missing repository secret DENO_KV_ACCESS_TOKEN" && exit 1)
-          deno run --allow-net=api.deno.com --allow-read=scripts --allow-write=. scripts/export-deno-kv-paper-state.ts
+          deno run --unstable-kv --allow-env=DENO_KV_DATABASE_ID,DENO_KV_ACCESS_TOKEN,STATE_BACKUP_FILE,CONFIRM_DEFAULT_SOURCE_STATE --allow-net=api.deno.com --allow-read=scripts --allow-write=. scripts/export-deno-kv-paper-state.ts
 
       - name: Upload private short-lived backup artifact
         uses: actions/upload-artifact@v4
