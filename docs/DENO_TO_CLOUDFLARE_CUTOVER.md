@@ -10,7 +10,7 @@ The current Deno API stores paper state at the tuple key `["bot_state"]`; Cloudf
 
 If the Deno app endpoint is suspended but the managed KV database still permits external access, use the native Deno KV Connect path instead of the app's `/api/state` login endpoint. This uses the production key `["bot_state"]` confirmed in `main.ts`; it does not write to KV.
 
-1. In Deno Deploy, copy the actual database ID from the `f91810--main` production database details (not the timeline label or database name).
+1. In Deno Deploy, copy the actual database ID for the production database `f91810-production` from its details (not `f91810-local`, a timeline label, or a preview database).
 2. Create an organization access token under organization Settings → Access Tokens. Keep it private.
 3. In a trusted Node/Deno terminal, set `DENO_KV_DATABASE_ID` and `DENO_KV_ACCESS_TOKEN` as environment variables. Do not put the token in source, command history, GitHub comments, or chat.
 4. Run the read-only exporter:
