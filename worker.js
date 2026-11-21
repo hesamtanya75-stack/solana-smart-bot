@@ -44,8 +44,12 @@ function cleanState(value) {
     lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20) : []
   };
 }
+async function readStoredState(env) {
+  const stored = await env.BOT_STATE.get("bot_state", "json");
+  return stored === null || stored === undefined ? null : cleanState(stored);
+}
 async function readState(env) {
-  return cleanState(await env.BOT_STATE.get("bot_state", "json"));
+  return (await readStoredState(env)) || cleanState(null);
 }
 async function saveState(env, state) {
   state.updatedAt = new Date().toISOString();
@@ -734,7 +738,14 @@ export default {
     ctx.waitUntil((async () => {
       const startedAt = Date.now();
       rpcDiagnostics = { successes: [], errors: [] };
-      const state = await readState(env);
+      // Do not let a scheduled cycle create a timestamped default state.
+      // The dashboard uses the absence of initialized server state to detect
+      // whether legacy browser paper-trading data still needs migration.
+      const state = await readStoredState(env);
+      if (!state) {
+        console.info("Server cycle skipped: paper-trading state is not initialized.");
+        return;
+      }
       let sold = 0;
       let refreshWarning = "";
       let buyMessage = "";
