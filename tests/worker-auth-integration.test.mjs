@@ -230,13 +230,26 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   const confirmed = await confirm.json();
   assert.equal(typeof confirmed.backupCode, "string");
 
-  const profile = await get("/api/profile", env, token);
-  assert.equal(profile.status, 200);
-  assert.equal((await profile.json()).totpEnabled, true);
+  // MFA activation increments the auth generation; the setup session must
+  // be revoked and the administrator must complete MFA on the next login.
+  const oldSessionProfile = await get("/api/profile", env, token);
+  assert.equal(oldSessionProfile.status, 401);
+  assert.equal((await guard.getProfile()).totpEnabled, true);
 
   const nextLogin = await post("/api/login", { password: LOGIN_PASSWORD }, env);
   assert.equal(nextLogin.status, 200);
-  assert.equal((await nextLogin.json()).mfaRequired, true);
+  const nextChallenge = await nextLogin.json();
+  assert.equal(nextChallenge.mfaRequired, true);
+  const nextCode = await totpCode(setupBody.secret, Math.floor(Date.now() / 30000));
+  const nextVerified = await post("/api/login/totp", {
+    challengeId: nextChallenge.challengeId,
+    code: nextCode
+  }, env);
+  assert.equal(nextVerified.status, 200);
+  const nextToken = (await nextVerified.json()).token;
+  const profile = await get("/api/profile", env, nextToken);
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).totpEnabled, true);
 });
 
 test("Worker logout revokes the bearer session immediately", async () => {
