@@ -61,14 +61,13 @@
       }
     ]
   },
-  "exports": {
-    "PaperStateCoordinator": {
-      "type": "durable-object",
-      "storage": "sqlite"
-    },
-    "MfaRateLimiter": {
-      "type": "durable-object",
-      "storage": "sqlite"
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "PaperStateCoordinator",
+        "MfaRateLimiter"
+      ]
     }
-  }
+  ]
 }
