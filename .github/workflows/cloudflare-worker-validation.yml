@@ -49,9 +49,8 @@ jobs:
             throw new Error("BOT_STATE KV binding is missing");
           }
           const requiredBindings = [
-            ["LIVE_TRADE_COORDINATOR", "LiveTradeCoordinator"],
-            ["AUTH_GUARD", "AuthGuard"],
-            ["PAPER_TRADING_STATE", "PaperTradingState"]
+            ["PAPER_STATE_COORDINATOR", "PaperStateCoordinator"],
+            ["AUTH_RATE_LIMITER", "MfaRateLimiter"]
           ];
           for (const [name, className] of requiredBindings) {
             if (!config.durable_objects?.bindings?.some(binding =>
@@ -59,18 +58,20 @@ jobs:
               throw new Error(`${name} Durable Object binding is missing`);
             }
           }
-          const migrations = config.migrations || [];
-          for (const [tag, className] of [
-            ["v1-live-trade-coordinator", "LiveTradeCoordinator"],
-            ["v2-auth-guard", "AuthGuard"],
-            ["v3-paper-trading-state", "PaperTradingState"]
-          ]) {
-            if (!migrations.some(migration =>
-              migration.tag === tag && migration.new_sqlite_classes?.includes(className))) {
-              throw new Error(`${tag} migration is missing or incomplete`);
+          for (const className of ["PaperStateCoordinator", "MfaRateLimiter"]) {
+            if (config.exports?.[className]?.type !== "durable-object" ||
+                config.exports?.[className]?.storage !== "sqlite") {
+              throw new Error(`${className} must use its existing declarative SQLite export`);
             }
           }
-          console.log("Validated Worker target, entry point, static asset routing, KV, Durable Object bindings, and migrations.");
+          if ("migrations" in config) {
+            throw new Error("Do not replay first-create migrations against existing production DO namespaces");
+          }
+          if (config.durable_objects?.bindings?.some(binding =>
+            binding.name === "LIVE_TRADE_COORDINATOR" || binding.class_name === "LiveTradeCoordinator")) {
+            throw new Error("Live-trading coordinator must remain unbound from the public Worker");
+          }
+          console.log("Validated current Worker target, assets, KV, DO bindings, and production-safe exports.");
           NODE
 
       - name: Build Worker without deploying

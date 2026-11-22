@@ -47,9 +47,12 @@ function sameOriginApiRequest(request, url) {
   if (origin) {
     try { if (new URL(origin).origin !== url.origin) return false; }
     catch { return false; }
-  } else if (request.headers.get("Sec-Fetch-Site") !== "same-origin") {
-    // Reject requests where both Origin and Fetch Metadata are absent.
-    return false;
+  } else {
+    // Browser requests include Origin; Fetch Metadata is checked when supplied.
+    // Non-browser clients may omit both.
+    const fetchSite = request.headers.get("Sec-Fetch-Site");
+    if (fetchSite === "cross-site") return false;
+    if (fetchSite && fetchSite !== "same-origin") return false;
   }
   return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
