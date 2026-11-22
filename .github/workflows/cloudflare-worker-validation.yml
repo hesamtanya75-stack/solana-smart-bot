@@ -3,7 +3,8 @@ name: Cloudflare Worker build validation
 on:
   pull_request:
     paths:
-      - "worker.js"
+       - ".assetsignore"
+     - "worker.js"
       - "auth-guard.mjs"
       - "paper-trading-state.mjs"
       - "trusted-live-evidence.mjs"
