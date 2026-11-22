@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { AuthGuard } from "../auth-guard.mjs";
 import { PaperTradingState } from "../paper-trading-state.mjs";
+import { PaperStateCoordinator } from "../paper-state-coordinator.js";
 import { parseRpcResponse, parseRpcBatchResponse, readBoundedJsonResponse } from "../rpc-response.mjs";
 import { resolveSolanaRpcEndpoints } from "../solana-rpc-config.js";
 
@@ -80,9 +81,16 @@ function makeEnvironment(profile = null) {
   const guard = new AuthGuard({ storage }, { AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN });
   const paperStorage = new TransactionalStorage();
   const paperState = new PaperTradingState({ storage: paperStorage }, { BOT_STATE: kv });
+  const coordinatorStorage = new TransactionalStorage();
+  const paperCoordinator = new PaperStateCoordinator({ storage: coordinatorStorage });
+  const paperCoordinatorStub = { fetch: (input, init) => paperCoordinator.fetch(new Request(input, init)) };
   const env = {
     BOT_LOGIN_PASSWORD: LOGIN_PASSWORD,
     BOT_STATE: kv,
+    PAPER_STATE_COORDINATOR: {
+      idFromName: name => name,
+      get: () => paperCoordinatorStub
+    },
     AUTH_GUARD_INTERNAL_TOKEN: INTERNAL_TOKEN,
     AUTH_GUARD: {
       idFromName: name => name,
@@ -93,7 +101,7 @@ function makeEnvironment(profile = null) {
       get: () => ({ fetch: (input, init) => paperState.fetch(new Request(input, init)) })
     }
   };
-  return { env, guard, paperState };
+  return { env, guard, paperState, paperCoordinator };
 }
 
 async function post(path, body, env, headers = {}) {
