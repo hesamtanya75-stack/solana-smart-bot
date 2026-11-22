@@ -778,7 +778,8 @@ export default {
       }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
-        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
+        const auth = await authGuardCall(env, { operation: "get-profile" });
+        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: auth.totpEnabled === true });
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         try {
@@ -801,48 +802,65 @@ export default {
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
-        const p = await readProfile(env);
-        if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
-        const secretBytes = crypto.getRandomValues(new Uint8Array(20));
-        const secret = base32Encode(secretBytes);
-        p.pendingTotpSecret = secret;
-        p.pendingTotpAt = Date.now();
-        await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-        const label = encodeURIComponent("Solana Smart Bot Admin");
-        const issuer = encodeURIComponent("Solana Smart Bot");
-        const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
-        return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
-      }
-      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
-        let claimedSecretHash = null;
         try {
-          const { code } = await readBoundedJson(request, 4096);
-          const p = await readProfile(env);
-          if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          const { password } = await readBoundedJson(request, 4096);
+          const expected = env.BOT_LOGIN_PASSWORD;
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           const ipHash = await hashText(ip);
-          const setupLimit = await authRateLimitRequest(env, "/totp-setup-attempt", { ipHash });
-          if (!setupLimit.allowed) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-          claimedSecretHash = await hashText(p.pendingTotpSecret);
-          const claim = await authRateLimitRequest(env, "/totp-setup-claim", { secretHash: claimedSecretHash });
-          if (!claim.claimed) return json({ error: "ئەم setup ـە پێشتر پشتڕاست کراوەتەوە؛ تکایە دووبارە setup بکە." }, 409);
-          await authRateLimitRequest(env, "/totp-setup-clear", { ipHash });
+          const scope = "totp-setup:" + ipHash;
+          await migrateLegacyFailure(env, scope, "totp_setup_fail:" + ip);
+          const limited = await authGuardCall(env, { operation: "is-rate-limited", scope });
+          if (limited.limited) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          if (!expected || typeof password !== "string" || password !== expected) {
+            const failure = await authGuardCall(env, { operation: "record-failure", scope });
+            return json({ error: "وشەی نهێنی بۆ چالاککردنی Authenticator هەڵەیە" }, failure.limited ? 429 : 401);
+          }
+          await authGuardCall(env, { operation: "clear-failures", scope });
+          const auth = await authGuardCall(env, { operation: "get-profile" });
+          if (auth.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
+          const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
+          const begun = await authGuardCall(env, { operation: "begin-totp-setup", secret });
+          if (!begun.ok) return json({ error: "نەتوانرا setup ـی Authenticator دەستپێبکرێت" }, 409);
+          const label = encodeURIComponent("Solana Smart Bot Admin");
+          const issuer = encodeURIComponent("Solana Smart Bot");
+          const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
+          return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
+        } catch (error) {
+          if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+          return json({ error: "نەتوانرا setup ـی Authenticator دەستپێبکرێت" }, 400);
+        }
+      }
+      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        try {
+          const { code } = await readBoundedJson(request, 4096);
+          const auth = await authGuardCall(env, { operation: "get-profile" });
+          if (!auth.pendingTotpSecret || !Number.isSafeInteger(auth.pendingTotpAt) ||
+              Date.now() < auth.pendingTotpAt || Date.now() - auth.pendingTotpAt > 600000) {
+            return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          }
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          const ipHash = await hashText(ip);
+          const scope = "totp-setup:" + ipHash;
+          const limited = await authGuardCall(env, { operation: "is-rate-limited", scope });
+          if (limited.limited) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
-          p.totpSecret = p.pendingTotpSecret;
+          const result = await authGuardCall(env, {
+            operation: "confirm-totp-setup",
+            code: String(code || ""),
+            backupHash: await hashText(backupCode),
+            failureScope: scope
+          });
+          if (!result.ok) {
+            return json({ error: result.reason === "rate-limited" ? "هەوڵەکان تەواو بوون" : "کۆدی Authenticator هەڵەیە" }, result.reason === "rate-limited" ? 429 : 401);
+          }
+          const p = await readProfile(env);
           p.totpEnabled = true;
-          // Rotate the session generation so all previously issued sessions
-          // become invalid immediately after MFA is enabled.
           p.authVersion = Number(p.authVersion || 0) + 1;
-          p.backupHash = await hashText(backupCode);
-          delete p.pendingTotpSecret;
-          delete p.pendingTotpAt;
+          for (const key of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) delete p[key];
           await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          await authGuardCall(env, { operation: "clear-failures", scope });
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch (error) {
-          if (claimedSecretHash) {
-            try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
-          }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
         }
