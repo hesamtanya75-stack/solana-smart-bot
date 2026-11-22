@@ -74,6 +74,17 @@ Safe resolution:
 A historical Deno failure status may remain attached to older commits. Do not treat it as evidence that Cloudflare Worker tests failed. Cloudflare Preview deployment and runtime validation remain separate required checks.
 
 
+## Cleaning up old Cloudflare Previews
+
+The Preview workflow automatically deletes the `pr-<number>` Preview when a same-repository pull request is closed. To reclaim Preview Durable Object namespaces left by older closed PRs, use GitHub Actions on an iPhone or computer:
+
+1. Open the repository's **Actions** tab.
+2. Select **Cloudflare Worker Preview**.
+3. Tap **Run workflow** and enter the closed PR number (for example, `47` only if PR 47 is closed).
+4. Run it. The cleanup job deletes only the isolated Preview named `pr-<number>`; it does not deploy or delete the Production Worker.
+
+Do not enter an open PR number whose Preview you still need. Cloudflare documents that deleting a Preview also deletes its Preview-specific Durable Object state. Review the PR state before cleanup.
+
 ## Automated isolated Preview
 
 A guarded GitHub Actions workflow is available at `.github/workflows/cloudflare-preview.yml`. It runs only for same-repository pull requests targeting the migration base branch and only when the repository Actions variable `CLOUDFLARE_PREVIEW_ENABLED` is exactly `true`. It requires the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository Actions secrets. The workflow runs tests and a Wrangler dry-run before invoking the Wrangler Preview command; it does not deploy Production. See [the Preview validation checklist](docs/cloudflare-preview-runtime-validation.md) for setup and isolation requirements.
