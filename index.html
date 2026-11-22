@@ -1633,20 +1633,41 @@ async function refreshServerPrices() {
     serverPriceRefreshBusy = false;
   }
 }
+function hasLegacyEmptyServerConflict(local, remote) {
+  if (!local || !Array.isArray(local.trades) || !remote || !Array.isArray(remote.trades)) return false;
+  if (remote.canMigrateLegacy === true || !remote.updatedAt) return false;
+  const localBalance = Number(local.balance);
+  const remoteBalance = Number(remote.balance);
+  const meaningfulLocal = (Number.isFinite(localBalance) && localBalance !== 100) || local.trades.length > 0;
+  if (!meaningfulLocal) return false;
+  const sameBalance = Number.isFinite(localBalance) && Number.isFinite(remoteBalance) && localBalance === remoteBalance;
+  const sameTrades = JSON.stringify(local.trades) === JSON.stringify(remote.trades);
+  return !(sameBalance && sameTrades);
+}
 async function saveServerState() {
   if (!serverModeReady) return;
-  const result = await serverRequest("/api/state", {
-    method: "PUT",
-    body: JSON.stringify({
-      expectedRevision: serverStateRevision,
-      balance: demoBalance,
-      trades: demoTrades,
-      autoEnabled: autoDemoBuyEnabled,
-      paused: autoDemoBuyPaused,
-      scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
-    })
-  });
-  if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
+  try {
+    const result = await serverRequest("/api/state", {
+      method: "PUT",
+      body: JSON.stringify({
+        expectedRevision: serverStateRevision,
+        balance: demoBalance,
+        trades: demoTrades,
+        autoEnabled: autoDemoBuyEnabled,
+        paused: autoDemoBuyPaused,
+        scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
+      })
+    });
+    if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("State changed") || message.includes("409")) {
+      serverModeReady = false;
+      const status = document.getElementById("demoStatus");
+      if (status) status.textContent = "داتای ئەم مۆبایلە پارێزراوە؛ دۆخی سێرڤەر گۆڕاوە. browser copy untouched — دووبارە sync بکە پێش نووسینەوە.";
+    }
+    throw error;
+  }
 }
 const localSaveDemoState = saveDemoState;
 // Server-mode trading writes are explicit, validated API operations. Local storage

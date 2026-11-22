@@ -40,6 +40,49 @@ function json(data, status = 200) {
     }
   });
 }
+
+function sameOriginApiRequest(request, url) {
+  const method = request.method.toUpperCase();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return true;
+  const origin = request.headers.get("Origin");
+  const fetchSite = request.headers.get("Sec-Fetch-Site");
+  if (origin) {
+    try { if (new URL(origin).origin !== url.origin) return false; }
+    catch { return false; }
+  }
+  if (fetchSite === "cross-site") return false;
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site") return false;
+  // Reject requests where both Origin and Fetch Metadata are absent.
+  if (!origin && !fetchSite) return false;
+  return true;
+}
+
+async function readBoundedJson(request, maxBytes = 8192) {
+  const reader = request.body?.getReader();
+  if (!reader) throw Object.assign(new Error("Missing request body"), { status: 400 });
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw Object.assign(new Error("Request body too large"), { status: 413 });
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  let value;
+  try { value = JSON.parse(new TextDecoder().decode(bytes)); }
+  catch { throw Object.assign(new Error("Invalid JSON"), { status: 400 }); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw Object.assign(new Error("JSON body must be an object"), { status: 400 });
+  }
+  return value;
+}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   return {
@@ -592,6 +635,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const buildId = env.BUILD_ID || env.CF_VERSION_METADATA?.id || "local-unversioned";
+    if (url.pathname.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) {
+      if (!sameOriginApiRequest(request, url)) return json({ error: "Cross-origin request rejected" }, 403);
+    }
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: buildId });
     }
@@ -600,7 +646,7 @@ export default {
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const { password } = await request.json();
+        const body = await readBoundedJson(request, 4096);\n        const password = body.password;
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -633,12 +679,12 @@ export default {
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-        return json({ error: "داواکاری هەڵەیە" }, 400);
+        return json({ error: "داواکاری هەڵەیە" }, error?.status || 400);
       }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
+        const body = await readBoundedJson(request, 4096);\n        const challengeId = body.challengeId;\n        const code = body.code;
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -713,7 +759,7 @@ export default {
         }
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
+        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, error?.status || 400);
       }
     }
     if (url.pathname.startsWith("/api/")) {
@@ -763,7 +809,7 @@ export default {
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
         let claimedSecretHash = null;
         try {
-          const { code } = await request.json();
+          const body = await readBoundedJson(request, 4096);\n          const code = body.code;
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -791,7 +837,7 @@ export default {
             try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
           }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
+          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, error?.status || 400);
         }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
