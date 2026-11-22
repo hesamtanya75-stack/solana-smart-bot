@@ -6,7 +6,7 @@ if (!base || !expectedBuild) {
 }
 const preview = new URL(base);
 if (preview.protocol !== "https:" ||
-    !/^[0-9a-f]{8}-solana-smart-bot\.hesamtanya75\.workers\.dev$/.test(preview.hostname)) {
+    !/^[0-9a-f]{8}-solana-smart-bot-new\.hesamtanya75\.workers\.dev$/.test(preview.hostname)) {
   throw new Error("Refusing to smoke-test a non-Preview URL");
 }
 
