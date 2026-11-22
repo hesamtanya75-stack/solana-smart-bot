@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloudflare-preview-pr-${{ github.event.pull_request.number }}
+  group: cloudflare-preview-pr-${{ github.event.pull_request.number || inputs.preview_pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -36,6 +36,8 @@ jobs:
     steps:
       - name: Check out repository configuration
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
