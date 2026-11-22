@@ -1481,10 +1481,13 @@ function validateStableTokenBalanceIdentities(preRows, postRows) {
         throw new Error("Finalized transaction token balance metadata is malformed");
       }
       const indexDescriptor = Object.getOwnPropertyDescriptor(row, "accountIndex");
-      if (!indexDescriptor) continue;
-      if (!Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
+      if (!indexDescriptor ||
+          !Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
           !Number.isInteger(indexDescriptor.value) || indexDescriptor.value < 0) {
         throw new Error("Finalized transaction token balance account index is malformed");
+      }
+      if (byIndex.has(indexDescriptor.value)) {
+        throw new Error("Finalized transaction token balance has duplicate account indexes");
       }
       const readOptional = key => {
         const descriptor = Object.getOwnPropertyDescriptor(row, key);
