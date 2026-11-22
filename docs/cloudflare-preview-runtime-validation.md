@@ -121,3 +121,13 @@ After recording the initial Preview run, the documentation-only commit `32c36470
 Exact immutable Preview URL: https://98a12289-solana-smart-bot-new.hesamtanya75.workers.dev
 
 The smoke check again verified health/version against the requested SHA, dashboard asset and Purple Glass markers, and that ten source/diagnostic paths were not publicly served. It explicitly remained read-only: no login, state mutation, Cron, Deno import, or chain transaction. Authenticated persistence and migration verification are still pending.
+
+## Latest automated Preview evidence (2026-11-22, 19:45 UTC)
+
+At PR head `beb9073059ff5a88be9acc9711835fd0fddde1fd`, Cloudflare Preview workflow [45062507517](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45062507517) completed successfully. The runner deployed the isolated Preview and executed `scripts/preview-smoke-check.mjs` against the exact Wrangler-emitted immutable URL:
+
+`https://d85c46ff-solana-smart-bot-new.hesamtanya75.workers.dev`
+
+Recorded smoke assertions passed: health/version matched the requested SHA; the dashboard and Purple Glass markers were present; ten repository/source/diagnostic paths were not publicly served. The Preview publish log showed the dedicated Preview KV and Durable Object bindings. This run did **not** exercise authenticated DO state mutation, version-conflict behavior, persistence across redeploy, logout, or full namespace isolation via an authenticated session. Those checklist items remain pending. No Production deploy, Deno migration/retirement, wallet signing, or chain transaction occurred.
+
+At this head, the repository test, Worker state, frontend syntax, workflow validation, and Preview checks completed successfully. The external Deno Deploy status remains a separate billing/suspended-account failure.
