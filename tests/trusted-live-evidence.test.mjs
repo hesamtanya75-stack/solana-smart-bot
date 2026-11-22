@@ -2638,6 +2638,35 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   const request = { signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1" };
 
+  // Every row participates in identity binding, not only rows owned by the bot.
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        ...baseResult.meta.preTokenBalances,
+        { mint: outputMint, owner: "11111111111111111111111111111112",
+          accountIndex: 1, uiTokenAmount: { amount: "9", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate account indexes/);
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        ...baseResult.meta.preTokenBalances,
+        { mint: outputMint, owner: "11111111111111111111111111111112",
+          uiTokenAmount: { amount: "9", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+
   transactionResult = {
     ...baseResult,
     transaction: { signatures: [signature], message: { accountKeys: [
