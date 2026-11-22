@@ -1,0 +1,45 @@
+# Only the dashboard is intended to be publicly served from the repository root.
+# Wrangler's static asset directory is the repository root, so explicitly exclude
+# repository metadata, server code, tests, docs, local state, and credentials.
+
+.git
+.git/**
+.wrangler
+.wrangler/**
+.github
+.github/**
+docs
+docs/**
+scripts
+scripts/**
+tests
+tests/**
+display-*.html
+
+README.md
+worker.js
+paper-state-coordinator.js
+mfa-rate-limiter.js
+wrangler.jsonc
+package.json
+package-lock.json
+npm-shrinkwrap.json
+
+*.js
+*.mjs
+*.cjs
+*.map
+*.json
+*.jsonc
+*.md
+*.yml
+*.yaml
+*.toml
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*backup*
+.env*
+.dev.vars*
