@@ -21,6 +21,12 @@ Legacy Deno Deploy (`main.ts` / Deno KV) and the old Node/SQLite API (`server.js
 
 Before using a Preview or production environment, verify the correct KV namespace binding and secret are configured for that environment. Keep Preview and production data isolated. A dry-run build does not deploy.
 
+### Solana RPC configuration
+
+The Worker accepts a dedicated provider endpoint through the Cloudflare secret `SOLANA_RPC_URL`. Configure it in **Workers & Pages → solana-smart-bot-new → Settings → Variables and Secrets → Add secret** (or with `wrangler secret put SOLANA_RPC_URL`). Use a provider-issued HTTPS Mainnet RPC URL; do not paste the value into GitHub, source files, screenshots, or logs.
+
+`SOLANA_RPC_URL` is tried first, followed by the existing `ALCHEMY_API_KEY` setting and public fallback endpoints. Public RPCs are rate-limited shared infrastructure and may return HTTP 403/429 from Worker traffic; they are a development fallback, not a production reliability guarantee. The Worker reports provider labels and HTTP status/Retry-After without logging the secret URL. A configured private RPC is still required to verify reliable scanner operation.
+
 ## Data migration — required before retiring the old Deno project
 
 Do not delete the old Deno project or its KV data until the existing paper-trading state has been exported, imported into the Cloudflare `PAPER_STATE_COORDINATOR` Durable Object, and read back successfully.
