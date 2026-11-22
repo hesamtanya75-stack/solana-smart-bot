@@ -924,7 +924,7 @@ export default {
         try {
           const body = await readBoundedJson(request, 256 * 1024);
           const expectedRevision = body.expectedRevision;
-          if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+          if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) {
             return json({ error: "Invalid expectedRevision" }, 400);
           }
           const stateKeys = [
@@ -956,7 +956,7 @@ export default {
           }
           const stored = await readStoredState(env);
           const currentRevision = stored && Number.isSafeInteger(stored[STATE_VERSION]) ? stored[STATE_VERSION] : 0;
-          if (expectedRevision !== currentRevision) {
+          if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
             return json({ error: "State changed; reload and retry" }, 409);
           }
           const patch = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "expectedRevision"));
