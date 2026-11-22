@@ -143,3 +143,14 @@ For the current PR head `05027ac5e0bc371d3a75bb198d4c1b954b8c7a53` (credential-r
 - Manual funded Devnet lifecycle workflow [run 45064278540](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064278540): workflow conclusion success; this is not evidence that a funded transaction was actually executed.
 
 These automated results do not complete the operator-only authenticated Durable Object tests or Deno KV backup/import/read-back. The external Deno Deploy status is still failing separately due to the suspended/billing account. PR #47 remains open and unmerged. No Production deployment, Deno retirement, wallet signing, or Mainnet transaction was performed.
+
+
+## Latest PR-head validation (2026-11-22, 20:06 UTC)
+
+At current PR head `d6e3a138b7450ee6c26af56467d0c1cc8c1f0868`, Cloudflare Worker Preview workflow [run 45064450463](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450463) completed successfully. The job deployed a Preview with build ID matching this SHA and ran `scripts/preview-smoke-check.mjs` against the exact immutable URL emitted by Wrangler:
+
+`https://4f31fd8e-solana-smart-bot-new.hesamtanya75.workers.dev`
+
+The log confirms these read-only assertions passed: health/version matched the requested SHA; the dashboard and Purple Glass markers were present; ten repository/source/diagnostic paths were not publicly served. The test explicitly did not perform login, state mutation, Cron, Deno import, or a chain transaction. Worker state initialization tests [45064450455](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450455), frontend validation [45064450462](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450462), and Devnet workflow safety/build validation [45064450452](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450452) also concluded successfully. In the Devnet workflow, both the funded lifecycle and explicit-confirmation jobs were skipped; this is not evidence of a funded transaction.
+
+Still pending: authenticated disposable-Preview state mutation/read-back, invalid-field and stale-version rejection, persistence across redeploy, logout/MFA, and authenticated namespace isolation; plus private Deno KV export/backup, Cloudflare import and exact read-back. External Deno Deploy status remains a separate suspended/billing failure. PR #47 is open and unmerged. No Production deployment, Deno retirement, wallet signing, or Mainnet transaction occurred.
