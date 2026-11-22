@@ -10,6 +10,12 @@ on:
       - reopened
       - ready_for_review
       - closed
+  workflow_dispatch:
+    inputs:
+      preview_pr_number:
+        description: "Closed pull request number whose isolated Preview should be deleted"
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -21,9 +27,10 @@ concurrency:
 jobs:
   cleanup:
     if: >-
-      ${{ github.event.action == 'closed' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' }}
+      ${{ vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.preview_pr_number != '') ||
+           (github.event.action == 'closed' &&
+            github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,7 +57,13 @@ jobs:
 
       - name: Delete closed pull request Preview only
         if: steps.preview_credentials.outputs.available == 'true'
-        run: npx --yes wrangler@4.135.0 preview delete --name "pr-${{ github.event.pull_request.number }}" --skip-confirmation --config wrangler.jsonc
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            preview_name="pr-${{ inputs.preview_pr_number }}"
+          else
+            preview_name="pr-${{ github.event.pull_request.number }}"
+          fi
+          npx --yes wrangler@4.135.0 preview delete --name "$preview_name" --skip-confirmation --config wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -58,7 +71,8 @@ jobs:
   preview:
     name: Build and publish isolated Preview
     if: >-
-      ${{ github.event.action != 'closed' &&
+      ${{ github.event_name == 'pull_request' &&
+          github.event.action != 'closed' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
