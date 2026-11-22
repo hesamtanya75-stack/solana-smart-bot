@@ -59,7 +59,7 @@ if (!isCompatibleWithWorkerState(original)) {
 if (isDefaultLikeSourceState(original) && process.env.CONFIRM_DEFAULT_SOURCE_STATE !== "YES") {
   throw new Error("Source looks like the default state (balance 100, no trades). Deno GET cannot prove whether its KV key exists. Verify the Deno dashboard/KV state, then rerun with CONFIRM_DEFAULT_SOURCE_STATE=YES only if this is the intended source.");
 }
-await writeFile(backupPath, JSON.stringify(original, null, 2) + "\n", { flag: "wx" });
+await writeFile(backupPath, JSON.stringify(original, null, 2) + "\n", { flag: "wx", mode: 0o600 });
 console.log(`Backup saved: ${backupPath}`);
 console.log(`Source balance: ${original.balance}; trades: ${original.trades.length}`);
 
