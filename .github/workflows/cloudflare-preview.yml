@@ -102,6 +102,8 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install isolated Durable Objects test runtime
+        run: npm install --no-save --ignore-scripts miniflare@5.20261113.0-beta
       - name: Run regression tests
         run: npm test
 

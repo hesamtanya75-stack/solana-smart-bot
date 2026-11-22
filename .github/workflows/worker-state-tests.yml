@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Install isolated Durable Objects test runtime
+        run: npm install --no-save --ignore-scripts miniflare@5.20261113.0-beta
       - name: Run Worker state regression tests
         run: npm test
       - name: Check Deno-to-Cloudflare migration helper syntax

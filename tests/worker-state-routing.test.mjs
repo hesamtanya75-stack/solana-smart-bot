@@ -398,15 +398,11 @@ test("MFA attempt reservations are atomic under concurrent requests", async () =
 });
 
 
-test("diagnostic screen route is hidden unless explicitly enabled", async () => {
+test("diagnostic screen route is permanently hidden from public requests", async () => {
   const { env } = environment();
   env.ASSETS = { fetch: async () => new Response("Not found", { status: 404 }) };
-  const hidden = await worker.fetch(new Request("https://worker.test/screen-test"), env);
-  assert.equal(hidden.status, 404);
-  env.ENABLE_DIAGNOSTIC_ROUTES = "true";
-  const enabled = await worker.fetch(new Request("https://worker.test/screen-test"), env);
-  assert.equal(enabled.status, 200);
-  assert.match(await enabled.text(), /SCREEN TEST OK/);
+  const response = await worker.fetch(new Request("https://worker.test/screen-test"), env);
+  assert.equal(response.status, 404);
 });
 
 test("backup-code credential claims are atomic under concurrent login attempts", async () => {
