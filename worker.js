@@ -170,8 +170,10 @@ async function patchPaperState(env, patch) {
   return coordinatorRequest(env, "patch", patch);
 }
 async function authorized(request, env) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) return false;
+  const authorization = request.headers.get("Authorization") || "";
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  const token = match ? match[1] : "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
   if (!session || !(session.expiresAt > Date.now())) return false;
   const profile = await readProfile(env);
