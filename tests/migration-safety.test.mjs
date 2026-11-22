@@ -171,3 +171,17 @@ test("migration preflight preserves legacy trades but rejects malformed entries"
     }]
   }), false);
 });
+
+test("migration always disables auto-buy even if the source contains an enabled flag", () => {
+  const source = {
+    balance: 100,
+    trades: [],
+    autoEnabled: true,
+    paused: true
+  };
+  const normalized = normalizeLegacySourceState(source);
+  assert.equal(normalized.autoEnabled, false);
+  // A pre-existing pause is preserved; migration never unpauses a paused bot.
+  assert.equal(normalized.paused, true);
+  assert.equal(isCompatibleWithWorkerState(normalized), true);
+});
