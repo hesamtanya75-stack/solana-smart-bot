@@ -478,7 +478,7 @@ test("Worker exposes one-time paper-state migration and rejects stale repeat wri
   assert.equal(migrated.revision, 1);
 
   const stale = await put("/api/state", {
-    expectedRevision: migrated.revision,
+    expectedRevision: initial.revision,
     balance: 999,
     trades: [],
     autoEnabled: false,
