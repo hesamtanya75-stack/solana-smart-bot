@@ -7,6 +7,12 @@ const sourcePassword = required("DENO_LOGIN_PASSWORD");
 const targetPassword = required("CLOUDFLARE_LOGIN_PASSWORD");
 const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
 
+// Never echo a credential-bearing endpoint URL into CI logs or error output.
+function safeEndpoint(url) {
+  try { return new URL(url).origin; }
+  catch { return "configured endpoint"; }
+}
+
 async function request(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -15,10 +21,10 @@ async function request(url, options = {}) {
   const text = await response.text();
   let data;
   try { data = text ? JSON.parse(text) : null; }
-  catch { throw new Error(`Non-JSON response from ${url} (HTTP ${response.status})`); }
+  catch { throw new Error(`Non-JSON response from ${safeEndpoint(url)} (HTTP ${response.status})`); }
   if (!response.ok) {
     const message = data?.error || `HTTP ${response.status}`;
-    throw new Error(`${url}: ${message}`);
+    throw new Error(`${safeEndpoint(url)}: ${message}`);
   }
   return data;
 }
