@@ -24,20 +24,19 @@ test("Preview binds the dedicated authentication rate limiter Durable Object", (
   const preview = config.previews?.durable_objects?.bindings?.find(binding => binding.name === "AUTH_RATE_LIMITER");
   assert.equal(production?.class_name, "MfaRateLimiter");
   assert.equal(preview?.class_name, "MfaRateLimiter", "Preview must bind the authentication limiter");
-  assert.equal(config.exports?.MfaRateLimiter?.type, "durable-object");
-  assert.equal(config.exports?.MfaRateLimiter?.storage, "sqlite");
 });
 
-test("paper-state coordinator is configured as a SQLite Durable Object class", () => {
-  assert.equal(config.exports?.PaperStateCoordinator?.type, "durable-object");
-  assert.equal(config.exports?.PaperStateCoordinator?.storage, "sqlite");
+test("both Durable Object classes have a first-time SQLite migration", () => {
+  const migration = config.migrations?.find(entry => entry.tag === "v1");
+  assert.deepEqual(migration?.new_sqlite_classes, ["PaperStateCoordinator", "MfaRateLimiter"]);
   assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "PAPER_STATE_COORDINATOR").length, 1);
+  assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "AUTH_RATE_LIMITER").length, 1);
+  assert.equal("exports" in config, false, "Wrangler config must not contain unsupported top-level exports");
 });
 
 test("Preview asset diagnostics are routed through the Worker", () => {
   assert.ok(config.assets?.run_worker_first?.includes("/asset-check"));
 });
-
 
 test("Worker exposes Cloudflare-generated version metadata instead of a stale hardcoded build hash", () => {
   assert.equal(config.version_metadata?.binding, "CF_VERSION_METADATA");
