@@ -105,7 +105,10 @@ test("closed PRs clean up only their isolated Preview and are not redeployed", a
   assert.match(workflow, /preview_pr_number:/);
   assert.match(workflow, /github\.event\.action != 'closed'/);
   assert.match(workflow, /github\.event\.action == 'closed'/);
-  assert.match(workflow, /preview delete --name "pr-\$\{\{ github\.event\.pull_request\.number \}\}"/);
+  assert.ok(workflow.includes('preview delete --name "$preview_name"'));
+  assert.match(workflow, /inputs\.preview_pr_number/);
+  assert.match(workflow, /github\.event\.pull_request\.number/);
+  assert.match(workflow, /Check whether the selected pull request is closed/);
 });
 
 test("Preview namespace quota cannot be reported as a runtime validation pass", async () => {
