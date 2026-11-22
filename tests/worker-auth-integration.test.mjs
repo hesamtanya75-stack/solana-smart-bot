@@ -467,7 +467,7 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
   assert.equal(mistyped.status, 400);
 
   const oversized = await post("/api/automation", { enabled: true, padding: "x".repeat(5000) }, env, headers);
-  assert.equal(oversized.status, 400);
+  assert.equal(oversized.status, 413, "bounded request parser should return Payload Too Large");
 
   const state = await (await get("/api/state", env, token)).json();
   assert.equal(state.autoEnabled, true);
