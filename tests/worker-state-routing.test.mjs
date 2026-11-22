@@ -339,7 +339,7 @@ test("password login throttles after five failures through transactional AuthGua
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.10" },
       body: JSON.stringify({ password: "wrong-password" })
     }), env);
-    assert.equal(response.status, 401);
+    assert.equal(response.status, i < 4 ? 401 : 429);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login", {
     method: "POST",
@@ -369,7 +369,7 @@ test("MFA challenge is deleted after five invalid codes by AuthGuard", async () 
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
       body: JSON.stringify({ challengeId, code: "000000" })
     }), env);
-    assert.equal(response.status, 401);
+    assert.equal(response.status, i < 4 ? 401 : 429);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login/totp", {
     method: "POST",
