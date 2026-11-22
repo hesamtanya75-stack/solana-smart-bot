@@ -85,8 +85,12 @@ test("root asset publishing excludes repository internals and diagnostic pages",
 test("Preview CI performs read-only runtime and public asset boundary checks", async () => {
   const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
   const smoke = await readFile(new URL("../scripts/preview-smoke-check.mjs", import.meta.url), "utf8");
+  const extractor = await readFile(new URL("../scripts/extract-preview-url.mjs", import.meta.url), "utf8");
   assert.ok(workflow.includes("Verify Preview runtime and public asset boundary (read-only)"));
   assert.ok(workflow.includes("run: node scripts/preview-smoke-check.mjs"));
+  assert.ok(workflow.includes("scripts/extract-preview-url.mjs"));
+  assert.ok(extractor.includes("payload?.deployment?.urls?.[0]"));
+  assert.ok(extractor.includes("Captured the exact immutable Wrangler Preview deployment URL."));
   assert.match(smoke, /Refusing to smoke-test a non-Preview URL/);
   assert.match(smoke, /EXPECTED_BUILD_ID/);
   for (const path of ["/.git/config", "/.wrangler/", "/worker.js", "/display-test.html", "/wrangler.jsonc", "/.dev.vars"]) {
