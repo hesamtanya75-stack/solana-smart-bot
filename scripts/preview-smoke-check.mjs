@@ -29,13 +29,19 @@ if (version.ok !== true || version.build !== expectedBuild ||
   throw new Error("/version does not match the expected Preview build");
 }
 
-const asset = await getJson("/asset-check");
-if (asset.ok !== true || asset.status !== 200 ||
-    !String(asset.contentType || "").toLowerCase().includes("text/html") ||
-    asset.hasPremiumDesign !== true || asset.hasFinalPurpleGlass !== true ||
-    asset.hasOldClaudeSkin !== false || asset.hasLegacyPremiumSection !== false ||
-    asset.hasLoginPanel !== true) {
-  throw new Error("/asset-check did not confirm the expected dashboard asset");
+const assetResponse = await fetch(new URL("/index.html", preview), {
+  signal: AbortSignal.timeout(15000)
+});
+if (!assetResponse.ok ||
+    !String(assetResponse.headers.get("content-type") || "").toLowerCase().includes("text/html")) {
+  throw new Error("/index.html did not return the expected dashboard document");
+}
+const assetHtml = await assetResponse.text();
+if (!assetHtml.includes("SB_FINAL_PURPLE_GLASS") ||
+    /CLAUDE_SKIN|claude-skin|SB_CLAUDE/i.test(assetHtml) ||
+    /LEGACY_PREMIUM_SECTION|legacy-premium-section/i.test(assetHtml) ||
+    !assetHtml.includes('id="serverLogin"')) {
+  throw new Error("Preview dashboard did not confirm the expected Purple Glass and login markers");
 }
 
 const privatePaths = [
