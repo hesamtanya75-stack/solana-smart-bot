@@ -100,3 +100,16 @@ Before enabling it, create a Cloudflare API token with only the permissions requ
 
 
 After adding the repository Actions variable and secrets, note that GitHub does not rerun an earlier skipped workflow automatically. A new commit pushed to this pull request's source branch is required to emit a `synchronize` event and evaluate the Preview job again. Check the new run's result; do not treat the previous skipped run as deployment evidence.
+
+## CI evidence (2026-11-22)
+
+The automated isolated Preview workflow completed successfully for PR #47 at commit `15589f97eb913da1f26af32f5109bc2293ff37d6` (workflow run [45061545624](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45061545624)). Its read-only smoke step confirmed:
+
+- `/health` and `/version` matched the requested commit SHA.
+- The dashboard asset and `premium-dashboard-v2` Purple Glass markers were present.
+- Ten repository/source/diagnostic paths were not publicly served.
+- The Preview deployment included isolated Preview KV and Durable Object bindings.
+
+Exact immutable Preview URL from that run: https://01aedf69-solana-smart-bot-new.hesamtanya75.workers.dev
+
+This evidence covers deployment and read-only smoke checks only. The authenticated disposable-Preview state mutation/readback, conflict, persistence-after-redeploy, logout, and isolation checklist above remains **pending operator verification**. No Deno import, production state mutation, Cron invocation, or chain transaction was performed. The external Deno Deploy status check remains non-required and is failing due to the suspended/billing account; it does not invalidate this successful Cloudflare Preview run.
