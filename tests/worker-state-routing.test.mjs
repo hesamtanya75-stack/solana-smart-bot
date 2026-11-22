@@ -39,6 +39,11 @@ function environment() {
   const authGuard = new AuthGuard({ storage: guardStorage }, {
     AUTH_GUARD_INTERNAL_TOKEN: "worker-state-test-internal-token-1234567890"
   });
+  guardStorage.values.set("auth_guard_state", {
+    initialized: true, backupHash: null, lastTotpCounter: -1, failures: {},
+    challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null
+  });
   const guardStub = { fetch: (input, init) => authGuard.fetch(new Request(input, init)) };
   const touchedKvKeys = [];
   const env = {
@@ -356,6 +361,7 @@ test("MFA challenge is deleted after five invalid codes by AuthGuard", async () 
   const { env, authGuard, guardStorage } = environment();
   const secret = "JBSWY3DPEHPK3PXP";
   const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+  guardStorage.values.delete("auth_guard_state");
   await authGuard.initializeFromLegacy({
     totpEnabled: true,
     totpSecret: secret,
