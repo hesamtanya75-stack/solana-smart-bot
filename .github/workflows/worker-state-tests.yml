@@ -3,8 +3,8 @@ name: Worker state initialization tests
 on:
   pull_request:
     paths:
-       - ".assetsignore"
-     - "worker.js"
+      - ".assetsignore"
+      - "worker.js"
       - "index.html"
       - "paper-state-coordinator.js"
       - "mfa-rate-limiter.js"
@@ -19,6 +19,7 @@ on:
       - "scripts/migration-safety.mjs"
       - "package.json"
       - "scripts/migrate-deno-state.mjs"
+      - ".assetsignore"
       - ".github/workflows/worker-state-tests.yml"
   push:
     branches:
