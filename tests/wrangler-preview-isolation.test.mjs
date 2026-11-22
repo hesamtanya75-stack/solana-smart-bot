@@ -97,3 +97,17 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
     assert.ok(smoke.includes(path), `Preview smoke check must test ${path}`);
   }
 });
+
+test("closed PRs clean up only their isolated Preview and are not redeployed", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
+  assert.match(workflow, /- closed/);
+  assert.match(workflow, /github\.event\.action != 'closed'/);
+  assert.match(workflow, /github\.event\.action == 'closed'/);
+  assert.match(workflow, /preview delete --name "pr-\$\{\{ github\.event\.pull_request\.number \}\}"/);
+});
+
+test("Preview namespace quota cannot be reported as a runtime validation pass", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
+  assert.match(workflow, /Preview runtime validation did not run/);
+  assert.match(workflow, /exit 1/);
+});
