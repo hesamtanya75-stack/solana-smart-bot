@@ -55,7 +55,6 @@ function secureDashboard(html) {
   const nonceHtml = html.replace(/<script\b([^>]*)>/gi, (tag, attrs) =>
     /\bnonce\s*=/.test(attrs) ? tag : "<script nonce=\"" + nonce + "\"" + attrs + ">"
   );
-  );
   const csp = [
     "default-src 'self'",
     "script-src 'nonce-" + nonce + "' 'strict-dynamic' 'self'",
