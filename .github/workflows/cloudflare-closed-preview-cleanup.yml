@@ -43,7 +43,7 @@ jobs:
             echo "::warning::Preview cleanup skipped: Cloudflare API credentials are not configured."
           fi
 
-      - name: Collect closed pull request numbers
+      - name: Collect closed pull request branches
         if: steps.credentials.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,12 +55,12 @@ jobs:
               echo "::error::Refusing cleanup because PR #$number is not closed."
               exit 1
             fi
-            printf '%s\n' "$number" > "$RUNNER_TEMP/closed-prs.txt"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq '[.number, .head.ref, .head.repo.full_name, .base.ref] | @tsv' > "$RUNNER_TEMP/closed-prs.tsv"
           else
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=closed&per_page=100" --jq '.[].number' > "$RUNNER_TEMP/closed-prs.txt"
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=closed&per_page=100" --jq '.[] | [.number, .head.ref, .head.repo.full_name, .base.ref] | @tsv' > "$RUNNER_TEMP/closed-prs.tsv"
           fi
-          echo "Closed PR previews selected:"
-          cat "$RUNNER_TEMP/closed-prs.txt"
+          echo "Closed PR preview branches selected:"
+          cat "$RUNNER_TEMP/closed-prs.tsv"
 
       - name: Delete only closed-PR Preview resources
         if: steps.credentials.outputs.available == 'true'
@@ -70,23 +70,49 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           failures=0
-          while IFS= read -r number; do
+          while IFS=$'\t' read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
-            if ! [[ "$number" =~ ^[0-9]+$ ]]; then
-              echo "::warning::Skipping invalid PR number: $number"
+            if ! [[ "$number" =~ ^[0-9]+$ ]] ||
+               [ "$source_repo" != "$GITHUB_REPOSITORY" ] ||
+               [ -z "$branch" ] ||
+               [ "$branch" = "$base_branch" ] ||
+               [ "$branch" = "main" ] ||
+               ! [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+               [[ "$branch" == *".."* ]] ||
+               [[ "$branch" == -* ]]; then
+              echo "::warning::Skipping unsafe or external PR Preview entry: #$number"
               continue
             fi
-            # Re-check immediately before deletion in case a PR was reopened.
-            state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq .state)"
-            if [ "$state" != "closed" ]; then
-              echo "Skipping PR #$number because it is no longer closed (state: $state)."
+
+            # Re-read authoritative PR metadata immediately before deletion.
+            metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq '[.state, .head.ref, .head.repo.full_name, .base.ref] | @tsv')"
+            IFS=$'\t' read -r state current_branch current_repo current_base <<< "$metadata"
+            if [ "$state" != "closed" ] || [ "$current_repo" != "$GITHUB_REPOSITORY" ] ||
+               [ "$current_branch" != "$branch" ] || [ "$current_branch" = "$current_base" ] ||
+               [ "$current_branch" = "main" ]; then
+              echo "Skipping PR #$number because its state or branch changed."
               continue
             fi
-            preview="pr-$number"
-            echo "Deleting isolated Preview: $preview"
-            if ! npx --yes wrangler@4.135.0 preview delete --name "$preview" --worker-name solana-smart-bot-new --skip-confirmation --config wrangler.jsonc; then
-              echo "::warning::Could not delete $preview (it may already be absent); continuing with remaining closed PRs."
-              failures=$((failures + 1))
-            fi
-          done < "$RUNNER_TEMP/closed-prs.txt"
-          echo "Cleanup attempted for all selected closed PR previews. Nonzero delete results: $failures"
+
+            # Workers Builds names Previews by the source branch. The older
+            # workflow tried pr-N, which often returned 10025 and left the
+            # branch Preview's isolated Durable Object namespace allocated.
+            for preview in "$branch" "pr-$number"; do
+              echo "Deleting isolated Preview '$preview' for closed PR #$number"
+              output="$(npx --yes wrangler@4.135.0 preview delete --name "$preview" --worker-name solana-smart-bot-new --skip-confirmation --config wrangler.jsonc 2>&1)" && {
+                echo "$output"
+                continue
+              }
+              echo "$output"
+              if echo "$output" | grep -Eq 'Preview not found|code: 10025'; then
+                echo "Preview '$preview' is already absent; no cleanup needed."
+              else
+                echo "::warning::Could not delete Preview '$preview' for closed PR #$number."
+                failures=$((failures + 1))
+              fi
+            done
+          done < "$RUNNER_TEMP/closed-prs.tsv"
+          echo "Cleanup finished. Preview deletion errors (excluding already-absent previews): $failures"
+          if [ "$failures" -gt 0 ]; then
+            echo "::warning::Some closed-PR Preview resources may need manual review."
+          fi
