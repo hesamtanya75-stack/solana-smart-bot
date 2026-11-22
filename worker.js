@@ -51,9 +51,10 @@ function json(data, status = 200) {
 }
 function secureDashboard(html) {
   const nonceBytes = crypto.getRandomValues(new Uint8Array(18));
-  const nonce = btoa(String.fromCharCode(...nonceBytes)).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
-  const nonceHtml = html.replace(/<script\\b([^>]*)>/gi, (tag, attrs) =>
-    /\\bnonce\\s*=/.test(attrs) ? tag : "<script nonce=\"" + nonce + "\"" + attrs + ">"
+  const nonce = btoa(String.fromCharCode(...nonceBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const nonceHtml = html.replace(/<script\b([^>]*)>/gi, (tag, attrs) =>
+    /\bnonce\s*=/.test(attrs) ? tag : "<script nonce=\"" + nonce + "\"" + attrs + ">"
+  );
   );
   const csp = [
     "default-src 'self'",
