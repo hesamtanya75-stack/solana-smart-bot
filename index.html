@@ -1913,6 +1913,11 @@ if (serverToken) {
       document.getElementById("totpState").textContent="Google Authenticator چالاک کرا.";
       document.getElementById("totpStart").style.display="none";
       status().textContent=p.message;
+      serverToken="";
+      serverModeReady=false;
+      localStorage.removeItem("solanaBotSession");
+      serverLogin.style.display="flex";
+      status().textContent=p.message+"؛ تکایە دووبارە بچۆ ژوورەوە.";
     }catch(e){status().textContent=e.message;}
   };
 })();
