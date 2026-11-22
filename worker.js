@@ -1,4 +1,5 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,14 +16,20 @@ const DEFAULT_STATE = {
   updatedAt: null
 };
 const RISKY_EXTENSIONS = new Set([6, 9, 12, 14, 26]);
-const RPCS = [
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-rpc.publicnode.com",
-  "https://rpc.magicblock.app/mainnet"
-];
 let rpcCursor = 0;
-let alchemyUnauthorized = false;
 let rpcDiagnostics = { successes: [], errors: [] };
+
+function getRpcEndpoints(env) {
+  const resolved = resolveSolanaRpcEndpoints(env);
+  const preferred = resolved.endpoints.filter(endpoint => !endpoint.fallback);
+  const fallbacks = resolved.endpoints.filter(endpoint => endpoint.fallback);
+  if (fallbacks.length) {
+    const offset = rpcCursor++ % fallbacks.length;
+    const rotated = fallbacks.slice(offset).concat(fallbacks.slice(0, offset));
+    return { endpoints: preferred.concat(rotated), errors: resolved.errors };
+  }
+  return { endpoints: preferred, errors: resolved.errors };
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -138,56 +145,27 @@ async function authorized(request, env) {
   return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
 }
 async function rpc(method, params, env) {
-  const errors = [];
-  // Try the existing Alchemy key first, then fall back to a public Solana RPC.
-  // Never expose the API key in logs or error messages.
-  const endpoints = [];
-  const alchemyConfig = String(env?.ALCHEMY_API_KEY || "").trim();
-  if (alchemyConfig && !alchemyUnauthorized) {
-    // Accept either the raw Alchemy API key or the complete HTTPS endpoint.
-    // This avoids accidental 401s caused by storing the endpoint URL as a key.
-    const alchemyUrl = /^https:\/\//i.test(alchemyConfig)
-      ? alchemyConfig.replace(/\/+$/, "")
-      : "https://solana-mainnet.g.alchemy.com/v2/" + alchemyConfig;
-    let validAlchemyUrl = false;
-    try {
-      const parsed = new URL(alchemyUrl);
-      validAlchemyUrl = parsed.protocol === "https:" &&
-        parsed.hostname === "solana-mainnet.g.alchemy.com" &&
-        parsed.pathname.startsWith("/v2/");
-    } catch {}
-    if (validAlchemyUrl) {
-      endpoints.push({ url: alchemyUrl, label: "Alchemy Solana RPC" });
-    } else {
-      errors.push("Alchemy configuration invalid: use the Solana Mainnet API key or its HTTPS endpoint");
-    }
-  }
-  // Try every configured public fallback, not just the first one. Rotate the
-  // starting provider between calls to avoid repeatedly favoring one endpoint.
-  for (let i = 0; i < RPCS.length; i++) {
-    const fallback = RPCS[rpcCursor++ % RPCS.length];
-    endpoints.push({ url: fallback, label: new URL(fallback).hostname });
-  }
-
-  // Each provider has a bounded timeout; continue to the next provider on failure.
-  for (const endpoint of endpoints) {
+  const resolved = getRpcEndpoints(env);
+  const errors = [...resolved.errors];
+  for (const endpoint of resolved.endpoints) {
     try {
       const response = await fetch(endpoint.url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
         signal: AbortSignal.timeout(7000)
       });
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) {
+        const retryAfter = response.headers.get("Retry-After");
+        throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
+      }
       const data = await response.json();
       if (data.error) throw new Error(data.error.message || "RPC error");
+      if (!Object.prototype.hasOwnProperty.call(data, "result")) throw new Error("RPC result missing");
       rpcDiagnostics.successes.push(endpoint.label);
       return data.result;
     } catch (error) {
       const message = String(error?.message || error);
-      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") {
-        alchemyUnauthorized = true;
-      }
       errors.push(endpoint.label + ": " + message);
       rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
@@ -196,37 +174,22 @@ async function rpc(method, params, env) {
 }
 
 async function rpcBatch(calls, env) {
-  const errors = [];
-  const endpoints = [];
-  const config = String(env?.ALCHEMY_API_KEY || "").trim();
-  if (config && !alchemyUnauthorized) {
-    const url = /^https:\/\//i.test(config)
-      ? config.replace(/\/+$/, "")
-      : "https://solana-mainnet.g.alchemy.com/v2/" + config;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === "https:" && parsed.hostname === "solana-mainnet.g.alchemy.com" && parsed.pathname.startsWith("/v2/")) {
-        endpoints.push({ url, label: "Alchemy Solana RPC" });
-      }
-    } catch {}
-  }
-  // Always make all public providers available as fallbacks, even when
-  // Alchemy is configured or returns HTTP 401/403.
-  for (let i = 0; i < RPCS.length; i++) {
-    const url = RPCS[rpcCursor++ % RPCS.length];
-    endpoints.push({ url, label: new URL(url).hostname });
-  }
-  for (const endpoint of endpoints) {
+  const resolved = getRpcEndpoints(env);
+  const errors = [...resolved.errors];
+  for (const endpoint of resolved.endpoints) {
     try {
       const response = await fetch(endpoint.url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(calls.map((call, index) => ({
           jsonrpc: "2.0", id: index + 1, method: call.method, params: call.params
         }))),
         signal: AbortSignal.timeout(7000)
       });
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) {
+        const retryAfter = response.headers.get("Retry-After");
+        throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
+      }
       const data = await response.json();
       if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
       const byId = new Map(data.map(item => [item.id, item]));
@@ -239,7 +202,6 @@ async function rpcBatch(calls, env) {
       return results;
     } catch (error) {
       const message = String(error?.message || error);
-      if (endpoint.label === "Alchemy Solana RPC" && message === "HTTP 401") alchemyUnauthorized = true;
       errors.push(endpoint.label + ": " + message);
       rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
