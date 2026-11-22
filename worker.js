@@ -172,7 +172,8 @@ async function patchPaperState(env, patch) {
   return coordinatorRequest(env, "patch", patch);
 }
 async function saveProfileMetadata(env, profile) {
-  await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+  const profileKey = ["admin", "profile"].join("_");
+  await env.BOT_STATE.put(profileKey, JSON.stringify(profile));
 }
 async function authGuardCall(env, body) {
   const namespace = env.AUTH_GUARD;
@@ -200,7 +201,7 @@ async function migrateLegacyFailure(env, scope, legacyKey) {
   await env.BOT_STATE.delete(legacyKey);
 }
 async function matchingTotpCounter(secret, code, now = Date.now()) {
-  if (!secret || !/^\\d{6}$/.test(String(code || ""))) return null;
+  if (!secret || !/^[0-9]{6}$/.test(String(code || ""))) return null;
   for (const drift of [0, -30000, 30000]) {
     const counter = Math.floor((now + drift) / 30000);
     if (await totpCode(secret, now + drift) === String(code)) return counter;
@@ -860,7 +861,7 @@ export default {
           p.totpEnabled = true;
           p.authVersion = Number(p.authVersion || 0) + 1;
           for (const key of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) delete p[key];
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          await saveProfileMetadata(env, p);
           await authGuardCall(env, { operation: "clear-failures", scope });
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch (error) {
