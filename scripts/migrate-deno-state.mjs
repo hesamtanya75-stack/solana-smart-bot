@@ -1,11 +1,15 @@
 import { writeFile } from "node:fs/promises";
-import { isValidSourceState, isCompatibleWithWorkerState, normalizeLegacySourceState, isDefaultLikeSourceState, statesMatch } from "./migration-safety.mjs";
+import { resolve } from "node:path";
+import { isValidSourceState, isCompatibleWithWorkerState, normalizeLegacySourceState, isDefaultLikeSourceState, statesMatch, isSafeBackupPath } from "./migration-safety.mjs";
 
 const sourceUrl = required("DENO_API_URL").replace(/\/+$/, "");
 const targetUrl = required("CLOUDFLARE_API_URL").replace(/\/+$/, "");
 const sourcePassword = required("DENO_LOGIN_PASSWORD");
 const targetPassword = required("CLOUDFLARE_LOGIN_PASSWORD");
-const backupPath = process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json";
+const backupPath = resolve(process.env.STATE_BACKUP_FILE || "deno-bot-state-backup.json");
+if (!isSafeBackupPath(backupPath)) {
+  throw new Error("Refusing to write a private state backup inside an unignored repository path. Use the default gitignored backup filename or set STATE_BACKUP_FILE to a path outside the checkout.");
+}
 
 // Never echo a credential-bearing endpoint URL into CI logs or error output.
 function safeEndpoint(url) {
