@@ -3,7 +3,8 @@ name: Worker state initialization tests
 on:
   pull_request:
     paths:
-      - "worker.js"
+       - ".assetsignore"
+     - "worker.js"
       - "index.html"
       - "paper-state-coordinator.js"
       - "mfa-rate-limiter.js"
