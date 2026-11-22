@@ -710,6 +710,10 @@ export default {
         if (marker === "complete") {
           if (!guardProfile.initialized) throw Object.assign(new Error("Migrated AuthGuard state is unavailable"), { status: 503 });
         } else {
+          if (legacyProfile.totpEnabled === true &&
+              (typeof legacyProfile.totpSecret !== "string" || !legacyProfile.totpSecret.trim())) {
+            throw Object.assign(new Error("Legacy MFA profile is incomplete"), { status: 503 });
+          }
           const migration = await authGuardCall(env, {
             operation: "initialize-legacy",
             backupHash: legacyProfile.backupHash ?? null,
