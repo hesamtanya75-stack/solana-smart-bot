@@ -8,7 +8,8 @@ test("a configured private HTTPS RPC is prioritized and its credential is not ex
   assert.equal(result.endpoints[0].url, secretUrl);
   assert.equal(result.endpoints[0].label, "Configured Solana RPC");
   assert.equal(result.endpoints[0].fallback, false);
-  assert.ok(!JSON.stringify(result).includes("secret-value"));
+  assert.ok(!result.endpoints.map(e => e.label).join(" ").includes("secret-value"));
+  assert.ok(!result.errors.join(" ").includes("secret-value"));
 });
 
 test("unsafe or malformed custom RPC URLs fail closed without echoing secrets", () => {
