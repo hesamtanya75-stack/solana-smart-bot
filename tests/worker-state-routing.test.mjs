@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import worker, { PaperStateCoordinator, MfaRateLimiter } from "../worker.js";
+import worker, { PaperStateCoordinator, MfaRateLimiter, AuthGuard } from "../worker.js";
 
 class MemoryStorage {
   values = new Map();
@@ -35,6 +35,11 @@ function environment() {
   const authStorage = new MemoryStorage();
   const authLimiter = new MfaRateLimiter({ storage: authStorage });
   const authStub = { fetch: (input, init) => authLimiter.fetch(new Request(input, init)) };
+  const guardStorage = new MemoryStorage();
+  const authGuard = new AuthGuard({ storage: guardStorage }, {
+    AUTH_GUARD_INTERNAL_TOKEN: "worker-state-test-internal-token-1234567890"
+  });
+  const guardStub = { fetch: (input, init) => authGuard.fetch(new Request(input, init)) };
   const touchedKvKeys = [];
   const env = {
     BOT_STATE: {
@@ -53,9 +58,14 @@ function environment() {
     AUTH_RATE_LIMITER: {
       idFromName: name => name,
       get: () => authStub
+    },
+    AUTH_GUARD_INTERNAL_TOKEN: "worker-state-test-internal-token-1234567890",
+    AUTH_GUARD: {
+      idFromName: name => name,
+      get: () => guardStub
     }
   };
-  return { env, coordinator, touchedKvKeys, authStorage, authLimiter };
+  return { env, coordinator, touchedKvKeys, authStorage, authLimiter, authGuard, guardStorage };
 }
 function request(path, method = "GET", body) {
   return new Request("https://worker.test" + path, {
@@ -313,8 +323,8 @@ test("unauthenticated automation and profile API requests are rejected before st
 });
 
 
-test("password login throttles after five failures through the atomic auth Durable Object", async () => {
-  const { env, authStorage } = environment();
+test("password login throttles after five failures through transactional AuthGuard", async () => {
+  const { env, authGuard, guardStorage } = environment();
   const values = new Map();
   env.BOT_LOGIN_PASSWORD = "preview-test-password";
   env.BOT_STATE.get = async (key, type) => {
@@ -337,41 +347,39 @@ test("password login throttles after five failures through the atomic auth Durab
     body: JSON.stringify({ password: "preview-test-password" })
   }), env);
   assert.equal(blocked.status, 429);
-  const counter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:login:"));
-  assert.equal(counter?.[1]?.count, 5);
+  const state = guardStorage.values.get("auth_guard_state");
+  assert.equal(state.failures["scope:login:" + createHash("sha256").update("192.0.2.10").digest("hex")].count, 5);
+  assert.equal(await authGuard.isRateLimited("login:" + createHash("sha256").update("192.0.2.10").digest("hex")), true);
 });
 
-test("MFA challenge is deleted after five invalid codes", async () => {
-  const { env, authStorage } = environment();
-  const values = new Map([
-    ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null })],
-    ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
-  ]);
-  env.BOT_STATE.get = async (key, type) => {
-    const value = values.get(key);
-    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
-  };
-  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
-  env.BOT_STATE.delete = async key => { values.delete(key); };
+test("MFA challenge is deleted after five invalid codes by AuthGuard", async () => {
+  const { env, authGuard, guardStorage } = environment();
+  const secret = "JBSWY3DPEHPK3PXP";
+  const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+  await authGuard.initializeFromLegacy({
+    totpEnabled: true,
+    totpSecret: secret,
+    backupHash: null,
+    lastTotpCounter: -1
+  });
+  await authGuard.createMfaChallenge(challengeId);
   for (let i = 0; i < 5; i++) {
     const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
       method: "POST",
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
-      body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+      body: JSON.stringify({ challengeId, code: "000000" })
     }), env);
     assert.equal(response.status, 401);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login/totp", {
     method: "POST",
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
-    body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+    body: JSON.stringify({ challengeId, code: "000000" })
   }), env);
   assert.equal(blocked.status, 429);
-  assert.equal(values.has("mfa_challenge:test-challenge"), false);
-  const ipCounter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:mfa-ip:"));
-  const challengeCounter = authStorage.values.get("auth:mfa-challenge:test-challenge");
-  assert.equal(ipCounter?.[1]?.count, 5);
-  assert.equal(challengeCounter?.count, 5);
+  const state = guardStorage.values.get("auth_guard_state");
+  assert.equal(state.challenges[challengeId], undefined);
+  assert.equal(state.failures["scope:totp:" + createHash("sha256").update("192.0.2.20").digest("hex")].count, 5);
 });
 
 test("auth limiter alarm removes expired counters and preserves active windows", async () => {
