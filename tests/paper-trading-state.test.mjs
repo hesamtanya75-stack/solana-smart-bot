@@ -229,7 +229,7 @@ test("scheduled cron persists its cycle status through authoritative paper state
   const initial = { balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], deferredMints: [], lastRunAt: null, lastMessage: "Initialized", lastScanReport: [], updatedAt: null };
   const imported = await coordinator.fetch(new Request("https://paper-state.internal/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(initial) }));
   assert.equal(imported.status, 200);
-  const namespace = { idFromName: name => name, get: id => { assert.equal(id, "paper-state"); return { fetch: request => coordinator.fetch(request) }; } };
+  const namespace = { idFromName: name => name, get: id => { assert.equal(id, "paper-state"); return { fetch: (request, init) => coordinator.fetch(new Request(request, init)) }; } };
   const pending = [];
   await Worker.scheduled({}, { PAPER_STATE_COORDINATOR: namespace }, { waitUntil: promise => pending.push(promise) });
   await Promise.all(pending);
