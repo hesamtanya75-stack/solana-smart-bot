@@ -22,7 +22,7 @@ const url = payload?.deployment?.urls?.[0];
 if (typeof url !== "string") throw new Error("Wrangler did not return an immutable deployment URL");
 const parsed = new URL(url);
 if (parsed.protocol !== "https:" ||
-    !/^[0-9a-f]{8}-solana-smart-bot\.hesamtanya75\.workers\.dev$/.test(parsed.hostname)) {
+    !/^[0-9a-f]{8}-solana-smart-bot-new\.hesamtanya75\.workers\.dev$/.test(parsed.hostname)) {
   throw new Error("Wrangler returned an unexpected Preview deployment host");
 }
 
