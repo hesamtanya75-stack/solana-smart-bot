@@ -8,8 +8,8 @@ test("Preview version endpoint falls back to the checked-out PR commit SHA", () 
 
   assert.match(
     worker,
-    /env\.CF_VERSION_METADATA\?\.id\s*\|\|\s*env\.BUILD_ID\s*\|\|\s*"local-unversioned"/,
-    "use Cloudflare version metadata first, then the injected preview commit id"
+    /env\.BUILD_ID\s*\|\|\s*env\.CF_VERSION_METADATA\?\.id\s*\|\|\s*"local-unversioned"/,
+    "prefer the explicit Preview commit SHA, then Cloudflare's runtime version ID"
   );
   assert.match(
     workflow,
