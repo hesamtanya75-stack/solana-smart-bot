@@ -585,7 +585,7 @@ async function readProfile(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const buildId = env.CF_VERSION_METADATA?.id || env.BUILD_ID || "local-unversioned";
+    const buildId = env.BUILD_ID || env.CF_VERSION_METADATA?.id || "local-unversioned";
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: buildId });
     }
