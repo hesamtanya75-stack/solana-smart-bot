@@ -54,3 +54,30 @@ test("Worker health and version routes use the runtime version ID", async () => 
   assert.match(worker, /build: buildId, frontend: "premium-dashboard-v2"/);
   assert.doesNotMatch(worker, /59ef112/);
 });
+
+test("root asset publishing excludes repository internals and diagnostic pages", async () => {
+  const ignore = await readFile(new URL("../.assetsignore", import.meta.url), "utf8");
+  const requiredPatterns = [
+    ".git", ".git/**",
+    ".wrangler", ".wrangler/**",
+    ".github", ".github/**",
+    "docs", "docs/**",
+    "scripts", "scripts/**",
+    "tests", "tests/**",
+    "display-*.html",
+    "worker.js",
+    "paper-state-coordinator.js",
+    "mfa-rate-limiter.js",
+    "wrangler.jsonc",
+    "package.json",
+    "*.js", "*.mjs", "*.map",
+    "*.json", "*.jsonc",
+    "*.sqlite", "*.sqlite-*", "*.db", "*.db-*",
+    "*backup*",
+    ".env*", ".dev.vars*"
+  ];
+  const lines = new Set(ignore.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean));
+  for (const pattern of requiredPatterns) {
+    assert.ok(lines.has(pattern), `public assets must ignore ${pattern}`);
+  }
+});
