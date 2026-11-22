@@ -3,7 +3,7 @@ name: Cloudflare Worker Preview
 on:
   pull_request:
     branches:
-      - fix/worker-empty-state-cron-guard
+      - main
     types:
       - opened
       - synchronize
