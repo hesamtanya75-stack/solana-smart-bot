@@ -101,6 +101,8 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
 test("closed PRs clean up only their isolated Preview and are not redeployed", async () => {
   const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
   assert.match(workflow, /- closed/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /preview_pr_number:/);
   assert.match(workflow, /github\.event\.action != 'closed'/);
   assert.match(workflow, /github\.event\.action == 'closed'/);
   assert.match(workflow, /preview delete --name "pr-\$\{\{ github\.event\.pull_request\.number \}\}"/);
