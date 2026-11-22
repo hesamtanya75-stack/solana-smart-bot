@@ -270,7 +270,6 @@ main>.panel{
 <header>
 <h1>🔎 پشکنەری زیرەکی کۆینی سولانا 🚀</h1>
 <p>پشکنینی لیکوییدیتی، خاوەنەکان و مەترسی</p>
-<button id="serverLogoutButton" type="button" hidden>چوونەدەرەوە</button>
 </header>
 <div class="safety-strip"><span class="safety-dot"></span><strong>پشکنینی سەلامەتیی Solana</strong><span>تەنها تاقیکردنەوەی خەیاڵی</span></div>
 
@@ -305,7 +304,7 @@ main>.panel{
 <button id="autoDiscover">🔎 دۆزینەوەی خۆکاری کۆینە نوێیەکان</button>
 <div id="discoverStatus"></div>
 <div id="discoverList"></div><input id="mint" placeholder="ناونیشانی Mint لێرە دابنێ" autocomplete="off">
-<button id="scan" onclick="scanToken()">پشکنینی کۆین</button>
+<button id="scan">پشکنینی کۆین</button>
 <div id="status"></div>
 </div>
 
@@ -502,6 +501,8 @@ async function discoverTokens() {
 
 document.getElementById("autoDiscover")
   .addEventListener("click", discoverTokens);
+document.getElementById("scan")
+  .addEventListener("click", scanToken);
 async function scanToken(){
  window.demoBuyAllowed=false;
  window.demoBuyBlockReasons=["پشکنین تەواو نییە."];
@@ -779,7 +780,7 @@ if(!mintChecked){
          show("security",
     row("Mint Authority",mintStatus)+
     row("Freeze Authority",freezeStatus)+
-    row("Token Program",programOwner||"داتا نییە")+
+    row("Token Program",safe(programOwner||"داتا نییە"))+
 row("Token-2022 Extensions",
   foundExtensions.length
     ? foundExtensions.join("، ")
@@ -1120,7 +1121,7 @@ const safeValue = Number.isFinite(value) ? value : 0;
   `;
 }
 
-renderDemoHistory();document.getElementById("demoBuy").onclick = function () {
+renderDemoHistory();document.getElementById("demoBuy").onclick = async function () {
   const mint = document.getElementById("mint").value.trim();
   const status = document.getElementById("demoStatus");
 
@@ -1153,21 +1154,31 @@ if (duplicate) {
     return;
   }
 
-  const price = Number(window.lastTokenPrice || 0);
+  if (serverModeReady) {
+    const button = document.getElementById("demoBuy");
+    button.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/buy", {
+        method: "POST",
+        body: JSON.stringify({ mint, requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر تەواو بوو؛ هیچ پارەی ڕاستەقینە نەچووە.";
+    } catch (error) {
+      status.innerText = "کڕینی خەیاڵی لە سێرڤەر ڕەتکرایەوە: " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
 
+  const price = Number(window.lastTokenPrice || 0);
   if (price <= 0) {
     status.innerText = "نرخی کۆین بەردەست نییە.";
     return;
   }
-
   demoBalance -= 5;
-  demoTrades.push({
-    mint,
-    amount: 5,
-    buyPrice: price,
-    tokens: 5 / price
-  });
-
+  demoTrades.push({ mint, amount: 5, buyPrice: price, tokens: 5 / price });
   saveDemoState();
 
   document.getElementById("demoBalance").innerText =
@@ -1282,18 +1293,29 @@ document.getElementById("demoBuy").insertAdjacentElement(
   clearTradesBtn
 );
 
-clearTradesBtn.onclick = function() {
-  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) {
+clearTradesBtn.onclick = async function() {
+  if (!confirm("دڵنیایت؟ هەموو مێژووی مامەڵەکان دەسڕدرێتەوە، بەڵام باڵانس دەمێنێتەوە.")) return;
+  if (serverModeReady) {
+    clearTradesBtn.disabled = true;
+    try {
+      const result = await serverRequest("/api/paper/clear-history", {
+        method: "POST",
+        body: JSON.stringify({ requestId: crypto.randomUUID() })
+      });
+      applyServerState({ ...result.state, revision: result.revision });
+      document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+    } catch (error) {
+      document.getElementById("demoStatus").innerText = "سڕینەوەی مێژوو سەرکەوتوو نەبوو: " + error.message;
+    } finally {
+      clearTradesBtn.disabled = false;
+    }
     return;
   }
-
   demoTrades = [];
   saveDemoState();
   renderDemoHistory();
   updateDemoProfit();
-
-  document.getElementById("demoStatus").innerText =
-    "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
+  document.getElementById("demoStatus").innerText = "✅ مێژووی مامەڵەکان سڕایەوە. باڵانسەکەت پارێزراوە.";
 };
 
 const statsBox = document.createElement("div");
@@ -1516,9 +1538,9 @@ setInterval(() => {
 
 // ===== Cloudflare server mode: persistent paper trading =====
 let serverModeReady = false;
+let serverStateRevision = null;
 let serverToken = localStorage.getItem("solanaBotSession") || "";
 let serverSaveTimer = null;
-let serverSyncIntervalsStarted = false;
 const serverLogin = document.getElementById("serverLogin") || document.createElement("div");
 serverLogin.id = "serverLogin";
 serverLogin.innerHTML = `
@@ -1537,12 +1559,6 @@ async function serverRequest(path, options = {}) {
   if (serverToken) headers.Authorization = "Bearer " + serverToken;
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
   const data = await response.json().catch(() => ({}));
-  // TOTP setup confirmation uses 401 for an incorrect one-time code;
-  // that response must not revoke an otherwise valid admin browser session.
-  if (response.status === 401 && serverToken &&
-      !path.startsWith("/api/login") && path !== "/api/totp/confirm") {
-    clearExpiredServerSession();
-  }
   if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
   return data;
 }
@@ -1554,6 +1570,7 @@ function renderServerControls(state) {
 }
 function applyServerState(state) {
   if (!state || !Array.isArray(state.trades)) return;
+  if (Number.isSafeInteger(state.revision)) serverStateRevision = state.revision;
   demoBalance = Number(state.balance);
   demoTrades = state.trades;
   if (Array.isArray(state.scannedMints)) {
@@ -1618,86 +1635,35 @@ async function refreshServerPrices() {
 }
 async function saveServerState() {
   if (!serverModeReady) return;
-  try {
-    await serverRequest("/api/state", {
-      method: "PUT",
-      body: JSON.stringify({
-        balance: demoBalance,
-        trades: demoTrades,
-        autoEnabled: autoDemoBuyEnabled,
-        paused: autoDemoBuyPaused,
-        scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
-      })
-    });
-  } catch (error) {
-    const message = String(error?.message || error);
-    if (message.includes("State changed") || message.includes("409")) {
-      // Stop further full-state writes after a version race. Keep the local
-      // browser copy untouched so a later login can run the history guard.
-      serverModeReady = false;
-      error.message = "داتای سێرڤەر لە کاتی پاشەکەوتکردندا گۆڕاوە؛ پاشەکەوتی ئۆتۆماتیکی ڕاگیرا و داتای ئەم مۆبایلە پارێزراوە. تکایە پێش هاوکاتکردنەوە دووبارە بچۆژوورەوە و مێژووی مامەڵەکان بپشکنە.";
-    }
-    throw error;
-  }
+  const result = await serverRequest("/api/state", {
+    method: "PUT",
+    body: JSON.stringify({
+      expectedRevision: serverStateRevision,
+      balance: demoBalance,
+      trades: demoTrades,
+      autoEnabled: autoDemoBuyEnabled,
+      paused: autoDemoBuyPaused,
+      scannedMints: JSON.parse(localStorage.getItem("solanaSmartBotScannedMints") || "[]")
+    })
+  });
+  if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
 }
 const localSaveDemoState = saveDemoState;
+// Server-mode trading writes are explicit, validated API operations. Local storage
+// remains a cache only and never overwrites the authoritative server snapshot.
 saveDemoState = function() {
   localSaveDemoState();
-  if (serverModeReady) {
-    clearTimeout(serverSaveTimer);
-    serverSaveTimer = setTimeout(() => {
-      saveServerState().catch(error => {
-        const status = document.getElementById("demoStatus");
-        if (status) status.textContent = "هەڵە لە پاشەکەوتکردنی سێرڤەر: " + error.message;
-      });
-    }, 500);
-  }
 };
-function hasLegacyEmptyServerConflict(local, remote) {
-  if (!local || typeof local !== "object" || !remote || !remote.updatedAt) return false;
-
-  const localTrades = Array.isArray(local.trades) ? local.trades : [];
-  const remoteTrades = Array.isArray(remote.trades) ? remote.trades : [];
-  // Missing, null, or blank balances represent the legacy default, not zero.
-  // Preserve an explicit numeric zero as real paper-trading state.
-  const normalizeBalance = value => {
-    if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return 100;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : 100;
-  };
-  const localBalance = normalizeBalance(local.balance);
-  const remoteBalance = normalizeBalance(remote.balance);
-
-  // A pristine local default is safe to replace with initialized server data.
-  // Once local trading history or a non-default balance exists, require an
-  // explicit reconciliation whenever the initialized server copy differs.
-  const localHasData = localTrades.length > 0 || localBalance !== 100;
-  if (!localHasData) return false;
-
-  const remoteHasData = remoteTrades.length > 0 || remoteBalance !== 100;
-  if (!remoteHasData) return true;
-
-  return localBalance !== remoteBalance ||
-    JSON.stringify(localTrades) !== JSON.stringify(remoteTrades);
-}
-
 async function finishServerLogin(token) {
   serverToken = token;
   localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
-  // Preserve both copies when a legacy Cron-created server record may be empty
-  // while this browser still has paper-trading history. Never pick a winner silently.
-  let local = null;
-  try { local = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
-  if (hasLegacyEmptyServerConflict(local, remote)) {
-    serverToken = "";
-    localStorage.removeItem("solanaBotSession");
-    serverModeReady = false;
-    throw new Error("مێژووی مامەڵەی ئەم مۆبایلە لەگەڵ داتای سێرڤەر جیاوازە. هیچ داتایەک نەگۆڕدراوە؛ پێویستە پێش هاوکاتکردنەوە مێژووەکان بە دەستی بپشکنرێن.");
-  }
-  // Enable server persistence only after the local/remote history check passes.
+  serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
+  // Enable server persistence before migrating the browser's existing paper-trading
+  // state. Otherwise saveServerState() returns early and the next sync replaces
+  // the local history and balance with the empty server defaults.
   serverModeReady = true;
-  if (!remote.updatedAt) {
+  if (remote.canMigrateLegacy === true) {
     let old = null;
     try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
     if (old && Array.isArray(old.trades)) {
@@ -1710,56 +1676,15 @@ async function finishServerLogin(token) {
   }
   serverModeReady = true;
   serverLogin.style.display = "none";
-  document.getElementById("serverPassword").value = "";
-  const logoutButton = document.getElementById("serverLogoutButton");
-  if (logoutButton) logoutButton.hidden = false;
   renderServerControls(remote.updatedAt ? remote : {
     autoEnabled: false, paused: false
   });
   await syncServerState();
   refreshServerPrices().catch(() => {});
-  if (!serverSyncIntervalsStarted) {
-    serverSyncIntervalsStarted = true;
-    setInterval(() => syncServerState().catch(() => {}), 15000);
-    setInterval(() => refreshServerPrices().catch(() => {}), 5000);
-  }
-}
-const serverLogoutButton = document.getElementById("serverLogoutButton");
-if (serverLogoutButton) {
-  serverLogoutButton.addEventListener("click", async () => {
-    serverLogoutButton.disabled = true;
-    try {
-      await serverRequest("/api/logout", { method: "POST" });
-      serverModeReady = false;
-      serverToken = "";
-      localStorage.removeItem("solanaBotSession");
-      serverLogoutButton.hidden = true;
-      serverLogin.style.display = "flex";
-      document.getElementById("serverPassword").value = "";
-      document.getElementById("serverLoginError").textContent = "بە سەرکەوتوویی چوویتە دەرەوە.";
-    } catch (error) {
-      document.getElementById("serverLoginError").textContent = "چوونەدەرەوە سەرکەوتوو نەبوو؛ پەیوەندی بپشکنە و دووبارە هەوڵ بدە.";
-    } finally {
-      serverLogoutButton.disabled = false;
-    }
-  });
+  setInterval(() => syncServerState().catch(() => {}), 15000);
+  setInterval(() => refreshServerPrices().catch(() => {}), 5000);
 }
 let serverMfaChallenge = "";
-function clearExpiredServerSession() {
-  serverModeReady = false;
-  serverToken = "";
-  localStorage.removeItem("solanaBotSession");
-  serverMfaChallenge = "";
-  const logoutButton = document.getElementById("serverLogoutButton");
-  if (logoutButton) logoutButton.hidden = true;
-  const otp = document.getElementById("serverTotpCode");
-  if (otp) otp.remove();
-  const loginButton = document.getElementById("serverLoginButton");
-  if (loginButton) loginButton.textContent = "چوونەژوورەوە";
-  const loginError = document.getElementById("serverLoginError");
-  if (loginError) loginError.textContent = "دانیشتنەکەت بەسەرچووە یان MFA گۆڕاوە؛ تکایە بە وشەی نهێنی و کۆدی Authenticator دووبارە بچۆ ژوورەوە.";
-  serverLogin.style.display = "flex";
-}
 async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
@@ -1813,7 +1738,7 @@ async function changeServerAutomation(enabled, paused) {
     method: "POST",
     body: JSON.stringify({ enabled, paused })
   });
-  applyServerState(result.state);
+  applyServerState({ ...result.state, revision: result.revision });
 }
 autoBuyBtn.onclick = async function() {
   if (!serverModeReady) {
@@ -1897,6 +1822,7 @@ if (serverToken) {
         <div class="profile-secret" id="totpBackupCode"></div>
       </div>
       <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <button id="profileLogout" style="background:#7f1d1d;border-color:#b91c1c">دەرچوون و هەڵوەشاندنەوەی چوونەژوورەوە</button>
       <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
     </div>`;
   document.body.appendChild(modal);
@@ -1914,11 +1840,23 @@ if (serverToken) {
     }catch(e){status().textContent=e.message;}
   }
   button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
-  document.getElementById("profileClose").onclick=()=>{
-    modal.style.display="none";
-    if(!serverModeReady){
+  document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  document.getElementById("profileLogout").onclick=async()=>{
+    const logoutButton=document.getElementById("profileLogout");
+    logoutButton.disabled=true;
+    status().textContent="هەڵوەشاندنەوەی Session...";
+    try{
+      await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      serverToken="";
+      serverModeReady=false;
+      localStorage.removeItem("solanaBotSession");
+      modal.style.display="none";
       serverLogin.style.display="flex";
-      document.getElementById("serverLoginError").textContent="پاراستنی دوو هەنگاوی چالاک کرا؛ ئێستا بە وشەی نهێنی و کۆدی Authenticator دووبارە بچۆ ژوورەوە.";
+      status().textContent="چوونەژوورەوە هەڵوەشێندرایەوە.";
+    }catch(e){
+      status().textContent="هەڵە لە دەرچوون: "+e.message;
+    }finally{
+      logoutButton.disabled=false;
     }
   };
   modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
@@ -1935,7 +1873,10 @@ if (serverToken) {
   document.getElementById("totpStart").onclick=async()=>{
     status().textContent="کلیلی پاراستن دروست دەکرێت...";
     try{
-      const p=await serverRequest("/api/totp/setup",{method:"POST",body:"{}"});
+      const password=window.prompt("Authenticator چالاککردن: تکایە وشەی نهێنی ئێستا دووبارە بنووسە");
+      if(password===null){status().textContent="داواکاریی چالاککردن هەڵوەشایەوە.";return;}
+      if(!password){status().textContent="وشەی نهێنی پێویستە.";return;}
+      const p=await serverRequest("/api/totp/setup",{method:"POST",body:JSON.stringify({password})});
       document.getElementById("totpSecret").textContent=p.secret;
       document.getElementById("totpSetup").style.display="block";
       status().textContent=p.message;
@@ -1950,14 +1891,7 @@ if (serverToken) {
       document.getElementById("totpBackup").style.display="block";
       document.getElementById("totpState").textContent="Google Authenticator چالاک کرا.";
       document.getElementById("totpStart").style.display="none";
-      // MFA activation increments authVersion server-side and invalidates this
-      // session. Preserve the one-time backup code on screen before re-login.
-      serverModeReady=false;
-      serverToken="";
-      localStorage.removeItem("solanaBotSession");
-      const logoutButton=document.getElementById("serverLogoutButton");
-      if(logoutButton) logoutButton.hidden=true;
-      status().textContent="پاراستنی دوو هەنگاوی چالاک کرا. کۆدی گەڕاندنەوەکە لە شوێنێکی پارێزراو پاشەکەوت بکە؛ پاش داخستنی ئەم پەنجەرەیە دووبارە بە وشەی نهێنی و کۆدی Authenticator بچۆ ژوورەوە.";
+      status().textContent=p.message;
     }catch(e){status().textContent=e.message;}
   };
 })();
