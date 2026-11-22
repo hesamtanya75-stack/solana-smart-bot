@@ -63,11 +63,19 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -o pipefail
-          npx --yes wrangler@4.135.0 preview --name pr-${{ github.event.pull_request.number }} --var BUILD_ID:${{ github.event.pull_request.head.sha }} --json 2>&1 | tee "$RUNNER_TEMP/wrangler-preview.log"
-          node scripts/extract-preview-url.mjs "$RUNNER_TEMP/wrangler-preview.log"
+          if npx --yes wrangler@4.135.0 preview --name pr-${{ github.event.pull_request.number }} --var BUILD_ID:${{ github.event.pull_request.head.sha }} --json 2>&1 | tee "$RUNNER_TEMP/wrangler-preview.log"; then
+            node scripts/extract-preview-url.mjs "$RUNNER_TEMP/wrangler-preview.log"
+          else
+            if grep -Eq 'code: 10067|reached the Workers Free limit of 100 Durable Object namespaces' "$RUNNER_TEMP/wrangler-preview.log"; then
+              echo "preview_skipped=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::Cloudflare Preview skipped: this account has reached its Free Durable Object namespace quota (100). Tests and dry-run build passed; no paid upgrade or production deployment was attempted."
+            else
+              exit 1
+            fi
+          fi
 
       - name: Verify Preview runtime and public asset boundary (read-only)
-        if: steps.preview_credentials.outputs.available == 'true'
+        if: steps.preview_credentials.outputs.available == 'true' && steps.publish_preview.outputs.preview_url != ''
         env:
           PREVIEW_URL: ${{ steps.publish_preview.outputs.preview_url }}
           EXPECTED_BUILD_ID: ${{ github.event.pull_request.head.sha }}
