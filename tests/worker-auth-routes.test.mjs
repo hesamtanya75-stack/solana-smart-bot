@@ -6,7 +6,7 @@ const workerSource = await readFile(new URL("../worker.js", import.meta.url), "u
 const dashboardSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const privateApiStart = workerSource.indexOf('if (url.pathname.startsWith("/api/"))');
 const authGuard = workerSource.indexOf(
-  'if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);',
+  'if (!sessionAuthorized) return json({ error: "Unauthorized" }, 401);',
   privateApiStart
 );
 const totpSetupRoute = workerSource.indexOf('if (url.pathname === "/api/totp/setup"');
@@ -20,6 +20,7 @@ test("worker session authorization requires one exact Bearer token without white
 test("private API authentication guard precedes private route handlers", () => {
   assert.notEqual(privateApiStart, -1, "private API router must exist");
   assert.ok(authGuard > privateApiStart, "session guard must be inside the private API router");
+  assert.ok(workerSource.indexOf("try { sessionAuthorized = await authorized(request, env); }", privateApiStart) > privateApiStart);
   assert.ok(totpSetupRoute > authGuard, "TOTP setup must remain behind the session guard");
   assert.ok(totpConfirmRoute > authGuard, "TOTP confirmation must remain behind the session guard");
 });
