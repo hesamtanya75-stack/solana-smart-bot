@@ -176,6 +176,29 @@ async function rpc(method, params, env) {
 async function rpcBatch(calls, env) {
   const resolved = getRpcEndpoints(env);
   const errors = [...resolved.errors];
+
+  // Some RPC gateways reject JSON-RPC batch payloads even though they support
+  // each underlying method. Retry that provider with bounded parallel singles
+  // before abandoning it; this is especially important for free/shared RPCs.
+  async function requestSingle(endpoint, call, id) {
+    const response = await fetch(endpoint.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method: call.method, params: call.params }),
+      signal: AbortSignal.timeout(7000)
+    });
+    if (!response.ok) {
+      const retryAfter = response.headers.get("Retry-After");
+      throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
+    }
+    const item = await response.json();
+    if (item?.error) throw new Error(item.error.message || "RPC error");
+    if (!item || !Object.prototype.hasOwnProperty.call(item, "result")) {
+      throw new Error("RPC single response missing result");
+    }
+    return item.result;
+  }
+
   for (const endpoint of resolved.endpoints) {
     try {
       const response = await fetch(endpoint.url, {
@@ -188,20 +211,41 @@ async function rpcBatch(calls, env) {
       });
       if (!response.ok) {
         const retryAfter = response.headers.get("Retry-After");
-        throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
+        const statusError = new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
+        statusError.batchUnsupported = [400, 405, 415, 501].includes(response.status);
+        throw statusError;
       }
       const data = await response.json();
-      if (!Array.isArray(data)) throw new Error("RPC batch response invalid");
+      if (!Array.isArray(data)) {
+        if (calls.length < 2) throw new Error("RPC batch response invalid");
+        const results = await Promise.all(calls.map((call, index) => requestSingle(endpoint, call, index + 1)));
+        rpcDiagnostics.successes.push(endpoint.label + " (single-request fallback)");
+        return results;
+      }
       const byId = new Map(data.map(item => [item.id, item]));
       const results = calls.map((_, index) => {
         const item = byId.get(index + 1);
-        if (!item || item.error) throw new Error(item?.error?.message || "RPC batch item missing");
+        if (!item || item.error || !Object.prototype.hasOwnProperty.call(item, "result")) {
+          throw new Error(item?.error?.message || "RPC batch item missing result");
+        }
         return item.result;
       });
       rpcDiagnostics.successes.push(endpoint.label);
       return results;
     } catch (error) {
       const message = String(error?.message || error);
+      if (error?.batchUnsupported && calls.length > 1) {
+        try {
+          const results = await Promise.all(calls.map((call, index) => requestSingle(endpoint, call, index + 1)));
+          rpcDiagnostics.successes.push(endpoint.label + " (single-request fallback)");
+          return results;
+        } catch (fallbackError) {
+          const fallbackMessage = String(fallbackError?.message || fallbackError);
+          errors.push(endpoint.label + " batch unsupported; single requests failed: " + fallbackMessage);
+          rpcDiagnostics.errors.push(endpoint.label + " batch unsupported; single requests failed: " + fallbackMessage);
+          continue;
+        }
+      }
       errors.push(endpoint.label + ": " + message);
       rpcDiagnostics.errors.push(endpoint.label + ": " + message);
     }
