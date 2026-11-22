@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: cloudflare-preview-pr-${{ github.event.pull_request.number || inputs.preview_pr_number || github.run_id }}
@@ -55,6 +56,17 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Closed-PR Preview cleanup skipped: Cloudflare credentials are not configured."
+          fi
+
+      - name: Check whether the selected pull request is closed
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.preview_pr_number }}" --jq .state)"
+          if [ "$state" != "closed" ]; then
+            echo "::error::Refusing to delete a Preview for an open or unknown pull request."
+            exit 1
           fi
 
       - name: Delete closed pull request Preview only
