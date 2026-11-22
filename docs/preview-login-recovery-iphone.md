@@ -16,7 +16,7 @@ The PR workflow now has a narrowly gated secret-setup step. It runs only when PR
 3. Under **Secrets**, add `PREVIEW_BOT_LOGIN_PASSWORD`. Create a unique password for this Preview only. Do not reuse Production or Phantom/Wallet credentials.
    - The existing `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets are required and were used by the Preview deployment. Never expose or paste their values.
 4. Under **Variables**, add `PREVIEW_LOGIN_SETUP` with value `true`.
-5. Tell me when both are saved. I can then make a small commit to PR #47 to trigger the guarded workflow. The step will set `BOT_LOGIN_PASSWORD` on Preview `pr-47` using Wrangler's Preview secret command. It will not run `wrangler deploy`.
+5. Once both settings are saved, a small documentation commit can trigger PR #47 checks. The gated step will attempt to set `BOT_LOGIN_PASSWORD` only on Preview `pr-47`; it does not call `wrangler deploy`.
 6. After the workflow finishes successfully, change `PREVIEW_LOGIN_SETUP` back to `false` in GitHub Settings.
 7. Open the stable Preview URL:
    https://pr-47-solana-smart-bot-new.hesamtanya75.workers.dev
