@@ -6,7 +6,8 @@ import {
   isUninitializedTargetState,
   isDefaultLikeSourceState,
   statesMatch,
-  normalizeLegacySourceState
+  normalizeLegacySourceState,
+  isSafeBackupPath
 } from "../scripts/migration-safety.mjs";
 
 const emptyWorkerState = {
@@ -184,4 +185,14 @@ test("migration always disables auto-buy even if the source contains an enabled 
   // A pre-existing pause is preserved; migration never unpauses a paused bot.
   assert.equal(normalized.paused, true);
   assert.equal(isCompatibleWithWorkerState(normalized), true);
+});
+
+
+test("migration backup path cannot create private state in arbitrary repository files", () => {
+  const root = "/tmp/solana-smart-bot-checkout";
+  assert.equal(isSafeBackupPath("deno-bot-state-backup.json", root), true);
+  assert.equal(isSafeBackupPath("custom-backup.json", root), false);
+  assert.equal(isSafeBackupPath("docs/backup.json", root), false);
+  assert.equal(isSafeBackupPath("../private/deno-backup.json", root), true);
+  assert.equal(isSafeBackupPath("/tmp/private/deno-backup.json", root), true);
 });
