@@ -74,7 +74,11 @@ export function normalizeLegacySourceState(state) {
     lastRunAt: null,
     lastMessage: "بۆتی سێرڤەر ئامادەیە؛ کڕینی خۆکار ناچالاکە.",
     lastScanReport: [],
-    ...state
+    ...state,
+    // Never carry forward an enabled auto-buy flag during a runtime cutover.
+    // Preserve the imported paper history, but require the operator to
+    // re-enable automation deliberately after validating the new runtime.
+    autoEnabled: false
   };
 }
 
