@@ -713,25 +713,6 @@ export default {
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: buildId, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
-    if (url.pathname === "/asset-check" && request.method === "GET") {
-      try {
-        const assetResponse = await env.ASSETS.fetch(new Request(new URL("/index.html", url), request));
-        if (!assetResponse.ok) return json({ ok: false, status: assetResponse.status, error: "Dashboard asset unavailable" }, 502);
-        const html = await assetResponse.text();
-        return json({
-          ok: true,
-          status: 200,
-          contentType: assetResponse.headers.get("content-type") || "text/html; charset=utf-8",
-          hasPremiumDesign: html.includes("SB_FINAL_PURPLE_GLASS"),
-          hasFinalPurpleGlass: html.includes("SB_FINAL_PURPLE_GLASS"),
-          hasOldClaudeSkin: /CLAUDE_SKIN|claude-skin|SB_CLAUDE/i.test(html),
-          hasLegacyPremiumSection: /LEGACY_PREMIUM_SECTION|legacy-premium-section/i.test(html),
-          hasLoginPanel: html.includes('id="serverLogin"')
-        });
-      } catch {
-        return json({ ok: false, status: 502, error: "Dashboard asset check failed" }, 502);
-      }
-    }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
         const { password } = await readBoundedJson(request, 4096);
