@@ -722,7 +722,7 @@ export default {
           ok: true,
           status: 200,
           contentType: assetResponse.headers.get("content-type") || "text/html; charset=utf-8",
-          hasPremiumDesign: html.includes("premium-dashboard-v2"),
+          hasPremiumDesign: html.includes("SB_FINAL_PURPLE_GLASS"),
           hasFinalPurpleGlass: html.includes("SB_FINAL_PURPLE_GLASS"),
           hasOldClaudeSkin: /CLAUDE_SKIN|claude-skin|SB_CLAUDE/i.test(html),
           hasLegacyPremiumSection: /LEGACY_PREMIUM_SECTION|legacy-premium-section/i.test(html),
