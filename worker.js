@@ -216,7 +216,15 @@ async function authorized(request, env) {
   const session = await env.BOT_STATE.get("session:" + token, "json");
   if (!session || !(session.expiresAt > Date.now())) return false;
   const profile = await readProfile(env);
-  return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
+  if (Number(session.authVersion || 0) !== Number(profile.authVersion || 0)) return false;
+  // Every authenticated route confirms the MFA generation from the isolated
+  // Durable Object. A password-only session issued before MFA activation is
+  // never accepted after the guard reports MFA enabled, even if a KV write
+  // during session-generation rotation failed.
+  const auth = await authGuardCall(env, { operation: "get-profile" });
+  if (!auth.initialized) return false;
+  if (auth.totpEnabled === true && session.mfaAuthenticated !== true) return false;
+  return true;
 }
 async function rpc(method, params, env) {
   const resolved = getRpcEndpoints(env);
@@ -728,7 +736,7 @@ export default {
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(legacyProfile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(legacyProfile.authVersion || 0), mfaAuthenticated: false }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
@@ -766,7 +774,7 @@ export default {
         const profile = await readProfile(env);
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), mfaAuthenticated: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
