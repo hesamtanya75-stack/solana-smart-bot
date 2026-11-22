@@ -672,35 +672,59 @@ export default {
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
         const { password } = await readBoundedJson(request, 4096);
-        const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
-        const legacyFailures = await env.BOT_STATE.get("login_fail:" + ip, "json") || { count: 0 };
-        const loginLimit = await authRateLimitRequest(env, "/login-attempt", {
-          ipHash,
-          legacyCount: Number(legacyFailures.count || 0)
-        });
-        if (!loginLimit.allowed) {
-          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
+        const loginScope = "login:" + ipHash;
+        await migrateLegacyFailure(env, loginScope, "login_fail:" + ip);
+        const limited = await authGuardCall(env, { operation: "is-rate-limited", scope: loginScope });
+        if (limited.limited) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        const expected = env.BOT_LOGIN_PASSWORD;
         if (!expected || typeof password !== "string" || password !== expected) {
-          return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
+          const failure = await authGuardCall(env, { operation: "record-failure", scope: loginScope });
+          return json({ error: "وشەی نهێنی هەڵەیە" }, failure.limited ? 429 : 401);
         }
-        await authRateLimitRequest(env, "/login-clear", { ipHash });
+        await authGuardCall(env, { operation: "clear-failures", scope: loginScope });
         await env.BOT_STATE.delete("login_fail:" + ip);
-        const profile = await readProfile(env);
-        // A damaged MFA profile must never downgrade to password-only login.
-        if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
-          return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+        const legacyProfile = await readProfile(env);
+        const marker = await env.BOT_STATE.get("auth_guard_migration_v1");
+        const guardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (marker === "complete") {
+          if (!guardProfile.initialized) throw Object.assign(new Error("Migrated AuthGuard state is unavailable"), { status: 503 });
+        } else {
+          const migration = await authGuardCall(env, {
+            operation: "initialize-legacy",
+            backupHash: legacyProfile.backupHash ?? null,
+            lastTotpCounter: Number.isSafeInteger(legacyProfile.lastTotpCounter) ? legacyProfile.lastTotpCounter : -1,
+            totpEnabled: legacyProfile.totpEnabled === true,
+            totpSecret: legacyProfile.totpSecret ?? null,
+            pendingTotpSecret: legacyProfile.pendingTotpSecret ?? null,
+            pendingTotpAt: Number.isSafeInteger(legacyProfile.pendingTotpAt) ? legacyProfile.pendingTotpAt : null
+          });
+          const verified = await authGuardCall(env, {
+            operation: "verify-legacy",
+            backupHash: legacyProfile.backupHash ?? null,
+            lastTotpCounter: Number.isSafeInteger(legacyProfile.lastTotpCounter) ? legacyProfile.lastTotpCounter : -1,
+            totpEnabled: legacyProfile.totpEnabled === true,
+            totpSecret: legacyProfile.totpSecret ?? null,
+            pendingTotpSecret: legacyProfile.pendingTotpSecret ?? null,
+            pendingTotpAt: Number.isSafeInteger(legacyProfile.pendingTotpAt) ? legacyProfile.pendingTotpAt : null
+          });
+          if (!migration.initialized && !verified.verified) throw Object.assign(new Error("Legacy MFA state conflicts with initialized AuthGuard"), { status: 503 });
+          if (!verified.verified) throw Object.assign(new Error("Legacy MFA migration could not be verified"), { status: 503 });
+          for (const key of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) delete legacyProfile[key];
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(legacyProfile));
+          await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
         }
-        if (profile.totpEnabled) {
+        const currentGuardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (currentGuardProfile.totpEnabled) {
           const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          const challenge = await authGuardCall(env, { operation: "create-challenge", challengeId });
+          if (!challenge.created) return json({ error: "نەتوانرا داواکاری MFA دروست بکرێت" }, 503);
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(legacyProfile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
@@ -713,75 +737,33 @@ export default {
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
-        const ipFailureKey = "totp_fail:" + ip;
-        const key = "mfa_challenge:" + challengeId;
-        const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
-        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
-        const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
-        const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
-          ipHash,
+        const failureScope = "totp:" + ipHash;
+        await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
+        const limited = await authGuardCall(env, { operation: "is-rate-limited", scope: failureScope });
+        if (limited.limited) return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        const guardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (!guardProfile.totpEnabled || !guardProfile.totpSecret) return json({ error: "Authenticator is not configured correctly" }, 401);
+        const matchedCounter = await matchingTotpCounter(guardProfile.totpSecret, code);
+        const submittedBackupHash = await hashText(String(code).trim().toUpperCase());
+        const result = await authGuardCall(env, {
+          operation: "complete-challenge",
           challengeId,
-          legacyIpCount: Number(legacyIpFailures.count || 0),
-          legacyChallengeCount: Number(challenge.attempts || 0)
+          totpCounter: matchedCounter,
+          backupHash: matchedCounter === null ? submittedBackupHash : null,
+          failureScope
         });
-        if (!mfaLimit.allowed) {
-          if (mfaLimit.reason === "challenge") {
-            await env.BOT_STATE.delete(key);
+        if (!result.ok) {
+          if (result.reason === "rate-limited" || result.reason === "attempts-exhausted") {
             return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
           }
-          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          return json({ error: "کۆدی Authenticator هەڵەیە یان داواکارییەکە بەسەرچووە" }, 401);
         }
+        await env.BOT_STATE.delete("totp_fail:" + ip);
         const profile = await readProfile(env);
-        if (!profile.totpEnabled || typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) {
-          return json({ error: "Authenticator is not configured correctly" }, 401);
-        }
-        let valid = await verifyTotp(profile.totpSecret, code);
-        let credentialClaimHash = null;
-        let backupCodeUsed = false;
-        if (valid) {
-          // A TOTP value is claimable only once during its short validity window,
-          // including across separate login challenges.
-          credentialClaimHash = await hashText("totp:" + profile.totpSecret + ":" + code);
-        } else if (profile.backupHash) {
-          const submittedHash = await hashText(String(code).trim().toUpperCase());
-          if (submittedHash === profile.backupHash) {
-            valid = true;
-            backupCodeUsed = true;
-            credentialClaimHash = await hashText("backup:" + profile.backupHash);
-          }
-        }
-        if (!valid) {
-          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-        }
-        const credentialClaim = await authRateLimitRequest(env, "/mfa-credential-claim", { credentialHash: credentialClaimHash });
-        if (!credentialClaim.claimed) {
-          return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدێکی نوێ بەکاربهێنە." }, 409);
-        }
-        const challengeClaim = await authRateLimitRequest(env, "/mfa-challenge-claim", { challengeId });
-        if (!challengeClaim.claimed) {
-          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
-          return json({ error: "ئەم داواکارییەی پشتڕاستکردنەوە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە." }, 409);
-        }
-        try {
-          if (backupCodeUsed) {
-            // The atomic credential claim prevents concurrent reuse while this
-            // one-time backup hash is removed from the profile.
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
-          }
-          await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
-          await env.BOT_STATE.delete(ipFailureKey);
-          await env.BOT_STATE.delete(key);
-          const token = crypto.randomUUID();
-          const expiresAt = Date.now() + SESSION_MS;
-          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-          return json({ ok: true, token });
-        } catch (error) {
-          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
-          try { await authRateLimitRequest(env, "/mfa-challenge-release", { challengeId }); } catch {}
-          throw error;
-        }
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + SESSION_MS;
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
