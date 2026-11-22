@@ -126,13 +126,16 @@ test("concurrent first-time automation patches preserve both settings", async ()
       return response;
     }
   };
+  const authEnvironment = environment().env;
   const env = {
     BOT_STATE: {
       get: async () => ({ expiresAt: Date.now() + 60_000 }),
       put: async () => {},
       delete: async () => {}
     },
-    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub },
+    AUTH_GUARD_INTERNAL_TOKEN: authEnvironment.AUTH_GUARD_INTERNAL_TOKEN,
+    AUTH_GUARD: authEnvironment.AUTH_GUARD
   };
   const responses = await Promise.all([
     worker.fetch(request("/api/automation", "POST", { enabled: true }), env),
@@ -181,13 +184,16 @@ test("concurrent state API PUTs cannot overwrite a newer paper-state version", a
       return coordinator.fetch(new Request(input, init));
     }
   };
+  const authEnvironment = environment().env;
   const env = {
     BOT_STATE: {
       get: async () => ({ expiresAt: Date.now() + 60_000 }),
       put: async () => {},
       delete: async () => {}
     },
-    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub },
+    AUTH_GUARD_INTERNAL_TOKEN: authEnvironment.AUTH_GUARD_INTERNAL_TOKEN,
+    AUTH_GUARD: authEnvironment.AUTH_GUARD
   };
   await coordinator.importOnce({
     balance: 100, trades: [], autoEnabled: false, paused: false,
