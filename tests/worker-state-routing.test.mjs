@@ -61,7 +61,7 @@ function request(path, method = "GET", body) {
   return new Request("https://worker.test" + path, {
     method,
     headers: {
-      Authorization: "Bearer test-session",
+      Authorization: "Bearer 11111111-1111-4111-8111-111111111111",
       ...(body === undefined ? {} : { "Content-Type": "application/json" })
     },
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -536,7 +536,7 @@ test("TOTP setup and confirmation routes require an authenticated admin session"
 test("enabling MFA invalidates sessions issued before MFA activation", async () => {
   const { env } = environment();
   const values = new Map([
-    ["session:old-session", { expiresAt: Date.now() + 60000, authVersion: 0 }],
+    ["session:33333333-3333-4333-8333-333333333333", { expiresAt: Date.now() + 60000, authVersion: 0 }],
     ["admin_profile", { totpEnabled: true, authVersion: 1 }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
@@ -545,7 +545,7 @@ test("enabling MFA invalidates sessions issued before MFA activation", async () 
     return type === "json" ? value : JSON.stringify(value);
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
-    headers: { Authorization: "Bearer old-session" }
+    headers: { Authorization: "Bearer 33333333-3333-4333-8333-333333333333" }
   }), env);
   assert.equal(response.status, 401);
 });
@@ -558,7 +558,7 @@ test("current session generation remains authorized after MFA activation", async
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   env.BOT_STATE.get = async (key, type) => {
-    if (key === "session:current-session") {
+    if (key === "session:22222222-2222-4222-8222-222222222222") {
       const session = { expiresAt: Date.now() + 60000, authVersion: 3 };
       return type === "json" ? session : JSON.stringify(session);
     }
@@ -569,7 +569,7 @@ test("current session generation remains authorized after MFA activation", async
     return null;
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
-    headers: { Authorization: "Bearer current-session" }
+    headers: { Authorization: "Bearer 22222222-2222-4222-8222-222222222222" }
   }), env);
   assert.equal(response.status, 200);
 });
@@ -582,14 +582,14 @@ test("expired and missing admin sessions cannot read paper state", async () => {
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   const sessions = new Map([
-    ["session:expired-session", { expiresAt: Date.now() - 1, authVersion: 0 }]
+    ["session:44444444-4444-4444-8444-444444444444", { expiresAt: Date.now() - 1, authVersion: 0 }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
     const value = sessions.get(key);
     if (value == null) return null;
     return type === "json" ? value : JSON.stringify(value);
   };
-  for (const token of ["expired-session", "missing-session"]) {
+  for (const token of ["44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"]) {
     const response = await worker.fetch(new Request("https://worker.test/api/state", {
       headers: { Authorization: "Bearer " + token }
     }), env);
@@ -605,7 +605,7 @@ test("session with a stale auth generation cannot mutate paper state", async () 
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   const values = new Map([
-    ["session:stale-generation", { expiresAt: Date.now() + 60000, authVersion: 4 }],
+    ["session:66666666-6666-4666-8666-666666666666", { expiresAt: Date.now() + 60000, authVersion: 4 }],
     ["admin_profile", { authVersion: 5, totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP" }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
@@ -615,7 +615,7 @@ test("session with a stale auth generation cannot mutate paper state", async () 
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
     method: "PUT",
-    headers: { Authorization: "Bearer stale-generation", "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer 66666666-6666-4666-8666-666666666666", "Content-Type": "application/json" },
     body: JSON.stringify({ balance: 1 })
   }), env);
   assert.equal(response.status, 401);
@@ -628,7 +628,7 @@ test("authenticated logout revokes the current server session", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
   assert.ok(touchedKvKeys.some(([operation, key]) =>
-    operation === "delete" && key === "session:test-session"
+    operation === "delete" && key === "session:11111111-1111-4111-8111-111111111111"
   ));
 });
 
