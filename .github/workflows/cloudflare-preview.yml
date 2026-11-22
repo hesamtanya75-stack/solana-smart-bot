@@ -146,3 +146,24 @@ jobs:
           PREVIEW_URL: ${{ steps.publish_preview.outputs.preview_url }}
           EXPECTED_BUILD_ID: ${{ github.event.pull_request.head.sha }}
         run: node scripts/preview-smoke-check.mjs
+
+      - name: Configure PR #47 Preview login secret (explicit opt-in only)
+        if: >-
+          ${{ github.event.pull_request.number == 47 &&
+              github.event.pull_request.head.ref == 'migration/cloudflare-only' &&
+              vars.PREVIEW_LOGIN_SETUP == 'true' &&
+              steps.preview_credentials.outputs.available == 'true' &&
+              steps.publish_preview.outputs.preview_url != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_BOT_LOGIN_PASSWORD: ${{ secrets.PREVIEW_BOT_LOGIN_PASSWORD }}
+        run: |
+          set +x
+          if [ -z "$PREVIEW_BOT_LOGIN_PASSWORD" ]; then
+            echo "::error::PREVIEW_BOT_LOGIN_PASSWORD is missing; Preview secret was not changed."
+            exit 1
+          fi
+          echo "::add-mask::$PREVIEW_BOT_LOGIN_PASSWORD"
+          printf '%s\\n' "$PREVIEW_BOT_LOGIN_PASSWORD" | npx --yes wrangler@4.135.0 preview secret put BOT_LOGIN_PASSWORD --name pr-47 --worker-name solana-smart-bot-new --config wrangler.jsonc
+          echo "PR #47 Preview login secret updated only. No Production deploy was requested."
