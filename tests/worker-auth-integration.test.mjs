@@ -280,7 +280,8 @@ test("Worker logout revokes the bearer session immediately", async () => {
 });
 
 test("Worker rejects expired bearer sessions", async () => {
-  const { env } = makeEnvironment();
+  const { env, guard } = makeEnvironment();
+  await guard.initializeFromLegacy();
   const token = "123e4567-e89b-42d3-a456-426614174000";
   await env.BOT_STATE.put("session:" + token, JSON.stringify({
     expiresAt: Date.now() - 1
