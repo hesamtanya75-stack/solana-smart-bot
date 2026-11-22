@@ -41,7 +41,7 @@ test("already-provisioned Durable Object classes use declarative SQLite exports,
 });
 
 test("Preview asset diagnostics are routed through the Worker", () => {
-  assert.ok(config.assets?.run_worker_first === true || config.assets?.run_worker_first?.includes("/asset-check"));
+  assert.ok(config.assets?.run_worker_first?.includes("/asset-check"));
 });
 
 test("Worker exposes Cloudflare-generated version metadata instead of a stale hardcoded build hash", () => {

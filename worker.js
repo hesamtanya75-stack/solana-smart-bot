@@ -40,49 +40,6 @@ function json(data, status = 200) {
     }
   });
 }
-
-function sameOriginApiRequest(request, url) {
-  const method = request.method.toUpperCase();
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return true;
-  const origin = request.headers.get("Origin");
-  const fetchSite = request.headers.get("Sec-Fetch-Site");
-  if (origin) {
-    try { if (new URL(origin).origin !== url.origin) return false; }
-    catch { return false; }
-  }
-  if (fetchSite === "cross-site") return false;
-  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site") return false;
-  // Reject requests where both Origin and Fetch Metadata are absent.
-  if (!origin && !fetchSite) return false;
-  return true;
-}
-
-async function readBoundedJson(request, maxBytes = 8192) {
-  const reader = request.body?.getReader();
-  if (!reader) throw Object.assign(new Error("Missing request body"), { status: 400 });
-  const chunks = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw Object.assign(new Error("Request body too large"), { status: 413 });
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  let value;
-  try { value = JSON.parse(new TextDecoder().decode(bytes)); }
-  catch { throw Object.assign(new Error("Invalid JSON"), { status: 400 }); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw Object.assign(new Error("JSON body must be an object"), { status: 400 });
-  }
-  return value;
-}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   return {
@@ -635,18 +592,41 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const buildId = env.BUILD_ID || env.CF_VERSION_METADATA?.id || "local-unversioned";
-    if (url.pathname.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) {
-      if (!sameOriginApiRequest(request, url)) return json({ error: "Cross-origin request rejected" }, 403);
-    }
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: buildId });
     }
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: buildId, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
+    if (url.pathname === "/asset-check" && request.method === "GET") {
+      try {
+        const assetUrl = new URL("/index.html", request.url);
+        const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+        const html = await asset.clone().text();
+        return json({ ok: asset.ok, status: asset.status, contentType: asset.headers.get("Content-Type"), bytes: new TextEncoder().encode(html).length, hasDashboardTitle: html.includes("پشکنەری زیرەکی کۆینی سولانا"), hasPremiumDesign: html.includes('id="SB_FINAL_PURPLE_GLASS"') && html.includes("SOLANA SMART BOT"), hasFinalPurpleGlass: html.includes('id="SB_FINAL_PURPLE_GLASS"'), hasOldClaudeSkin: html.includes("SB_CLAUDE_SKIN"), hasLegacyPremiumSection: html.includes("FINAL PREMIUM DASHBOARD V2"), styleTags: [...html.matchAll(/<style\b[^>]*>/gi)].map(match => match[0]), hasLoginPanel: html.includes("serverLogin") });
+      } catch (error) {
+        return json({ ok: false, error: String(error?.message || error) }, 500);
+      }
+    }
+    if (url.pathname === "/dashboard-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
+      const assetUrl = new URL("/index.html", request.url);
+      const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+      if (!asset.ok) return new Response("Dashboard asset unavailable", { status: 502 });
+      let html = await asset.text();
+      const probe = `<div id="sb-page-probe" style="position:fixed;z-index:2147483647;left:8px;right:8px;bottom:8px;padding:12px;border:2px solid #27e7d3;border-radius:12px;background:#07152b;color:#fff;font:12px/1.45 system-ui;direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">DASHBOARD TEST: checking visible elements…</div><script>(function(){var p=document.getElementById("sb-page-probe");function update(extra){try{var m=document.querySelector("main"),h=document.querySelector("header"),l=document.getElementById("serverLogin"),c=l&&l.querySelector(".login-card"),b=document.body;var cs=function(x){if(!x)return "missing";var s=getComputedStyle(x),r=x.getBoundingClientRect();return "display="+s.display+", visibility="+s.visibility+", opacity="+s.opacity+", rect="+Math.round(r.width)+"x"+Math.round(r.height)+", text="+(x.innerText||"").trim().slice(0,70)};var s=getComputedStyle(b);p.textContent="DASHBOARD TEST: HTML loaded\\nBody: "+s.backgroundColor+" / "+s.color+" / "+s.display+"\\nMain: "+cs(m)+"\\nHeader: "+cs(h)+"\\nLogin: "+cs(l)+"\\nLogin card: "+cs(c)+"\\nBody text length: "+(b.innerText||"").length+"\\n"+(extra||"Page scripts had time to run.");}catch(e){p.textContent="PROBE ERROR: "+e.message;}}window.addEventListener("error",function(e){update("JAVASCRIPT ERROR: "+e.message+" @ "+e.lineno+":"+e.colno);});window.addEventListener("unhandledrejection",function(e){update("PROMISE ERROR: "+String(e.reason&&e.reason.message||e.reason));});setTimeout(function(){update();},1800);})();</script>`;
+      html = html.replace(/<body[^>]*>/i, match => match + probe);
+      return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+      });
+    }
+    if (url.pathname === "/screen-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
+      return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Screen Test</title><style>html,body{margin:0;min-height:100%;background:#10152b;color:#fff;font:18px system-ui}main{margin:24px auto;padding:24px;max-width:520px;border:2px solid #27e7d3;border-radius:18px;background:linear-gradient(135deg,#24104d,#063b43);text-align:center}h1{color:#27e7d3}p{line-height:1.6}</style></head><body><main><h1>SCREEN TEST OK</h1><p>If you can read this, your browser can display a page from this Worker.</p><p>HTTP route: /screen-test</p></main></body></html>", {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+      });
+    }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const body = await readBoundedJson(request, 4096);\n        const password = body.password;
+        const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -679,12 +659,12 @@ export default {
         return json({ ok: true, token });
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-        return json({ error: "داواکاری هەڵەیە" }, error?.status || 400);
+        return json({ error: "داواکاری هەڵەیە" }, 400);
       }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const body = await readBoundedJson(request, 4096);\n        const challengeId = body.challengeId;\n        const code = body.code;
+        const { challengeId, code } = await request.json();
         if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -759,7 +739,7 @@ export default {
         }
       } catch (error) {
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, error?.status || 400);
+        return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
     }
     if (url.pathname.startsWith("/api/")) {
@@ -809,7 +789,7 @@ export default {
       if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
         let claimedSecretHash = null;
         try {
-          const body = await readBoundedJson(request, 4096);\n          const code = body.code;
+          const { code } = await request.json();
           const p = await readProfile(env);
           if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -837,7 +817,7 @@ export default {
             try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
           }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, error?.status || 400);
+          return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
         }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
@@ -946,9 +926,6 @@ export default {
     }
     const assetUrl = new URL(request.url);
     const isDashboardHtml = assetUrl.pathname === "/" || assetUrl.pathname === "/index.html";
-    // The assets directory is the repository root. Deny every non-dashboard
-    // path before touching ASSETS so source, tests, and configuration stay private.
-    if (!isDashboardHtml) return json({ error: "Not found" }, 404);
     if (assetUrl.pathname === "/") assetUrl.pathname = "/index.html";
 
     // Fetch the dashboard as a clean GET and rebuild its HTML response.

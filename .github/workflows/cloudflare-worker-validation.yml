@@ -42,22 +42,32 @@ jobs:
           if (config.main !== "worker.js") {
             throw new Error(`Unexpected Worker entry point: ${config.main}`);
           }
-          if (config.assets?.run_worker_first !== true && !config.assets?.run_worker_first?.includes("/*")) {
+          if (config.assets?.run_worker_first !== true) {
             throw new Error("Static assets must pass through the Worker allowlist before serving");
           }
           if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) {
             throw new Error("BOT_STATE KV binding is missing");
           }
-          // Only the currently provisioned paper-state and MFA rate-limit DOs are
-          // bound in production. New live-trading/AuthGuard classes stay isolated
-          // and must not trigger new production namespace migrations in this PR.
-          for (const [name, className] of [
-            ["PAPER_STATE_COORDINATOR", "PaperStateCoordinator"],
-            ["AUTH_RATE_LIMITER", "MfaRateLimiter"]
-          ]) {
+          const requiredBindings = [
+            ["LIVE_TRADE_COORDINATOR", "LiveTradeCoordinator"],
+            ["AUTH_GUARD", "AuthGuard"],
+            ["PAPER_TRADING_STATE", "PaperTradingState"]
+          ];
+          for (const [name, className] of requiredBindings) {
             if (!config.durable_objects?.bindings?.some(binding =>
               binding.name === name && binding.class_name === className)) {
               throw new Error(`${name} Durable Object binding is missing`);
+            }
+          }
+          const migrations = config.migrations || [];
+          for (const [tag, className] of [
+            ["v1-live-trade-coordinator", "LiveTradeCoordinator"],
+            ["v2-auth-guard", "AuthGuard"],
+            ["v3-paper-trading-state", "PaperTradingState"]
+          ]) {
+            if (!migrations.some(migration =>
+              migration.tag === tag && migration.new_sqlite_classes?.includes(className))) {
+              throw new Error(`${tag} migration is missing or incomplete`);
             }
           }
           console.log("Validated Worker target, entry point, static asset routing, KV, Durable Object bindings, and migrations.");
