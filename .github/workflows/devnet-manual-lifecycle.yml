@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/devnet-manual-lifecycle.yml"
+      - ".github/workflows/cloudflare-closed-preview-cleanup.yml"
       - "scripts/devnet-preflight.mjs"
       - "scripts/devnet-signed-lifecycle.mjs"
       - "package.json"
