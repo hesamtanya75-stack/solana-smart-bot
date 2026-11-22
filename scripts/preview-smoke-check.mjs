@@ -29,7 +29,7 @@ if (version.ok !== true || version.build !== expectedBuild ||
   throw new Error("/version does not match the expected Preview build");
 }
 
-const asset = await getJson("/asset-check");
+const asset = await getJson("/health");
 if (asset.ok !== true || asset.status !== 200 ||
     !String(asset.contentType || "").toLowerCase().includes("text/html") ||
     asset.hasPremiumDesign !== true || asset.hasFinalPurpleGlass !== true ||

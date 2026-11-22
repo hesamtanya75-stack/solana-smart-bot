@@ -9,10 +9,7 @@
   "assets": {
     "directory": "./",
     "binding": "ASSETS",
-    "run_worker_first": [
-      "/*",
-      "/asset-check"
-    ]
+    "run_worker_first": true
   },
   "kv_namespaces": [
     {

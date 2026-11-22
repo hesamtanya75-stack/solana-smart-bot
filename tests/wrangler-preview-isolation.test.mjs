@@ -40,8 +40,8 @@ test("already-provisioned Durable Object classes use declarative SQLite exports,
   assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "AUTH_RATE_LIMITER").length, 1);
 });
 
-test("Preview asset diagnostics are routed through the Worker", () => {
-  assert.ok(config.assets?.run_worker_first?.includes("/asset-check"));
+test("Worker-first routing is enabled for dashboard allowlist enforcement", () => {
+  assert.equal(config.assets?.run_worker_first, true);
 });
 
 test("Worker exposes Cloudflare-generated version metadata instead of a stale hardcoded build hash", () => {

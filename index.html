@@ -1633,8 +1633,20 @@ async function refreshServerPrices() {
     serverPriceRefreshBusy = false;
   }
 }
+function hasLegacyEmptyServerConflict(local, remote) {
+  if (!local || !Array.isArray(local.trades) || !remote || !Array.isArray(remote.trades)) return false;
+  if (remote.canMigrateLegacy === true || !remote.updatedAt) return false;
+  const raw = local.balance;
+  const localBalance = raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "") ? 100 : Number(raw);
+  const remoteBalance = Number(remote.balance);
+  const meaningfulLocal = (Number.isFinite(localBalance) && localBalance !== 100) || local.trades.length > 0;
+  if (!meaningfulLocal) return false;
+  const sameBalance = Number.isFinite(localBalance) && Number.isFinite(remoteBalance) && localBalance === remoteBalance;
+  return !(sameBalance && JSON.stringify(local.trades) === JSON.stringify(remote.trades));
+}
 async function saveServerState() {
   if (!serverModeReady) return;
+  try {
   const result = await serverRequest("/api/state", {
     method: "PUT",
     body: JSON.stringify({
@@ -1647,6 +1659,15 @@ async function saveServerState() {
     })
   });
   if (Number.isSafeInteger(result.revision)) serverStateRevision = result.revision;
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (message.includes("State changed") || message.includes("409")) {
+      serverModeReady = false;
+      const status = document.getElementById("demoStatus");
+      if (status) status.textContent = "داتای ئەم مۆبایلە پارێزراوە؛ دۆخی سێرڤەر گۆڕاوە. browser copy untouched — تکایە پێش sync داتاکان بەراورد بکە.";
+    }
+    throw error;
+  }
 }
 const localSaveDemoState = saveDemoState;
 // Server-mode trading writes are explicit, validated API operations. Local storage
