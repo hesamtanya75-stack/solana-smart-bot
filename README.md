@@ -80,7 +80,7 @@ The Preview workflow automatically deletes the `pr-<number>` Preview when a same
 
 1. Open the repository's **Actions** tab.
 2. Select **Cloudflare Worker Preview**.
-3. Tap **Run workflow** and enter the closed PR number (for example, `47` only if PR 47 is closed).
+3. Choose the `migration/cloudflare-only` branch, tap **Run workflow**, and enter the number of a closed PR (not an open PR).
 4. Run it. The cleanup job deletes only the isolated Preview named `pr-<number>`; it does not deploy or delete the Production Worker.
 
 Do not enter an open PR number whose Preview you still need. Cloudflare documents that deleting a Preview also deletes its Preview-specific Durable Object state. Review the PR state before cleanup.
