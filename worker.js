@@ -1,6 +1,8 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
+export { AuthGuard } from "./auth-guard.mjs";
+export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
@@ -168,6 +170,39 @@ async function patchPaperState(env, patch) {
     }
   }
   return coordinatorRequest(env, "patch", patch);
+}
+async function authGuardCall(env, body) {
+  const namespace = env.AUTH_GUARD;
+  const token = String(env.AUTH_GUARD_INTERNAL_TOKEN || "");
+  if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured");
+  const stub = namespace.get(namespace.idFromName("admin"));
+  const response = await stub.fetch("https://auth-guard.internal/operation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(body)
+  });
+  let result;
+  try { result = await response.json(); } catch { result = {}; }
+  if (!response.ok) {
+    const error = new Error(result.error || "Authentication guard request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+async function migrateLegacyFailure(env, scope, legacyKey) {
+  const legacy = await env.BOT_STATE.get(legacyKey, "json");
+  const count = Math.max(0, Math.min(5, Number(legacy?.count || 0)));
+  if (count > 0) await authGuardCall(env, { operation: "import-legacy-failure", scope, count });
+  await env.BOT_STATE.delete(legacyKey);
+}
+async function matchingTotpCounter(secret, code, now = Date.now()) {
+  if (!secret || !/^\\d{6}$/.test(String(code || ""))) return null;
+  for (const drift of [0, -30000, 30000]) {
+    const counter = Math.floor((now + drift) / 30000);
+    if (await totpCode(secret, now + drift) === String(code)) return counter;
+  }
+  return null;
 }
 async function authorized(request, env) {
   const authorization = request.headers.get("Authorization") || "";
