@@ -90,7 +90,7 @@ This checklist does not authorize Production deployment, Production KV access, D
 
 The repository includes `.github/workflows/cloudflare-preview.yml`. It is deliberately guarded and will publish a Preview only when all of these conditions are met:
 
-- The pull request targets `fix/worker-empty-state-cron-guard` and comes from a branch in this same repository.
+- The pull request targets `main` and comes from a branch in this same repository (the workflow checks `github.event.pull_request.head.repo.full_name == github.repository`).
 - The repository Actions variable `CLOUDFLARE_PREVIEW_ENABLED` is set to the literal value `true`.
 - The repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.
 
