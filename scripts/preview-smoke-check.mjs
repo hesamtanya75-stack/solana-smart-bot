@@ -20,7 +20,7 @@ async function getJson(path) {
 
 const health = await getJson("/health");
 if (health.ok !== true || health.mode !== "paper-trading" || health.build !== expectedBuild) {
-  throw new Error("/health did not report the expected paper-only build");
+  throw new Error("/health mismatch: " + JSON.stringify({ ok: health.ok, mode: health.mode, build: health.build, expectedBuild }));
 }
 
 const version = await getJson("/version");
