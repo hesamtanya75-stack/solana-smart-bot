@@ -33,6 +33,10 @@
         {
           "name": "AUTH_RATE_LIMITER",
           "class_name": "MfaRateLimiter"
+        },
+        {
+          "name": "AUTH_GUARD",
+          "class_name": "AuthGuard"
         }
       ]
     }
@@ -51,6 +55,10 @@
       {
         "name": "AUTH_RATE_LIMITER",
         "class_name": "MfaRateLimiter"
+      },
+      {
+        "name": "AUTH_GUARD",
+        "class_name": "AuthGuard"
       }
     ]
   },
@@ -60,6 +68,10 @@
       "storage": "sqlite"
     },
     "MfaRateLimiter": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "AuthGuard": {
       "type": "durable-object",
       "storage": "sqlite"
     }
