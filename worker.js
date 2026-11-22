@@ -171,6 +171,9 @@ async function patchPaperState(env, patch) {
   }
   return coordinatorRequest(env, "patch", patch);
 }
+async function saveProfileMetadata(env, profile) {
+  await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
+}
 async function authGuardCall(env, body) {
   const namespace = env.AUTH_GUARD;
   const token = String(env.AUTH_GUARD_INTERNAL_TOKEN || "");
@@ -797,7 +800,7 @@ export default {
             if (phone !== p.phone) p.phoneVerified = false;
             p.phone = phone;
           }
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          await saveProfileMetadata(env, p);
           return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
@@ -908,20 +911,26 @@ export default {
         }
       }
       if (url.pathname === "/api/state" && request.method === "GET") {
-        const state = await readStoredState(env);
-        return json(state || cleanState(null));
+        const stored = await readStoredState(env);
+        const revision = stored && Number.isSafeInteger(stored[STATE_VERSION]) ? stored[STATE_VERSION] : 0;
+        return json({
+          ...(stored || cleanState(null)),
+          revision,
+          canMigrateLegacy: !stored
+        });
       }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
-          const body = await request.json();
-          if (!body || typeof body !== "object" || Array.isArray(body)) {
-            return json({ error: "Invalid state" }, 400);
+          const body = await readBoundedJson(request, 256 * 1024);
+          const expectedRevision = body.expectedRevision;
+          if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+            return json({ error: "Invalid expectedRevision" }, 400);
           }
-          const allowedKeys = new Set([
+          const stateKeys = [
             "balance", "trades", "autoEnabled", "paused", "scannedMints",
             "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
-          ]);
-          if (Object.keys(body).some(key => !allowedKeys.has(key))) {
+          ];
+          if (Object.keys(body).some(key => key !== "expectedRevision" && !stateKeys.includes(key))) {
             return json({ error: "State contains unsupported fields" }, 400);
           }
           const stringFields = ["lastRunAt", "lastMessage", "updatedAt"];
@@ -944,12 +953,21 @@ export default {
               return json({ error: "Invalid " + key }, 400);
             }
           }
-          const current = await readState(env);
-          const expectedVersion = current[STATE_VERSION];
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          if (Number.isSafeInteger(expectedVersion)) Object.defineProperty(state, STATE_VERSION, { value: expectedVersion, writable: true });
-          await saveState(env, state);
-          return json({ ok: true, state });
+          const stored = await readStoredState(env);
+          const currentRevision = stored && Number.isSafeInteger(stored[STATE_VERSION]) ? stored[STATE_VERSION] : 0;
+          if (expectedRevision !== currentRevision) {
+            return json({ error: "State changed; reload and retry" }, 409);
+          }
+          const patch = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "expectedRevision"));
+          if (!stored) {
+            const initial = cleanState({ ...DEFAULT_STATE, ...patch, updatedAt: new Date().toISOString() });
+            const result = await coordinatorRequest(env, "import", initial);
+            return json({ ok: true, state: result.state || initial, revision: result.version, canMigrateLegacy: false });
+          }
+          const state = cleanState({ ...stored, ...patch, lastScanReport: patch.lastScanReport ?? stored.lastScanReport });
+          Object.defineProperty(state, STATE_VERSION, { value: currentRevision, writable: true });
+          const result = await saveState(env, state);
+          return json({ ok: true, state, revision: result.version, canMigrateLegacy: false });
         } catch (error) {
           return json({ error: error.status === 409 ? "State changed; reload and retry" : "Invalid state" }, error.status || 400);
         }
@@ -962,7 +980,7 @@ export default {
           if (typeof body.paused === "boolean") patch.paused = body.paused;
           if (!Object.keys(patch).length) return json({ error: "Invalid settings" }, 400);
           const result = await patchPaperState(env, patch);
-          return json({ ok: true, state: result.state });
+          return json({ ok: true, state: result.state, revision: result.version });
         } catch (error) {
           return json({ error: "Invalid settings" }, error.status || 400);
         }
