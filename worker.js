@@ -180,11 +180,18 @@ async function authGuardCall(env, body) {
   const token = String(env.AUTH_GUARD_INTERNAL_TOKEN || "");
   if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured");
   const stub = namespace.get(namespace.idFromName("admin"));
-  const response = await stub.fetch("https://auth-guard.internal/operation", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify(body)
-  });
+  let response;
+  try {
+    response = await stub.fetch("https://auth-guard.internal/operation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    const unavailable = new Error("Authentication guard is unavailable");
+    unavailable.status = 503;
+    throw unavailable;
+  }
   let result;
   try { result = await response.json(); } catch { result = {}; }
   if (!response.ok) {
@@ -739,7 +746,7 @@ export default {
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(legacyProfile.authVersion || 0), mfaAuthenticated: false }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
-        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "داواکاری هەڵەیە" }, 400);
       }
     }
@@ -777,12 +784,20 @@ export default {
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), mfaAuthenticated: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
-        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
     }
     if (url.pathname.startsWith("/api/")) {
-      if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      let sessionAuthorized = false;
+      try { sessionAuthorized = await authorized(request, env); }
+      catch (error) {
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") {
+          return json({ error: "Authentication guard is unavailable" }, 503);
+        }
+        throw error;
+      }
+      if (!sessionAuthorized) return json({ error: "Unauthorized" }, 401);
       if (url.pathname === "/api/logout" && request.method === "POST") {
         const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         if (token) await env.BOT_STATE.delete("session:" + token);
@@ -838,7 +853,7 @@ export default {
           const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
           return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
         } catch (error) {
-          if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+          if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا setup ـی Authenticator دەستپێبکرێت" }, 400);
         }
       }
