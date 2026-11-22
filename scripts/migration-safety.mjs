@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve, sep } from "node:path";
+
 const MAX_STATE_BYTES = 1_000_000;
 
 export function isValidSourceState(state) {
@@ -108,4 +110,15 @@ export function isDefaultLikeSourceState(state) {
   return !!state &&
     Number(state.balance) === 100 &&
     Array.isArray(state.trades) && state.trades.length === 0;
+}
+
+export function isSafeBackupPath(path, cwd = process.cwd()) {
+  const root = resolve(cwd);
+  const destination = resolve(root, path);
+  const rel = relative(root, destination);
+  const isInsideRepository = rel === "" ||
+    (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+  // The sole in-repository backup path is explicitly gitignored. Custom paths
+  // must live outside the checkout to avoid accidentally committing private state.
+  return !isInsideRepository || destination === resolve(root, "deno-bot-state-backup.json");
 }
