@@ -113,3 +113,11 @@ The automated isolated Preview workflow completed successfully for PR #47 at com
 Exact immutable Preview URL from that run: https://01aedf69-solana-smart-bot-new.hesamtanya75.workers.dev
 
 This evidence covers deployment and read-only smoke checks only. The authenticated disposable-Preview state mutation/readback, conflict, persistence-after-redeploy, logout, and isolation checklist above remains **pending operator verification**. No Deno import, production state mutation, Cron invocation, or chain transaction was performed. The external Deno Deploy status check remains non-required and is failing due to the suspended/billing account; it does not invalidate this successful Cloudflare Preview run.
+
+## Follow-up Preview evidence (2026-11-22)
+
+After recording the initial Preview run, the documentation-only commit `32c36470112d22b0948077d206acb6ee0de88e55` also passed the repository test, syntax, worker-state, workflow-validation, isolated Preview build, and Cloudflare Workers Preview checks. Workflow run [45062287899](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45062287899) completed successfully.
+
+Exact immutable Preview URL: https://98a12289-solana-smart-bot-new.hesamtanya75.workers.dev
+
+The smoke check again verified health/version against the requested SHA, dashboard asset and Purple Glass markers, and that ten source/diagnostic paths were not publicly served. It explicitly remained read-only: no login, state mutation, Cron, Deno import, or chain transaction. Authenticated persistence and migration verification are still pending.
