@@ -1,0 +1,169 @@
+name: Cloudflare Worker Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - closed
+  workflow_dispatch:
+    inputs:
+      preview_pr_number:
+        description: "Closed pull request number whose isolated Preview should be deleted"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cloudflare-preview-pr-${{ github.event.pull_request.number || inputs.preview_pr_number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    if: >-
+      ${{ vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.preview_pr_number != '') ||
+           (github.event.action == 'closed' &&
+            github.event.pull_request.head.repo.full_name == github.repository)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository configuration
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect Preview credentials
+        id: preview_credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Closed-PR Preview cleanup skipped: Cloudflare credentials are not configured."
+          fi
+
+      - name: Check whether the selected pull request is closed
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.preview_pr_number }}" --jq .state)"
+          if [ "$state" != "closed" ]; then
+            echo "::error::Refusing to delete a Preview for an open or unknown pull request."
+            exit 1
+          fi
+
+      - name: Delete closed pull request Preview only
+        if: steps.preview_credentials.outputs.available == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            preview_name="pr-${{ inputs.preview_pr_number }}"
+          else
+            preview_name="pr-${{ github.event.pull_request.number }}"
+          fi
+          npx --yes wrangler@4.135.0 preview delete --name "$preview_name" --skip-confirmation --config wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  preview:
+    name: Build and publish isolated Preview
+    if: >-
+      ${{ github.event_name == 'pull_request' &&
+          github.event.action != 'closed' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run regression tests
+        run: npm test
+
+      - name: Verify Worker build without deploying
+        run: npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.jsonc
+
+      - name: Detect Preview credentials
+        id: preview_credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Preview deployment skipped: Cloudflare credentials are not configured. Tests and dry-run build still run."
+          fi
+
+      - name: Publish isolated Cloudflare Worker Preview
+        id: publish_preview
+        if: steps.preview_credentials.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          if npx --yes wrangler@4.135.0 preview --name pr-${{ github.event.pull_request.number }} --var BUILD_ID:${{ github.event.pull_request.head.sha }} --json 2>&1 | tee "$RUNNER_TEMP/wrangler-preview.log"; then
+            node scripts/extract-preview-url.mjs "$RUNNER_TEMP/wrangler-preview.log"
+          else
+            if grep -Eq 'code: 10067|reached the Workers Free limit of 100 Durable Object namespaces' "$RUNNER_TEMP/wrangler-preview.log"; then
+              echo "::error::Cloudflare Preview runtime validation did not run: this account reached the Free Durable Object namespace quota (100). This is not a runtime pass. Delete obsolete PR Previews or resolve the account limit, then rerun checks. No Production deployment was attempted."
+              exit 1
+            else
+              exit 1
+            fi
+          fi
+
+      - name: Verify Preview runtime and public asset boundary (read-only)
+        if: steps.preview_credentials.outputs.available == 'true' && steps.publish_preview.outputs.preview_url != ''
+        env:
+          PREVIEW_URL: ${{ steps.publish_preview.outputs.preview_url }}
+          EXPECTED_BUILD_ID: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/preview-smoke-check.mjs
+
+      - name: Configure PR #47 Preview login secret (explicit opt-in only)
+        if: >-
+          ${{ github.event.pull_request.number == 47 &&
+              github.event.pull_request.head.ref == 'migration/cloudflare-only' &&
+              vars.PREVIEW_LOGIN_SETUP == 'true' &&
+              steps.preview_credentials.outputs.available == 'true' &&
+              steps.publish_preview.outputs.preview_url != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_BOT_LOGIN_PASSWORD: ${{ secrets.PREVIEW_BOT_LOGIN_PASSWORD }}
+        run: |
+          set +x
+          if [ -z "$PREVIEW_BOT_LOGIN_PASSWORD" ]; then
+            echo "::error::PREVIEW_BOT_LOGIN_PASSWORD is missing; Preview secret was not changed."
+            exit 1
+          fi
+          echo "::add-mask::$PREVIEW_BOT_LOGIN_PASSWORD"
+          printf '%s\\n' "$PREVIEW_BOT_LOGIN_PASSWORD" | npx --yes wrangler@4.135.0 preview secret put BOT_LOGIN_PASSWORD --name pr-47 --worker-name solana-smart-bot-new --config wrangler.jsonc
+          echo "PR #47 Preview login secret updated only. No Production deploy was requested."

@@ -1,0 +1,156 @@
+# Cloudflare Preview runtime validation checklist
+
+Status: pending an operator-created isolated Preview deployment  
+Target branch: `migration/cloudflare-only`  
+Scope: Preview only; paper-trading only
+
+This checklist is deliberately separate from the repository's in-memory tests and Wrangler dry-run. Completing CI does not prove that Cloudflare has created the Durable Object, applied its SQLite storage migration, or persisted state between requests.
+
+## Hard safety gates
+
+- [ ] Confirm the deployment target is a Cloudflare **Preview** deployment for `migration/cloudflare-only`, not Production.
+- [ ] Confirm Preview uses KV namespace `e1c54bd4247d47ebba9c1db1fa7082e0` for `BOT_STATE`.
+- [ ] Confirm Preview binds `PAPER_STATE_COORDINATOR` to `PaperStateCoordinator`.
+- [ ] Confirm Production KV namespace `2e205fdb0eff44f78786e7500ae401a1` is not selected or modified by this test.
+- [ ] Do not provide Deno credentials, import Deno state, run the migration helper, enable automatic buying, or perform any wallet/chain transaction.
+- [ ] Keep the Deno project and its KV data intact.
+- [ ] If the deployment interface offers only a Production target or cannot demonstrate Preview isolation, stop.
+
+## Creating the isolated Preview
+
+Use Cloudflare **Worker Previews**, not a production deploy or a Worker Version URL. Worker Previews require Wrangler 4.135.0 or later.
+
+For a manual deployment from this branch, use:
+
+```sh
+npx --yes wrangler@4.135.0 preview --name pr-47 --json
+```
+
+The command must run with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` supplied through the operator's secure environment. Never print either value. Do not use `wrangler deploy`, `wrangler versions upload`, or a Production environment for this checklist.
+
+The current `previews` configuration maps `BOT_STATE` to the dedicated Preview KV namespace and declares the paper-state and auth-rate-limit Durable Object bindings. Cloudflare creates separate Durable Object namespaces/storage for each Preview. Confirm the resulting Preview's bindings in Cloudflare before any authenticated state mutation.
+
+Configure a dedicated Preview-only `BOT_LOGIN_PASSWORD` secret with Cloudflare's Preview secret workflow. Do not copy the Production password. If the Preview requires MFA, use a separate Preview admin profile; do not copy Production MFA secrets or profile data.
+
+**Cron limitation:** Cloudflare Cron Triggers do not target Worker Previews. Do not treat a Preview smoke test as Cron runtime validation. Validate Cron logic through the isolated automated tests and retain the separate checklist item as an explicit limitation.
+
+If this repository is connected to Cloudflare Workers Builds and Preview Builds are enabled, a pull-request update can create the Preview automatically using the configured Preview command. Verify that the command is `npx wrangler preview` and that the Preview URL is reported before proceeding.
+
+## Read-only smoke checks
+
+Set `PREVIEW_URL` to the exact Preview URL shown by Cloudflare. Do not guess or reuse a production URL.
+
+```sh
+curl -i "$PREVIEW_URL/health"
+curl -i "$PREVIEW_URL/version"
+curl -i "$PREVIEW_URL/asset-check"
+```
+
+Expected:
+- `/health`: HTTP 200 and JSON with `ok: true`, `mode: "paper-trading"`, and Durable Object paper-state storage.
+- `/version`: HTTP 200 and JSON with a build identifier.
+- `/asset-check`: HTTP 200 and JSON confirming the dashboard asset is present.
+
+Record the actual URL, response status, build identifier, and timestamp. Do not publish secrets or session tokens in logs.
+
+## Authentication and Durable Object checks
+
+Use a dedicated Preview-only login password configured as the `BOT_LOGIN_PASSWORD` secret in the Preview environment. Never use or copy the Production password.
+
+1. POST the Preview password to `/api/login`; if MFA is enabled, complete the configured TOTP challenge through `/api/login/totp`.
+2. If the Preview admin profile says MFA is enabled but its TOTP secret is missing or blank, confirm password login fails closed with HTTP 503 and creates neither a session nor an MFA challenge.
+3. Confirm `/api/login/totp` rejects backup-code authentication when MFA is disabled or its TOTP secret is missing; no session may be created.
+4. Keep the returned session token private and send it only as `Authorization: Bearer <token>`.
+5. Confirm unauthenticated `GET /api/state` and `PUT /api/state` both return HTTP 401.
+6. With the authenticated token, GET `/api/state` and record whether the Preview coordinator is initialized. Do not assume a default-looking response proves persistent initialization.
+7. On a disposable Preview deployment only, verify an allow-listed state PATCH/automation update, then read state back and confirm it persisted. Keep `enabled: false` and `paused: true`; do not enable automatic paper buys.
+8. Verify invalid/unknown state fields are rejected (HTTP 400).
+9. Verify version conflict behavior with two commits based on the same snapshot: only one may succeed; the stale commit must be rejected (HTTP 409).
+10. Repeat the read after a Preview redeploy and confirm the same Durable Object state/version remains available.
+11. Confirm the Preview KV namespace and Durable Object binding remain isolated from Production.
+12. Verify `POST /api/logout` invalidates the session and that the same token is rejected afterward.
+13. When enabling MFA on the disposable Preview admin profile, verify the previous session is rejected after activation, the one-time backup code is displayed once, and a fresh password-plus-TOTP login succeeds. An incorrect TOTP setup code must not revoke the active setup session.
+
+Do not run state-mutating checks against Production. If a clean Preview coordinator cannot be guaranteed, stop before the first mutation and create a fresh disposable Preview test target using the Cloudflare dashboard.
+
+## Cron and completion criteria
+
+- [ ] Confirm Preview Cron behavior is understood before allowing scheduled invocations; the Worker configuration includes a one-minute Cron trigger.
+- [ ] Confirm Cron does not initialize an empty paper state.
+- [ ] Confirm a stale Cron result cannot overwrite a newer Preview dashboard update.
+- [ ] Confirm no live-trading, signer, swap, or transaction-submission capability was enabled.
+
+The Preview validation is complete only when the read-only smoke checks, authenticated state checks, conflict test, persistence check, and isolation checks have recorded passing evidence. Attach the evidence to the migration PR. A successful deployment alone is not a passing runtime validation.
+
+## Explicitly out of scope
+
+This checklist does not authorize Production deployment, Production KV access, Deno-to-Cloudflare data import, Deno retirement, PR merge, funded Devnet activity, Mainnet trading, wallet signing, or real-money transactions.
+
+## Automated Preview workflow
+
+The repository includes `.github/workflows/cloudflare-preview.yml`. It is deliberately guarded and will publish a Preview only when all of these conditions are met:
+
+- The pull request targets `main` and comes from a branch in this same repository (the workflow checks `github.event.pull_request.head.repo.full_name == github.repository`).
+- The repository Actions variable `CLOUDFLARE_PREVIEW_ENABLED` is set to the literal value `true`.
+- The repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.
+
+The workflow runs `npm test`, performs a Wrangler dry-run build, checks that both secrets are present without printing them, and then invokes Wrangler 4.135.0's `preview` command. It does not run `wrangler deploy` or select a Production environment. If the enablement variable is absent or false, the Preview job is skipped by design.
+
+Before enabling it, create a Cloudflare API token with only the permissions required to publish Worker Previews for this account. Add the token and account ID as GitHub repository Actions secrets, and set `CLOUDFLARE_PREVIEW_ENABLED=true` as a repository Actions variable. Never put credentials in workflow files, commits, issue comments, or chat. Once enabled, update this PR (or synchronize its branch) to trigger the guarded workflow. A successful job and the exact Preview URL in its logs are required evidence; a skipped job is not a deployment.
+
+
+After adding the repository Actions variable and secrets, note that GitHub does not rerun an earlier skipped workflow automatically. A new commit pushed to this pull request's source branch is required to emit a `synchronize` event and evaluate the Preview job again. Check the new run's result; do not treat the previous skipped run as deployment evidence.
+
+## CI evidence (2026-11-22)
+
+The automated isolated Preview workflow completed successfully for PR #47 at commit `15589f97eb913da1f26af32f5109bc2293ff37d6` (workflow run [45061545624](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45061545624)). Its read-only smoke step confirmed:
+
+- `/health` and `/version` matched the requested commit SHA.
+- The dashboard asset and `premium-dashboard-v2` Purple Glass markers were present.
+- Ten repository/source/diagnostic paths were not publicly served.
+- The Preview deployment included isolated Preview KV and Durable Object bindings.
+
+Exact immutable Preview URL from that run: https://01aedf69-solana-smart-bot-new.hesamtanya75.workers.dev
+
+This evidence covers deployment and read-only smoke checks only. The authenticated disposable-Preview state mutation/readback, conflict, persistence-after-redeploy, logout, and isolation checklist above remains **pending operator verification**. No Deno import, production state mutation, Cron invocation, or chain transaction was performed. The external Deno Deploy status check remains non-required and is failing due to the suspended/billing account; it does not invalidate this successful Cloudflare Preview run.
+
+## Follow-up Preview evidence (2026-11-22)
+
+After recording the initial Preview run, the documentation-only commit `32c36470112d22b0948077d206acb6ee0de88e55` also passed the repository test, syntax, worker-state, workflow-validation, isolated Preview build, and Cloudflare Workers Preview checks. Workflow run [45062287899](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45062287899) completed successfully.
+
+Exact immutable Preview URL: https://98a12289-solana-smart-bot-new.hesamtanya75.workers.dev
+
+The smoke check again verified health/version against the requested SHA, dashboard asset and Purple Glass markers, and that ten source/diagnostic paths were not publicly served. It explicitly remained read-only: no login, state mutation, Cron, Deno import, or chain transaction. Authenticated persistence and migration verification are still pending.
+
+## Latest automated Preview evidence (2026-11-22, 19:45 UTC)
+
+At PR head `beb9073059ff5a88be9acc9711835fd0fddde1fd`, Cloudflare Preview workflow [45062507517](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45062507517) completed successfully. The runner deployed the isolated Preview and executed `scripts/preview-smoke-check.mjs` against the exact Wrangler-emitted immutable URL:
+
+`https://d85c46ff-solana-smart-bot-new.hesamtanya75.workers.dev`
+
+Recorded smoke assertions passed: health/version matched the requested SHA; the dashboard and Purple Glass markers were present; ten repository/source/diagnostic paths were not publicly served. The Preview publish log showed the dedicated Preview KV and Durable Object bindings. This run did **not** exercise authenticated DO state mutation, version-conflict behavior, persistence across redeploy, logout, or full namespace isolation via an authenticated session. Those checklist items remain pending. No Production deploy, Deno migration/retirement, wallet signing, or chain transaction occurred.
+
+At this head, the repository test, Worker state, frontend syntax, workflow validation, and Preview checks completed successfully. The external Deno Deploy status remains a separate billing/suspended-account failure.
+
+
+## Latest PR-head validation (2026-11-22, 20:04 UTC)
+
+For the current PR head `05027ac5e0bc371d3a75bb198d4c1b954b8c7a53` (credential-redaction hardening), the following GitHub Actions runs completed successfully:
+
+- Cloudflare Worker Preview [run 45064278528](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064278528): regression tests, Wrangler dry-run, isolated Preview publish, and read-only runtime/public-asset boundary checks all passed.
+- Worker state initialization tests [run 45064278529](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064278529): success.
+- Frontend validation [run 45064278532](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064278532): success.
+- Manual funded Devnet lifecycle workflow [run 45064278540](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064278540): workflow conclusion success; this is not evidence that a funded transaction was actually executed.
+
+These automated results do not complete the operator-only authenticated Durable Object tests or Deno KV backup/import/read-back. The external Deno Deploy status is still failing separately due to the suspended/billing account. PR #47 remains open and unmerged. No Production deployment, Deno retirement, wallet signing, or Mainnet transaction was performed.
+
+
+## Latest PR-head validation (2026-11-22, 20:06 UTC)
+
+At current PR head `d6e3a138b7450ee6c26af56467d0c1cc8c1f0868`, Cloudflare Worker Preview workflow [run 45064450463](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450463) completed successfully. The job deployed a Preview with build ID matching this SHA and ran `scripts/preview-smoke-check.mjs` against the exact immutable URL emitted by Wrangler:
+
+`https://4f31fd8e-solana-smart-bot-new.hesamtanya75.workers.dev`
+
+The log confirms these read-only assertions passed: health/version matched the requested SHA; the dashboard and Purple Glass markers were present; ten repository/source/diagnostic paths were not publicly served. The test explicitly did not perform login, state mutation, Cron, Deno import, or a chain transaction. Worker state initialization tests [45064450455](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450455), frontend validation [45064450462](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450462), and Devnet workflow safety/build validation [45064450452](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45064450452) also concluded successfully. In the Devnet workflow, both the funded lifecycle and explicit-confirmation jobs were skipped; this is not evidence of a funded transaction.
+
+Still pending: authenticated disposable-Preview state mutation/read-back, invalid-field and stale-version rejection, persistence across redeploy, logout/MFA, and authenticated namespace isolation; plus private Deno KV export/backup, Cloudflare import and exact read-back. External Deno Deploy status remains a separate suspended/billing failure. PR #47 is open and unmerged. No Production deployment, Deno retirement, wallet signing, or Mainnet transaction occurred.

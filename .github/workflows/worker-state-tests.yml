@@ -4,15 +4,40 @@ on:
   pull_request:
     paths:
       - "worker.js"
+      - "index.html"
+      - "paper-state-coordinator.js"
+      - "mfa-rate-limiter.js"
+      - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
+      - "tests/worker-state-routing.test.mjs"
+      - "tests/paper-state-coordinator.test.mjs"
+      - "tests/wrangler-preview-isolation.test.mjs"
+      - "tests/paper-state-storage-boundary.test.mjs"
+      - "tests/migration-safety.test.mjs"
+      - "tests/dashboard-inline-script-syntax.test.mjs"
+      - "scripts/migration-safety.mjs"
       - "package.json"
+      - "scripts/migrate-deno-state.mjs"
       - ".github/workflows/worker-state-tests.yml"
   push:
     branches:
       - "fix/worker-empty-state-cron-guard"
+      - "migration/cloudflare-only"
     paths:
       - "worker.js"
+      - "index.html"
+      - "paper-state-coordinator.js"
+      - "mfa-rate-limiter.js"
+      - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
+      - "tests/worker-state-routing.test.mjs"
+      - "tests/paper-state-coordinator.test.mjs"
+      - "tests/wrangler-preview-isolation.test.mjs"
+      - "tests/paper-state-storage-boundary.test.mjs"
+      - "tests/migration-safety.test.mjs"
+      - "tests/dashboard-inline-script-syntax.test.mjs"
+      - "scripts/migration-safety.mjs"
+      - "scripts/migrate-deno-state.mjs"
       - "package.json"
       - ".github/workflows/worker-state-tests.yml"
 
@@ -26,3 +51,7 @@ jobs:
           node-version: "20"
       - name: Run Worker state regression tests
         run: npm test
+      - name: Check Deno-to-Cloudflare migration helper syntax
+        run: node --check scripts/migrate-deno-state.mjs
+      - name: Validate Cloudflare Worker and Durable Object build
+        run: npm run build:check
