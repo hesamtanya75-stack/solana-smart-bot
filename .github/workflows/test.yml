@@ -1,0 +1,21 @@
+name: Node tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - mainnet-live-trading-prep
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run safety tests
+        run: npm test
