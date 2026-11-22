@@ -240,7 +240,7 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal(nextLogin.status, 200);
   const nextChallenge = await nextLogin.json();
   assert.equal(nextChallenge.mfaRequired, true);
-  const nextCode = await totpCode(setupBody.secret, Math.floor(Date.now() / 30000));
+  const nextCode = await totpCode(setupBody.secret, Math.floor(Date.now() / 30000) + 1);
   const nextVerified = await post("/api/login/totp", {
     challengeId: nextChallenge.challengeId,
     code: nextCode
