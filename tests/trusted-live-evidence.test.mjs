@@ -2651,7 +2651,7 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     }
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
-    /duplicate account indexes/);
+    /duplicate token account indexes/);
 
   transactionResult = {
     ...baseResult,
