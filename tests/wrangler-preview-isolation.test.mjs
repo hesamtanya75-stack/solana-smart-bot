@@ -81,3 +81,15 @@ test("root asset publishing excludes repository internals and diagnostic pages",
     assert.ok(lines.has(pattern), `public assets must ignore ${pattern}`);
   }
 });
+
+test("Preview CI performs read-only runtime and public asset boundary checks", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
+  const smoke = await readFile(new URL("../scripts/preview-smoke-check.mjs", import.meta.url), "utf8");
+  assert.match(workflow, /Verify Preview runtime and public asset boundary \\(read-only\\)/);
+  assert.match(workflow, /run: node scripts\\/preview-smoke-check\\.mjs/);
+  assert.match(smoke, /Refusing to smoke-test a non-Preview URL/);
+  assert.match(smoke, /EXPECTED_BUILD_ID/);
+  for (const path of ["/.git/config", "/.wrangler/", "/worker.js", "/display-test.html", "/wrangler.jsonc", "/.dev.vars"]) {
+    assert.ok(smoke.includes(path), `Preview smoke check must test ${path}`);
+  }
+});
