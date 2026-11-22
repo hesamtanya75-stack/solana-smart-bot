@@ -76,7 +76,7 @@ test("root asset publishing excludes repository internals and diagnostic pages",
     "*backup*",
     ".env*", ".dev.vars*"
   ];
-  const lines = new Set(ignore.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean));
+  const lines = new Set(ignore.split(/\r?\n/).map(line => line.trim()).filter(Boolean));
   for (const pattern of requiredPatterns) {
     assert.ok(lines.has(pattern), `public assets must ignore ${pattern}`);
   }
