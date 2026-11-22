@@ -33,14 +33,39 @@ function getRpcEndpoints(env) {
   return { endpoints: preferred, errors: resolved.errors };
 }
 
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+};
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...SECURITY_HEADERS,
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store"
     }
   });
+}
+function secureDashboard(html) {
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(18));
+  const nonce = btoa(String.fromCharCode(...nonceBytes)).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  const nonceHtml = html.replace(/<script\\b([^>]*)>/gi, (tag, attrs) =>
+    /\\bnonce\\s*=/.test(attrs) ? tag : "<script nonce=\"" + nonce + "\"" + attrs + ">"
+  );
+  const csp = [
+    "default-src 'self'",
+    "script-src 'nonce-" + nonce + "' 'strict-dynamic' 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "connect-src 'self' https://solana.drpc.org https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://api.dexscreener.com https://api.rugcheck.xyz",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
+  ].join("; ");
+  return { html: nonceHtml, csp };
 }
 function sameOriginApiRequest(request, url) {
   if (!url.pathname.startsWith("/api/") ||
@@ -1002,7 +1027,11 @@ export default {
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).some(key => !["enabled", "paused"].includes(key)) ||
+              Object.keys(body).some(key => typeof body[key] !== "boolean")) {
+            return json({ error: "Invalid settings" }, 400);
+          }
           const patch = {};
           if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
           if (typeof body.paused === "boolean") patch.paused = body.paused;
@@ -1027,12 +1056,15 @@ export default {
     const assetResponse = await env.ASSETS.fetch(assetRequest);
     if (isDashboardHtml && assetResponse.ok) {
       const html = await assetResponse.text();
-      return new Response(html, {
+      const secured = secureDashboard(html);
+      return new Response(secured.html, {
         status: assetResponse.status,
         headers: {
+          ...SECURITY_HEADERS,
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
+          "Content-Security-Policy": secured.csp,
           "X-Solana-Smart-Bot-Build": buildId
         }
       });
