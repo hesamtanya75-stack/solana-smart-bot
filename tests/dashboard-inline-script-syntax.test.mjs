@@ -31,10 +31,9 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
   );
   assert.match(
     html,
-    /if\(!serverModeReady\)\s*\{\s*serverLogin\.style\.display="flex"/,
-    "closing the admin profile after MFA activation must reopen the login panel"
-  );
-  for (const [index, source] of scripts.entries()) {
+    /serverToken="";\s*serverModeReady=false;\s*localStorage\.removeItem\("solanaBotSession"\);\s*serverLogin\.style\.display="flex";\s*status\(\)\.textContent=p\.message\+"؛ تکایە دووبارە بچۆ ژوورەوە\."/,
+    "successful MFA activation must invalidate the old session and require a fresh login"
+  );  for (const [index, source] of scripts.entries()) {
     assert.doesNotThrow(
       () => new vm.Script(source, { filename: "index.html:inline-script-" + (index + 1) }),
       "inline script " + (index + 1) + " should parse"
