@@ -1,4 +1,6 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+// Keep the previously provisioned paper-trading Durable Object exported for safe namespace reconciliation.
+export { PaperTradingState } from "./paper-trading-state.mjs";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 export { AuthGuard } from "./auth-guard.mjs";
