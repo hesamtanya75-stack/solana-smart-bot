@@ -74,6 +74,14 @@
     "AuthGuard": {
       "type": "durable-object",
       "storage": "sqlite"
+    },
+    "LiveTradeCoordinator": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "PaperTradingState": {
+      "type": "durable-object",
+      "storage": "sqlite"
     }
   }
 }
