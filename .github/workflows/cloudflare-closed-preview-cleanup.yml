@@ -62,6 +62,15 @@ jobs:
           echo "Closed PR preview branches selected:"
           cat "$RUNNER_TEMP/closed-prs.tsv"
 
+      - name: Collect open pull request branches
+        if: steps.credentials.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq '.[] | [.number, .head.ref, .head.repo.full_name] | @tsv' > "$RUNNER_TEMP/open-prs.tsv"
+          echo "Open PR branches protected from Preview deletion:"
+          cat "$RUNNER_TEMP/open-prs.tsv"
+
       - name: Delete only closed-PR Preview resources
         if: steps.credentials.outputs.available == 'true'
         env:
@@ -98,6 +107,11 @@ jobs:
             # workflow tried pr-N, which often returned 10025 and left the
             # branch Preview's isolated Durable Object namespace allocated.
             for preview in "$branch" "pr-$number"; do
+              # A branch/legacy alias may still be used by another open PR.
+              if awk -F '\\t' -v candidate="$preview" -v repository="$GITHUB_REPOSITORY" '$2 == candidate && $3 == repository { found=1 } END { exit !found }' "$RUNNER_TEMP/open-prs.tsv"; then
+                echo "Protecting Preview '$preview': an open same-repository PR still uses this branch name."
+                continue
+              fi
               echo "Deleting isolated Preview '$preview' for closed PR #$number"
               output="$(npx --yes wrangler@4.135.0 preview delete --name "$preview" --worker-name solana-smart-bot-new --skip-confirmation --config wrangler.jsonc 2>&1)" && {
                 echo "$output"
