@@ -124,7 +124,7 @@ jobs:
       - name: Remove legacy pr-N aliases from open PRs
         if: steps.credentials.outputs.available == 'true'
         env:
-          GH_TOKEN: ${github.token}
+          GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_API_TOKEN: ${secrets.CLOUDFLARE_API_TOKEN}
           CLOUDFLARE_ACCOUNT_ID: ${secrets.CLOUDFLARE_ACCOUNT_ID}
         run: |
