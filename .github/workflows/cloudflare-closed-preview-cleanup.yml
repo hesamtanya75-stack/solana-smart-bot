@@ -108,7 +108,7 @@ jobs:
             # branch Preview's isolated Durable Object namespace allocated.
             for preview in "$branch" "pr-$number"; do
               # A branch/legacy alias may still be used by another open PR.
-              if awk -F '\\t' -v candidate="$preview" -v repository="$GITHUB_REPOSITORY" '$2 == candidate && $3 == repository { found=1 } END { exit !found }' "$RUNNER_TEMP/open-prs.tsv"; then
+              if awk -F '\t' -v candidate="$preview" -v repository="$GITHUB_REPOSITORY" '$2 == candidate && $3 == repository { found=1 } END { exit !found }' "$RUNNER_TEMP/open-prs.tsv"; then
                 echo "Protecting Preview '$preview': an open same-repository PR still uses this branch name."
                 continue
               fi
