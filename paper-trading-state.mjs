@@ -59,11 +59,7 @@ function isPristineMigrationState(state) {
     state.autoEnabled === DEFAULT_STATE.autoEnabled &&
     state.paused === DEFAULT_STATE.paused &&
     state.scannedMints.length === 0 &&
-    state.deferredMints.length === 0 &&
-    state.lastRunAt === null &&
-    state.lastMessage === DEFAULT_STATE.lastMessage &&
-    state.lastScanReport.length === 0 &&
-    state.updatedAt === null;
+    state.deferredMints.length === 0;
 }
 
 async function readBoundedJson(request, maxBytes = 262144) {
