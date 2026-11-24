@@ -1238,7 +1238,7 @@ async function rpc(fetchImpl, method, params) {
   return payload.result;
 }
 
-function sumOwnedTokenBalance(rows, mint, owner) {
+function sumOwnedTokenBalance(rows, mint, owner, accountKeyCount, feePayerIndex = 0) {
   if (!Array.isArray(rows) || Object.getPrototypeOf(rows) !== Array.prototype) {
     throw new Error("Finalized transaction token balance metadata is unavailable");
   }
@@ -1247,6 +1247,7 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     throw new Error("Finalized transaction token balance metadata is malformed");
   }
   let total = 0n;
+  const seenAccountIndexes = new Set();
   for (let index = 0; index < rows.length; index++) {
     const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(index));
     const row = rowDescriptor?.value;
@@ -1258,28 +1259,158 @@ function sumOwnedTokenBalance(rows, mint, owner) {
     const mintDescriptor = Object.getOwnPropertyDescriptor(row, "mint");
     const ownerDescriptor = Object.getOwnPropertyDescriptor(row, "owner");
     const amountRecordDescriptor = Object.getOwnPropertyDescriptor(row, "uiTokenAmount");
+    const accountIndexDescriptor = Object.getOwnPropertyDescriptor(row, "accountIndex");
+    const programIdDescriptor = Object.getOwnPropertyDescriptor(row, "programId");
     if (!mintDescriptor || !Object.prototype.hasOwnProperty.call(mintDescriptor, "value") ||
         !ownerDescriptor || !Object.prototype.hasOwnProperty.call(ownerDescriptor, "value") ||
         !amountRecordDescriptor || !Object.prototype.hasOwnProperty.call(amountRecordDescriptor, "value") ||
+        (accountIndexDescriptor && !Object.prototype.hasOwnProperty.call(accountIndexDescriptor, "value")) ||
+        (programIdDescriptor && !Object.prototype.hasOwnProperty.call(programIdDescriptor, "value")) ||
         typeof mintDescriptor.value !== "string" || typeof ownerDescriptor.value !== "string") {
       throw new Error("Finalized transaction token balance metadata is malformed");
     }
-    if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
+    if (mintDescriptor.value === mint && ownerDescriptor.value === owner &&
+        !accountIndexDescriptor) {
+      throw new Error("Finalized owned token balance is missing its account index");
+    }
+    if (accountIndexDescriptor &&
+        (!Number.isInteger(accountIndexDescriptor.value) || accountIndexDescriptor.value < 0 ||
+         accountIndexDescriptor.value >= accountKeyCount ||
+         accountIndexDescriptor.value === feePayerIndex)) {
+      throw new Error("Finalized transaction token balance account index is malformed");
+    }
+    if (programIdDescriptor &&
+        (typeof programIdDescriptor.value !== "string" ||
+         !EXPECTED_TOKEN_PROGRAMS.has(programIdDescriptor.value))) {
+      throw new Error("Finalized transaction token balance program ID is unsupported");
+    }
+    // accountIndex identifies the token account in this transaction. It must
+    // be unique across the entire pre/post metadata array, not just for the
+    // mint/owner currently being summed.
+    if (accountIndexDescriptor) {
+      const accountIndex = accountIndexDescriptor.value;
+      if (seenAccountIndexes.has(accountIndex)) {
+        throw new Error("Finalized transaction contains duplicate token account indexes");
+      }
+      seenAccountIndexes.add(accountIndex);
+    }
     const amountRecord = amountRecordDescriptor.value;
     if (!amountRecord || typeof amountRecord !== "object" ||
         (Object.getPrototypeOf(amountRecord) !== Object.prototype && Object.getPrototypeOf(amountRecord) !== null)) {
-      throw new Error("Finalized transaction contains an invalid owned token balance");
+      if (mintDescriptor.value === mint && ownerDescriptor.value === owner) {
+        throw new Error("Finalized transaction contains an invalid owned token balance");
+      }
+      continue;
     }
     const amountDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "amount");
+    const decimalsDescriptor = Object.getOwnPropertyDescriptor(amountRecord, "decimals");
+    if (decimalsDescriptor &&
+        (!Object.prototype.hasOwnProperty.call(decimalsDescriptor, "value") ||
+         !Number.isInteger(decimalsDescriptor.value) || decimalsDescriptor.value < 0 ||
+         decimalsDescriptor.value > 255)) {
+      throw new Error("Finalized transaction token balance decimals are malformed");
+    }
+    if (mintDescriptor.value !== mint || ownerDescriptor.value !== owner) continue;
     const amount = amountDescriptor?.value;
     if (!amountDescriptor || !Object.prototype.hasOwnProperty.call(amountDescriptor, "value") ||
         typeof amount !== "string" || !/^(0|[1-9]\d*)$/.test(amount)) {
       throw new Error("Finalized transaction contains an invalid owned token balance");
     }
-    total += BigInt(amount);
+    const parsedAmount = BigInt(amount);
+    if (parsedAmount > 18446744073709551615n) {
+      throw new Error("Finalized transaction token balance exceeds u64");
+    }
+    total += parsedAmount;
   }
   return total;
 }
+function snapshotLoadedTransactionAddresses(meta, message) {
+  const lookupsDescriptor = Object.getOwnPropertyDescriptor(message, "addressTableLookups");
+  if (lookupsDescriptor && !Object.prototype.hasOwnProperty.call(lookupsDescriptor, "value")) {
+    throw new Error("Finalized address-table lookup metadata is accessor-backed");
+  }
+  const lookups = lookupsDescriptor?.value;
+  let expectedWritableCount = 0;
+  let expectedReadonlyCount = 0;
+  if (lookups !== undefined) {
+    if (!Array.isArray(lookups) || Object.getPrototypeOf(lookups) !== Array.prototype ||
+        Reflect.ownKeys(lookups).length !== lookups.length + 1) {
+      throw new Error("Finalized address-table lookup metadata is malformed");
+    }
+    for (let index = 0; index < lookups.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(lookups, String(index));
+      const lookup = descriptor?.value;
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+          !lookup || typeof lookup !== "object" || Array.isArray(lookup) ||
+          (Object.getPrototypeOf(lookup) !== Object.prototype &&
+           Object.getPrototypeOf(lookup) !== null) ||
+          Reflect.ownKeys(lookup).length !== 3) {
+        throw new Error("Finalized address-table lookup entry is malformed");
+      }
+      const accountKey = Object.getOwnPropertyDescriptor(lookup, "accountKey");
+      const writableIndexes = Object.getOwnPropertyDescriptor(lookup, "writableIndexes");
+      const readonlyIndexes = Object.getOwnPropertyDescriptor(lookup, "readonlyIndexes");
+      if (!accountKey || !Object.prototype.hasOwnProperty.call(accountKey, "value") ||
+          typeof accountKey.value !== "string" ||
+          !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(accountKey.value) ||
+          decodeBase58(accountKey.value).length !== 32 ||
+          !writableIndexes || !Object.prototype.hasOwnProperty.call(writableIndexes, "value") ||
+          !readonlyIndexes || !Object.prototype.hasOwnProperty.call(readonlyIndexes, "value")) {
+        throw new Error("Finalized address-table lookup entry is malformed");
+      }
+      for (const [indexes, label] of [
+        [writableIndexes.value, "writable"],
+        [readonlyIndexes.value, "readonly"]
+      ]) {
+        if (!Array.isArray(indexes) || Object.getPrototypeOf(indexes) !== Array.prototype ||
+            Reflect.ownKeys(indexes).length !== indexes.length + 1) {
+          throw new Error("Finalized address-table " + label + " indexes are malformed");
+        }
+        for (let item = 0; item < indexes.length; item++) {
+          const indexDescriptor = Object.getOwnPropertyDescriptor(indexes, String(item));
+          if (!indexDescriptor || !Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
+              !Number.isInteger(indexDescriptor.value) || indexDescriptor.value < 0 ||
+              indexDescriptor.value > 255) {
+            throw new Error("Finalized address-table " + label + " indexes are malformed");
+          }
+        }
+      }
+      expectedWritableCount += writableIndexes.value.length;
+      expectedReadonlyCount += readonlyIndexes.value.length;
+    }
+  }
+  const hasLookups = Array.isArray(lookups) && lookups.length > 0;
+  const loadedDescriptor = Object.getOwnPropertyDescriptor(meta, "loadedAddresses");
+  if (!loadedDescriptor) {
+    if (hasLookups) {
+      throw new Error("Finalized v0 transaction is missing loaded address metadata");
+    }
+    return Object.freeze([]);
+  }
+  if (!Object.prototype.hasOwnProperty.call(loadedDescriptor, "value")) {
+    throw new Error("Finalized loaded address metadata is accessor-backed");
+  }
+  const loaded = loadedDescriptor.value;
+  if (!loaded || typeof loaded !== "object" || Array.isArray(loaded) ||
+      (Object.getPrototypeOf(loaded) !== Object.prototype &&
+       Object.getPrototypeOf(loaded) !== null)) {
+    throw new Error("Finalized loaded address metadata is malformed");
+  }
+  const writableDescriptor = Object.getOwnPropertyDescriptor(loaded, "writable");
+  const readonlyDescriptor = Object.getOwnPropertyDescriptor(loaded, "readonly");
+  if (!writableDescriptor || !Object.prototype.hasOwnProperty.call(writableDescriptor, "value") ||
+      !readonlyDescriptor || !Object.prototype.hasOwnProperty.call(readonlyDescriptor, "value") ||
+      Reflect.ownKeys(loaded).length !== 2) {
+    throw new Error("Finalized loaded address metadata is incomplete");
+  }
+  const writable = snapshotDenseAccountKeys(writableDescriptor.value);
+  const readonly = snapshotDenseAccountKeys(readonlyDescriptor.value);
+  if (writable.length !== expectedWritableCount || readonly.length !== expectedReadonlyCount) {
+    throw new Error("Finalized loaded addresses do not match address-table lookup indexes");
+  }
+  return Object.freeze([...writable, ...readonly]);
+}
+
 /**
  * Independently verifies a finalized swap using signature status and the
  * transaction's owner-scoped pre/post balances. It never trusts caller-supplied
@@ -1295,6 +1426,7 @@ function snapshotDenseAccountKeys(value) {
     throw new Error("Finalized transaction account keys are incomplete");
   }
   const snapshot = [];
+  const seenKeys = new Set();
   for (let index = 0; index < value.length; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     const entry = descriptor?.value;
@@ -1313,6 +1445,10 @@ function snapshotDenseAccountKeys(value) {
         decodeBase58(key).length !== 32) {
       throw new Error("Finalized transaction account keys are malformed");
     }
+    if (seenKeys.has(key)) {
+      throw new Error("Finalized transaction contains duplicate account keys");
+    }
+    seenKeys.add(key);
     snapshot.push(key);
   }
   return Object.freeze(snapshot);
@@ -1330,13 +1466,85 @@ function validateDenseLamportBalances(value, expectedLength) {
   return true;
 }
 
+function validateStableTokenBalanceIdentities(preRows, postRows) {
+  const collect = rows => {
+    if (!Array.isArray(rows) || Object.getPrototypeOf(rows) !== Array.prototype) {
+      throw new Error("Finalized transaction token balance metadata is unavailable");
+    }
+    const byIndex = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const rowDescriptor = Object.getOwnPropertyDescriptor(rows, String(i));
+      const row = rowDescriptor?.value;
+      if (!rowDescriptor || !Object.prototype.hasOwnProperty.call(rowDescriptor, "value") ||
+          !row || typeof row !== "object" ||
+          (Object.getPrototypeOf(row) !== Object.prototype && Object.getPrototypeOf(row) !== null)) {
+        throw new Error("Finalized transaction token balance metadata is malformed");
+      }
+      const indexDescriptor = Object.getOwnPropertyDescriptor(row, "accountIndex");
+      if (!indexDescriptor ||
+          !Object.prototype.hasOwnProperty.call(indexDescriptor, "value") ||
+          !Number.isInteger(indexDescriptor.value) || indexDescriptor.value < 0) {
+        throw new Error("Finalized transaction token balance account index is malformed");
+      }
+      if (byIndex.has(indexDescriptor.value)) {
+        throw new Error("Finalized transaction token balance has duplicate account indexes");
+      }
+      const readOptional = key => {
+        const descriptor = Object.getOwnPropertyDescriptor(row, key);
+        if (!descriptor) return undefined;
+        if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+          throw new Error("Finalized transaction token balance metadata is malformed");
+        }
+        return descriptor.value;
+      };
+      const identity = {
+        mint: readOptional("mint"),
+        owner: readOptional("owner"),
+        programId: readOptional("programId"),
+        decimals: (() => {
+          const amountRecord = readOptional("uiTokenAmount");
+          if (!amountRecord || typeof amountRecord !== "object" ||
+              (Object.getPrototypeOf(amountRecord) !== Object.prototype &&
+               Object.getPrototypeOf(amountRecord) !== null)) return undefined;
+          const descriptor = Object.getOwnPropertyDescriptor(amountRecord, "decimals");
+          if (!descriptor) return undefined;
+          if (!Object.prototype.hasOwnProperty.call(descriptor, "value") ||
+              !Number.isInteger(descriptor.value) || descriptor.value < 0 ||
+              descriptor.value > 255) {
+            throw new Error("Finalized transaction token balance decimals are malformed");
+          }
+          return descriptor.value;
+        })()
+      };
+      byIndex.set(indexDescriptor.value, identity);
+    }
+    return byIndex;
+  };
+  const before = collect(preRows);
+  const after = collect(postRows);
+  for (const [index, pre] of before) {
+    const post = after.get(index);
+    if (!post) continue;
+    for (const field of ["mint", "owner", "programId", "decimals"]) {
+      if (pre[field] !== undefined && post[field] !== undefined &&
+          pre[field] !== post[field]) {
+        throw new Error("Finalized token account identity changed across pre/post balances");
+      }
+    }
+  }
+}
+
 export async function verifyFinalizedJupiterSettlement({
   signature, inputMint, outputMint, inputAmount, outputAmount,
   expectedOwner = EXPECTED_BOT_WALLET
 }, fetchImpl = fetch) {
   const validAddress = value => typeof value === "string" &&
     /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) && decodeBase58(value).length === 32;
-  const validAmount = value => typeof value === "string" && /^\d+$/.test(value) && BigInt(value) > 0n;
+  const validAmount = value => {
+    if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) return false;
+    const amount = BigInt(value);
+    return amount > 0n && amount <= 18446744073709551615n;
+  };
   if (typeof signature !== "string" || decodeBase58(signature).length !== 64 ||
       !validAddress(inputMint) || !validAddress(outputMint) || inputMint === outputMint ||
       !validAddress(expectedOwner) || expectedOwner !== EXPECTED_BOT_WALLET ||
@@ -1366,19 +1574,24 @@ export async function verifyFinalizedJupiterSettlement({
   if (!transaction || !Number.isSafeInteger(transaction.slot) || transaction.slot < 1 ||
       !meta || meta.err !== null || !Array.isArray(signatures) || signatures[0] !== signature ||
       !Array.isArray(accountKeys) ||
-      !validateDenseLamportBalances(meta.preBalances, accountKeys.length) ||
-      !validateDenseLamportBalances(meta.postBalances, accountKeys.length) ||
       !Number.isSafeInteger(meta.fee) || meta.fee < 0) {
     throw new Error("Finalized transaction metadata is incomplete or indicates failure");
   }
-  const keyStrings = snapshotDenseAccountKeys(accountKeys);
+  const staticKeyStrings = snapshotDenseAccountKeys(accountKeys);
+  const loadedKeyStrings = snapshotLoadedTransactionAddresses(meta, message);
+  const keyStrings = Object.freeze([...staticKeyStrings, ...loadedKeyStrings]);
+  if (new Set(keyStrings).size !== keyStrings.length ||
+      !validateDenseLamportBalances(meta.preBalances, keyStrings.length) ||
+      !validateDenseLamportBalances(meta.postBalances, keyStrings.length)) {
+    throw new Error("Finalized transaction metadata is incomplete or account indexes and lamport balances are inconsistent");
+  }
   const ownerIndex = keyStrings.indexOf(expectedOwner);
   // Solana's first required signer is the fee payer. Require the pinned bot
   // wallet in that position so a third-party transaction cannot settle an order.
   if (ownerIndex !== 0) throw new Error("Expected bot wallet is not the finalized transaction fee payer");
 
-  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner);
-  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner);
+  const preOutput = sumOwnedTokenBalance(meta.preTokenBalances, outputMint, expectedOwner, keyStrings.length);
+  const postOutput = sumOwnedTokenBalance(meta.postTokenBalances, outputMint, expectedOwner, keyStrings.length);
   if (postOutput - preOutput !== BigInt(outputAmount)) {
     throw new Error("Finalized output token balance delta does not match the reserved amount");
   }
@@ -1386,11 +1599,13 @@ export async function verifyFinalizedJupiterSettlement({
   // Jupiter's SOL mint is wrapped SOL (an SPL token), not the wallet's
   // native lamport balance. Verify the exact token-account delta for every
   // input mint; native lamport deltas also include fees and account rent.
-  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner);
-  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner);
+  const preInput = sumOwnedTokenBalance(meta.preTokenBalances, inputMint, expectedOwner, keyStrings.length);
+  const postInput = sumOwnedTokenBalance(meta.postTokenBalances, inputMint, expectedOwner, keyStrings.length);
   if (preInput - postInput !== BigInt(inputAmount)) {
     throw new Error("Finalized input token balance delta does not match the reserved amount");
   }
+
+  validateStableTokenBalanceIdentities(meta.preTokenBalances, meta.postTokenBalances);
 
   return Object.freeze({
     // "verified" is deliberately scoped to the exact finalized, owner-scoped

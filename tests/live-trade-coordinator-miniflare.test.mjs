@@ -1,12 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
 const INTERNAL_TOKEN = "coordinator-runtime-internal-token-longer-than-thirty-two";
 const OPERATOR_TOKEN = "coordinator-runtime-operator-token-longer-than-thirty-two";
+const INPUT_MINT = "So11111111111111111111111111111111111111112";
+const OUTPUT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 
-test("LiveTradeCoordinator persists emergency-stop state in Durable Objects storage across stub recreation", async () => {
-  const mf = new Miniflare(convertV4MiniflareOptions({
+test("LiveTradeCoordinator keeps a real reservation pending across settlement RPC outage and Miniflare runtime restart", async () => {
+  const persistencePath = await mkdtemp(join(tmpdir(), "solana-coordinator-do-"));
+  const createRuntime = () => new Miniflare(convertV4MiniflareOptions({
     modules: [
       { type: "ESModule", path: "tests/fixtures/live-trade-coordinator-runtime.mjs" },
       { type: "ESModule", path: "live-trade-coordinator.mjs" },
@@ -19,16 +26,20 @@ test("LiveTradeCoordinator persists emergency-stop state in Durable Objects stor
     durableObjects: { LIVE_TRADE_COORDINATOR: "LiveTradeCoordinator" },
     bindings: {
       COORDINATOR_INTERNAL_TOKEN: INTERNAL_TOKEN,
-      COORDINATOR_OPERATOR_TOKEN: OPERATOR_TOKEN
-    }
+      COORDINATOR_OPERATOR_TOKEN: OPERATOR_TOKEN,
+      LIVE_MAX_PRIORITY_FEE_LAMPORTS: "3000"
+    },
+    resourcePersistencePath: persistencePath
   }));
 
+  let mf;
   try {
+    mf = createRuntime();
     const namespace = await mf.getDurableObjectNamespace("LIVE_TRADE_COORDINATOR");
     const id = namespace.idFromName("coordinator-persistence-runtime");
     const stub = namespace.get(id);
-    const call = async (path, { method = "GET", body, operator = false } = {}) => {
-      const response = await stub.fetch("https://coordinator.internal" + path, {
+    const call = async (activeStub, path, { method = "GET", body, operator = false } = {}) => {
+      const response = await activeStub.fetch("https://coordinator.internal" + path, {
         method,
         headers: {
           Authorization: "Bearer " + INTERNAL_TOKEN,
@@ -40,36 +51,87 @@ test("LiveTradeCoordinator persists emergency-stop state in Durable Objects stor
       return { status: response.status, body: await response.json() };
     };
 
-    const initial = await call("/status");
+    const initial = await call(stub, "/status");
     assert.equal(initial.status, 200);
     assert.equal(initial.body.killSwitch, true);
 
-    const disabled = await call("/kill-switch", {
+    const disabled = await call(stub, "/kill-switch", {
       method: "POST", operator: true, body: { enabled: false, reason: "runtime persistence test" }
     });
     assert.equal(disabled.status, 200);
-    assert.equal(disabled.body.killSwitch, false);
 
-    const recreatedNamespace = await mf.getDurableObjectNamespace("LIVE_TRADE_COORDINATOR");
-    const recreatedStub = recreatedNamespace.get(recreatedNamespace.idFromName("coordinator-persistence-runtime"));
-    const persisted = await recreatedStub.fetch("https://coordinator.internal/status", {
-      headers: { Authorization: "Bearer " + INTERNAL_TOKEN }
+    const reservation = await call(stub, "/reserve", {
+      method: "POST",
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        inputMint: INPUT_MINT,
+        outputMint: OUTPUT_MINT,
+        destination: BOT_WALLET,
+        slippageBps: 50,
+        amountLamports: 10_000_000
+      }
     });
-    assert.equal(persisted.status, 200);
-    const persistedBody = await persisted.json();
-    assert.equal(persistedBody.killSwitch, false);
-    assert.equal(persistedBody.openPositions, 0);
-    assert.equal(persistedBody.dailySpendUsdCents, 0);
+    assert.equal(reservation.status, 200);
+    assert.equal(reservation.body.reservation.status, "pending");
+    const reservedAmountCents = reservation.body.reservation.amountCents;
+    assert.ok(Number.isSafeInteger(reservedAmountCents) && reservedAmountCents > 0);
 
-    const enabled = await call("/kill-switch", {
-      method: "POST", operator: true, body: { enabled: true, reason: "restore safe default" }
+    // The fixture's settlement verifier throws an RPC outage. The coordinator
+    // must not mark this ambiguous order failed or release its spend capacity.
+    const outage = await call(stub, "/confirm", {
+      method: "POST",
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        signature: "5".repeat(88),
+        outputAmount: "1000000"
+      }
     });
-    assert.equal(enabled.status, 200);
-    assert.equal(enabled.body.killSwitch, true);
+    assert.equal(outage.status, 400);
+    assert.match(outage.body.error, /Simulated settlement RPC outage/);
 
-    const finalStatus = await call("/status");
-    assert.equal(finalStatus.body.killSwitch, true);
-  } finally {
+    const beforeRestart = await call(stub, "/status");
+    assert.equal(beforeRestart.status, 200);
+    assert.equal(beforeRestart.body.openPositions, 1);
+    assert.equal(beforeRestart.body.dailySpendUsdCents, reservedAmountCents);
+
     await mf.dispose();
+    mf = undefined;
+
+    mf = createRuntime();
+    const restartedNamespace = await mf.getDurableObjectNamespace("LIVE_TRADE_COORDINATOR");
+    const restartedStub = restartedNamespace.get(
+      restartedNamespace.idFromName("coordinator-persistence-runtime")
+    );
+    const restartedStatus = await call(restartedStub, "/status");
+    assert.equal(restartedStatus.status, 200);
+    assert.equal(restartedStatus.body.killSwitch, false);
+    assert.equal(restartedStatus.body.openPositions, 1);
+    assert.equal(restartedStatus.body.dailySpendUsdCents, reservedAmountCents);
+
+    // A second reconciliation attempt still cannot release the pending
+    // reservation while the settlement provider remains unavailable.
+    const retry = await call(restartedStub, "/confirm", {
+      method: "POST",
+      body: {
+        idempotencyKey: "runtime-restart-order-01",
+        signature: "5".repeat(88),
+        outputAmount: "1000000"
+      }
+    });
+    assert.equal(retry.status, 400);
+    assert.match(retry.body.error, /Simulated settlement RPC outage/);
+
+    const stop = await call(restartedStub, "/kill-switch", {
+      method: "POST", operator: true,
+      body: { enabled: true, reason: "keep unresolved reservation locked" }
+    });
+    assert.equal(stop.status, 200);
+    const stoppedStatus = await call(restartedStub, "/status");
+    assert.equal(stoppedStatus.body.killSwitch, true);
+    assert.equal(stoppedStatus.body.openPositions, 1);
+    assert.equal(stoppedStatus.body.dailySpendUsdCents, reservedAmountCents);
+  } finally {
+    if (mf) await mf.dispose();
+    await rm(persistencePath, { recursive: true, force: true });
   }
 });

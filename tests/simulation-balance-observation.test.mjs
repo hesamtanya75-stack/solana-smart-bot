@@ -1,0 +1,220 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { normalizeSimulationBalanceObservation } from "../simulation-balance-observation.mjs";
+
+const MINT = "So11111111111111111111111111111111111111112";
+const OWNER = "11111111111111111111111111111111";
+const PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+function fixture() {
+  return {
+    context: { apiVersion: "2.3.3", slot: 123 },
+    value: {
+      err: null,
+      fee: 5000,
+      preBalances: [1000, 2000],
+      postBalances: [900, 2100],
+      preTokenBalances: [{
+        accountIndex: 1, mint: MINT, owner: OWNER, programId: PROGRAM,
+        uiTokenAmount: { amount: "100", decimals: 9 }
+      }],
+      postTokenBalances: [{
+        accountIndex: 1, mint: MINT, owner: OWNER, programId: PROGRAM,
+        uiTokenAmount: { amount: "125", decimals: 9 }
+      }]
+    }
+  };
+}
+
+test("normalizes SOL lamport and paired token deltas as diagnostic BigInts", () => {
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: fixture(), accountKeyCount: 2
+  });
+  assert.equal(result.solLamportDeltas[0].deltaLamports, -100n);
+  assert.equal(result.tokenDeltas[0].delta, 25n);
+  assert.equal(result.tokenDeltas[0].status, "paired-diagnostic-only");
+  assert.equal(result.tokenBalanceEffectsVerified, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("does not infer zero for a token account missing on one side", () => {
+  const data = fixture();
+  data.value.preTokenBalances = [];
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas[0].status, "unpaired-account-state");
+  assert.equal(result.tokenDeltas[0].delta, null);
+  assert.equal(result.tokenRecordsUnpaired, true);
+});
+
+test("rejects sparse or mismatched SOL arrays", () => {
+  const data = fixture();
+  data.value.preBalances = [1000, , 2000];
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /sparse|match/);
+});
+
+test("rejects duplicate token account identities", () => {
+  const data = fixture();
+  data.value.preTokenBalances.push(data.value.preTokenBalances[0]);
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /duplicate/);
+});
+
+test("rejects malformed amounts, indexes and decimals", () => {
+  for (const patch of [
+    record => { record.uiTokenAmount.amount = "01"; },
+    record => { record.accountIndex = 2; },
+    record => { record.uiTokenAmount.decimals = -1; }
+  ]) {
+    const data = fixture();
+    patch(data.value.preTokenBalances[0]);
+    assert.throws(() => normalizeSimulationBalanceObservation({
+      simulationResult: data, accountKeyCount: 2
+    }));
+  }
+});
+
+test("rejects accessor-backed simulation values without invoking getters", () => {
+  const data = fixture();
+  let calls = 0;
+  Object.defineProperty(data.value, "preBalances", {
+    enumerable: true, get() { calls++; return [1000, 2000]; }
+  });
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /accessor-backed/);
+  assert.equal(calls, 0);
+});
+
+test("rejects mismatched account-key count and unsafe lamport values", () => {
+  const data = fixture();
+  data.value.postBalances[0] = Number.MAX_SAFE_INTEGER + 1;
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /safe integer/);
+});
+
+test("rejects a simulation value with no explicit err field", () => {
+  const data = fixture();
+  delete data.value.err;
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /required err field/);
+});
+
+test("accepts standard simulation context apiVersion and fee metadata", () => {
+  const data = fixture();
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.contextSlot, 123);
+  assert.equal(result.simulationSucceeded, true);
+});
+
+
+test("does not pair token balances when token program identity is missing", () => {
+  const data = fixture();
+  delete data.value.preTokenBalances[0].programId;
+  delete data.value.postTokenBalances[0].programId;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas.length, 2);
+  assert.ok(result.tokenDeltas.every(item => item.status === "unpaired-account-state"));
+  assert.ok(result.tokenDeltas.every(item => item.delta === null));
+  assert.equal(result.tokenRecordsUnpaired, true);
+});
+
+test("rejects duplicate unresolved token identities", () => {
+  const data = fixture();
+  delete data.value.preTokenBalances[0].programId;
+  data.value.preTokenBalances.push({
+    ...data.value.preTokenBalances[0],
+    uiTokenAmount: { amount: "200", decimals: 9 }
+  });
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /duplicate/);
+});
+
+
+test("does not pair balances when pre/post token program identities differ", () => {
+  const data = fixture();
+  data.value.postTokenBalances[0].programId = OWNER;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas.length, 2);
+  assert.ok(result.tokenDeltas.every(item => item.status === "unpaired-account-state"));
+  assert.ok(result.tokenDeltas.every(item => item.delta === null));
+  assert.equal(result.tokenRecordsUnpaired, true);
+});
+
+test("does not calculate token deltas when owner or decimals metadata conflicts", () => {
+  for (const patch of [
+    data => { data.value.postTokenBalances[0].owner = MINT; },
+    data => { data.value.postTokenBalances[0].uiTokenAmount.decimals = 8; }
+  ]) {
+    const data = fixture();
+    patch(data);
+    const result = normalizeSimulationBalanceObservation({
+      simulationResult: data, accountKeyCount: 2
+    });
+    assert.equal(result.tokenDeltas[0].status, "conflicting-account-metadata");
+    assert.equal(result.tokenDeltas[0].delta, null);
+  }
+});
+
+
+test("accepts the exact u64 token amount ceiling without Number precision loss", () => {
+  const data = fixture();
+  const maximum = "18446744073709551615";
+  data.value.preTokenBalances[0].uiTokenAmount.amount = maximum;
+  data.value.postTokenBalances[0].uiTokenAmount.amount = maximum;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.tokenDeltas[0].pre.amount, 18446744073709551615n);
+  assert.equal(result.tokenDeltas[0].post.amount, 18446744073709551615n);
+  assert.equal(result.tokenDeltas[0].delta, 0n);
+  assert.equal(result.tokenBalanceEffectsVerified, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("rejects token amounts above the u64 ceiling", () => {
+  const data = fixture();
+  data.value.postTokenBalances[0].uiTokenAmount.amount = "18446744073709551616";
+  assert.throws(() => normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  }), /exceeds u64/);
+});
+
+
+test("exposes a validated simulation fee as diagnostics without reconciling it", () => {
+  const data = fixture();
+  data.value.fee = 5000;
+  const result = normalizeSimulationBalanceObservation({
+    simulationResult: data, accountKeyCount: 2
+  });
+  assert.equal(result.feeLamports, 5000);
+  assert.equal(result.cpiEffectsReconciled, false);
+  assert.equal(result.tokenBalanceEffectsVerified, false);
+  assert.equal(result.signingPermitted, false);
+  assert.equal(result.submissionPermitted, false);
+});
+
+test("rejects malformed or unsafe simulation fee metadata", () => {
+  for (const fee of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "5000"]) {
+    const data = fixture();
+    data.value.fee = fee;
+    assert.throws(() => normalizeSimulationBalanceObservation({
+      simulationResult: data, accountKeyCount: 2
+    }), /fee is not a nonnegative safe integer/);
+  }
+});

@@ -184,16 +184,45 @@ export function validateSupportedTransactionInstructionSet(instructions) {
  */
 export function validateComputeBudgetPolicy(instructions, limits) {
   const reviewed = validateComputeBudgetInstructionSet(instructions);
+  const allowedLimitFields = [
+    "maxComputeUnitLimit",
+    "maxPriorityFeeLamports",
+    "maxHeapFrameBytes",
+    "maxLoadedAccountDataBytes"
+  ];
   if (!limits || typeof limits !== "object" || Array.isArray(limits) ||
-      !Number.isSafeInteger(limits.maxComputeUnitLimit) ||
-      limits.maxComputeUnitLimit < 1 || limits.maxComputeUnitLimit > 1400000 ||
-      !Number.isSafeInteger(limits.maxHeapFrameBytes) ||
-      limits.maxHeapFrameBytes < 32768 || limits.maxHeapFrameBytes > 262144 ||
-      limits.maxHeapFrameBytes % 1024 !== 0 ||
-      !Number.isSafeInteger(limits.maxLoadedAccountDataBytes) ||
-      limits.maxLoadedAccountDataBytes < 1 || limits.maxLoadedAccountDataBytes > 64 * 1024 * 1024 ||
-      (typeof limits.maxPriorityFeeLamports !== "bigint" && !Number.isSafeInteger(limits.maxPriorityFeeLamports)) ||
-      BigInt(limits.maxPriorityFeeLamports) < 0n) {
+      (Object.getPrototypeOf(limits) !== Object.prototype && Object.getPrototypeOf(limits) !== null) ||
+      Reflect.ownKeys(limits).length !== allowedLimitFields.length) {
+    throw new Error("Compute Budget policy limits are invalid or incomplete");
+  }
+  const policy = Object.create(null);
+  for (const key of allowedLimitFields) {
+    const descriptor = Object.getOwnPropertyDescriptor(limits, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) {
+      throw new Error("Compute Budget policy limits must be own data properties");
+    }
+    policy[key] = descriptor.value;
+  }
+  for (const key of Reflect.ownKeys(limits)) {
+    if (typeof key !== "string" || !allowedLimitFields.includes(key)) {
+      throw new Error("Compute Budget policy limits contain unsupported properties");
+    }
+  }
+  const {
+    maxComputeUnitLimit,
+    maxPriorityFeeLamports,
+    maxHeapFrameBytes,
+    maxLoadedAccountDataBytes
+  } = policy;
+  if (!Number.isSafeInteger(maxComputeUnitLimit) ||
+      maxComputeUnitLimit < 1 || maxComputeUnitLimit > 1400000 ||
+      !Number.isSafeInteger(maxHeapFrameBytes) ||
+      maxHeapFrameBytes < 32768 || maxHeapFrameBytes > 262144 ||
+      maxHeapFrameBytes % 1024 !== 0 ||
+      !Number.isSafeInteger(maxLoadedAccountDataBytes) ||
+      maxLoadedAccountDataBytes < 1 || maxLoadedAccountDataBytes > 64 * 1024 * 1024 ||
+      (typeof maxPriorityFeeLamports !== "bigint" && !Number.isSafeInteger(maxPriorityFeeLamports)) ||
+      BigInt(maxPriorityFeeLamports) < 0n) {
     throw new Error("Compute Budget policy limits are invalid or incomplete");
   }
 
@@ -203,18 +232,18 @@ export function validateComputeBudgetPolicy(instructions, limits) {
   const loadedBytes = byVariant.get("setLoadedAccountsDataSizeLimit")?.bytes;
   const microLamports = byVariant.get("setComputeUnitPrice")?.microLamports ?? 0n;
 
-  if (unitLimit !== undefined && unitLimit > limits.maxComputeUnitLimit) {
+  if (unitLimit !== undefined && unitLimit > maxComputeUnitLimit) {
     throw new Error("Compute Budget unit limit exceeds transaction policy");
   }
-  if (heapFrameBytes !== undefined && heapFrameBytes > limits.maxHeapFrameBytes) {
+  if (heapFrameBytes !== undefined && heapFrameBytes > maxHeapFrameBytes) {
     throw new Error("Compute Budget heap-frame size exceeds transaction policy");
   }
-  if (loadedBytes !== undefined && loadedBytes > limits.maxLoadedAccountDataBytes) {
+  if (loadedBytes !== undefined && loadedBytes > maxLoadedAccountDataBytes) {
     throw new Error("Compute Budget loaded-account-data limit exceeds transaction policy");
   }
-  const effectiveUnits = BigInt(unitLimit ?? limits.maxComputeUnitLimit);
+  const effectiveUnits = BigInt(unitLimit ?? maxComputeUnitLimit);
   const priorityFeeLamports = (microLamports * effectiveUnits + 999999n) / 1000000n;
-  if (priorityFeeLamports > BigInt(limits.maxPriorityFeeLamports)) {
+  if (priorityFeeLamports > BigInt(maxPriorityFeeLamports)) {
     throw new Error("Compute Budget priority fee exceeds transaction policy");
   }
   return Object.freeze({
