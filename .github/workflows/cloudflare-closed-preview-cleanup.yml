@@ -31,7 +31,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref || github.ref }}
 
       - name: Collect closed pull request branches
-                env:
+        env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -49,7 +49,6 @@ jobs:
           cat "$RUNNER_TEMP/closed-prs.tsv"
 
       - name: Collect open pull request branches
-        if: steps.credentials.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
