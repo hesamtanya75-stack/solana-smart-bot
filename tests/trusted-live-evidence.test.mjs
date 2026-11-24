@@ -2653,6 +2653,37 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     /account index is malformed/);
   transactionResult = baseResult;
 
+  // Cover duplicate and absent indexes in rows belonging to another owner too.
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        ...baseResult.meta.preTokenBalances,
+        { mint: outputMint, owner: "11111111111111111111111111111112",
+          accountIndex: 1, uiTokenAmount: { amount: "9", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /duplicate token account indexes/);
+  transactionResult = baseResult;
+
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        ...baseResult.meta.preTokenBalances,
+        { mint: outputMint, owner: "11111111111111111111111111111112",
+          uiTokenAmount: { amount: "9", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+  transactionResult = baseResult;
+
   transactionResult = {
     ...baseResult,
     transaction: { signatures: [signature], message: { accountKeys: [
