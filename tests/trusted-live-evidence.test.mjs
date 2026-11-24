@@ -2638,6 +2638,21 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   const request = { signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1" };
 
+  // Fail closed when a metadata row omits accountIndex entirely.
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        { mint: outputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "1", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+  transactionResult = baseResult;
+
   transactionResult = {
     ...baseResult,
     transaction: { signatures: [signature], message: { accountKeys: [
