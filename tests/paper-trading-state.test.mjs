@@ -225,6 +225,8 @@ test("idle cron snapshots do not close the one-time browser migration window", a
   });
   assert.equal(migrated.status, 200);
   assert.equal(migrated.body.state.balance, 75);
+  assert.equal(migrated.body.state.lastRunAt, "2026-11-14T20:00:00.000Z");
+  assert.equal(migrated.body.state.lastMessage, "idle cycle");
 });
 
 test("changing automation closes the one-time browser migration window", async () => {
