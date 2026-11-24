@@ -57,7 +57,6 @@ jobs:
           cat "$RUNNER_TEMP/open-prs.tsv"
 
       - name: Report closed-PR Preview candidates (no deletion)
-        if: steps.credentials.outputs.available == 'true'
         run: |
           echo "SAFE MODE: Cloudflare Preview resources, Durable Object namespaces, KV, and state are preserved."
           while read -r number branch source_repo base_branch; do
