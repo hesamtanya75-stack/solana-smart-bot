@@ -193,7 +193,7 @@ async function main() {
   console.log("Source balance: " + source.balance + "; trade count: " + source.trades.length);
 
   const cloudflareToken = await login(cloudflareUrl, cloudflarePassword, true);
-  const before = await api(cloudflareUrl, "/api/state", { token: cloudflareToken });
+  const before = await api(cloudflareUrl, "/api/state/migration-status", { token: cloudflareToken });
   if (before.canMigrateLegacy !== true || !Number.isSafeInteger(before.revision) || before.revision < 0) {
     throw new Error("Cloudflare paper state is not explicitly marked as eligible for one-time legacy migration. No destination write was attempted. Preserve the Deno backup and reconcile the existing Cloudflare state first.");
   }
