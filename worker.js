@@ -936,6 +936,14 @@ export default {
           return json({ error: "Market price lookup failed: " + String(error?.message || error) }, 503);
         }
       }
+      if (url.pathname === "/api/state/migration-status" && request.method === "GET") {
+        if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+        try {
+          return json(await paperStateCall(env, { operation: "migration-status" }));
+        } catch (error) {
+          return json({ error: "Migration preflight unavailable; no destination mutation was requested" }, error.status || 503);
+        }
+      }
       if (url.pathname === "/api/state" && request.method === "GET") {
         const state = await readState(env);
         return json({ ...state, revision: state.__revision, canMigrateLegacy: state.__migrationOpen });

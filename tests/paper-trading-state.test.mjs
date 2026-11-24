@@ -57,6 +57,71 @@ test("internal state endpoint rejects oversized request bodies before JSON parsi
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("migration-status preflight is read-only and does not initialize DO or KV marker", async () => {
+  const { instance, storage } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.canMigrateLegacy, true);
+  assert.equal(result.body.initialized, false);
+  assert.equal(result.body.revision, 0);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
+});
+
+test("migration preflight and transaction guard reject deferred or previously active destination state", async () => {
+  const nonPristine = [
+    { deferredMints: [{ mint: mintA, retryAt: 123 }] }
+  ];
+  for (const changed of nonPristine) {
+    const legacy = { balance: 100, trades: [], ...changed };
+    const { instance, storage } = makeDO(legacy);
+    const preflight = await call(instance, { operation: "migration-status" });
+    assert.equal(preflight.body.canMigrateLegacy, false, JSON.stringify(changed));
+    assert.equal(storage.values.has("paper_state_v1"), false);
+    assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
+
+    const initialized = await call(instance, { operation: "get" });
+    assert.equal(initialized.status, 200);
+    const attempted = await call(instance, {
+      operation: "migrate-legacy", expectedRevision: initialized.body.revision,
+      state: { balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(attempted.status, 409, JSON.stringify(changed));
+  }
+});
+
+test("migration-status refuses a completed marker when DO record is absent without recovery writes", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "complete");
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.canMigrateLegacy, false);
+  assert.equal(result.body.stateMissing, true);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), "complete");
+});
+
+test("migration-status refuses unknown marker values even when a DO record exists", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "unexpected-marker");
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.initialized, true);
+  assert.equal(result.body.canMigrateLegacy, false);
+});
+
+test("migration-status fails closed on an unknown marker without recovery writes", async () => {
+  const { instance, storage } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "unexpected-marker");
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.canMigrateLegacy, false);
+  assert.equal(result.body.stateMissing, true);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), "unexpected-marker");
+});
+
 test("PaperTradingState imports the existing KV paper state once", async () => {
   const { instance } = makeDO({ balance: 73.25, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2.1, tokens: 2.5, sold: false
@@ -156,6 +221,8 @@ test("idle cron snapshots do not close the one-time browser migration window", a
   });
   assert.equal(migrated.status, 200);
   assert.equal(migrated.body.state.balance, 75);
+  assert.equal(migrated.body.state.lastRunAt, "2026-11-14T20:00:00.000Z");
+  assert.equal(migrated.body.state.lastMessage, "idle cycle");
 });
 
 test("changing automation closes the one-time browser migration window", async () => {
