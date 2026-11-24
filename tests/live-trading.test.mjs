@@ -451,6 +451,7 @@ test("Jupiter order rejects malformed route-plan metadata before transaction ins
   const invalidPlans = [
     [{ ...validRoutePlanStep(), percent: 101 }],
     [{ ...validRoutePlanStep(), bps: 10001 }],
+    [{ ...validRoutePlanStep(), bps: 125.5 }],
     [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, inAmount: "01" } }],
     [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, outAmount: "18446744073709551616" } }],
     [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, ammKey: "not-a-public-key" } }],
