@@ -50,6 +50,18 @@ function cleanState(value) {
   };
 }
 
+function isPristineMigrationState(state) {
+  // Migration eligibility checks the fields that represent user or trading
+  // activity. Deferred work closes the migration window; idle cron reporting
+  // metadata is deliberately ignored so routine scans do not close it.
+  return state.balance === DEFAULT_STATE.balance &&
+    state.trades.length === 0 &&
+    state.autoEnabled === DEFAULT_STATE.autoEnabled &&
+    state.paused === DEFAULT_STATE.paused &&
+    state.scannedMints.length === 0 &&
+    state.deferredMints.length === 0;
+}
+
 async function readBoundedJson(request, maxBytes = 262144) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("Request body required");
@@ -126,9 +138,7 @@ export class PaperTradingState {
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
-    const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
-      initialState.autoEnabled === false && initialState.paused === false &&
-      initialState.scannedMints.length === 0;
+    const migrationOpen = isPristineMigrationState(initialState);
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
@@ -166,6 +176,33 @@ export class PaperTradingState {
     }
 
     try {
+      if (body.operation === "migration-status") {
+        // Strictly read-only preflight: never call ensureRecord(), which may
+        // initialize the DO and write the legacy migration marker to KV.
+        const record = await this.ctx.storage.get("paper_state_v1");
+        const marker = await this.env.BOT_STATE.get("paper_state_do_migration_v1");
+        if (record) {
+          return response({
+            state: record.state, revision: record.revision,
+            migrationOpen: record.migrationOpen === true,
+            canMigrateLegacy: record.migrationOpen === true && marker === null,
+            initialized: true, marker
+          });
+        }
+        // Any persisted marker without its DO record is inconsistent. Do not
+        // treat unknown marker values as a fresh migration opportunity.
+        if (marker !== null) {
+          return response({ stateMissing: true, revision: null, migrationOpen: false,
+            canMigrateLegacy: false, initialized: false, marker });
+        }
+        const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+        const state = cleanState(legacy || DEFAULT_STATE);
+        const migrationOpen = isPristineMigrationState(state);
+        return response({ state, revision: 0, migrationOpen,
+          canMigrateLegacy: migrationOpen, initialized: false, marker: null,
+          legacyKeyPresent: legacy !== null });
+      }
+
       if (body.operation === "get") {
         const record = await this.ensureRecord();
         return response({ state: record.state, revision: record.revision, migrationOpen: record.migrationOpen === true });
@@ -182,9 +219,7 @@ export class PaperTradingState {
           }
           const nextState = cleanState(body.state);
           const migrationStillOpen = record.migrationOpen === true &&
-            nextState.balance === 100 && nextState.trades.length === 0 &&
-            nextState.autoEnabled === false && nextState.paused === false &&
-            nextState.scannedMints.length === 0;
+            isPristineMigrationState(nextState);
           const next = {
             ...record,
             state: nextState,
@@ -208,14 +243,18 @@ export class PaperTradingState {
           }
           const current = record.state;
           const canMigrate = record.migrationOpen === true &&
-            current.balance === 100 && current.trades.length === 0 &&
-            current.autoEnabled === false && current.paused === false &&
-            current.scannedMints.length === 0;
+            isPristineMigrationState(current);
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
+          const migratedState = cleanState(body.state);
+          // Preserve harmless destination activity metadata from idle cron
+          // snapshots; migration must not erase the latest operational report.
+          migratedState.lastRunAt = current.lastRunAt;
+          migratedState.lastMessage = current.lastMessage;
+          migratedState.lastScanReport = current.lastScanReport;
           const next = {
-            ...record, state: cleanState(body.state),
+            ...record, state: migratedState,
             migrationOpen: false, revision: record.revision + 1
           };
           next.state.updatedAt = new Date().toISOString();
