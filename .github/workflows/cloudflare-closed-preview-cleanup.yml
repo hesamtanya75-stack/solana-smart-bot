@@ -25,15 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out Wrangler configuration
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
-
       - name: Collect closed pull request branches
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             number="${{ github.event.pull_request.number }}"
             state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq .state)"
@@ -52,12 +48,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq '.[] | [.number, .head.ref, .head.repo.full_name] | @tsv' > "$RUNNER_TEMP/open-prs.tsv"
           echo "Open PR branches protected from Preview deletion:"
           cat "$RUNNER_TEMP/open-prs.tsv"
 
       - name: Report closed-PR Preview candidates (no deletion)
         run: |
+          set -euo pipefail
           echo "SAFE MODE: Cloudflare Preview resources, Durable Object namespaces, KV, and state are preserved."
           while read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
