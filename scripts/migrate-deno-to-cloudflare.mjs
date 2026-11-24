@@ -145,6 +145,12 @@ function required(name) {
   return value;
 }
 
+export function requireExplicitImportConfirmation(value) {
+  if (value !== "YES") {
+    throw new Error("Read-only preflight and backup completed. No Cloudflare state was changed. To authorize the one-time import, set CONFIRM_CLOUDFLARE_IMPORT=YES only after reviewing the backup checksum, source state, and destination revision.");
+  }
+}
+
 export function requireHttpsOrigin(value, name = "API URL") {
   let url;
   try { url = new URL(value); }
@@ -193,9 +199,7 @@ async function main() {
 
   // The migration tool must never mutate the destination merely because it was invoked.
   // Require a separate, explicit operator opt-in after read-only preflight and backup.
-  if (process.env.CONFIRM_CLOUDFLARE_IMPORT !== "YES") {
-    throw new Error("Read-only preflight and backup completed. No Cloudflare state was changed. To authorize the one-time import, set CONFIRM_CLOUDFLARE_IMPORT=YES only after reviewing the backup checksum, source state, and destination revision.");
-  }
+  requireExplicitImportConfirmation(process.env.CONFIRM_CLOUDFLARE_IMPORT);
 
   const payload = buildCloudflareImport(source);
   await api(cloudflareUrl, "/api/state", {
