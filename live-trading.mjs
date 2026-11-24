@@ -47,7 +47,7 @@ function validateJupiterOrderRoutePlan(routePlan) {
         typeof info.label !== "string" || info.label.length === 0 || info.label.length > 128 ||
         !isCanonicalU64(info.inAmount) || !isCanonicalU64(info.outAmount) ||
         !Number.isFinite(step.percent) || step.percent < 0 || step.percent > 100 ||
-        !Number.isFinite(step.bps) || step.bps < 0 || step.bps > 10000 ||
+        !Number.isInteger(step.bps) || step.bps < 0 || step.bps > 10000 ||
         (step.usdValue != null && (!Number.isFinite(step.usdValue) || step.usdValue < 0))) return false;
   }
   return true;
