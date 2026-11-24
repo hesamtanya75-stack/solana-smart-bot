@@ -68,6 +68,32 @@ test("migration-status preflight is read-only and does not initialize DO or KV m
   assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
 });
 
+test("migration preflight and transaction guard reject deferred or previously active destination state", async () => {
+  const nonPristine = [
+    { deferredMints: [{ mint: mintA, retryAt: 123 }] },
+    { lastRunAt: "2026-11-23T12:00:00.000Z" },
+    { lastScanReport: [{ mint: mintA, status: "skipped", reasons: ["test"] }] },
+    { updatedAt: "2026-11-23T12:00:00.000Z" },
+    { lastMessage: "Previously used destination" }
+  ];
+  for (const changed of nonPristine) {
+    const legacy = { balance: 100, trades: [], ...changed };
+    const { instance, storage } = makeDO(legacy);
+    const preflight = await call(instance, { operation: "migration-status" });
+    assert.equal(preflight.body.canMigrateLegacy, false, JSON.stringify(changed));
+    assert.equal(storage.values.has("paper_state_v1"), false);
+    assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
+
+    const initialized = await call(instance, { operation: "get" });
+    assert.equal(initialized.status, 200);
+    const attempted = await call(instance, {
+      operation: "migrate-legacy", expectedRevision: initialized.body.revision,
+      state: { balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(attempted.status, 409, JSON.stringify(changed));
+  }
+});
+
 test("migration-status refuses a completed marker when DO record is absent without recovery writes", async () => {
   const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
   await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "complete");
