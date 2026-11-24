@@ -79,6 +79,17 @@ test("migration-status refuses a completed marker when DO record is absent witho
   assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), "complete");
 });
 
+test("migration-status fails closed on an unknown marker without recovery writes", async () => {
+  const { instance, storage } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "unexpected-marker");
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.canMigrateLegacy, false);
+  assert.equal(result.body.stateMissing, true);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), "unexpected-marker");
+});
+
 test("PaperTradingState imports the existing KV paper state once", async () => {
   const { instance } = makeDO({ balance: 73.25, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2.1, tokens: 2.5, sold: false
