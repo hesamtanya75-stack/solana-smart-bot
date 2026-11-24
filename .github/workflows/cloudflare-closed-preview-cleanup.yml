@@ -81,9 +81,3 @@ jobs:
               echo "Review-only candidate: PR #$number Preview branch '$branch' (legacy alias 'pr-$number'). No API deletion issued."
             fi
           done < "$RUNNER_TEMP/closed-prs.tsv"
-\t' read -r number branch source_repo base_branch; do
-            [ -n "$number" ] || continue
-            if [ "$source_repo" = "$GITHUB_REPOSITORY" ] && [ -n "$branch" ] && [ "$branch" != "$base_branch" ] && [ "$branch" != "main" ]; then
-              echo "Review-only candidate: PR #$number Preview branch '$branch' (legacy alias 'pr-$number'). No API deletion issued."
-            fi
-          done < "$RUNNER_TEMP/closed-prs.tsv"
