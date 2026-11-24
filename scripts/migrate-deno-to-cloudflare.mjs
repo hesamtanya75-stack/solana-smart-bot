@@ -191,6 +191,12 @@ async function main() {
     throw new Error("Cloudflare paper state is not explicitly marked as eligible for one-time legacy migration. No destination write was attempted. Preserve the Deno backup and reconcile the existing Cloudflare state first.");
   }
 
+  // The migration tool must never mutate the destination merely because it was invoked.
+  // Require a separate, explicit operator opt-in after read-only preflight and backup.
+  if (process.env.CONFIRM_CLOUDFLARE_IMPORT !== "YES") {
+    throw new Error("Read-only preflight and backup completed. No Cloudflare state was changed. To authorize the one-time import, set CONFIRM_CLOUDFLARE_IMPORT=YES only after reviewing the backup checksum, source state, and destination revision.");
+  }
+
   const payload = buildCloudflareImport(source);
   await api(cloudflareUrl, "/api/state", {
     method: "PUT",
