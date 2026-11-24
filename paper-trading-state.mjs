@@ -166,6 +166,32 @@ export class PaperTradingState {
     }
 
     try {
+      if (body.operation === "migration-status") {
+        // Strictly read-only preflight: never call ensureRecord(), which may
+        // initialize the DO and write the legacy migration marker to KV.
+        const record = await this.ctx.storage.get("paper_state_v1");
+        const marker = await this.env.BOT_STATE.get("paper_state_do_migration_v1");
+        if (record) {
+          return response({
+            state: record.state, revision: record.revision,
+            migrationOpen: record.migrationOpen === true,
+            canMigrateLegacy: record.migrationOpen === true && marker !== "complete",
+            initialized: true, marker
+          });
+        }
+        if (marker === "complete" || marker === "initializing") {
+          return response({ stateMissing: true, revision: null, migrationOpen: false,
+            canMigrateLegacy: false, initialized: false, marker });
+        }
+        const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+        const state = cleanState(legacy || DEFAULT_STATE);
+        const migrationOpen = state.balance === 100 && state.trades.length === 0 &&
+          state.autoEnabled === false && state.paused === false && state.scannedMints.length === 0;
+        return response({ state, revision: 0, migrationOpen,
+          canMigrateLegacy: migrationOpen, initialized: false, marker: null,
+          legacyKeyPresent: legacy !== null });
+      }
+
       if (body.operation === "get") {
         const record = await this.ensureRecord();
         return response({ state: record.state, revision: record.revision, migrationOpen: record.migrationOpen === true });
