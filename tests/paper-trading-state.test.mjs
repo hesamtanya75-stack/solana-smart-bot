@@ -58,7 +58,7 @@ test("internal state endpoint rejects oversized request bodies before JSON parsi
 });
 
 test("migration-status preflight is read-only and does not initialize DO or KV marker", async () => {
-  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  const { instance, storage } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const result = await call(instance, { operation: "migration-status" });
   assert.equal(result.status, 200);
   assert.equal(result.body.canMigrateLegacy, true);
