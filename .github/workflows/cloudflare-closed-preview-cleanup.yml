@@ -75,7 +75,7 @@ jobs:
         if: steps.credentials.outputs.available == 'true'
         run: |
           echo "SAFE MODE: Cloudflare Preview resources, Durable Object namespaces, KV, and state are preserved."
-          while IFS= read -r number branch source_repo base_branch; do
+          while read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
             if [ "$source_repo" = "$GITHUB_REPOSITORY" ] && [ -n "$branch" ] && [ "$branch" != "$base_branch" ] && [ "$branch" != "main" ]; then
               echo "Review-only candidate: PR #$number Preview branch '$branch' (legacy alias 'pr-$number'). No API deletion issued."
