@@ -5,7 +5,8 @@ import {
   buildCloudflareImport,
   stateMatches,
   canonicalJson,
-  requireHttpsOrigin
+  requireHttpsOrigin,
+  requireExplicitImportConfirmation
 } from "../scripts/migrate-deno-to-cloudflare.mjs";
 
 test("validates and preserves the legacy Deno paper state", () => {
@@ -67,4 +68,9 @@ test("migration endpoints must be HTTPS origins without embedded credentials", (
   assert.throws(() => requireHttpsOrigin("http://example.com"), /HTTPS origin/);
   assert.throws(() => requireHttpsOrigin("https://user:pass@example.com"), /HTTPS origin/);
   assert.throws(() => requireHttpsOrigin("not a URL"), /valid absolute URL/);
+});
+test("destination import requires explicit operator confirmation", () => {
+  assert.throws(() => requireExplicitImportConfirmation(undefined), /No Cloudflare state was changed/);
+  assert.throws(() => requireExplicitImportConfirmation("NO"), /No Cloudflare state was changed/);
+  assert.doesNotThrow(() => requireExplicitImportConfirmation("YES"));
 });
