@@ -83,3 +83,8 @@ If any step fails, the script stops. Keep Deno running and retain the backup. Do
 A successful script run proves only that the supported state was imported and read back from the specified Cloudflare Worker. It does not switch DNS, delete the Deno project, disable the Deno deployment, configure production secrets, or deploy Cloudflare. Those actions require a separate, explicit operational cutover after the dashboard and balances/trades are manually checked.
 
 Never migrate Deno session tokens. Never put secrets in source control. No wallet signing, transaction submission, Mainnet trading, or funded Devnet lifecycle is part of this migration.
+
+
+## Timestamp semantics
+
+The legacy Deno `updatedAt` value is accepted as source metadata but is intentionally not copied as an historical timestamp. The Cloudflare Durable Object's compare-and-set import records its own `updatedAt` at the time the destination is written. Read-back verification therefore checks the balance, normalized trade history, and safe paused/auto-buy flags; it does not compare the source timestamp. This is intentional metadata refresh, not loss of trade or balance history. Review the destination's new timestamp alongside the migration receipt.
