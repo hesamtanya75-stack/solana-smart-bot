@@ -71,28 +71,16 @@ jobs:
           echo "Open PR branches protected from Preview deletion:"
           cat "$RUNNER_TEMP/open-prs.tsv"
 
-      - name: Delete only closed-PR Preview resources
+      - name: Report closed-PR Preview candidates (no deletion)
         if: steps.credentials.outputs.available == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          failures=0
-          while IFS=$'\t' read -r number branch source_repo base_branch; do
+          echo "SAFE MODE: Cloudflare Preview resources, Durable Object namespaces, KV, and state are preserved."
+          while IFS=$'\\t' read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
-            if ! [[ "$number" =~ ^[0-9]+$ ]] ||
-               [ "$source_repo" != "$GITHUB_REPOSITORY" ] ||
-               [ -z "$branch" ] ||
-               [ "$branch" = "$base_branch" ] ||
-               [ "$branch" = "main" ] ||
-               ! [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] ||
-               [[ "$branch" == *".."* ]] ||
-               [[ "$branch" == -* ]]; then
-              echo "::warning::Skipping unsafe or external PR Preview entry: #$number"
-              continue
+            if [ "$source_repo" = "$GITHUB_REPOSITORY" ] && [ -n "$branch" ] && [ "$branch" != "$base_branch" ] && [ "$branch" != "main" ]; then
+              echo "Review-only candidate: PR #$number Preview branch '$branch' (legacy alias 'pr-$number'). No API deletion issued."
             fi
-
+          done < "$RUNNER_TEMP/closed-prs.tsv"
             # Re-read authoritative PR metadata immediately before deletion.
             metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq '[.state, .head.ref, .head.repo.full_name, .base.ref] | @tsv')"
             IFS=$'\t' read -r state current_branch current_repo current_base <<< "$metadata"
