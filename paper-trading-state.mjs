@@ -179,7 +179,9 @@ export class PaperTradingState {
             initialized: true, marker
           });
         }
-        if (marker === "complete" || marker === "initializing") {
+        // Any persisted marker without its DO record is inconsistent. Do not
+        // treat unknown marker values as a fresh migration opportunity.
+        if (marker !== null) {
           return response({ stateMissing: true, revision: null, migrationOpen: false,
             canMigrateLegacy: false, initialized: false, marker });
         }
