@@ -67,6 +67,10 @@ test("migration endpoints must be HTTPS origins without embedded credentials", (
   assert.equal(requireHttpsOrigin("https://example.com"), "https://example.com");
   assert.equal(requireHttpsOrigin("https://example.com:8443/"), "https://example.com:8443");
   assert.throws(() => requireHttpsOrigin("https://example.com/path"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("https://example.com?"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("https://example.com#"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("https://example.com/?"), /HTTPS origin/);
+  assert.throws(() => requireHttpsOrigin("https://example.com/#"), /HTTPS origin/);
   assert.throws(() => requireHttpsOrigin("http://example.com"), /HTTPS origin/);
   assert.throws(() => requireHttpsOrigin("https://user:pass@example.com"), /HTTPS origin/);
   assert.throws(() => requireHttpsOrigin("not a URL"), /valid absolute URL/);
