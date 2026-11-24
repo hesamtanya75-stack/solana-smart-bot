@@ -21,6 +21,22 @@ function validUnsignedLegacyTransaction() {
   return Buffer.from([1,...new Array(64).fill(0),...message]).toString("base64");
 }
 
+function validRoutePlanStep(overrides = {}) {
+  return {
+    percent: 100,
+    bps: 10000,
+    swapInfo: {
+      ammKey: "11111111111111111111111111111111",
+      label: "Test AMM",
+      inputMint: SOL_MINT,
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000",
+      outAmount: "12345"
+    },
+    ...overrides
+  };
+}
+
 const goodEligibility = {
   dailySpentLamports: 1000000, openPositions: 1,
   liquidityUsd: 25000, volume24hUsd: 5000,
@@ -191,7 +207,7 @@ test("Jupiter v0 order resolves finalized ALT addresses before returning route e
           requestId: "req-v0-alt", transaction: validUnsignedV0TransactionWithLookup(),
           inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           inAmount: "1000000", outAmount: "12345",
-          routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+          routePlan: [validRoutePlanStep()], router: "metis",
           transactionVersion: 0, feeBps: 0
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -223,7 +239,7 @@ test("Jupiter v0 order fails closed when its ALT owner is not the lookup-table p
           requestId: "req-v0-bad-alt", transaction: validUnsignedV0TransactionWithLookup(),
           inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           inAmount: "1000000", outAmount: "12345",
-          routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+          routePlan: [validRoutePlanStep()], router: "metis",
           transactionVersion: 0, feeBps: 0
         }), { status: 200 });
       }
@@ -245,7 +261,7 @@ test("valid Jupiter order is parsed but never executed", async () => {
         requestId: "req-test", transaction: validUnsignedLegacyTransaction(),
         inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         inAmount: "1000000", outAmount: "12345",
-        routePlan: [{ swapInfo: { label: "test" } }], router: "metis",
+        routePlan: [validRoutePlanStep()], router: "metis",
         transactionVersion: 0, feeBps: 0
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
@@ -275,7 +291,7 @@ test("missing Jupiter feeBps remains unknown instead of being reported as zero",
       requestId: "req-missing-fee", transaction: validUnsignedLegacyTransaction(),
       inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }], router: "metis"
+      routePlan: [validRoutePlanStep()], router: "metis"
     }), { status: 200, headers: { "Content-Type": "application/json" } })
   });
   assert.equal(result.feeBps, null);
@@ -296,7 +312,7 @@ test("Jupiter v1 order reports the parsed message version, not provider metadata
         return new Response(JSON.stringify({
           requestId: "req-v1", transaction: validUnsignedV1Transaction(),
           inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-          inAmount: "1000000", outAmount: "12345", routePlan: [{ swapInfo: { label: "test" } }],
+          inAmount: "1000000", outAmount: "12345", routePlan: [validRoutePlanStep()],
           router: "metis", transactionVersion: 0, feeBps: 0
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -317,7 +333,7 @@ test("Jupiter order rejects every router except a returned Metis route", async (
       requestId: "req-dflow", transaction: validUnsignedLegacyTransaction(),
       inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }], router: "dflow",
+      routePlan: [validRoutePlanStep()], router: "dflow",
       transactionVersion: 0, feeBps: 0
     }), { status: 200, headers: { "Content-Type": "application/json" } })
   }), /incomplete or non-executable/);
@@ -341,7 +357,7 @@ test("Jupiter cannot silently change the requested input amount or mint", async 
       requestId: "req-test", transaction: "dGVzdA==", outAmount: "12345",
       inAmount: "999", inputMint: SOL_MINT,
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      routePlan: [{ swapInfo: { label: "test" } }]
+      routePlan: [validRoutePlanStep()]
     }), { status: 200 })
   }), /incomplete or non-executable/);
 });
@@ -354,7 +370,7 @@ test("empty or malformed unsigned transaction is rejected", async () => {
       requestId: "req-test", transaction: "", inputMint: SOL_MINT,
       outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
-      routePlan: [{ swapInfo: { label: "test" } }]
+      routePlan: [validRoutePlanStep()]
     }), { status: 200 })
   }), /incomplete or non-executable/);
 });
@@ -367,7 +383,7 @@ test("Jupiter order bounds request identifiers and serialized transaction size",
     inputMint: SOL_MINT,
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     inAmount: "1000000", outAmount: "12345",
-    routePlan: [{ swapInfo: { label: "test" } }],
+    routePlan: [validRoutePlanStep()],
     router: "metis", feeBps: 0
   };
   for (const overrides of [
@@ -396,7 +412,7 @@ test("Jupiter order rejects output amounts outside canonical u64 bounds", async 
       fetchImpl: async () => new Response(JSON.stringify({
         requestId: "req-bad-output", transaction: validUnsignedLegacyTransaction(),
         inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        inAmount: "1000000", outAmount, routePlan: [{ swapInfo: { label: "test" } }],
+        inAmount: "1000000", outAmount, routePlan: [validRoutePlanStep()],
         router: "metis", feeBps: 0
       }), { status: 200 })
     }), /incomplete or non-executable/);
@@ -412,13 +428,52 @@ test("Jupiter order rejects invalid fee basis points", async () => {
         requestId: "req-bad-fee", transaction: validUnsignedLegacyTransaction(),
         inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         inAmount: "1000000", outAmount: "12345",
-        routePlan: [{ swapInfo: { label: "test" } }],
+        routePlan: [validRoutePlanStep()],
         router: "metis", feeBps
       }), { status: 200 })
     }), /incomplete or non-executable/);
   }
 });
 
+
+test("Jupiter order rejects malformed route-plan metadata before transaction inspection", async () => {
+  const valid = {
+    requestId: "req-route-validation",
+    transaction: validUnsignedLegacyTransaction(),
+    inputMint: SOL_MINT,
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inAmount: "1000000",
+    outAmount: "12345",
+    router: "metis",
+    feeBps: 0,
+    routePlan: [validRoutePlanStep()]
+  };
+  const invalidPlans = [
+    [{ ...validRoutePlanStep(), percent: 101 }],
+    [{ ...validRoutePlanStep(), bps: 10001 }],
+    [{ ...validRoutePlanStep(), bps: 125.5 }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, inAmount: "01" } }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, outAmount: "18446744073709551616" } }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, ammKey: "not-a-public-key" } }],
+    [{ ...validRoutePlanStep(), unexpected: true }],
+    [{ ...validRoutePlanStep(), swapInfo: { ...validRoutePlanStep().swapInfo, unexpected: true } }]
+  ];
+  for (const routePlan of invalidPlans) {
+    let rpcCalled = false;
+    await assert.rejects(() => getJupiterOrder({
+      env: goodEnv, outputMint: valid.outputMint,
+      amountLamports: 1000000, eligibility: goodEligibility,
+      fetchImpl: async (url) => {
+        if (String(url).startsWith("https://api.jup.ag/")) {
+          return new Response(JSON.stringify({ ...valid, routePlan }), { status: 200 });
+        }
+        rpcCalled = true;
+        throw new Error("transaction inspection must not run for malformed route plans");
+      }
+    }), /incomplete or non-executable/);
+    assert.equal(rpcCalled, false);
+  }
+});
 
 test("Jupiter order rejects route plans exceeding the bounded entry count", async () => {
   await assert.rejects(() => getJupiterOrder({
@@ -428,7 +483,7 @@ test("Jupiter order rejects route plans exceeding the bounded entry count", asyn
       requestId: "req-too-many-routes", transaction: validUnsignedLegacyTransaction(),
       inputMint: SOL_MINT, outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       inAmount: "1000000", outAmount: "12345",
-      routePlan: Array.from({ length: 65 }, () => ({ swapInfo: { label: "test" } })),
+      routePlan: Array.from({ length: 65 }, () => (validRoutePlanStep())),
       router: "metis", feeBps: 0
     }), { status: 200 })
   }), /incomplete or non-executable/);
