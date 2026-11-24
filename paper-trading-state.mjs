@@ -247,8 +247,14 @@ export class PaperTradingState {
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
+          const migratedState = cleanState(body.state);
+          // Preserve harmless destination activity metadata from idle cron
+          // snapshots; migration must not erase the latest operational report.
+          migratedState.lastRunAt = current.lastRunAt;
+          migratedState.lastMessage = current.lastMessage;
+          migratedState.lastScanReport = current.lastScanReport;
           const next = {
-            ...record, state: cleanState(body.state),
+            ...record, state: migratedState,
             migrationOpen: false, revision: record.revision + 1
           };
           next.state.updatedAt = new Date().toISOString();
