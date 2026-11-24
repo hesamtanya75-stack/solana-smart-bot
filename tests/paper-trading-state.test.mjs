@@ -79,6 +79,16 @@ test("migration-status refuses a completed marker when DO record is absent witho
   assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), "complete");
 });
 
+test("migration-status refuses unknown marker values even when a DO record exists", async () => {
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "unexpected-marker");
+  const result = await call(instance, { operation: "migration-status" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.initialized, true);
+  assert.equal(result.body.canMigrateLegacy, false);
+});
+
 test("migration-status fails closed on an unknown marker without recovery writes", async () => {
   const { instance, storage } = makeDO({ balance: 100, trades: [], updatedAt: null });
   await instance.env.BOT_STATE.put("paper_state_do_migration_v1", "unexpected-marker");
