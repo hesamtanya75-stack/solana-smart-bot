@@ -155,7 +155,8 @@ export function requireHttpsOrigin(value, name = "API URL") {
   let url;
   try { url = new URL(value); }
   catch { throw new Error(name + " must be a valid absolute URL"); }
-  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+  // URL.search/hash are empty for bare trailing delimiters ("?" / "#"); reject those too.
+  if (typeof value !== "string" || /[?#]/.test(value) || url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
     throw new Error(name + " must be an HTTPS origin (no path, embedded credentials, query, or fragment)");
   }
   return url.origin;
