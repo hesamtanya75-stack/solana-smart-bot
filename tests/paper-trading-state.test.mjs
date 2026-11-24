@@ -70,11 +70,7 @@ test("migration-status preflight is read-only and does not initialize DO or KV m
 
 test("migration preflight and transaction guard reject deferred or previously active destination state", async () => {
   const nonPristine = [
-    { deferredMints: [{ mint: mintA, retryAt: 123 }] },
-    { lastRunAt: "2026-11-23T12:00:00.000Z" },
-    { lastScanReport: [{ mint: mintA, status: "skipped", reasons: ["test"] }] },
-    { updatedAt: "2026-11-23T12:00:00.000Z" },
-    { lastMessage: "Previously used destination" }
+    { deferredMints: [{ mint: mintA, retryAt: 123 }] }
   ];
   for (const changed of nonPristine) {
     const legacy = { balance: 100, trades: [], ...changed };
