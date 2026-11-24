@@ -2638,7 +2638,22 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   const request = { signature, inputMint, outputMint, inputAmount: "1", outputAmount: "1" };
 
-  // Every row participates in identity binding, not only rows owned by the bot.
+  // Fail closed when a metadata row omits accountIndex entirely.
+  transactionResult = {
+    ...baseResult,
+    meta: {
+      ...baseResult.meta,
+      preTokenBalances: [
+        { mint: outputMint, owner: BOT_WALLET,
+          uiTokenAmount: { amount: "1", decimals: 6 } }
+      ]
+    }
+  };
+  await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
+    /account index is malformed/);
+  transactionResult = baseResult;
+
+  // Cover duplicate and absent indexes in rows belonging to another owner too.
   transactionResult = {
     ...baseResult,
     meta: {
@@ -2652,6 +2667,7 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /duplicate token account indexes/);
+  transactionResult = baseResult;
 
   transactionResult = {
     ...baseResult,
@@ -2666,6 +2682,7 @@ test("settlement proof rejects malformed supplied token account indexes and prog
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
     /account index is malformed/);
+  transactionResult = baseResult;
 
   transactionResult = {
     ...baseResult,

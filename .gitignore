@@ -1,0 +1,5 @@
+# Keep operator-only migration exports out of Git
+/private-export/
+/deno-paper-state-from-export.json
+/deno-kv-paper-state-backup.json
+/deno-bot-state-backup.json
