@@ -51,9 +51,9 @@ function cleanState(value) {
 }
 
 function isPristineMigrationState(state) {
-  // Migration may replace the destination only while every persisted field is
-  // still at its untouched default. Include deferred work and activity metadata
-  // so preflight, initialization, and the transactional guard agree.
+  // Migration eligibility checks the fields that represent user or trading
+  // activity. Deferred work closes the migration window; idle cron reporting
+  // metadata is deliberately ignored so routine scans do not close it.
   return state.balance === DEFAULT_STATE.balance &&
     state.trades.length === 0 &&
     state.autoEnabled === DEFAULT_STATE.autoEnabled &&
