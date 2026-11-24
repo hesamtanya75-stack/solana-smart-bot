@@ -175,7 +175,7 @@ export class PaperTradingState {
           return response({
             state: record.state, revision: record.revision,
             migrationOpen: record.migrationOpen === true,
-            canMigrateLegacy: record.migrationOpen === true && marker !== "complete",
+            canMigrateLegacy: record.migrationOpen === true && marker === null,
             initialized: true, marker
           });
         }
