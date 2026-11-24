@@ -1,0 +1,17 @@
+# Exclude repository and build internals from Cloudflare static asset uploads
+.git
+.git/**
+.wrangler
+.wrangler/**
+node_modules
+node_modules/**
+tests
+ tests/**
+.github
+.github/**
+scripts
+scripts/**
+worker.js
+wrangler.jsonc
+package.json
+package-lock.json
