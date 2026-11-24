@@ -56,11 +56,11 @@ function readU64LE(bytes, offset) {
 
 /**
  * Syntax-only decoder for exact single-authority base Transfer and
- * TransferChecked layouts under Classic SPL Token and Token-2022.
+ * TransferChecked layouts under Classic SPL Token.
  *
- * Token-2022 extension semantics (including transfer fees and transfer hooks)
- * are NOT decoded here. Extra-account layouts and all other variants fail closed;
- * this record is never a semantic approval or proof of actual token deltas.
+ * Token-2022 is rejected before decoding because extension state can change
+ * effective transfer behavior. This record is never a semantic approval or
+ * proof of actual token deltas.
  */
 export function decodeSplTokenInstruction(programId, encodedData, accountIndexes) {
   if (programId === TOKEN_2022_PROGRAM_ID) {
