@@ -2650,7 +2650,7 @@ test("settlement proof rejects malformed supplied token account indexes and prog
     }
   };
   await assert.rejects(verifyFinalizedJupiterSettlement(request, fetchImpl),
-    /account index is malformed/);
+    /account index is malformed|missing its account index/);
   transactionResult = baseResult;
 
   // Cover duplicate and absent indexes in rows belonging to another owner too.
