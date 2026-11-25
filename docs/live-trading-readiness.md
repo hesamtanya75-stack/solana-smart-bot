@@ -100,6 +100,12 @@ Added `live-order-evidence-attestation.js` to HMAC-SHA-256 attest a server-const
 This is an integrity/authentication primitive only when its signing secret is held exclusively by trusted server code and signing is performed only after independently obtaining and validating provider/risk evidence. It is not yet called by a Worker route, does not establish that the underlying quote/risk source is correct, and does not authorize a transaction. Keep the HMAC secret out of browser code, KV state, logs, and source control. No transaction signing or submission was added.
 
 
+## Read-only finalized wallet balance and position reconciliation
+
+The authenticated Worker exposes `POST /api/wallet/reconcile`, accepting exactly one field: a public Solana owner address. It validates the base58 address as a 32-byte public key, reads native SOL balance and SPL Token + Token-2022 accounts at `finalized` commitment, and aggregates raw token atomic amounts with `BigInt` to avoid floating-point loss. Empty/zero token accounts are omitted; malformed or oversized token-account responses fail closed rather than return a partial portfolio. The endpoint reports the RPC context slots and explicitly notes that these separate reads are not an atomic single-slot snapshot.
+
+No wallet secret or signing capability is accepted. This endpoint does not mutate paper state, open positions, the live-order ledger, or execute trades. It is a backend read-only capability; it has not been connected to or visually surfaced in the dashboard. CI includes mocked reconciliation tests and Worker syntax validation. A configured Cloudflare Preview RPC integration test remains outstanding.
+
 ## Authenticated evidence preparation + Durable Object reservation (isolated)
 
 The authenticated Worker route `POST /api/live-order/evidence` accepts only the idempotency key, input/output mint, and positive atomic-unit amount. The Worker independently inspects the output token and obtains a Jupiter quote using server-side configuration; `LIVE_ORDER_EVIDENCE_HMAC_SECRET` binds that evidence and `JUPITER_API_KEY` remains server-only.
