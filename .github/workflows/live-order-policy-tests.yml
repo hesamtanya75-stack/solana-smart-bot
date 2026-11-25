@@ -11,6 +11,7 @@ on:
       - "live-order-ledger.js"
       - "jupiter-quote-client.js"
       - "live-order-evidence-service.js"
+      - "live-order-evidence-request.js"
       - "worker.js"
       - "solana-signature-reconciler.js"
       - "live-order-evidence-attestation.js"
@@ -22,6 +23,7 @@ on:
       - "tests/solana-signature-reconciler.test.mjs"
       - "tests/live-order-evidence-attestation.test.mjs"
       - "tests/live-order-evidence-service.test.mjs"
+      - "tests/live-order-evidence-request.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
   pull_request:
     paths:
@@ -61,4 +63,4 @@ jobs:
       - name: Validate Worker syntax
         run: node --check worker.js
       - name: Run policy unit tests
-        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs tests/solana-signature-reconciler.test.mjs tests/live-order-evidence-attestation.test.mjs tests/live-order-evidence-service.test.mjs
+        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs tests/solana-signature-reconciler.test.mjs tests/live-order-evidence-attestation.test.mjs tests/live-order-evidence-service.test.mjs tests/live-order-evidence-request.test.mjs
