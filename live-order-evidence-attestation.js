@@ -62,7 +62,8 @@ export async function createOrderEvidenceAttestation({ binding, quote, risk, sec
       !Number.isSafeInteger(ttlMs) || ttlMs < 1000 || ttlMs > 60000) {
     throw new TypeError("Attestation clock or lifetime is invalid");
   }
-  if (!quote || quote.inputMint !== binding.inputMint || quote.outputMint !== binding.outputMint ||
+  if (!quote || quote.provider !== "jupiter-swap-v2" ||
+      quote.inputMint !== binding.inputMint || quote.outputMint !== binding.outputMint ||
       quote.inputAmountAtomic !== binding.amountAtomic ||
       typeof quote.outputAmountAtomic !== "string" || !AMOUNT_PATTERN.test(quote.outputAmountAtomic) ||
       !Number.isSafeInteger(quote.fetchedAt) || quote.fetchedAt > now ||
