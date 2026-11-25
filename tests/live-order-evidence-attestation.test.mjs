@@ -74,6 +74,12 @@ test("rejects quote evidence that names an unexpected provider", async () => {
     binding, quote: { ...quote, provider: "unverified-injected-provider" }, risk, secret, now
   }), /does not bind|unsupported provenance/);
 });
+test("rejects non-string idempotency keys instead of coercing them", async () => {
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding: { ...binding, idempotencyKey: 1234567890123456 }, quote, risk, secret, now
+  }), /binding is invalid/);
+});
+
 test("rejects malformed bindings and tampered signatures", async () => {
   await assert.rejects(createOrderEvidenceAttestation({
     binding: { ...binding, inputMint: "11111111111111111111111111111111111111111111" }, quote, risk, secret, now
