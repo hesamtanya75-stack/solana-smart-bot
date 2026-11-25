@@ -72,6 +72,14 @@ test("risk failure prevents quote fetching and fails closed", async () => {
   assert.equal(quoteCalled, false);
 });
 
+test("evidence service rejects non-string idempotency keys without coercion", async () => {
+  await assert.rejects(prepareLiveOrderEvidence({
+    binding: { ...binding, idempotencyKey: 1234567890123456 }, secret,
+    inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }),
+    fetchQuote: async () => quote(Date.now())
+  }), /Order evidence request is invalid/);
+});
+
 test("malformed order or absent trusted providers are rejected", async () => {
   await assert.rejects(prepareLiveOrderEvidence({
     binding: { ...binding, inputMint: "11111111111111111111111111111111111111111111" }, secret,
