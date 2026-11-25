@@ -43,9 +43,19 @@ export function validateOrderRecord(record) {
       (typeof record.signature !== "string" || record.signature.length < 32 || record.signature.length > 128)) {
     return { ok: false, reason: "Transaction signature has invalid shape" };
   }
-  if (["submitted", "confirmed", "reconciliation_required"].includes(record.status) &&
+  if (record.signature !== undefined &&
+      !["submitted", "confirmed", "failed", "reconciliation_required"].includes(record.status)) {
+    return { ok: false, reason: "Signature is not valid for this order status" };
+  }
+  if (["submitted", "confirmed", "failed", "reconciliation_required"].includes(record.status) &&
       typeof record.signature !== "string") {
-    return { ok: false, reason: "Submitted order states require a transaction signature" };
+    return { ok: false, reason: "Submitted or resolved on-chain states require a transaction signature" };
+  }
+  if (record.finalizedAt !== undefined && !["confirmed", "failed"].includes(record.status)) {
+    return { ok: false, reason: "Finalization time is only valid for terminal outcomes" };
+  }
+  if (record.failureReason !== undefined && !["failed", "rejected"].includes(record.status)) {
+    return { ok: false, reason: "Failure reason is only valid for failed or rejected orders" };
   }
   return { ok: true };
 }
