@@ -92,3 +92,23 @@ test("stale risk evidence fails attestation after slow quote provider", async ()
     fetchQuote: async () => { clock += 16000; return quote(clock); }
   }));
 });
+
+test("risk evidence cannot pass with missing, non-finite, or over-threshold metrics", async () => {
+  const invalidRisk = [
+    { ok: true },
+    { ok: true, rugScore: NaN, largestPct: 10, topTenPct: 20 },
+    { ok: true, rugScore: 2501, largestPct: 10, topTenPct: 20 },
+    { ok: true, rugScore: 200, largestPct: 30.01, topTenPct: 20 },
+    { ok: true, rugScore: 200, largestPct: 10, topTenPct: 50.01 },
+    { ok: true, rugScore: 200, largestPct: -1, topTenPct: 20 }
+  ];
+  for (const inspected of invalidRisk) {
+    let quoteCalled = false;
+    await assert.rejects(prepareLiveOrderEvidence({
+      binding, secret, now: () => 1_800_000_000_000,
+      inspectRisk: async () => inspected,
+      fetchQuote: async () => { quoteCalled = true; return quote(1_800_000_000_000); }
+    }), error => error.code === "RISK_REJECTED");
+    assert.equal(quoteCalled, false, "quote must not be fetched after invalid risk metrics");
+  }
+});
