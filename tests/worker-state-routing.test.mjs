@@ -868,6 +868,33 @@ test("wallet reconciliation rejects mismatched JSON-RPC response IDs and fails c
 });
 
 
+test("live evidence endpoint requires authenticated session before provider or storage access", async () => {
+  const { env, coordinator } = environment();
+  env.LIVE_ORDER_EVIDENCE_HMAC_SECRET = "preview-only-test-secret-at-least-32-characters";
+  let providerCalled = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { providerCalled = true; throw new Error("provider must not be reached"); };
+  try {
+    const unauthenticated = new Request("https://worker.test/api/live-order/evidence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        idempotencyKey: "evidence-test-key-1234",
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        amountAtomic: "1000000"
+      })
+    });
+    const response = await worker.fetch(unauthenticated, env);
+    assert.equal(response.status, 401);
+    assert.match((await response.json()).error, /authentication required/i);
+    assert.equal(providerCalled, false);
+    assert.equal((await coordinator.snapshot()).initialized, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("live evidence endpoint fails closed when server HMAC secret is absent", async () => {
   const { env, coordinator } = environment();
   const response = await worker.fetch(request("/api/live-order/evidence", "POST", {
