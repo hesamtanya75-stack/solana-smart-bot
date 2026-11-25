@@ -23,10 +23,10 @@ test("reports finalized native balance and aggregates token accounts exactly", a
       return {
         context: { slot: isClassic ? 301 : 302 },
         value: isClassic ? [
-          { account: { data: { parsed: { info: { mint, tokenAmount: { amount: "9007199254740993", decimals: 9 } } } } } },
-          { account: { data: { parsed: { info: { mint, tokenAmount: { amount: "7", decimals: 9 } } } } } }
+          { account: { owner: program, data: { parsed: { info: { mint, owner, tokenAmount: { amount: "9007199254740993", decimals: 9 } } } } } },
+          { account: { data: { parsed: { info: { mint, owner, tokenAmount: { amount: "7", decimals: 9 } } } } } }
         ] : [
-          { account: { data: { parsed: { info: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", tokenAmount: { amount: "1000", decimals: 6 } } } } } }
+          { account: { data: { parsed: { info: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", owner, tokenAmount: { amount: "1000", decimals: 6 } } } } } }
         ]
       };
     }
@@ -44,7 +44,7 @@ test("fails closed on malformed token account and never returns partial snapshot
     owner,
     getBalance: async () => ({ context: { slot: 1 }, value: 5 }),
     getTokenAccountsByOwner: async () => ({ context: { slot: 1 }, value: [
-      { account: { data: { parsed: { info: { mint, tokenAmount: { amount: "NaN", decimals: 9 } } } } } }
+      { account: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: { parsed: { info: { mint, owner, tokenAmount: { amount: "NaN", decimals: 9 } } } } } }
     ] })
   });
   assert.equal(result.ok, false);
