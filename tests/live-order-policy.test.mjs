@@ -125,3 +125,16 @@ test("non-finite quote and risk timestamps are rejected", () => {
     ...order, riskEvidence: { ...order.riskEvidence, checkedAt: Infinity }
   }, policy, now).ok, false);
 });
+
+
+test("malformed policy and invalid minimum output fail closed", () => {
+  assert.equal(validateLiveOrderPolicy(order, null, now).ok, false);
+  assert.equal(validateLiveOrderPolicy(order, [], now).ok, false);
+  assert.equal(validateLiveOrderPolicy(order, { ...policy, maxDailySol: NaN }, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, minimumOutput: 0 }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, minimumOutput: Infinity }
+  }, policy, now).ok, false);
+});
