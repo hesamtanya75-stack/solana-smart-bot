@@ -25,7 +25,18 @@ export function validateOrderRecord(record) {
   if (typeof record.orderId !== "string" || !/^[A-Za-z0-9._:-]{16,128}$/.test(record.orderId)) {
     return { ok: false, reason: "Order ID must be a bounded idempotency identifier" };
   }
-  if (record.evidenceDigest !== undefined && !/^[a-f0-9]{64}$/.test(record.evidenceDigest)) {\n    return { ok: false, reason: "Evidence digest must be a SHA-256 hex string" };\n  }\n  for (const field of ["evidencePreparedAt", "evidenceExpiresAt"]) {\n    if (record[field] !== undefined && (!Number.isSafeInteger(record[field]) || record[field] <= 0)) {\n      return { ok: false, reason: "Evidence timestamps must be positive safe integers" };\n    }\n  }\n  if (record.evidenceExpiresAt !== undefined && record.evidencePreparedAt !== undefined && record.evidenceExpiresAt <= record.evidencePreparedAt) {\n    return { ok: false, reason: "Evidence expiry must follow preparation time" };\n  }\n  if (record.finalizedAt !== undefined &&
+  if (record.evidenceDigest !== undefined && !/^[a-f0-9]{64}$/.test(record.evidenceDigest)) {
+    return { ok: false, reason: "Evidence digest must be a SHA-256 hex string" };
+  }
+  for (const field of ["evidencePreparedAt", "evidenceExpiresAt"]) {
+    if (record[field] !== undefined && (!Number.isSafeInteger(record[field]) || record[field] <= 0)) {
+      return { ok: false, reason: "Evidence timestamps must be positive safe integers" };
+    }
+  }
+  if (record.evidenceExpiresAt !== undefined && record.evidencePreparedAt !== undefined && record.evidenceExpiresAt <= record.evidencePreparedAt) {
+    return { ok: false, reason: "Evidence expiry must follow preparation time" };
+  }
+  if (record.finalizedAt !== undefined &&
       (!Number.isSafeInteger(record.finalizedAt) || record.finalizedAt <= 0)) {
     return { ok: false, reason: "Finalization time must be a positive safe integer" };
   }
