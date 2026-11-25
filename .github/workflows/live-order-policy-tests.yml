@@ -58,5 +58,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Validate Worker syntax
+        run: node --check worker.js
       - name: Run policy unit tests
         run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs tests/solana-signature-reconciler.test.mjs tests/live-order-evidence-attestation.test.mjs tests/live-order-evidence-service.test.mjs
