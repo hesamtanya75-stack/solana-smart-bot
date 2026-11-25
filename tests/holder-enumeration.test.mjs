@@ -62,8 +62,6 @@ test("rejects invalid data slices and duplicate account addresses", () => {
   duplicate.token2022Result.value[0].pubkey = duplicate.splResult.value[0].pubkey;
   assert.throws(() => buildCompleteHolderEnumeration(duplicate), /duplicate/);
 });
-
-
 test("base58-decodes an all-zero 32-byte token owner without shortening it", () => {
   const f = fixture();
   f.splResult.value[0] = account(splProgram, "70", pubkeys[0], "11111111111111111111111111111111");
@@ -71,7 +69,6 @@ test("base58-decodes an all-zero 32-byte token owner without shortening it", () 
   assert.equal(result.accountDetails.value.find(x => x.data.parsed.info.tokenAmount.amount === "70").data.parsed.info.owner,
     "11111111111111111111111111111111");
 });
-
 test("zero-balance token accounts count toward reconciliation but not holder ranking", () => {
   const f = fixture();
   f.splResult.value.push(account(splProgram, "0", "Vote111111111111111111111111111111111111111"));
@@ -79,10 +76,13 @@ test("zero-balance token accounts count toward reconciliation but not holder ran
   assert.equal(result.supplyAtomic, "100");
   assert.equal(result.largestAccounts.length, 2);
 });
-
-
 test("rejects malformed token-account public keys before producing holder evidence", () => {
   const f = fixture();
   f.splResult.value[0].pubkey = "not-a-solana-address";
+  assert.throws(() => buildCompleteHolderEnumeration(f), /invalid or duplicate account/);
+});
+test("rejects Base58 strings whose decoded public key is not exactly 32 bytes", () => {
+  const f = fixture();
+  f.splResult.value[0].pubkey = "11111111111111111111111111111111111111111111";
   assert.throws(() => buildCompleteHolderEnumeration(f), /invalid or duplicate account/);
 });
