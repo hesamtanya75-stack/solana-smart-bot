@@ -7,6 +7,7 @@ import { parseLiveOrderEvidenceRequest } from "./live-order-evidence-request.js"
 import { reconcileWalletReadOnly } from "./solana-wallet-reconciliation.js";
 import { parseRpcBatchResponse, parseRpcSingleResponse } from "./solana-rpc-response.js";
 import { calculateCompleteHolderConcentration } from "./holder-concentration.js";
+import { buildCompleteHolderEnumeration } from "./holder-enumeration.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -403,27 +404,24 @@ async function inspectMint(mint, env) {
     getJson("https://api.rugcheck.xyz/v1/tokens/" + encodeURIComponent(mint) + "/report"),
     rpcBatch([
       { method: "getAccountInfo", params: [mint, { encoding: "base64", commitment: "confirmed" }] },
-      { method: "getTokenLargestAccounts", params: [mint, { commitment: "confirmed" }] },
-      { method: "getTokenSupply", params: [mint, { commitment: "confirmed" }] }
+      { method: "getProgramAccounts", params: ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", { commitment: "finalized", withContext: true, filters: [{ memcmp: { offset: 0, bytes: mint } }], dataSlice: { offset: 32, length: 40 } }] },
+      { method: "getProgramAccounts", params: ["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", { commitment: "finalized", withContext: true, filters: [{ memcmp: { offset: 0, bytes: mint } }], dataSlice: { offset: 32, length: 40 } }] },
+      { method: "getTokenSupply", params: [mint, { commitment: "finalized" }] }
     ], env)
   ]);
-  const [account, largest, supply] = rpcResults;
+  const [account, splAccounts, token2022Accounts, supply] = rpcResults;
   const details = mintDetails(account);
-  const supplyAmount = supply?.value?.amount;
-  const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || typeof supplyAmount !== "string") throw new Error("Holder data unavailable");
-  // Largest-account RPC results are a sample. Only use concentration as a
-  // risk signal when parsed account identities/balances cover the full supply.
-  const accountDetails = await rpc(
-    "getMultipleAccounts",
-    [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
-    env
-  );
+  const enumeration = buildCompleteHolderEnumeration({
+    mint,
+    splResult: splAccounts,
+    token2022Result: token2022Accounts,
+    supplyResult: supply
+  });
   const concentration = calculateCompleteHolderConcentration({
     mint,
-    supplyAtomic: supplyAmount,
-    largestAccounts,
-    accountDetails
+    supplyAtomic: enumeration.supplyAtomic,
+    largestAccounts: enumeration.largestAccounts,
+    accountDetails: enumeration.accountDetails
   });
   const largestPct = concentration.largestOwnerPpm / 10000;
   const topTenPct = concentration.topTenOwnersPpm / 10000;
