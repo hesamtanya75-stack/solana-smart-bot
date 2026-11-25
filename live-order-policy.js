@@ -24,9 +24,13 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   if (!Number.isFinite(policy?.maxSlippageBps) || policy.maxSlippageBps < 1 || policy.maxSlippageBps > 3000) {
     errors.push("Slippage limit is missing or outside the supported safety range");
   }
+  const projectedDailySpend = order && Number.isFinite(order.dailySpendSol) &&
+    finitePositive(order.amountSol) && Number.isFinite(order.estimatedFeeSol) && order.estimatedFeeSol >= 0
+    ? order.dailySpendSol + order.amountSol + order.estimatedFeeSol
+    : NaN;
   if (!Number.isFinite(order?.dailySpendSol) || order.dailySpendSol < 0 ||
-      (finitePositive(policy?.maxDailySol) && finitePositive(order?.amountSol) &&
-       order.dailySpendSol + order.amountSol + (Number.isFinite(order.estimatedFeeSol) ? order.estimatedFeeSol : 0) > policy.maxDailySol)) {
+      !Number.isFinite(projectedDailySpend) ||
+      (finitePositive(policy?.maxDailySol) && projectedDailySpend > policy.maxDailySol)) {
     errors.push("Daily spend would exceed the configured limit or its ledger is invalid");
   }
   if (!Number.isSafeInteger(order?.openPositions) || order.openPositions < 0 ||
