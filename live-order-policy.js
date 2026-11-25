@@ -61,7 +61,7 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
     errors.push("Quote mint or amount fields do not match the requested order");
   }
   if (!order?.idempotencyKey || typeof order.idempotencyKey !== "string" ||
-      order.idempotencyKey.length < 16 || order.idempotencyKey.length > 128) {
+      order.idempotencyKey.trim().length < 16 || order.idempotencyKey.length > 128) {
     errors.push("A bounded idempotency key is required");
   }
   return { ok: errors.length === 0, errors };
