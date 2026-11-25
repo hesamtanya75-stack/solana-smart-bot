@@ -165,7 +165,13 @@ async function rpc(method, params, env) {
         throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
       }
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message || "RPC error");
+      // Validate the JSON-RPC envelope before trusting a provider response.
+      // A 200 HTTP response alone is not evidence that this is our RPC result.
+      if (!data || typeof data !== "object" || Array.isArray(data) ||
+          data.jsonrpc !== "2.0" || data.id !== 1) {
+        throw new Error("RPC response envelope invalid");
+      }
+      if (data.error) throw new Error("RPC returned an error");
       if (!Object.prototype.hasOwnProperty.call(data, "result")) throw new Error("RPC result missing");
       rpcDiagnostics.successes.push(endpoint.label);
       return data.result;
