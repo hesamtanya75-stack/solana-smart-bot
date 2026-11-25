@@ -84,3 +84,10 @@ The lifecycle validator now requires a terminal confirmed or failed record to ca
 ## Read-only Solana signature reconciliation adapter
 
 Added `solana-signature-reconciler.js`, an injected-RPC read-only adapter using `getSignatureStatuses` with transaction-history search. It reports `confirmed` or `failed` only when the signature is finalized; absent or non-final statuses remain `pending`. RPC transport and malformed responses fail closed. Unit coverage is included in the dedicated policy CI workflow. This adapter does not submit transactions, authenticate a provider's response, persist lifecycle state, or independently prove that an authorized execution path sent the transaction; integration with trusted ledger records and server-side evidence is still pending.
+
+
+## Server-side ledger reconciliation gate (isolated)
+
+The LiveOrderLedger now rejects direct confirmed/failed transitions. Terminal updates must use its reconcile(orderId, expectedVersion) method with a server-injected signature reconciler. The method reads the stored signature from the uncertain order, calls the injected read-only RPC adapter outside the storage transaction, requires evidence to echo the exact signature, and leaves non-final statuses pending. For finalized outcomes it performs a version-checked transactional commit and stores the reconciled terminal state. Stale versions, mismatched signatures, malformed evidence, RPC failures, and missing finalized slots fail closed.
+
+The adapter/ledger integration is still an isolated library boundary and is not wired to a Worker route or live order submission. The injected reconciler must be constructed only in trusted server code; never expose it as a client-controlled callback or accept reconciliation metadata from dashboard/API input. These tests use mocked RPC/storage and do not constitute a funded-chain or production Durable Object integration test.
