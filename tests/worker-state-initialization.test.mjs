@@ -3,13 +3,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const workerSource = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+const rugcheckSource = await readFile(new URL("../rugcheck-score.js", import.meta.url), "utf8");
+const rugcheckModuleUrl = "data:text/javascript;base64," + Buffer.from(rugcheckSource).toString("base64");
 const coordinatorSource = await readFile(new URL("../paper-state-coordinator.js", import.meta.url), "utf8");
 const coordinatorModuleUrl = "data:text/javascript;base64," + Buffer.from(coordinatorSource).toString("base64");
 const rpcConfigSource = await readFile(new URL("../solana-rpc-config.js", import.meta.url), "utf8");
 const rpcConfigModuleUrl = "data:text/javascript;base64," + Buffer.from(rpcConfigSource).toString("base64");
 const limiterSource = await readFile(new URL("../mfa-rate-limiter.js", import.meta.url), "utf8");
 const limiterModuleUrl = "data:text/javascript;base64," + Buffer.from(limiterSource).toString("base64");
-const workerWithEmbeddedRpcConfig = workerSource.replace(
+const workerWithEmbeddedRugcheck = workerSource.replace(
+  'import { isAcceptableRugCheckScore } from "./rugcheck-score.js";',
+  "const { isAcceptableRugCheckScore } = await import(" + JSON.stringify(rugcheckModuleUrl) + ");"
+);
+const workerWithEmbeddedRpcConfig = workerWithEmbeddedRugcheck.replace(
   'import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";',
   "const { resolveSolanaRpcEndpoints } = await import(" + JSON.stringify(rpcConfigModuleUrl) + ");"
 );
