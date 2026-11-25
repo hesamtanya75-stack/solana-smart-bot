@@ -6,6 +6,7 @@ import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
 import { parseLiveOrderEvidenceRequest } from "./live-order-evidence-request.js";
 import { reconcileWalletReadOnly } from "./solana-wallet-reconciliation.js";
 import { parseRpcBatchResponse, parseRpcSingleResponse } from "./solana-rpc-response.js";
+import { calculateCompleteHolderConcentration } from "./holder-concentration.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -408,31 +409,24 @@ async function inspectMint(mint, env) {
   ]);
   const [account, largest, supply] = rpcResults;
   const details = mintDetails(account);
-  const supplyAmount = Number(supply?.value?.amount || 0);
+  const supplyAmount = supply?.value?.amount;
   const largestAccounts = (largest?.value || []).slice(0, 20);
-  if (!largestAccounts.length || !supplyAmount) throw new Error("Holder data unavailable");
-  // getTokenLargestAccounts returns token accounts, not wallet owners.
-  // Resolve their parsed owner fields and aggregate balances by unique wallet.
+  if (!largestAccounts.length || typeof supplyAmount !== "string") throw new Error("Holder data unavailable");
+  // Largest-account RPC results are a sample. Only use concentration as a
+  // risk signal when parsed account identities/balances cover the full supply.
   const accountDetails = await rpc(
     "getMultipleAccounts",
     [largestAccounts.map(account => account.address), { encoding: "jsonParsed", commitment: "confirmed" }],
     env
   );
-  const ownerBalances = new Map();
-  for (let i = 0; i < largestAccounts.length; i++) {
-    const account = accountDetails?.value?.[i];
-    const info = account?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = Number(info?.tokenAmount?.amount ?? largestAccounts[i]?.amount ?? 0);
-    if (!owner || !Number.isFinite(amount)) continue;
-    ownerBalances.set(owner, (ownerBalances.get(owner) || 0) + amount);
-  }
-  if (!ownerBalances.size) throw new Error("Token account owners unavailable");
-  const ownerPercentages = [...ownerBalances.values()]
-    .map(amount => amount / supplyAmount * 100)
-    .sort((a, b) => b - a);
-  const largestPct = ownerPercentages[0] || 0;
-  const topTenPct = ownerPercentages.slice(0, 10).reduce((a, b) => a + b, 0);
+  const concentration = calculateCompleteHolderConcentration({
+    mint,
+    supplyAtomic: supplyAmount,
+    largestAccounts,
+    accountDetails
+  });
+  const largestPct = concentration.largestOwnerPpm / 10000;
+  const topTenPct = concentration.topTenOwnersPpm / 10000;
   const liquidity = Number(market.liquidity?.usd || 0);
   const volume = Number(market.volume?.h24 || 0);
   const sells = Number(market.txns?.h24?.sells || 0);
@@ -441,8 +435,8 @@ async function inspectMint(mint, env) {
   if (volume < 1000) reasons.push("24h volume below $1,000");
   if (sells <= 0) reasons.push("No 24h sells");
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
-  if (largestPct > 30) reasons.push("Largest holder above 30%");
-  if (topTenPct > 50) reasons.push("Top 10 holders above 50%");
+  if (concentration.largestOwnerPpm > 300000) reasons.push("Largest holder above 30%");
+  if (concentration.topTenOwnersPpm > 500000) reasons.push("Top 10 holders above 50%");
   if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
