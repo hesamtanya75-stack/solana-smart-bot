@@ -44,7 +44,9 @@ test("missing, stale, future, or mismatched quote and risk evidence fail closed"
   assert.equal(validateLiveOrderPolicy({ ...order, riskEvidence: { passed: true, checkedAt: now - 40000 } }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, checkedAt: now + 1 } }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, outputMint: "wrong" } }, policy, now).ok, false);
-  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, inputAmount: 0.04 } }, policy, now).ok, false);\n  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: 501 } }, policy, now).ok, false);\n  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: NaN } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, inputAmount: 0.04 } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: 501 } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: NaN } }, policy, now).ok, false);
   const { slippageBps: _missingSlippage, ...quoteWithoutSlippage } = order.quote;
   assert.equal(validateLiveOrderPolicy({ ...order, quote: quoteWithoutSlippage }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, estimatedFeeSol: undefined }, policy, now).ok, false);
