@@ -28,10 +28,12 @@ test("requests Jupiter V2 quote without wallet taker or transaction", async () =
   assert.equal(requested.url.searchParams.get("amount"), amountAtomic);
   assert.equal(requested.url.searchParams.has("taker"), false);
   assert.equal(requested.options.headers["x-api-key"], "secret-key");
+  assert.equal(requested.options.redirect, "error");
   assert.equal(result.outputAmountAtomic, "12000000");
   assert.equal(result.fetchedAt, 123456);
   assert.equal(result.evidenceClass, "provider-response-unverified");
   assert.equal(Object.hasOwn(result, "transaction"), false);
+  assert.equal(Object.hasOwn(result, "trusted"), false);
 });
 
 test("rejects mismatched mint or amount response", async () => {
@@ -75,4 +77,21 @@ test("never includes API key in provider error messages", async () => {
     assert.doesNotMatch(error.message, /sensitive-value/);
     return true;
   });
+});
+
+
+test("rejects a response that explicitly substitutes the input mint", async () => {
+  await assert.rejects(fetchJupiterQuote({
+    inputMint, outputMint, amountAtomic,
+    fetchImpl: async () => response({ ...validBody, inputMint: outputMint })
+  }), /does not match/);
+});
+
+test("keeps provenance unverified even when the response is well-formed", async () => {
+  const result = await fetchJupiterQuote({
+    inputMint, outputMint, amountAtomic,
+    fetchImpl: async () => response({ ...validBody, inputMint, outputMint })
+  });
+  assert.equal(result.evidenceClass, "provider-response-unverified");
+  assert.equal(Object.hasOwn(result, "trusted"), false);
 });
