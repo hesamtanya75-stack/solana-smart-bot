@@ -36,6 +36,7 @@ test("order and daily spend limits are enforced", () => {
   assert.equal(validateLiveOrderPolicy({ ...order, openPositions: 4 }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, estimatedFeeSol: 0.01 }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: 0.449 }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: Number.MAX_VALUE }, policy, now).ok, false);
 });
 
 test("missing, stale, future, or mismatched quote and risk evidence fail closed", () => {
