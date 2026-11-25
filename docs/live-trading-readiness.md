@@ -55,3 +55,8 @@ The policy helper only validates fields supplied to it. In particular, `quote.tr
 ## Exact amount conversion helper (isolated)
 
 The branch now includes `live-order-units.js`, which converts plain decimal strings to integer atomic units using explicit decimals, and converts integer units back to a canonical decimal string. SOL helpers use 9 decimals (lamports). The module rejects JavaScript Number inputs, signs, exponent notation, excess fractional precision, invalid decimal counts, and negative/non-BigInt atomic values. It is covered by `tests/live-order-units.test.mjs` and included in the dedicated Node 20 policy-test workflow. This utility is not yet wired into the Worker, quote provider, order ledger, or transaction path; it does not authorize or execute trades.
+
+
+## Order lifecycle and retry safety (isolated rules)
+
+The branch includes a pure lifecycle helper with the statuses `created`, `validated`, `submitted`, `reconciliation_required`, `confirmed`, `failed`, and `rejected`. It disallows skipping directly from validation to terminal confirmation, requires a signature once submission is recorded, and blocks blind resubmission for submitted or uncertain orders. An uncertain submission must be reconciled by signature before it can be marked confirmed or failed. This is only a state-transition validator: it is not a durable ledger, does not enforce unique idempotency keys across requests, and is not wired to the Worker or any RPC/signer. Durable atomic storage and actual chain reconciliation remain required before execution.
