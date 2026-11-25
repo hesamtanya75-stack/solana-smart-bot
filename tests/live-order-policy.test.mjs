@@ -17,7 +17,7 @@ const order = {
     trusted: true, checkedAt: now - 1000,
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "TokenMintExample111111111111111111111111111",
-    inputAmount: 0.05, minimumOutput: 100
+    inputAmount: 0.05, minimumOutput: 100, slippageBps: 250
   }
 };
 
@@ -43,7 +43,7 @@ test("missing, stale, future, or mismatched quote and risk evidence fail closed"
   assert.equal(validateLiveOrderPolicy({ ...order, riskEvidence: { passed: true, checkedAt: now - 40000 } }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, checkedAt: now + 1 } }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, outputMint: "wrong" } }, policy, now).ok, false);
-  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, inputAmount: 0.04 } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, inputAmount: 0.04 } }, policy, now).ok, false);\n  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: 501 } }, policy, now).ok, false);\n  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, slippageBps: NaN } }, policy, now).ok, false);
 });
 
 test("invalid values and absent idempotency key are rejected", () => {
