@@ -150,3 +150,10 @@ The `POST /api/live-order/evidence` route parses a bounded request, runs server-
 The quote client uses a server-side HTTPS request to the configured Jupiter Swap API v2 endpoint, rejects redirects, validates requested mint/amount consistency, and deliberately labels its result `provider-response-unverified`. HTTPS transport protects the connection to the endpoint under the runtime's TLS validation; the current implementation has no independently verifiable, provider-signed quote payload. Do not upgrade the evidence class merely because the response arrived over HTTPS or because the Worker HMAC attests the response envelope. Keep the strict policy gate rejecting it until the threat model, provider-origin verification, tamper/replay tests, and exact quote-to-order binding are reviewed and demonstrated.
 
 Audit conclusion: this endpoint is read-only evidence preparation plus durable reservation. It is not a live-order execution endpoint. Keep the live path disabled and do not treat its success response as permission to sign or submit.
+
+
+## Worker evidence boundary regression tests (2026-11-25)
+
+The authenticated Worker routing test suite now includes direct endpoint checks for the live-evidence boundary: an absent/undersized server HMAC secret returns a fail-closed service error without initializing paper state, and client-supplied quote/risk assertions are rejected before any quote-provider call. These are mocked/unit-level tests; they do not call Jupiter, a live RPC, or Cloudflare Preview. CI run [45540739188](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45540739188) passed **154/154 tests** (0 failures), including the two new endpoint regressions. No deployment or live-order execution occurred.
+
+Still outstanding: authenticated, read-only Cloudflare Preview integration against configured RPC/provider behavior; independently verifiable quote provenance and exact quote-to-order binding. Until those are demonstrated, the current quote class remains unverified and policy rejects it. Do not merge/deploy or enable Mainnet execution as part of this preparation.
