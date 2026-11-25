@@ -55,6 +55,11 @@ test("fails closed for expired, stale, failed, mismatched, and unconfigured evid
   await assert.rejects(createOrderEvidenceAttestation({ binding, quote, risk, secret: "short", now }));
 });
 
+test("rejects quote evidence that names an unexpected provider", async () => {
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding, quote: { ...quote, provider: "unverified-injected-provider" }, risk, secret, now
+  }), /does not bind|unsupported provenance/);
+});
 test("rejects malformed bindings and tampered signatures", async () => {
   await assert.rejects(createOrderEvidenceAttestation({
     binding: { ...binding, amountAtomic: "0" }, quote, risk, secret, now
