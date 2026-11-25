@@ -23,6 +23,8 @@ on:
       - "tests/live-order-ledger-object.test.mjs"
       - "worker.js"
       - "holder-concentration.js"
+      - "holder-enumeration.js"
+      - "tests/holder-enumeration.test.mjs"
       - "tests/holder-concentration.test.mjs"
       - "solana-rpc-response.js"
       - "tests/solana-rpc-response.test.mjs"
@@ -90,4 +92,4 @@ jobs:
       - name: Validate Wrangler deployment configuration (dry run only)
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
       - name: Run policy unit tests
-        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs tests/solana-signature-reconciler.test.mjs tests/live-order-evidence-attestation.test.mjs tests/live-order-evidence-service.test.mjs tests/live-order-evidence-request.test.mjs tests/live-order-evidence-reservation.test.mjs tests/live-order-ledger-object.test.mjs tests/worker-state-routing.test.mjs tests/solana-wallet-reconciliation.test.mjs tests/solana-rpc-response.test.mjs tests/holder-concentration.test.mjs
+        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs tests/solana-signature-reconciler.test.mjs tests/live-order-evidence-attestation.test.mjs tests/live-order-evidence-service.test.mjs tests/live-order-evidence-request.test.mjs tests/live-order-evidence-reservation.test.mjs tests/live-order-ledger-object.test.mjs tests/worker-state-routing.test.mjs tests/solana-wallet-reconciliation.test.mjs tests/solana-rpc-response.test.mjs tests/holder-concentration.test.mjs tests/holder-enumeration.test.mjs
