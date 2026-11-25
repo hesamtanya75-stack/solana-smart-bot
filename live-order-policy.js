@@ -45,6 +45,10 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
       now - order.quote.checkedAt > 15_000) {
     errors.push("Trusted quote is missing, untrusted, future-dated, or stale");
   }
+  if (!Number.isSafeInteger(order?.quote?.slippageBps) || order.quote.slippageBps < 0 ||
+      (Number.isFinite(policy?.maxSlippageBps) && order.quote.slippageBps > policy.maxSlippageBps)) {
+    errors.push("Quoted slippage exceeds or has no valid slippage ceiling");
+  }
   if (!order?.quote || order.quote.inputMint !== order.inputMint ||
       order.quote.outputMint !== order.outputMint ||
       !finitePositive(order.quote.inputAmount) ||
