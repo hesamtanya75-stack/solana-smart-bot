@@ -70,6 +70,9 @@ export class LiveOrderLedger {
       if (entry.version !== expectedVersion) {
         return { ok: false, conflict: true, reason: "Order version conflict", version: entry.version };
       }
+      if (entry.record.evidenceDigest && nextStatus !== "rejected") {
+        return { ok: false, reason: "Evidence-only reservation cannot advance to an execution lifecycle" };
+      }
       const result = transitionOrder(entry.record, nextStatus, metadata);
       if (!result.ok) return result;
       const updated = { ...entry, record: result.record, version: entry.version + 1 };
