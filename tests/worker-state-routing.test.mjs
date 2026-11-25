@@ -860,7 +860,7 @@ test("wallet reconciliation rejects mismatched JSON-RPC response IDs and fails c
     }), env);
     assert.equal(response.status, 503);
     assert.match((await response.json()).error, /RPC reconciliation unavailable/);
-    assert.equal(calls, 3); // configured public endpoints are attempted, then fail closed
+    assert.equal(calls, 9); // balance and both token-program reads each exhaust three providers
     assert.deepEqual(await coordinator.snapshot(), before);
   } finally {
     globalThis.fetch = originalFetch;
