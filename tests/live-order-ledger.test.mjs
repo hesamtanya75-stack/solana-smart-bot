@@ -85,6 +85,22 @@ test("evidence reservation rejects a duplicate key with a changed evidence diges
   assert.equal((await ledger.get(order.orderId)).record.evidenceDigest, "c".repeat(64));
 });
 
+test("idempotency cannot collide between evidence and non-evidence reservations", async () => {
+  const evidence = { ...order, evidenceDigest: "e".repeat(64), evidencePreparedAt: 1_800_000_000_000, evidenceExpiresAt: 1_800_000_015_000 };
+  const evidenceFirst = new LiveOrderLedger(fakeStorage());
+  await evidenceFirst.create(evidence, hash);
+  const missingEvidence = await evidenceFirst.create(order, hash);
+  assert.equal(missingEvidence.ok, false);
+  assert.equal(missingEvidence.conflict, true);
+  assert.match(missingEvidence.reason, /different evidence/);
+
+  const plainFirst = new LiveOrderLedger(fakeStorage());
+  await plainFirst.create(order, hash);
+  const addedEvidence = await plainFirst.create(evidence, hash);
+  assert.equal(addedEvidence.ok, false);
+  assert.equal(addedEvidence.conflict, true);
+  assert.match(addedEvidence.reason, /different evidence/);
+});
 test("serial transaction mock permits only one concurrent create for a key", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
   const results = await Promise.all([
