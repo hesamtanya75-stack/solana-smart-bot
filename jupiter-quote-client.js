@@ -1,3 +1,5 @@
+import { isValidSolanaPublicKey } from "./solana-wallet-reconciliation.js";
+
 /**
  * Server-side Jupiter Swap API v2 quote fetcher.
  *
@@ -6,7 +8,6 @@
  * Its output is observation data, not authenticated risk evidence or an
  * execution authorization.
  */
-const MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const AMOUNT_PATTERN = /^[1-9][0-9]{0,39}$/;
 const BASE_URL = "https://api.jup.ag/swap/v2/order";
 
@@ -19,7 +20,7 @@ export async function fetchJupiterQuote({
   now = Date.now,
   timeoutMs = 8000
 }) {
-  if (!MINT_PATTERN.test(inputMint || "") || !MINT_PATTERN.test(outputMint || "") ||
+  if (!isValidSolanaPublicKey(inputMint) || !isValidSolanaPublicKey(outputMint) ||
       inputMint === outputMint) {
     throw new TypeError("Distinct valid-looking Solana mint addresses are required");
   }
