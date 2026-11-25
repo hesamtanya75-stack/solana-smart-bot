@@ -1,3 +1,5 @@
+import { isValidSolanaPublicKey } from "./solana-wallet-reconciliation.js";
+
 /**
  * Read-only live-order evidence preparation service.
  * Inject trusted server functions; this module never signs or submits transactions.
@@ -5,7 +7,6 @@
 import { createOrderEvidenceAttestation } from "./live-order-evidence-attestation.js";
 
 const KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
-const MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const AMOUNT_PATTERN = /^[1-9][0-9]{0,39}$/;
 
 export async function prepareLiveOrderEvidence({
@@ -13,8 +14,8 @@ export async function prepareLiveOrderEvidence({
 }) {
   if (!binding || typeof binding !== "object" || Array.isArray(binding) ||
       !KEY_PATTERN.test(binding.idempotencyKey || "") ||
-      !MINT_PATTERN.test(binding.inputMint || "") ||
-      !MINT_PATTERN.test(binding.outputMint || "") ||
+      !isValidSolanaPublicKey(binding.inputMint) ||
+      !isValidSolanaPublicKey(binding.outputMint) ||
       binding.inputMint === binding.outputMint ||
       typeof binding.amountAtomic !== "string" || !AMOUNT_PATTERN.test(binding.amountAtomic)) {
     throw new TypeError("Order evidence request is invalid");
