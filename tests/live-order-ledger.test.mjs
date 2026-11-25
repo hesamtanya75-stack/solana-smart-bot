@@ -14,11 +14,14 @@ function fakeStorage() {
       let release;
       tail = new Promise(resolve => { release = resolve; });
       await previous;
+      const staged = new Map();
       try {
-        return await fn({
-          get: async key => data.get(key),
-          put: async (key, value) => data.set(key, value)
+        const result = await fn({
+          get: async key => staged.has(key) ? staged.get(key) : data.get(key),
+          put: async (key, value) => staged.set(key, value)
         });
+        for (const [key, value] of staged) data.set(key, value);
+        return result;
       } finally {
         release();
       }
@@ -27,6 +30,15 @@ function fakeStorage() {
 }
 const order = { orderId: "ledger-order-123456", status: "created", createdAt: 1_800_000_000_000 };
 const hash = "a".repeat(64);
+
+test("mock transaction discards staged writes when callback throws", async () => {
+  const storage = fakeStorage();
+  await assert.rejects(storage.transaction(async txn => {
+    await txn.put("temporary", { value: 1 });
+    throw new Error("simulated transaction failure");
+  }), /simulated transaction failure/);
+  assert.equal(await storage.get("temporary"), undefined);
+});
 
 test("create is idempotent for same key and request fingerprint", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
