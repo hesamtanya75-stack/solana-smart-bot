@@ -1,5 +1,7 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
+import { fetchJupiterQuote } from "./jupiter-quote-client.js";
+import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -818,6 +820,43 @@ export default {
           }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
+        }
+      }
+      if (url.pathname === "/api/live-order/evidence" && request.method === "POST") {
+        // Read-only preparation endpoint. It never builds, signs, or submits a transaction.
+        if (env.LIVE_ORDER_EVIDENCE_HMAC_SECRET === undefined ||
+            typeof env.LIVE_ORDER_EVIDENCE_HMAC_SECRET !== "string" ||
+            env.LIVE_ORDER_EVIDENCE_HMAC_SECRET.length < 32) {
+          return json({ error: "Server-side evidence attestation is not configured" }, 503);
+        }
+        const contentLength = Number(request.headers.get("Content-Length") || 0);
+        if (contentLength > 2048) return json({ error: "Evidence request is too large" }, 413);
+        try {
+          const body = await request.json();
+          if (!body || typeof body !== "object" || Array.isArray(body) ||
+              Object.keys(body).some(key => !["idempotencyKey", "inputMint", "outputMint", "amountAtomic"].includes(key))) {
+            return json({ error: "Invalid evidence request fields" }, 400);
+          }
+          const evidence = await prepareLiveOrderEvidence({
+            binding: {
+              idempotencyKey: body.idempotencyKey,
+              inputMint: body.inputMint,
+              outputMint: body.outputMint,
+              amountAtomic: body.amountAtomic
+            },
+            secret: env.LIVE_ORDER_EVIDENCE_HMAC_SECRET,
+            inspectRisk: mint => inspectMint(mint, env),
+            fetchQuote: args => fetchJupiterQuote({
+              ...args,
+              apiKey: env.JUPITER_API_KEY
+            })
+          });
+          return json({ ok: true, evidence });
+        } catch (error) {
+          if (error?.code === "RISK_REJECTED") {
+            return json({ ok: false, error: "Token risk checks rejected this evidence request", reasons: error.reasons || [] }, 422);
+          }
+          return json({ error: "Unable to prepare trusted order evidence; no order was submitted" }, 400);
         }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
