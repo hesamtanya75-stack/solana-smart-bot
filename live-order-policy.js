@@ -4,6 +4,7 @@
  */
 export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   const errors = [];
+  if (!Number.isFinite(now)) errors.push("Validation clock must be finite");
   const finitePositive = value => typeof value === "number" && Number.isFinite(value) && value > 0;
   if (!policy || policy.liveEnabled !== true) errors.push("Live trading is not explicitly enabled");
   if (!policy || policy.emergencyPause !== false) errors.push("Emergency pause is active or not explicitly cleared");
