@@ -74,3 +74,8 @@ An additional `live-order-ledger.js` adapter uses a Durable Object-style transac
 ## Daily-spend precision regression and CI
 
 The policy regression suite now includes an exact daily-limit boundary and a just-over-limit case. The validator compares spend in integer lamports rather than adding JavaScript floating-point SOL values. The dedicated `Live Order Policy Tests` workflow passed on the current preparation head (`531a79bc2bea63e0b75e6c4ab5abe049e5ac8e73`). This confirms the isolated Node test suite only; it does not certify a wallet, signer, transaction builder, live buy/sell, or Mainnet readiness.
+
+
+## Terminal lifecycle requires explicit reconciliation metadata
+
+The lifecycle validator now requires a terminal confirmed or failed record to carry a positive reconciliation timestamp and a reconciliation result matching that terminal status, in addition to its signature and finalization timestamp. This prevents the pure state helper or ledger transition API from marking an order terminal with only a generic status change. The metadata is still caller-supplied: it does not prove an RPC lookup occurred and is not an authenticated chain receipt. Actual server-side signature/balance reconciliation and trusted provenance remain prerequisites before execution.
