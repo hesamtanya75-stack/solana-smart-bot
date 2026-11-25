@@ -94,7 +94,13 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
   assert.ok(extractor.includes("Captured the exact immutable Wrangler Preview deployment URL."));
   assert.match(smoke, /Refusing to smoke-test a non-Preview URL/);
   assert.match(smoke, /EXPECTED_BUILD_ID/);
-  for (const path of ["/.git/config", "/.wrangler/", "/worker.js", "/display-test.html", "/wrangler.jsonc", "/.dev.vars"]) {
+  assert.match(smoke, /solana-smart-bot-new\\\\.hesamtanya75\\\\.workers\\\\.dev/);
+  assert.match(smoke, /redirect: "manual"/);
+  assert.match(smoke, /response\.status !== 404/);
+  assert.match(smoke, /Read-only only; no login, state mutation, Cron, Deno import, or chain transaction was performed/);
+  assert.doesNotMatch(smoke, /method:\\s*["']POST|method:\\s*["']PUT|method:\\s*["']DELETE/i,
+    "Preview smoke test must not send mutating HTTP requests");
+  for (const path of ["/.git/config", "/.wrangler/", "/worker.js", "/paper-state-coordinator.js", "/mfa-rate-limiter.js", "/display-test.html", "/wrangler.jsonc", "/package.json", "/.dev.vars", "/deno-bot-state-backup.json"]) {
     assert.ok(smoke.includes(path), `Preview smoke check must test ${path}`);
   }
 });
