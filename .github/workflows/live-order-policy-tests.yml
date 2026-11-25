@@ -9,10 +9,12 @@ on:
       - "live-order-units.js"
       - "live-order-lifecycle.js"
       - "live-order-ledger.js"
+      - "jupiter-quote-client.js"
       - "tests/live-order-policy.test.mjs"
       - "tests/live-order-units.test.mjs"
       - "tests/live-order-lifecycle.test.mjs"
       - "tests/live-order-ledger.test.mjs"
+      - "tests/jupiter-quote-client.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
   pull_request:
     paths:
@@ -41,4 +43,4 @@ jobs:
         with:
           node-version: "20"
       - name: Run policy unit tests
-        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs
+        run: node --test tests/live-order-policy.test.mjs tests/live-order-units.test.mjs tests/live-order-lifecycle.test.mjs tests/live-order-ledger.test.mjs tests/jupiter-quote-client.test.mjs
