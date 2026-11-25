@@ -183,3 +183,10 @@ Therefore this PR's green CI does not close the Preview runtime blocker. No Prod
 The branch commit `5dd490ea51ef5153bc70f4f2ff9b99f3aa08dccd` updated the Worker CI push path filters to include the Preview smoke-check script, Preview URL extractor, and Cloudflare Preview workflow. CI run [45543454035](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543454035) completed successfully: **218/218 tests passed**, migration-helper syntax passed, and the Cloudflare Worker/Durable Object Wrangler dry-run passed. This is source-level regression/build validation; it is not an authenticated Cloudflare Preview runtime test and does not establish live-trading readiness.
 
 The authenticated read-only Preview runtime remains unverified because the workflow's Preview publishing step previously skipped when Cloudflare Preview credentials were unavailable. Keep quote provenance unverified, policy fail-closed, and all signing/order submission/Mainnet execution disabled. No merge or deployment was performed.
+
+
+## Preview credential-gate regression coverage — 2026-11-25
+
+Commit `b628b7f87b13325df9086719cd9ce572155534d1` added a regression test requiring Preview publishing to remain explicitly opted in, restricted to same-repository PRs, gated on the Cloudflare API token and account ID, and requiring a captured immutable Preview URL before the read-only runtime smoke test can run. It also asserts that this Preview workflow does not issue a Production deploy command. CI [45543697142](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543697142) passed all Worker state regression tests, migration-helper syntax, and Wrangler Worker/DO dry-run. Live Order Policy CI [45543605612](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543605612) also passed.
+
+This verifies the source-level credential/opt-in boundaries, not the presence of credentials or an actual deployed Preview. Runtime Preview remains an external configuration prerequisite. The live quote remains unverified and the order policy stays fail-closed; no merge, Production deploy, wallet signing, or Mainnet transaction was performed.
