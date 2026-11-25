@@ -22,6 +22,8 @@ test("aggregates multiple token accounts by wallet owner and checks complete sup
   assert.equal(result.complete, true);
   assert.equal(result.largestOwnerPpm, 850000);
   assert.equal(result.topTenOwnersPpm, 1000000);
+  assert.equal(result.largestOwnerAbove30Percent, true);
+  assert.equal(result.topTenOwnersAbove50Percent, true);
 });
 
 test("supports Token-2022 account program when evidence is complete", () => {
@@ -54,4 +56,12 @@ test("rejects duplicate account addresses, unrecognized token program, and chang
   const amount = fixture();
   amount.accountDetails.value[0].data.parsed.info.tokenAmount.amount = "59";
   assert.throws(() => calculateCompleteHolderConcentration(amount), /identity/);
+});
+test("risk limits use exact integer ratios at and just above boundaries", () => {
+  const atThirty = fixture(["30", "25", "25", "20"], [ownerA, ownerB, mint, "11111111111111111111111111111112"]);
+  assert.equal(calculateCompleteHolderConcentration(atThirty).largestOwnerAbove30Percent, false);
+  const amounts = ["6", "4", ...Array(18).fill("5")];
+  const owners = [ownerA, ownerA, ...Array.from({ length: 18 }, (_, i) => "1".repeat(30) + String(i + 1))];
+  const aboveFifty = fixture(amounts, owners);
+  assert.equal(calculateCompleteHolderConcentration(aboveFifty).topTenOwnersAbove50Percent, true);
 });
