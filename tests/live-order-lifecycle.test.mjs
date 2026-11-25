@@ -65,7 +65,9 @@ test("transition metadata is accepted only for compatible target statuses", () =
   const validated = transitionOrder(base, "validated").record;
   assert.equal(transitionOrder(validated, "submitted", { signature: "S".repeat(64) }).ok, true);
   const submitted = transitionOrder(validated, "submitted", { signature: "S".repeat(64) }).record;
-  assert.equal(transitionOrder(submitted, "confirmed", { finalizedAt: 1_800_000_000_100 }).ok, true);
+  assert.equal(transitionOrder(submitted, "confirmed", { finalizedAt: 1_800_000_000_100 }).ok, false);
+  const reconciled = transitionOrder(submitted, "reconciliation_required").record;
+  assert.equal(transitionOrder(reconciled, "confirmed", { finalizedAt: 1_800_000_000_100 }).ok, true);
 });
 
 test("transition metadata cannot overwrite immutable order identity", () => {
