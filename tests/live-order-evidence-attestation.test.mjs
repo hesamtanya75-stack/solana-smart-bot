@@ -19,7 +19,7 @@ const quote = {
   fetchedAt: now - 500,
   evidenceClass: "provider-response-unverified"
 };
-const risk = { passed: true, mint: binding.outputMint, checkedAt: now - 1000, riskSource: "server-inspection-v1" };
+const risk = { passed: true, mint: binding.outputMint, checkedAt: now - 1000, riskSource: "server-inspection-v1", riskSummary: { rugScore: 200, largestHolderPct: 10, topTenHolderPct: 25 } };
 
 test("server HMAC attestation binds request, quote, and fresh risk snapshot", async () => {
   const attestation = await createOrderEvidenceAttestation({ binding, quote, risk, secret, now });
@@ -53,6 +53,20 @@ test("fails closed for expired, stale, failed, mismatched, and unconfigured evid
     binding, risk: { ...risk, mint: binding.inputMint }, quote, secret, now
   }));
   await assert.rejects(createOrderEvidenceAttestation({ binding, quote, risk, secret: "short", now }));
+});
+
+test("rejects attestation creation and verification with incomplete or unsafe risk metrics", async () => {
+  for (const riskSummary of [
+    {},
+    { rugScore: NaN, largestHolderPct: 10, topTenHolderPct: 25 },
+    { rugScore: 2501, largestHolderPct: 10, topTenHolderPct: 25 },
+    { rugScore: 200, largestHolderPct: 30.1, topTenHolderPct: 25 },
+    { rugScore: 200, largestHolderPct: 10, topTenHolderPct: 50.1 }
+  ]) {
+    await assert.rejects(createOrderEvidenceAttestation({
+      binding, quote, risk: { ...risk, riskSummary }, secret, now
+    }));
+  }
 });
 
 test("rejects quote evidence that names an unexpected provider", async () => {
