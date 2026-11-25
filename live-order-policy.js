@@ -13,11 +13,11 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
     errors.push("Order exceeds or has no valid per-order spend limit");
   }
   if (!finitePositive(policy?.maxDailySol)) errors.push("Daily spend limit is missing or invalid");
-  if (!Number.isFinite(policy?.maxPriorityFeeSol) || policy.maxPriorityFeeSol < 0) {
-    errors.push("Priority-fee ceiling is missing or invalid");
+  if (!Number.isFinite(policy?.maxEstimatedFeeSol) || policy.maxEstimatedFeeSol < 0) {
+    errors.push("Estimated-fee ceiling is missing or invalid");
   }
   if (!Number.isFinite(order?.estimatedFeeSol) || order.estimatedFeeSol < 0 ||
-      (Number.isFinite(policy?.maxPriorityFeeSol) && order.estimatedFeeSol > policy.maxPriorityFeeSol)) {
+      (Number.isFinite(policy?.maxEstimatedFeeSol) && order.estimatedFeeSol > policy.maxEstimatedFeeSol)) {
     errors.push("Estimated transaction fee exceeds or has no valid fee ceiling");
   }
   if (!Number.isSafeInteger(policy?.maxOpenPositions) || policy.maxOpenPositions < 1) errors.push("Open-position limit is missing or invalid");
