@@ -837,3 +837,32 @@ test("authenticated wallet reconciliation returns mocked finalized snapshot with
     globalThis.fetch = originalFetch;
   }
 });
+
+test("wallet reconciliation rejects mismatched JSON-RPC response IDs and fails closed", async () => {
+  const { env, coordinator } = environment();
+  const before = await coordinator.snapshot();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, init) => {
+    calls++;
+    const payload = JSON.parse(init.body);
+    return new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: payload.id + 99,
+      result: payload.method === "getBalance"
+        ? { context: { slot: 44 }, value: 999999999 }
+        : { context: { slot: 44 }, value: [] }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const response = await worker.fetch(request("/api/wallet/reconcile", "POST", {
+      owner: "11111111111111111111111111111111"
+    }), env);
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /RPC reconciliation unavailable/);
+    assert.equal(calls, 3); // configured public endpoints are attempted, then fail closed
+    assert.deepEqual(await coordinator.snapshot(), before);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
