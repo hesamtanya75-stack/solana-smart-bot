@@ -28,7 +28,7 @@ export class LiveOrderLedgerObject {
       return reply({ error: "Ledger evidence verification is not configured" }, 503);
     }
     const length = request.headers.get("Content-Length");
-    if (length !== null && (!/^\\d+$/.test(length) || Number(length) > 8192)) {
+    if (length !== null && (!/^\d+$/.test(length) || Number(length) > 8192)) {
       return reply({ error: "Reservation request is too large" }, 413);
     }
     try {
