@@ -28,8 +28,12 @@ export async function prepareLiveOrderEvidence({
   // Inspect output token server-side. Never accept client-supplied risk assertions.
   const inspected = await inspectRisk(binding.outputMint);
   const riskCheckedAt = now();
-  if (!inspected || inspected.ok !== true) {
-    const error = new Error("Token risk checks did not pass");
+  const riskMetricsValid = inspected &&
+    Number.isFinite(inspected.rugScore) && inspected.rugScore >= 0 && inspected.rugScore <= 2500 &&
+    Number.isFinite(inspected.largestPct) && inspected.largestPct >= 0 && inspected.largestPct <= 30 &&
+    Number.isFinite(inspected.topTenPct) && inspected.topTenPct >= 0 && inspected.topTenPct <= 50;
+  if (!inspected || inspected.ok !== true || !riskMetricsValid) {
+    const error = new Error("Token risk checks failed or required risk metrics are missing/unsafe");
     error.code = "RISK_REJECTED";
     error.reasons = Array.isArray(inspected?.reasons) ? inspected.reasons.slice(0, 12) : [];
     throw error;
