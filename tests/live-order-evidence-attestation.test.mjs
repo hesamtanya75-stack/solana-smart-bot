@@ -98,3 +98,22 @@ test("rejects noncanonical Base64URL signature trailing bits", async () => {
     attestation: altered, expectedBinding: binding, secret, now: now + 1
   })).ok, false);
 });
+
+test("attestation creation rejects future-dated provider quote and risk evidence", async () => {
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding, quote: { ...quote, fetchedAt: now + 1 }, risk, secret, now
+  }), /quote|provenance/i);
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding, quote, risk: { ...risk, checkedAt: now + 1 }, secret, now
+  }), /risk/i);
+});
+
+test("attestation expiry is enforced at the exact expiration timestamp", async () => {
+  const attestation = await createOrderEvidenceAttestation({ binding, quote, risk, secret, now, ttlMs: 1000 });
+  assert.equal((await verifyOrderEvidenceAttestation({
+    attestation, expectedBinding: binding, secret, now: now + 999
+  })).ok, true);
+  assert.equal((await verifyOrderEvidenceAttestation({
+    attestation, expectedBinding: binding, secret, now: now + 1000
+  })).ok, false);
+});
