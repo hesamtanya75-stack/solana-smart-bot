@@ -41,7 +41,10 @@ export class LiveOrderLedger {
           return { ok: false, conflict: true, reason: "Idempotency key reused with different request" };
         }
         // Evidence reservations are immutable: matching request parameters do not authorize replacing a prior quote/risk snapshot.
-        if (existing.record?.evidenceDigest && record.evidenceDigest && existing.record.evidenceDigest !== record.evidenceDigest) {
+        const existingEvidenceDigest = existing.record?.evidenceDigest;
+        const incomingEvidenceDigest = record.evidenceDigest;
+        if ((existingEvidenceDigest !== undefined || incomingEvidenceDigest !== undefined) &&
+            existingEvidenceDigest !== incomingEvidenceDigest) {
           return { ok: false, conflict: true, reason: "Idempotency key reused with different evidence" };
         }
         return { ok: true, duplicate: true, record: { ...existing.record }, version: existing.version };
