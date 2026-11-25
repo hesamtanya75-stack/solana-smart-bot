@@ -78,7 +78,7 @@ export async function reconcileWalletReadOnly({ owner, getBalance, getTokenAccou
     owner,
     commitment: "finalized",
     native: {
-      mint: "So11111111111111111111111111111111111111112",
+      asset: "SOL",
       symbol: "SOL",
       decimals: 9,
       amountAtomic: String(native.value),
