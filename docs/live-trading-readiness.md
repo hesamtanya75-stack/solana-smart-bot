@@ -98,3 +98,10 @@ The adapter/ledger integration is still an isolated library boundary and is not 
 Added `live-order-evidence-attestation.js` to HMAC-SHA-256 attest a server-constructed evidence envelope. The signed payload binds an idempotency key, exact input/output mints, atomic input amount, the quote response, and the risk snapshot; verification checks the expected order binding, signature, and expiry. The helper rejects unsupported quote provenance, stale/failed risk data, malformed bindings, and modified payloads. Tests are included in the dedicated Node 20 workflow.
 
 This is an integrity/authentication primitive only when its signing secret is held exclusively by trusted server code and signing is performed only after independently obtaining and validating provider/risk evidence. It is not yet called by a Worker route, does not establish that the underlying quote/risk source is correct, and does not authorize a transaction. Keep the HMAC secret out of browser code, KV state, logs, and source control. No transaction signing or submission was added.
+
+
+## Authenticated read-only evidence endpoint (isolated)
+
+The Worker now exposes `POST /api/live-order/evidence` behind the existing bearer-session authorization. It accepts only an idempotency key, input/output mint, and positive atomic-unit amount; the Worker independently inspects the output token and fetches a quote from the server-side Jupiter client. A server-configured `LIVE_ORDER_EVIDENCE_HMAC_SECRET` is required to bind the evidence envelope. `JUPITER_API_KEY` is read only from Worker environment configuration.
+
+The response is explicitly labeled `mode: read-only-evidence` and `execution: not-authorized`. Risk rejection returns no quote package. This endpoint does not create a durable idempotency reservation, build a transaction, accept a wallet or private key, sign, submit, mutate paper balance, or create a live position. The HMAC and service tests run in the dedicated Node workflow; route behavior still requires isolated Cloudflare Preview integration testing with secrets configured. Keep this branch undeployed and live execution disabled.
