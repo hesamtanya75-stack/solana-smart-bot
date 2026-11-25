@@ -6,9 +6,10 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   const errors = [];
   if (!Number.isFinite(now)) errors.push("Validation clock must be finite");
   const finitePositive = value => typeof value === "number" && Number.isFinite(value) && value > 0;
+  const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
   if (!policy || policy.liveEnabled !== true) errors.push("Live trading is not explicitly enabled");
   if (!policy || policy.emergencyPause !== false) errors.push("Emergency pause is active or not explicitly cleared");
-  if (!order || typeof order !== "object") return { ok: false, errors: ["Order payload is missing"] };
+  if (!isRecord(order)) return { ok: false, errors: ["Order payload is missing or malformed"] };
   if (!finitePositive(order.amountSol)) errors.push("Order amount must be a finite positive SOL value");
   if (!finitePositive(policy?.maxOrderSol) || (finitePositive(order.amountSol) && order.amountSol > policy.maxOrderSol)) {
     errors.push("Order exceeds or has no valid per-order spend limit");
@@ -38,13 +39,13 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
       (Number.isSafeInteger(policy?.maxOpenPositions) && order.openPositions >= policy.maxOpenPositions)) {
     errors.push("Open-position limit reached or position count is invalid");
   }
-  if (!order?.riskEvidence || order.riskEvidence.passed !== true ||
+  if (!isRecord(order.riskEvidence) || order.riskEvidence.passed !== true ||
       !Number.isFinite(order.riskEvidence.checkedAt) ||
       now - order.riskEvidence.checkedAt < 0 ||
       now - order.riskEvidence.checkedAt > 30_000) {
     errors.push("Risk evidence is missing, failed, future-dated, or stale");
   }
-  if (!order?.quote || order.quote.trusted !== true ||
+  if (!isRecord(order.quote) || order.quote.trusted !== true ||
       !Number.isFinite(order.quote.checkedAt) ||
       now - order.quote.checkedAt < 0 ||
       now - order.quote.checkedAt > 15_000) {
