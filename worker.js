@@ -921,7 +921,7 @@ export default {
           if (Number.isInteger(error?.status) && error.status >= 400 && error.status <= 499) {
             return json({ error: error.message }, error.status);
           }
-          return json({ error: "Unable to prepare trusted order evidence; no order was submitted" }, 400);
+          return json({ error: "Evidence providers or attestation service unavailable; request failed closed and no order was submitted" }, 503);
         }
       }
       if (url.pathname === "/api/market-prices" && request.method === "POST") {
