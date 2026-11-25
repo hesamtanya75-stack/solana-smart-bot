@@ -2,6 +2,7 @@ export { PaperStateCoordinator } from "./paper-state-coordinator.js";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 import { fetchJupiterQuote } from "./jupiter-quote-client.js";
 import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
+import { parseLiveOrderEvidenceRequest } from "./live-order-evidence-request.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -831,24 +832,18 @@ export default {
         }
         const contentLengthHeader = request.headers.get("Content-Length");
         if (contentLengthHeader !== null &&
-            (!/^\d+$/.test(contentLengthHeader) || Number(contentLengthHeader) > 2048)) {
+            (!/^\\d+$/.test(contentLengthHeader) || Number(contentLengthHeader) > 2048)) {
           return json({ error: "Evidence request is too large or malformed" }, 413);
         }
-        if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") || "")) {
-          return json({ error: "Evidence request must use application/json" }, 415);
-        }
         try {
-          // Enforce the byte limit on the actual body too; Content-Length is optional
-          // and cannot be trusted for streamed/chunked requests.
+          // Read and validate actual bytes, content type, declared length, JSON,
+          // and the strict field allowlist in a separately unit-tested parser.
           const rawBody = await request.text();
-          if (new TextEncoder().encode(rawBody).byteLength > 2048) {
-            return json({ error: "Evidence request is too large" }, 413);
-          }
-          const body = JSON.parse(rawBody);
-          if (!body || typeof body !== "object" || Array.isArray(body) ||
-              Object.keys(body).some(key => !["idempotencyKey", "inputMint", "outputMint", "amountAtomic"].includes(key))) {
-            return json({ error: "Invalid evidence request fields" }, 400);
-          }
+          const body = parseLiveOrderEvidenceRequest({
+            rawBody,
+            contentType: request.headers.get("Content-Type"),
+            contentLength: contentLengthHeader
+          });
           const evidence = await prepareLiveOrderEvidence({
             binding: {
               idempotencyKey: body.idempotencyKey,
