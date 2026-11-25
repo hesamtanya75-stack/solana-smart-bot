@@ -59,3 +59,20 @@ test("invalid values, clock, and absent idempotency key are rejected", () => {
   assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "" }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "                " }, policy, now).ok, false);
 });
+
+test("quote and risk evidence expire immediately beyond their exact freshness windows", () => {
+  const boundaryOrder = {
+    ...order,
+    quote: { ...order.quote, checkedAt: now - 15_000 },
+    riskEvidence: { ...order.riskEvidence, checkedAt: now - 30_000 }
+  };
+  assert.equal(validateLiveOrderPolicy(boundaryOrder, policy, now).ok, true);
+  assert.equal(validateLiveOrderPolicy({
+    ...boundaryOrder,
+    quote: { ...boundaryOrder.quote, checkedAt: now - 15_001 }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...boundaryOrder,
+    riskEvidence: { ...boundaryOrder.riskEvidence, checkedAt: now - 30_001 }
+  }, policy, now).ok, false);
+});
