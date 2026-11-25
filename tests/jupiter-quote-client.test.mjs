@@ -36,6 +36,13 @@ test("requests Jupiter V2 quote without wallet taker or transaction", async () =
   assert.equal(Object.hasOwn(result, "trusted"), false);
 });
 
+test("rejects mint strings whose decoded public key width is invalid", async () => {
+  await assert.rejects(fetchJupiterQuote({
+    inputMint: "11111111111111111111111111111111111111111111", outputMint, amountAtomic,
+    fetchImpl: async () => response(validBody)
+  }), /valid-looking/);
+});
+
 test("rejects mismatched mint or amount response", async () => {
   await assert.rejects(fetchJupiterQuote({
     inputMint, outputMint, amountAtomic,
