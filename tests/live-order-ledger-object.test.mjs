@@ -38,7 +38,7 @@ async function attested() {
     binding, secret, now: () => t,
     inspectRisk: async mint => ({ ok: true, mint, rugScore: 100 }),
     fetchQuote: async q => ({
-      provider: "mock", inputMint: q.inputMint, outputMint: q.outputMint,
+      provider: "jupiter-swap-v2", inputMint: q.inputMint, outputMint: q.outputMint,
       inputAmountAtomic: q.amountAtomic, outputAmountAtomic: "800000",
       fetchedAt: t, evidenceClass: "provider-response-unverified"
     })
