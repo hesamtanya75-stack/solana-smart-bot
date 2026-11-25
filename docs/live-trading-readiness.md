@@ -166,3 +166,6 @@ The policy CI now explicitly runs `tests/wrangler-preview-isolation.test.mjs`. T
 The latest CI run [45541994384](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45541994384) passed **171/171 tests** (0 failures), including Wrangler configuration dry-run and Worker/DO syntax validation. A subsequent regression-test commit extends the read-only smoke-boundary assertions; its CI result must be verified before treating that latest commit as green. These tests validate configuration and script behavior only; they are **not** evidence that a deployed Preview was actually contacted. An authenticated, read-only Preview runtime check against the configured RPC/provider remains outstanding.
 
 The Worker evidence endpoint now returns HTTP 503 for provider/attestation-service failures, rather than incorrectly classifying these server-side failures as HTTP 400. The request remains fail-closed and no order is submitted. This is branch-only preparation; no Production deployment, merge, wallet signing, or Mainnet transaction occurred.
+
+
+The Preview smoke-script source assertion was corrected to avoid over-escaping the hostname regex in the test matcher. The updated assertion now checks the exact escaped hostname pattern present in the smoke script; CI is pending for this correction.
