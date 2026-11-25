@@ -866,3 +866,44 @@ test("wallet reconciliation rejects mismatched JSON-RPC response IDs and fails c
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("live evidence endpoint fails closed when server HMAC secret is absent", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/live-order/evidence", "POST", {
+    idempotencyKey: "evidence-test-key-1234",
+    inputMint: "So11111111111111111111111111111111111111112",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    amountAtomic: "1000000"
+  }), env);
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /attestation is not configured/i);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
+
+test("live evidence endpoint rejects unexpected client evidence fields before provider access", async () => {
+  const { env, coordinator } = environment();
+  env.LIVE_ORDER_EVIDENCE_HMAC_SECRET = "preview-only-test-secret-at-least-32-characters";
+  let providerCalled = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerCalled = true;
+    throw new Error("Provider must not be called for malformed client input");
+  };
+  try {
+    const response = await worker.fetch(request("/api/live-order/evidence", "POST", {
+      idempotencyKey: "evidence-test-key-1234",
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      amountAtomic: "1000000",
+      riskEvidence: { passed: true },
+      quote: { trusted: true }
+    }), env);
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /Invalid evidence request fields/);
+    assert.equal(providerCalled, false);
+    assert.equal((await coordinator.snapshot()).initialized, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
