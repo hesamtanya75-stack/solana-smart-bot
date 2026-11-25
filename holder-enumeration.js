@@ -15,7 +15,7 @@ function base58(bytes) {
   }
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
-  return "1".repeat(zeros) + (encoded || (zeros ? "" : "1"));
+  return "1".repeat(zeros) + encoded;
 }
 
 function decodeAccount(account, program) {
