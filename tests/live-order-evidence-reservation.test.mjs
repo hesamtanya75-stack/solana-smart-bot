@@ -36,7 +36,7 @@ function storageMock() {
 async function evidence(binding, clock) {
   return prepareLiveOrderEvidence({
     binding, secret, now: () => clock,
-    inspectRisk: async mint => ({ ok: true, mint, rugScore: 120 }),
+    inspectRisk: async mint => ({ ok: true, mint, rugScore: 120, largestPct: 10, topTenPct: 25 }),
     fetchQuote: async args => ({
       provider: "jupiter-swap-v2", inputMint: args.inputMint, outputMint: args.outputMint,
       inputAmountAtomic: args.amountAtomic, outputAmountAtomic: "900000",
