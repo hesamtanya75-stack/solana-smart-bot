@@ -168,4 +168,4 @@ The latest CI run [45541994384](https://github.com/hesamtanya75-stack/solana-sma
 The Worker evidence endpoint now returns HTTP 503 for provider/attestation-service failures, rather than incorrectly classifying these server-side failures as HTTP 400. The request remains fail-closed and no order is submitted. This is branch-only preparation; no Production deployment, merge, wallet signing, or Mainnet transaction occurred.
 
 
-The Preview smoke-script source assertion was corrected to avoid over-escaping the hostname regex in the test matcher. The updated assertion now checks the exact escaped hostname pattern present in the smoke script; CI is pending for this correction.
+The Preview smoke-script hostname assertion was corrected and verified by CI run [45542283254](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45542283254): **171/171 tests passed**, Worker/DO syntax passed, and Wrangler dry-run passed. The test validates source/configuration behavior only; it does not claim a Cloudflare Preview runtime deployment was exercised.
