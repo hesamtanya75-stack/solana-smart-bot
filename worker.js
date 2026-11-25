@@ -831,10 +831,10 @@ export default {
         }
         const contentLengthHeader = request.headers.get("Content-Length");
         if (contentLengthHeader !== null &&
-            (!/^\\d+$/.test(contentLengthHeader) || Number(contentLengthHeader) > 2048)) {
+            (!/^\d+$/.test(contentLengthHeader) || Number(contentLengthHeader) > 2048)) {
           return json({ error: "Evidence request is too large or malformed" }, 413);
         }
-        if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("Content-Type") || "")) {
+        if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") || "")) {
           return json({ error: "Evidence request must use application/json" }, 415);
         }
         try {
