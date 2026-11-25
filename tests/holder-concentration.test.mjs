@@ -7,7 +7,7 @@ const ownerA = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const ownerB = "11111111111111111111111111111111";
 const tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 function fixture(amounts = ["60", "25", "15"], owners = [ownerA, ownerA, ownerB], program = tokenProgram) {
-  const largestAccounts = amounts.map((amount, i) => ({ address: "1".repeat(31) + String(i + 1), amount }));
+  const largestAccounts = amounts.map((amount, i) => ({ address: "1".repeat(31) + "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"[i], amount }));
   const accountDetails = { value: amounts.map((amount, i) => ({
     owner: program,
     data: { parsed: { type: "account", info: {
@@ -60,7 +60,7 @@ test("rejects duplicate account addresses, unrecognized token program, and chang
 test("risk limits use exact integer ratios at and just above boundaries", () => {
   const atThirty = fixture(["30", "25", "25", "20"], [ownerA, ownerB, mint, "11111111111111111111111111111112"]);
   assert.equal(calculateCompleteHolderConcentration(atThirty).largestOwnerAbove30Percent, false);
-  const amounts = ["6", "4", ...Array(18).fill("5")];
+  const amounts = ["6", "5", ...Array(18).fill("5")];
   const owners = [ownerA, ownerA, ...Array.from({ length: 18 }, (_, i) => "1".repeat(31) + "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"[i])];
   const aboveFifty = fixture(amounts, owners);
   assert.equal(calculateCompleteHolderConcentration(aboveFifty).topTenOwnersAbove50Percent, true);
