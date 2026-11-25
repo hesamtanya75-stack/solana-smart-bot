@@ -77,6 +77,18 @@ test("quote and risk evidence expire immediately beyond their exact freshness wi
   }, policy, now).ok, false);
 });
 
+test("missing or identical input/output mints fail closed", () => {
+  assert.equal(validateLiveOrderPolicy({ ...order, inputMint: undefined }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, outputMint: "" }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, inputMint: order.outputMint }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, inputMint: undefined }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, inputMint: order.quote.outputMint }
+  }, policy, now).ok, false);
+});
+
 test("non-finite quote and risk timestamps are rejected", () => {
   assert.equal(validateLiveOrderPolicy({
     ...order, quote: { ...order.quote, checkedAt: NaN }
