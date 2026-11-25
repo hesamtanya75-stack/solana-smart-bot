@@ -1,3 +1,4 @@
+import { isAcceptableRugCheckScore } from "./rugcheck-score.js";
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
 export { LiveOrderLedgerObject } from "./live-order-ledger-object.js";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
@@ -436,7 +437,7 @@ async function inspectMint(mint, env) {
   if (concentration.largestOwnerAbove30Percent) reasons.push("Largest holder above 30%");
   if (concentration.topTenOwnersAbove50Percent) reasons.push("Top 10 holders above 50%");
   const rugScore = Number(rug?.score);
-  if (!rug || rug.score == null || !Number.isFinite(rugScore) || rugScore < 0 || rugScore > 2500) {
+  if (!isAcceptableRugCheckScore(rug?.score)) {
     reasons.push("RugCheck unavailable or score invalid/above 2500");
   }
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
