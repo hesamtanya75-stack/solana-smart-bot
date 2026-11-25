@@ -38,6 +38,7 @@ on:
       - "live-order-ledger.js"
       - "jupiter-quote-client.js"
       - "live-order-evidence-service.js"
+      - "live-order-evidence-request.js"
       - "live-order-evidence-reservation.js"
       - "live-order-ledger-object.js"
       - "wrangler.jsonc"
