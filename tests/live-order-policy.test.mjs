@@ -52,7 +52,9 @@ test("missing, stale, future, or mismatched quote and risk evidence fail closed"
   assert.equal(validateLiveOrderPolicy({ ...order, estimatedFeeSol: undefined }, policy, now).ok, false);
 });
 
-test("invalid values and absent idempotency key are rejected", () => {
+test("invalid values, clock, and absent idempotency key are rejected", () => {
+  assert.equal(validateLiveOrderPolicy(order, policy, NaN).ok, false);
+  assert.equal(validateLiveOrderPolicy(order, policy, Infinity).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, amountSol: Infinity }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "" }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "                " }, policy, now).ok, false);
