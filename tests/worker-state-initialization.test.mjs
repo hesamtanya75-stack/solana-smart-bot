@@ -21,6 +21,10 @@ const workerWithEmbeddedRpcConfig = workerWithEmbeddedRugcheck.replace(
 );
 const workerWithEmbeddedCoordinator = workerWithEmbeddedRpcConfig
   .replace(
+    'export { LiveOrderLedgerObject } from "./live-order-ledger-object.js";',
+    "class LiveOrderLedgerObject {} export { LiveOrderLedgerObject };"
+  )
+  .replace(
     'export { PaperStateCoordinator } from "./paper-state-coordinator.js";',
     "const { PaperStateCoordinator } = await import(" + JSON.stringify(coordinatorModuleUrl) + "); export { PaperStateCoordinator };"
   )
