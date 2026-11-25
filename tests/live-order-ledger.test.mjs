@@ -72,6 +72,19 @@ test("rejects reuse of an idempotency key for a different request", async () => 
   assert.equal(result.conflict, true);
 });
 
+
+test("evidence reservation rejects a duplicate key with a changed evidence digest", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  const evidenceOrder = { ...order, evidenceDigest: "c".repeat(64), evidencePreparedAt: 1_800_000_000_000, evidenceExpiresAt: 1_800_000_015_000 };
+  assert.equal((await ledger.create(evidenceOrder, hash)).duplicate, false);
+  const changedEvidence = { ...evidenceOrder, evidenceDigest: "d".repeat(64) };
+  const result = await ledger.create(changedEvidence, hash);
+  assert.equal(result.ok, false);
+  assert.equal(result.conflict, true);
+  assert.match(result.reason, /different evidence/);
+  assert.equal((await ledger.get(order.orderId)).record.evidenceDigest, "c".repeat(64));
+});
+
 test("serial transaction mock permits only one concurrent create for a key", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
   const results = await Promise.all([
