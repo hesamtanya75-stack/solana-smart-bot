@@ -26,18 +26,19 @@ test("Preview binds the dedicated authentication rate limiter Durable Object", (
   assert.equal(preview?.class_name, "MfaRateLimiter", "Preview must bind the authentication limiter");
 });
 
-test("already-provisioned Durable Object classes use declarative SQLite exports, not a replayed create migration", () => {
-  assert.deepEqual(config.exports?.PaperStateCoordinator, {
-    type: "durable-object",
-    storage: "sqlite"
-  });
-  assert.deepEqual(config.exports?.MfaRateLimiter, {
-    type: "durable-object",
-    storage: "sqlite"
-  });
-  assert.equal("migrations" in config, false, "do not replay first-create migrations against existing DO namespaces");
-  assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "PAPER_STATE_COORDINATOR").length, 1);
-  assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === "AUTH_RATE_LIMITER").length, 1);
+test("Durable Object SQLite migration declares each class once for first-time namespace creation", () => {
+  const migrations = config.migrations || [];
+  assert.equal(migrations.length, 1, "keep the migration history stable; do not append duplicate class creations");
+  assert.equal(migrations[0]?.tag, "v1");
+  assert.deepEqual(new Set(migrations[0]?.new_sqlite_classes || []), new Set([
+    "PaperStateCoordinator",
+    "LiveOrderLedgerObject",
+    "MfaRateLimiter"
+  ]));
+  for (const name of ["PAPER_STATE_COORDINATOR", "LIVE_ORDER_LEDGER", "AUTH_RATE_LIMITER"]) {
+    assert.equal(config.durable_objects?.bindings?.filter(binding => binding.name === name).length, 1,
+      `Durable Object binding ${name} must be unique`);
+  }
 });
 
 test("Preview asset diagnostics are routed through the Worker", () => {
