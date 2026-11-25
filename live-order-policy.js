@@ -7,6 +7,14 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   if (!Number.isFinite(now)) errors.push("Validation clock must be finite");
   const finitePositive = value => typeof value === "number" && Number.isFinite(value) && value > 0;
   const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
+  // Compare SOL spend in integer lamports; floating-point addition can turn an exact
+  // boundary (0.449 + 0.05 + 0.001) into 0.5000000000000001.
+  const toLamports = value => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+    const scaled = value * 1_000_000_000;
+    if (!Number.isSafeInteger(Math.round(scaled)) || Math.abs(scaled - Math.round(scaled)) > 0.0001) return null;
+    return BigInt(Math.round(scaled));
+  };
   if (!policy || policy.liveEnabled !== true) errors.push("Live trading is not explicitly enabled");
   if (!policy || policy.emergencyPause !== false) errors.push("Emergency pause is active or not explicitly cleared");
   if (!isRecord(order)) return { ok: false, errors: ["Order payload is missing or malformed"] };
@@ -26,13 +34,16 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   if (!Number.isFinite(policy?.maxSlippageBps) || policy.maxSlippageBps < 1 || policy.maxSlippageBps > 3000) {
     errors.push("Slippage limit is missing or outside the supported safety range");
   }
-  const projectedDailySpend = order && Number.isFinite(order.dailySpendSol) &&
-    finitePositive(order.amountSol) && Number.isFinite(order.estimatedFeeSol) && order.estimatedFeeSol >= 0
-    ? order.dailySpendSol + order.amountSol + order.estimatedFeeSol
-    : NaN;
-  if (!Number.isFinite(order?.dailySpendSol) || order.dailySpendSol < 0 ||
-      !Number.isFinite(projectedDailySpend) ||
-      (finitePositive(policy?.maxDailySol) && projectedDailySpend > policy.maxDailySol)) {
+  const dailySpendLamports = toLamports(order?.dailySpendSol);
+  const amountLamports = toLamports(order?.amountSol);
+  const feeLamports = toLamports(order?.estimatedFeeSol);
+  const dailyLimitLamports = toLamports(policy?.maxDailySol);
+  const projectedDailySpendLamports = dailySpendLamports !== null && amountLamports !== null && feeLamports !== null
+    ? dailySpendLamports + amountLamports + feeLamports
+    : null;
+  if (dailySpendLamports === null || amountLamports === null || feeLamports === null ||
+      projectedDailySpendLamports === null || dailyLimitLamports === null || dailyLimitLamports === 0n ||
+      projectedDailySpendLamports > dailyLimitLamports) {
     errors.push("Daily spend would exceed the configured limit or its ledger is invalid");
   }
   if (!Number.isSafeInteger(order?.openPositions) || order.openPositions < 0 ||
