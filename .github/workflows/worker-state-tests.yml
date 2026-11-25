@@ -14,6 +14,9 @@ on:
       - "tests/worker-state-routing.test.mjs"
       - "tests/paper-state-coordinator.test.mjs"
       - "tests/wrangler-preview-isolation.test.mjs"
+      - "scripts/preview-smoke-check.mjs"
+      - "scripts/extract-preview-url.mjs"
+      - ".github/workflows/cloudflare-preview.yml"
       - "tests/paper-state-storage-boundary.test.mjs"
       - "tests/migration-safety.test.mjs"
       - "tests/dashboard-inline-script-syntax.test.mjs"
@@ -25,6 +28,7 @@ on:
     branches:
       - "fix/worker-empty-state-cron-guard"
       - "migration/cloudflare-only"
+      - "live-trading-readiness-prep"
     paths:
       - "worker.js"
       - "index.html"
