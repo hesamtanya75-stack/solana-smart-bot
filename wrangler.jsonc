@@ -60,6 +60,10 @@
         "class_name": "PaperStateCoordinator"
       },
       {
+        "name": "LIVE_ORDER_LEDGER",
+        "class_name": "LiveOrderLedgerObject"
+      },
+      {
         "name": "AUTH_RATE_LIMITER",
         "class_name": "MfaRateLimiter"
       }
