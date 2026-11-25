@@ -1,4 +1,5 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+export { LiveOrderLedgerObject } from "./live-order-ledger-object.js";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 import { fetchJupiterQuote } from "./jupiter-quote-client.js";
 import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
@@ -844,13 +845,14 @@ export default {
             contentType: request.headers.get("Content-Type"),
             contentLength: contentLengthHeader
           });
+          const binding = {
+            idempotencyKey: body.idempotencyKey,
+            inputMint: body.inputMint,
+            outputMint: body.outputMint,
+            amountAtomic: body.amountAtomic
+          };
           const evidence = await prepareLiveOrderEvidence({
-            binding: {
-              idempotencyKey: body.idempotencyKey,
-              inputMint: body.inputMint,
-              outputMint: body.outputMint,
-              amountAtomic: body.amountAtomic
-            },
+            binding,
             secret: env.LIVE_ORDER_EVIDENCE_HMAC_SECRET,
             inspectRisk: mint => inspectMint(mint, env),
             fetchQuote: args => fetchJupiterQuote({
@@ -858,7 +860,21 @@ export default {
               apiKey: env.JUPITER_API_KEY
             })
           });
-          return json({ ok: true, evidence });
+          if (!env.LIVE_ORDER_LEDGER) {
+            return json({ error: "Durable evidence reservation is unavailable; no order was submitted" }, 503);
+          }
+          const ledgerId = env.LIVE_ORDER_LEDGER.idFromName("live-order-evidence");
+          const ledgerStub = env.LIVE_ORDER_LEDGER.get(ledgerId);
+          const reservationResponse = await ledgerStub.fetch("https://live-order-ledger.internal/reserve-evidence", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ binding, attestation: evidence.attestation })
+          });
+          const reservation = await reservationResponse.json();
+          if (!reservationResponse.ok) {
+            return json({ error: reservation.error || reservation.reason || "Evidence reservation rejected" }, reservationResponse.status);
+          }
+          return json({ ok: true, evidence, reservation: reservation.reservation });
         } catch (error) {
           if (error?.code === "RISK_REJECTED") {
             return json({ ok: false, error: "Token risk checks rejected this evidence request", reasons: error.reasons || [] }, 422);
