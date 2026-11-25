@@ -55,7 +55,7 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
       (Number.isFinite(policy?.maxSlippageBps) && order.quote.slippageBps > policy.maxSlippageBps)) {
     errors.push("Quoted slippage exceeds or has no valid slippage ceiling");
   }
-  const validMint = value => typeof value === "string" && value.trim().length > 0;
+  const validMint = value => typeof value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
   if (!validMint(order.inputMint) || !validMint(order.outputMint) ||
       order.inputMint === order.outputMint ||
       !order?.quote || !validMint(order.quote.inputMint) || !validMint(order.quote.outputMint) ||
