@@ -112,3 +112,22 @@ test("risk evidence cannot pass with missing, non-finite, or over-threshold metr
     assert.equal(quoteCalled, false, "quote must not be fetched after invalid risk metrics");
   }
 });
+
+
+test("provider quote mismatches cannot be attested to the requested order", async () => {
+  const invalidQuotes = [
+    { ...quote(1_800_000_000_000), inputMint: binding.outputMint },
+    { ...quote(1_800_000_000_000), outputMint: binding.inputMint },
+    { ...quote(1_800_000_000_000), inputAmountAtomic: "50000001" },
+    { ...quote(1_800_000_000_000), outputAmountAtomic: "0" },
+    { ...quote(1_800_000_000_000), fetchedAt: 1_799_999_900_000 },
+    { ...quote(1_800_000_000_000), evidenceClass: "provider-response-authenticated" }
+  ];
+  for (const invalidQuote of invalidQuotes) {
+    await assert.rejects(prepareLiveOrderEvidence({
+      binding, secret, now: () => 1_800_000_000_000,
+      inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }),
+      fetchQuote: async () => invalidQuote
+    }), /Quote does not bind to this order|Quote is stale|unsupported provenance/i);
+  }
+});
