@@ -52,13 +52,15 @@ export function calculateCompleteHolderConcentration({ mint, supplyAtomic, large
     throw new Error("Holder concentration sample does not cover the full mint supply");
   }
 
-  const percentagesBps = [...owners.values()]
-    .map(amount => Number((amount * 1000000n) / supply))
-    .sort((a, b) => b - a);
+  const ownerAmounts = [...owners.values()].sort((a, b) => a > b ? -1 : a < b ? 1 : 0);
+  const largestOwner = ownerAmounts[0] || 0n;
+  const topTenOwnerAmount = ownerAmounts.slice(0, 10).reduce((sum, amount) => sum + amount, 0n);
   return {
     complete: true,
     sampledSupplyAtomic: sampled.toString(),
-    largestOwnerPpm: percentagesBps[0] || 0,
-    topTenOwnersPpm: percentagesBps.slice(0, 10).reduce((sum, value) => sum + value, 0)
+    largestOwnerPpm: Number((largestOwner * 1000000n) / supply),
+    topTenOwnersPpm: Number((topTenOwnerAmount * 1000000n) / supply),
+    largestOwnerAbove30Percent: largestOwner * 100n > supply * 30n,
+    topTenOwnersAbove50Percent: topTenOwnerAmount * 100n > supply * 50n
   };
 }
