@@ -20,9 +20,9 @@ function decode58(s) {
   while (zeros < s.length && s[zeros] === "1") zeros++;
   return Uint8Array.from([...Array(zeros).fill(0), ...bytes]);
 }
-function account(program, amount, pubkey) {
+function account(program, amount, pubkey, tokenOwner = owner) {
   const bytes = new Uint8Array(40);
-  bytes.set(decode58(owner).slice(-32), 0);
+  bytes.set(decode58(tokenOwner).slice(-32), 0);
   let value = BigInt(amount);
   for (let i = 0; i < 8; i++) { bytes[32+i] = Number(value & 255n); value >>= 8n; }
   return { pubkey, account: { owner: program, data: [btoa(String.fromCharCode(...bytes)), "base64"] } };
@@ -61,4 +61,21 @@ test("rejects invalid data slices and duplicate account addresses", () => {
   const duplicate = fixture();
   duplicate.token2022Result.value[0].pubkey = duplicate.splResult.value[0].pubkey;
   assert.throws(() => buildCompleteHolderEnumeration(duplicate), /duplicate/);
+});
+
+
+test("base58-decodes an all-zero 32-byte token owner without shortening it", () => {
+  const f = fixture();
+  f.splResult.value[0] = account(splProgram, "70", pubkeys[0], "11111111111111111111111111111111");
+  const result = buildCompleteHolderEnumeration(f);
+  assert.equal(result.accountDetails.value.find(x => x.data.parsed.info.tokenAmount.amount === "70").data.parsed.info.owner,
+    "11111111111111111111111111111111");
+});
+
+test("zero-balance token accounts count toward reconciliation but not holder ranking", () => {
+  const f = fixture();
+  f.splResult.value.push(account(splProgram, "0", "Vote111111111111111111111111111111111111111"));
+  const result = buildCompleteHolderEnumeration(f);
+  assert.equal(result.supplyAtomic, "100");
+  assert.equal(result.largestAccounts.length, 2);
 });
