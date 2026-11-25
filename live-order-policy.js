@@ -13,13 +13,20 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
     errors.push("Order exceeds or has no valid per-order spend limit");
   }
   if (!finitePositive(policy?.maxDailySol)) errors.push("Daily spend limit is missing or invalid");
+  if (!Number.isFinite(policy?.maxPriorityFeeSol) || policy.maxPriorityFeeSol < 0) {
+    errors.push("Priority-fee ceiling is missing or invalid");
+  }
+  if (!Number.isFinite(order?.estimatedFeeSol) || order.estimatedFeeSol < 0 ||
+      (Number.isFinite(policy?.maxPriorityFeeSol) && order.estimatedFeeSol > policy.maxPriorityFeeSol)) {
+    errors.push("Estimated transaction fee exceeds or has no valid fee ceiling");
+  }
   if (!Number.isSafeInteger(policy?.maxOpenPositions) || policy.maxOpenPositions < 1) errors.push("Open-position limit is missing or invalid");
   if (!Number.isFinite(policy?.maxSlippageBps) || policy.maxSlippageBps < 1 || policy.maxSlippageBps > 3000) {
     errors.push("Slippage limit is missing or outside the supported safety range");
   }
   if (!Number.isFinite(order?.dailySpendSol) || order.dailySpendSol < 0 ||
       (finitePositive(policy?.maxDailySol) && finitePositive(order?.amountSol) &&
-       order.dailySpendSol + order.amountSol > policy.maxDailySol)) {
+       order.dailySpendSol + order.amountSol + (Number.isFinite(order.estimatedFeeSol) ? order.estimatedFeeSol : 0) > policy.maxDailySol)) {
     errors.push("Daily spend would exceed the configured limit or its ledger is invalid");
   }
   if (!Number.isSafeInteger(order?.openPositions) || order.openPositions < 0 ||
@@ -41,7 +48,8 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
   if (!order?.quote || order.quote.inputMint !== order.inputMint ||
       order.quote.outputMint !== order.outputMint ||
       !finitePositive(order.quote.inputAmount) ||
-      !finitePositive(order.quote.minimumOutput)) {
+      !finitePositive(order.quote.minimumOutput) ||
+      (finitePositive(order.amountSol) && Math.abs(order.quote.inputAmount - order.amountSol) > 1e-9)) {
     errors.push("Quote mint or amount fields do not match the requested order");
   }
   if (!order?.idempotencyKey || typeof order.idempotencyKey !== "string" ||
