@@ -58,16 +58,15 @@ jobs:
           set -euo pipefail
           echo "SAFE MODE: Cloudflare Preview resources, Durable Object namespaces, KV, and state are preserved."
           # Exclude any branch still referenced by an open PR in this repository.
-          while IFS=
-\\t' read -r number branch source_repo; do
+          : > "$RUNNER_TEMP/open-branches.txt"
+          while read -r number branch source_repo; do
             [ -n "$branch" ] || continue
-            printf '%s\\t%s\\n' "$source_repo" "$branch" >> "$RUNNER_TEMP/open-branches.tsv"
+            printf '%s %s\\n' "$source_repo" "$branch" >> "$RUNNER_TEMP/open-branches.txt"
           done < "$RUNNER_TEMP/open-prs.tsv"
           while read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
             if [ "$source_repo" = "$GITHUB_REPOSITORY" ] && [ -n "$branch" ] && [ "$branch" != "$base_branch" ] && [ "$branch" != "main" ]; then
-              if grep -Fxq "$source_repo"
-\\t'"$branch" "$RUNNER_TEMP/open-branches.tsv"; then
+              if grep -Fxq "$source_repo $branch" "$RUNNER_TEMP/open-branches.txt"; then
                 echo "Protected: PR #$number branch '$branch' is still used by an open PR."
                 continue
               fi
