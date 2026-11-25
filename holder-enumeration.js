@@ -3,6 +3,7 @@ const TOKEN_PROGRAMS = {
   token2022: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 };
 const MAX_ENUMERATED_ACCOUNTS = 50000;
+const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 function base58(bytes) {
   const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -58,7 +59,7 @@ export function buildCompleteHolderEnumeration({ mint, splResult, token2022Resul
   let total = 0n;
   for (const [entries, program] of [[spl, TOKEN_PROGRAMS.spl], [t22, TOKEN_PROGRAMS.token2022]]) {
     for (const entry of entries) {
-      if (typeof entry?.pubkey !== "string" || seen.has(entry.pubkey)) {
+      if (!BASE58_ADDRESS.test(entry?.pubkey || "") || seen.has(entry.pubkey)) {
         throw new Error("Holder enumeration contains invalid or duplicate account");
       }
       seen.add(entry.pubkey);
