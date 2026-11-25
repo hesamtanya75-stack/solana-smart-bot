@@ -79,3 +79,8 @@ The policy regression suite now includes an exact daily-limit boundary and a jus
 ## Terminal lifecycle requires explicit reconciliation metadata
 
 The lifecycle validator now requires a terminal confirmed or failed record to carry a positive reconciliation timestamp and a reconciliation result matching that terminal status, in addition to its signature and finalization timestamp. This prevents the pure state helper or ledger transition API from marking an order terminal with only a generic status change. The metadata is still caller-supplied: it does not prove an RPC lookup occurred and is not an authenticated chain receipt. Actual server-side signature/balance reconciliation and trusted provenance remain prerequisites before execution.
+
+
+## Read-only Solana signature reconciliation adapter
+
+Added `solana-signature-reconciler.js`, an injected-RPC read-only adapter using `getSignatureStatuses` with transaction-history search. It reports `confirmed` or `failed` only when the signature is finalized; absent or non-final statuses remain `pending`. RPC transport and malformed responses fail closed. Unit coverage is included in the dedicated policy CI workflow. This adapter does not submit transactions, authenticate a provider's response, persist lifecycle state, or independently prove that an authorized execution path sent the transaction; integration with trusted ledger records and server-side evidence is still pending.
