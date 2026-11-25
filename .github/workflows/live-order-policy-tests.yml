@@ -16,6 +16,7 @@ on:
       - "live-order-ledger-object.js"
       - "wrangler.jsonc"
       - "package.json"
+      - "docs/live-trading-readiness.md"
       - "tests/live-order-ledger-object.test.mjs"
       - "worker.js"
       - "solana-signature-reconciler.js"
