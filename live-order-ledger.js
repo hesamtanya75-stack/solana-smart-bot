@@ -8,6 +8,10 @@ import { transitionOrder, validateOrderRecord } from "./live-order-lifecycle.js"
 const PREFIX = "live-order:";
 const KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/i;
+const copyEntry = entry => entry === undefined ? undefined : {
+  ...entry,
+  record: entry.record ? { ...entry.record } : entry.record
+};
 
 export class LiveOrderLedger {
   constructor(storage) {
@@ -31,17 +35,18 @@ export class LiveOrderLedger {
         if (existing.requestHash !== requestHash) {
           return { ok: false, conflict: true, reason: "Idempotency key reused with different request" };
         }
-        return { ok: true, duplicate: true, record: existing.record, version: existing.version };
+        return { ok: true, duplicate: true, record: { ...existing.record }, version: existing.version };
       }
       const entry = { requestHash: requestHash.toLowerCase(), record: { ...record }, version: 1 };
       await txn.put(key, entry);
-      return { ok: true, duplicate: false, record: entry.record, version: entry.version };
+      return { ok: true, duplicate: false, record: { ...entry.record }, version: entry.version };
     });
   }
 
   async get(orderId) {
     if (typeof orderId !== "string" || !KEY_PATTERN.test(orderId)) return null;
-    return this.storage.get(PREFIX + orderId);
+    const entry = await this.storage.get(PREFIX + orderId);
+    return copyEntry(entry);
   }
 
   async transition(orderId, expectedVersion, nextStatus, metadata = {}) {
@@ -60,7 +65,7 @@ export class LiveOrderLedger {
       if (!result.ok) return result;
       const updated = { ...entry, record: result.record, version: entry.version + 1 };
       await txn.put(key, updated);
-      return { ok: true, record: updated.record, version: updated.version };
+      return { ok: true, record: { ...updated.record }, version: updated.version };
     });
   }
 }
