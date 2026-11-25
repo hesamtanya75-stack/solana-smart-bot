@@ -5,6 +5,27 @@ const TOKEN_PROGRAMS = {
 const MAX_ENUMERATED_ACCOUNTS = 50000;
 const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+function isValidPublicKey(value) {
+  if (typeof value !== "string" || !BASE58_ADDRESS.test(value)) return false;
+  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let decoded = 0n;
+  for (const char of value) {
+    const digit = alphabet.indexOf(char);
+    if (digit < 0) return false;
+    decoded = decoded * 58n + BigInt(digit);
+  }
+  let byteLength = 0;
+  while (decoded > 0n) {
+    byteLength++;
+    decoded >>= 8n;
+  }
+  let leadingZeroBytes = 0;
+  while (leadingZeroBytes < value.length && value[leadingZeroBytes] === "1") {
+    leadingZeroBytes++;
+  }
+  return leadingZeroBytes + byteLength === 32;
+}
+
 function base58(bytes) {
   const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   let value = 0n;
@@ -59,7 +80,7 @@ export function buildCompleteHolderEnumeration({ mint, splResult, token2022Resul
   let total = 0n;
   for (const [entries, program] of [[spl, TOKEN_PROGRAMS.spl], [t22, TOKEN_PROGRAMS.token2022]]) {
     for (const entry of entries) {
-      if (!BASE58_ADDRESS.test(entry?.pubkey || "") || seen.has(entry.pubkey)) {
+      if (!isValidPublicKey(entry?.pubkey) || seen.has(entry.pubkey)) {
         throw new Error("Holder enumeration contains invalid or duplicate account");
       }
       seen.add(entry.pubkey);
