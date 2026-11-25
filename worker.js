@@ -435,7 +435,10 @@ async function inspectMint(mint, env) {
   if (details.mintAuthority !== false || details.freezeAuthority !== false) reasons.push("Mint/Freeze authority not confirmed inactive");
   if (concentration.largestOwnerAbove30Percent) reasons.push("Largest holder above 30%");
   if (concentration.topTenOwnersAbove50Percent) reasons.push("Top 10 holders above 50%");
-  if (!rug || rug.score == null || Number(rug.score) > 2500) reasons.push("RugCheck unavailable or score above 2500");
+  const rugScore = Number(rug?.score);
+  if (!rug || rug.score == null || !Number.isFinite(rugScore) || rugScore < 0 || rugScore > 2500) {
+    reasons.push("RugCheck unavailable or score invalid/above 2500");
+  }
   if (details.extensions.some(type => RISKY_EXTENSIONS.has(type))) reasons.push("Risky Token-2022 extension detected");
   const price = Number(market.priceUsd || 0);
   if (!(price > 0)) reasons.push("Price unavailable");
