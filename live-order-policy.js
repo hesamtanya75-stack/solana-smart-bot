@@ -57,6 +57,7 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
     errors.push("Risk evidence is missing, failed, future-dated, or stale");
   }
   if (!isRecord(order.quote) || order.quote.trusted !== true ||
+      order.quote.evidenceClass !== "provider-response-authenticated" ||
       !Number.isFinite(order.quote.checkedAt) ||
       now - order.quote.checkedAt < 0 ||
       now - order.quote.checkedAt > 15_000) {
