@@ -77,6 +77,16 @@ test("quote and risk evidence expire immediately beyond their exact freshness wi
   }, policy, now).ok, false);
 });
 
+test("array and malformed evidence payloads fail closed", () => {
+  assert.equal(validateLiveOrderPolicy([], policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: []
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, riskEvidence: []
+  }, policy, now).ok, false);
+});
+
 test("missing or identical input/output mints fail closed", () => {
   assert.equal(validateLiveOrderPolicy({ ...order, inputMint: undefined }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, outputMint: "" }, policy, now).ok, false);
