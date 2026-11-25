@@ -19,9 +19,11 @@ on:
       - "live-order-policy.js"
       - "live-order-units.js"
       - "live-order-lifecycle.js"
+      - "live-order-ledger.js"
       - "tests/live-order-policy.test.mjs"
       - "tests/live-order-units.test.mjs"
       - "tests/live-order-lifecycle.test.mjs"
+      - "tests/live-order-ledger.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
 
 permissions:
