@@ -38,7 +38,7 @@ async function evidence(binding, clock) {
     binding, secret, now: () => clock,
     inspectRisk: async mint => ({ ok: true, mint, rugScore: 120 }),
     fetchQuote: async args => ({
-      provider: "mock", inputMint: args.inputMint, outputMint: args.outputMint,
+      provider: "jupiter-swap-v2", inputMint: args.inputMint, outputMint: args.outputMint,
       inputAmountAtomic: args.amountAtomic, outputAmountAtomic: "900000",
       fetchedAt: clock, evidenceClass: "provider-response-unverified"
     })
