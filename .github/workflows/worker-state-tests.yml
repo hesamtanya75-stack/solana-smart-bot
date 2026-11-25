@@ -7,6 +7,8 @@ on:
       - "index.html"
       - "paper-state-coordinator.js"
       - "mfa-rate-limiter.js"
+      - "live-order-policy.js"
+      - "tests/live-order-policy.test.mjs"
       - "wrangler.jsonc"
       - "tests/worker-state-initialization.test.mjs"
       - "tests/worker-state-routing.test.mjs"
