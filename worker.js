@@ -829,10 +829,22 @@ export default {
             env.LIVE_ORDER_EVIDENCE_HMAC_SECRET.length < 32) {
           return json({ error: "Server-side evidence attestation is not configured" }, 503);
         }
-        const contentLength = Number(request.headers.get("Content-Length") || 0);
-        if (contentLength > 2048) return json({ error: "Evidence request is too large" }, 413);
+        const contentLengthHeader = request.headers.get("Content-Length");
+        if (contentLengthHeader !== null &&
+            (!/^\\d+$/.test(contentLengthHeader) || Number(contentLengthHeader) > 2048)) {
+          return json({ error: "Evidence request is too large or malformed" }, 413);
+        }
+        if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("Content-Type") || "")) {
+          return json({ error: "Evidence request must use application/json" }, 415);
+        }
         try {
-          const body = await request.json();
+          // Enforce the byte limit on the actual body too; Content-Length is optional
+          // and cannot be trusted for streamed/chunked requests.
+          const rawBody = await request.text();
+          if (new TextEncoder().encode(rawBody).byteLength > 2048) {
+            return json({ error: "Evidence request is too large" }, 413);
+          }
+          const body = JSON.parse(rawBody);
           if (!body || typeof body !== "object" || Array.isArray(body) ||
               Object.keys(body).some(key => !["idempotencyKey", "inputMint", "outputMint", "amountAtomic"].includes(key))) {
             return json({ error: "Invalid evidence request fields" }, 400);
