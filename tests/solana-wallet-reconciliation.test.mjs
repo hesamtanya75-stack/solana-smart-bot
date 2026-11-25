@@ -41,7 +41,7 @@ test("reports finalized native balance and aggregates token accounts exactly", a
       };
     }
   });
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.native.amountAtomic, "1234567890");
   assert.equal(result.native.amount, "1.234567890");
   assert.equal(result.positions.find(x => x.mint === mint).amountAtomic, "9007199254741000");
