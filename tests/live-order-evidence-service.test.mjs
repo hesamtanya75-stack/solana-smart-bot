@@ -74,6 +74,10 @@ test("risk failure prevents quote fetching and fails closed", async () => {
 
 test("malformed order or absent trusted providers are rejected", async () => {
   await assert.rejects(prepareLiveOrderEvidence({
+    binding: { ...binding, inputMint: "11111111111111111111111111111111111111111111" }, secret,
+    inspectRisk: async () => ({ ok: true }), fetchQuote: async () => quote(Date.now())
+  }));
+  await assert.rejects(prepareLiveOrderEvidence({
     binding: { ...binding, amountAtomic: "0" }, secret,
     inspectRisk: async () => ({ ok: true }), fetchQuote: async () => quote(Date.now())
   }));
