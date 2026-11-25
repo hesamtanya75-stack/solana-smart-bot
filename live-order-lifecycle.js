@@ -5,7 +5,7 @@
 const TRANSITIONS = Object.freeze({
   created: new Set(["validated", "rejected"]),
   validated: new Set(["submitted", "rejected"]),
-  submitted: new Set(["confirmed", "failed", "reconciliation_required"]),
+  submitted: new Set(["reconciliation_required"]),
   reconciliation_required: new Set(["confirmed", "failed"]),
   confirmed: new Set(),
   failed: new Set(),
