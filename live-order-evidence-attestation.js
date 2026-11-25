@@ -64,14 +64,20 @@ export async function createOrderEvidenceAttestation({ binding, quote, risk, sec
   }
   if (!quote || quote.inputMint !== binding.inputMint || quote.outputMint !== binding.outputMint ||
       quote.inputAmountAtomic !== binding.amountAtomic ||
+      typeof quote.outputAmountAtomic !== "string" || !AMOUNT_PATTERN.test(quote.outputAmountAtomic) ||
+      !Number.isSafeInteger(quote.fetchedAt) || quote.fetchedAt > now ||
+      now - quote.fetchedAt > ttlMs ||
       quote.evidenceClass !== "provider-response-unverified") {
     throw new TypeError("Quote does not bind to this order or has an unsupported provenance class");
   }
-  if (!risk || risk.passed !== true || !Number.isSafeInteger(risk.checkedAt) ||
-      risk.checkedAt > now || now - risk.checkedAt > ttlMs) {
+  if (!risk || risk.passed !== true || risk.mint !== binding.outputMint ||
+      !Number.isSafeInteger(risk.checkedAt) || risk.checkedAt > now ||
+      now - risk.checkedAt > ttlMs) {
     throw new TypeError("Risk evidence is missing, failed, or stale");
   }
-  const payload = { version: 1, issuedAt: now, expiresAt: now + ttlMs, binding: { ...binding }, quote: { ...quote }, risk: { ...risk } };
+  const expiresAt = now + ttlMs;
+  if (!Number.isSafeInteger(expiresAt)) throw new TypeError("Attestation expiry overflow");
+  const payload = { version: 1, issuedAt: now, expiresAt, binding: { ...binding }, quote: { ...quote }, risk: { ...risk } };
   const encoded = new TextEncoder().encode(canonical(payload));
   const signature = await crypto.subtle.sign("HMAC", await importHmacKey(secret), encoded);
   return Object.freeze({ payload, signature: bytesToBase64Url(new Uint8Array(signature)) });
