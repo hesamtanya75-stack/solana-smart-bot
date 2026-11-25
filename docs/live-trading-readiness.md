@@ -50,3 +50,8 @@ The Base58 mint check currently verifies only a plausible character set and stri
 ## Evidence provenance is not established by this validator
 
 The policy helper only validates fields supplied to it. In particular, `quote.trusted === true` and `riskEvidence.passed === true` are caller-provided assertions, not cryptographic or server-side proof of origin. Do not connect this helper directly to transaction signing or submission. A future order service must fetch or independently verify the quote and risk response from approved server-side sources, bind the evidence to the exact mints and amount, and prevent client-side replacement between validation and execution. The helper's freshness checks are necessary but not sufficient for live authorization.
+
+
+## Exact amount conversion helper (isolated)
+
+The branch now includes `live-order-units.js`, which converts plain decimal strings to integer atomic units using explicit decimals, and converts integer units back to a canonical decimal string. SOL helpers use 9 decimals (lamports). The module rejects JavaScript Number inputs, signs, exponent notation, excess fractional precision, invalid decimal counts, and negative/non-BigInt atomic values. It is covered by `tests/live-order-units.test.mjs` and included in the dedicated Node 20 policy-test workflow. This utility is not yet wired into the Worker, quote provider, order ledger, or transaction path; it does not authorize or execute trades.
