@@ -20,8 +20,8 @@ function fixture(amounts = ["60", "25", "15"], owners = [ownerA, ownerA, ownerB]
 test("aggregates multiple token accounts by wallet owner and checks complete supply", () => {
   const result = calculateCompleteHolderConcentration(fixture());
   assert.equal(result.complete, true);
-  assert.equal(result.largestOwnerBps, 8500);
-  assert.equal(result.topTenOwnersBps, 10000);
+  assert.equal(result.largestOwnerPpm, 850000);
+  assert.equal(result.topTenOwnersPpm, 1000000);
 });
 
 test("supports Token-2022 account program when evidence is complete", () => {
