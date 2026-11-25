@@ -19,7 +19,7 @@ const quote = {
   fetchedAt: now - 500,
   evidenceClass: "provider-response-unverified"
 };
-const risk = { passed: true, checkedAt: now - 1000, riskSource: "server-inspection-v1" };
+const risk = { passed: true, mint: binding.outputMint, checkedAt: now - 1000, riskSource: "server-inspection-v1" };
 
 test("server HMAC attestation binds request, quote, and fresh risk snapshot", async () => {
   const attestation = await createOrderEvidenceAttestation({ binding, quote, risk, secret, now });
@@ -45,6 +45,12 @@ test("fails closed for expired, stale, failed, mismatched, and unconfigured evid
   }));
   await assert.rejects(createOrderEvidenceAttestation({
     binding, quote: { ...quote, inputAmountAtomic: "1" }, risk, secret, now
+  }));
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding, quote: { ...quote, fetchedAt: now - 16000 }, risk, secret, now
+  }));
+  await assert.rejects(createOrderEvidenceAttestation({
+    binding, risk: { ...risk, mint: binding.inputMint }, quote, secret, now
   }));
   await assert.rejects(createOrderEvidenceAttestation({ binding, quote, risk, secret: "short", now }));
 });
