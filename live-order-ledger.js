@@ -28,16 +28,17 @@ export class LiveOrderLedger {
     if (typeof requestHash !== "string" || !HASH_PATTERN.test(requestHash)) {
       throw new TypeError("A SHA-256 request fingerprint is required");
     }
+    const normalizedHash = requestHash.toLowerCase();
     return this.storage.transaction(async txn => {
       const key = PREFIX + record.orderId;
       const existing = await txn.get(key);
       if (existing !== undefined) {
-        if (existing.requestHash !== requestHash) {
+        if (existing.requestHash !== normalizedHash) {
           return { ok: false, conflict: true, reason: "Idempotency key reused with different request" };
         }
         return { ok: true, duplicate: true, record: { ...existing.record }, version: existing.version };
       }
-      const entry = { requestHash: requestHash.toLowerCase(), record: { ...record }, version: 1 };
+      const entry = { requestHash: normalizedHash, record: { ...record }, version: 1 };
       await txn.put(key, entry);
       return { ok: true, duplicate: false, record: { ...entry.record }, version: entry.version };
     });
