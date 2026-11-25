@@ -60,3 +60,8 @@ The branch now includes `live-order-units.js`, which converts plain decimal stri
 ## Order lifecycle and retry safety (isolated rules)
 
 The branch includes a pure lifecycle helper with the statuses `created`, `validated`, `submitted`, `reconciliation_required`, `confirmed`, `failed`, and `rejected`. It disallows skipping directly from validation to terminal confirmation, requires a signature once submission is recorded, and blocks blind resubmission for submitted or uncertain orders. An uncertain submission must be reconciled by signature before it can be marked confirmed or failed. This is only a state-transition validator: it is not a durable ledger, does not enforce unique idempotency keys across requests, and is not wired to the Worker or any RPC/signer. Durable atomic storage and actual chain reconciliation remain required before execution.
+
+
+## Isolated transactional ledger adapter
+
+An additional `live-order-ledger.js` adapter uses a Durable Object-style transactional storage interface to atomically create an order record, reject reuse of an idempotency key with a different request fingerprint, and compare-and-swap status transitions by version. Its unit tests use a serialized in-memory storage stub only; they do not prove Cloudflare runtime behavior or cross-instance production guarantees. The adapter remains unbound and unwired, does not independently authenticate or calculate the request fingerprint, and cannot sign, send, or confirm a transaction. It is groundwork, not live trading readiness.
