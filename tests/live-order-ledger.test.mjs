@@ -51,6 +51,14 @@ test("returned ledger records are defensive copies", async () => {
   assert.equal(again.version, 1);
 });
 
+test("idempotency fingerprint comparison is case-insensitive hex", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  await ledger.create(order, hash.toUpperCase());
+  const result = await ledger.create(order, hash.toLowerCase());
+  assert.equal(result.ok, true);
+  assert.equal(result.duplicate, true);
+});
+
 test("create is idempotent for same key and request fingerprint", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
   assert.equal((await ledger.create(order, hash)).duplicate, false);
