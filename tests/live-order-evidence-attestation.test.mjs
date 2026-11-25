@@ -62,6 +62,9 @@ test("rejects quote evidence that names an unexpected provider", async () => {
 });
 test("rejects malformed bindings and tampered signatures", async () => {
   await assert.rejects(createOrderEvidenceAttestation({
+    binding: { ...binding, inputMint: "11111111111111111111111111111111111111111111" }, quote, risk, secret, now
+  }));
+  await assert.rejects(createOrderEvidenceAttestation({
     binding: { ...binding, amountAtomic: "0" }, quote, risk, secret, now
   }));
   const attestation = await createOrderEvidenceAttestation({ binding, quote, risk, secret, now });
