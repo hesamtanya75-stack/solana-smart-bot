@@ -42,7 +42,7 @@ A live execution implementation is not complete until all of these are implement
 
 ## Numeric and address validation boundaries
 
-The current helper accepts SOL-denominated amounts as JavaScript numbers and compares quote input amounts using a floating-point tolerance. This is suitable only for the present validation fixture; it is not an execution-grade amount representation. A future live path must use integer lamports for SOL and integer atomic units for tokens, with explicit mint decimals and checked conversions. It must not use floating-point values as the authoritative amount for transaction construction, daily accounting, or fee enforcement.
+The policy helper now converts its daily-spend ledger, order amount, estimated fee, and configured daily cap to integer lamports before summing and comparing. This avoids floating-point boundary drift in daily spend checks, and values that cannot be represented safely at lamport precision fail closed. The quote-input comparison still uses a numeric tolerance and remains a preparation-only check, not execution-grade amount binding. The eventual execution path must use `live-order-units.js` decimal-string conversion end-to-end for SOL and token atomic units; it must not use floating-point values as authoritative transaction or accounting amounts.
 
 The Base58 mint check currently verifies only a plausible character set and string length. It does not decode the address to confirm exactly 32 bytes, prove that the account exists, or verify its on-chain owner and token-program type. Those checks must be performed against trusted chain data before any live order is authorized.
 
@@ -69,3 +69,8 @@ The lifecycle validator now rejects unsupported top-level order fields and valid
 ## Isolated transactional ledger adapter
 
 An additional `live-order-ledger.js` adapter uses a Durable Object-style transactional storage interface to atomically create an order record, reject reuse of an idempotency key with a different request fingerprint, and compare-and-swap status transitions by version. Its unit tests use a serialized in-memory storage stub only; they do not prove Cloudflare runtime behavior or cross-instance production guarantees. The adapter remains unbound and unwired, does not independently authenticate or calculate the request fingerprint, and cannot sign, send, or confirm a transaction. It is groundwork, not live trading readiness.
+
+
+## Daily-spend precision regression and CI
+
+The policy regression suite now includes an exact daily-limit boundary and a just-over-limit case. The validator compares spend in integer lamports rather than adding JavaScript floating-point SOL values. The dedicated `Live Order Policy Tests` workflow passed on the current preparation head (`531a79bc2bea63e0b75e6c4ab5abe049e5ac8e73`). This confirms the isolated Node test suite only; it does not certify a wallet, signer, transaction builder, live buy/sell, or Mainnet readiness.
