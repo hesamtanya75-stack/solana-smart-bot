@@ -53,12 +53,12 @@ export function calculateCompleteHolderConcentration({ mint, supplyAtomic, large
   }
 
   const percentagesBps = [...owners.values()]
-    .map(amount => Number((amount * 10000n) / supply))
+    .map(amount => Number((amount * 1000000n) / supply))
     .sort((a, b) => b - a);
   return {
     complete: true,
     sampledSupplyAtomic: sampled.toString(),
-    largestOwnerBps: percentagesBps[0] || 0,
-    topTenOwnersBps: percentagesBps.slice(0, 10).reduce((sum, value) => sum + value, 0)
+    largestOwnerPpm: percentagesBps[0] || 0,
+    topTenOwnersPpm: percentagesBps.slice(0, 10).reduce((sum, value) => sum + value, 0)
   };
 }
