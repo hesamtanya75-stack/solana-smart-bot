@@ -4,6 +4,7 @@ import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 import { fetchJupiterQuote } from "./jupiter-quote-client.js";
 import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
 import { parseLiveOrderEvidenceRequest } from "./live-order-evidence-request.js";
+import { reconcileWalletReadOnly } from "./solana-wallet-reconciliation.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -822,6 +823,35 @@ export default {
           }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
+        }
+      }
+      if (url.pathname === "/api/wallet/reconcile" && request.method === "POST") {
+        // Read-only wallet inspection using a public address only.
+        const declaredLength = request.headers.get("Content-Length");
+        if (declaredLength !== null && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > 128)) {
+          return json({ error: "Wallet request is malformed or too large" }, 413);
+        }
+        try {
+          const raw = await request.text();
+          if (new TextEncoder().encode(raw).length > 128) return json({ error: "Wallet request is too large" }, 413);
+          if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+            return json({ error: "JSON content type required" }, 415);
+          }
+          const body = JSON.parse(raw);
+          if (!body || typeof body !== "object" || Array.isArray(body) ||
+              Object.keys(body).join(",") !== "owner" || typeof body.owner !== "string") {
+            return json({ error: "Only a public wallet owner address is accepted" }, 400);
+          }
+          const snapshot = await reconcileWalletReadOnly({
+            owner: body.owner,
+            getBalance: (owner, config) => rpc("getBalance", [owner, config], env),
+            getTokenAccountsByOwner: (owner, programId, config) =>
+              rpc("getTokenAccountsByOwner", [owner, { ...config, programId }], env)
+          });
+          if (!snapshot.ok) return json({ error: snapshot.reason }, 400);
+          return json({ ok: true, wallet: snapshot });
+        } catch {
+          return json({ error: "Finalized wallet RPC reconciliation unavailable; no paper or live state changed" }, 503);
         }
       }
       if (url.pathname === "/api/live-order/evidence" && request.method === "POST") {
