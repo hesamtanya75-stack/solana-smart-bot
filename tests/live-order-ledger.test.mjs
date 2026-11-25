@@ -40,6 +40,17 @@ test("mock transaction discards staged writes when callback throws", async () =>
   assert.equal(await storage.get("temporary"), undefined);
 });
 
+test("returned ledger records are defensive copies", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  const created = await ledger.create(order, hash);
+  created.record.status = "confirmed";
+  const fetched = await ledger.get(order.orderId);
+  fetched.record.status = "failed";
+  const again = await ledger.get(order.orderId);
+  assert.equal(again.record.status, "created");
+  assert.equal(again.version, 1);
+});
+
 test("create is idempotent for same key and request fingerprint", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
   assert.equal((await ledger.create(order, hash)).duplicate, false);
