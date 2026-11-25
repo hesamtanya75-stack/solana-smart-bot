@@ -110,3 +110,19 @@ test("reservation requires ledger and never invokes any execution capability", a
     binding: base, attestation: prepared.attestation, secret, now: () => clock + 1
   })).ok, false);
 });
+
+test("evidence-only reservation cannot enter validated or submitted lifecycle", async () => {
+  const clock = Date.now();
+  const ledger = new LiveOrderLedger(storageMock());
+  const prepared = await evidence(base, clock);
+  const reservation = await reservePreparedEvidence({
+    binding: base, attestation: prepared.attestation, ledger, secret, now: () => clock + 1
+  });
+  assert.equal(reservation.ok, true);
+  const transition = await ledger.transition(base.idempotencyKey, 1, "validated");
+  assert.equal(transition.ok, false);
+  assert.match(transition.reason, /Evidence-only reservation/);
+  const rejected = await ledger.transition(base.idempotencyKey, 1, "rejected");
+  assert.equal(rejected.ok, true);
+  assert.equal(rejected.record.status, "rejected");
+});
