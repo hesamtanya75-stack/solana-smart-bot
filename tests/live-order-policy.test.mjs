@@ -76,3 +76,18 @@ test("quote and risk evidence expire immediately beyond their exact freshness wi
     riskEvidence: { ...boundaryOrder.riskEvidence, checkedAt: now - 30_001 }
   }, policy, now).ok, false);
 });
+
+test("non-finite quote and risk timestamps are rejected", () => {
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, checkedAt: NaN }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, quote: { ...order.quote, checkedAt: Infinity }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, riskEvidence: { ...order.riskEvidence, checkedAt: NaN }
+  }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({
+    ...order, riskEvidence: { ...order.riskEvidence, checkedAt: Infinity }
+  }, policy, now).ok, false);
+});
