@@ -236,6 +236,26 @@ main>.panel{
 
 
 </style>
+
+<style id="SB_MOBILE_RTL_OVERFLOW_FIX">
+/* Mobile-only layout correction: preserve the existing purple-glass design. */
+.safety-strip{min-width:0;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 9px;padding:7px 10px;line-height:1.45;overflow-wrap:anywhere}
+#adminProfileButton{align-self:flex-end;max-width:100%;white-space:normal}
+#serverLogoutButton{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+#result,#result>.section,#security,#holders,#selling,#conclusion{min-width:0;max-width:100%;}
+#security .item,#holders .item{min-width:0;align-items:flex-start;flex-wrap:wrap;overflow-wrap:anywhere;word-break:normal}
+#security .item span,#holders .item span,#security .value,#holders .value{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+#result .section *{max-width:100%;}
+@media(max-width:600px){
+ .safety-strip{font-size:10px}
+ #adminProfileButton{margin:0!important;padding:7px 12px!important}
+ #result>.section{overflow:hidden!important}
+ #security .item,#holders .item{display:flex!important;gap:5px!important;line-height:1.45!important}
+ #security .item span,#holders .item span{flex:1 1 100%;}
+ #security .value,#holders .value{flex:1 1 100%;font-size:9px!important;text-align:right!important;direction:auto!important}
+ #result .value{overflow-wrap:anywhere!important}
+}
+</style>
 </head>
 <body>
 <script id="SB_RUNTIME_DIAGNOSTICS">
