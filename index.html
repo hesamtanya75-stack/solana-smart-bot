@@ -255,6 +255,23 @@ main>.panel{
  #security .value,#holders .value{flex:1 1 100%;font-size:9px!important;text-align:right!important;direction:auto!important}
  #result .value{overflow-wrap:anywhere!important}
 }
+/* Correct mixed Sorani/English safety evidence wrapping on narrow screens. */
+#security .item{min-width:0;align-items:flex-start}
+#security .item span,
+#security .item .value{
+  unicode-bidi:plaintext;
+  direction:auto;
+  text-align:start;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+#security .item span{line-height:1.45}
+#security .item .value{flex:1 1 100%;max-width:100%;white-space:normal}
+@media(max-width:600px){
+  #security .item{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;align-items:start!important;gap:5px!important}
+  #security .item span{grid-column:2;min-width:0;max-width:100%;font-size:clamp(9px,2.7vw,11px)!important}
+  #security .item .value{grid-column:2;min-width:0;max-width:100%;font-size:clamp(9px,2.7vw,11px)!important}
+}
 </style>
 </head>
 <body>
