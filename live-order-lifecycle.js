@@ -47,6 +47,14 @@ export function transitionOrder(record, nextStatus, metadata = {}) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return { ok: false, reason: "Transition metadata must be an object" };
   }
+  const allowedMetadata = new Set(["signature", "finalizedAt", "failureReason"]);
+  if (Object.keys(metadata).some(key => !allowedMetadata.has(key))) {
+    return { ok: false, reason: "Transition metadata contains immutable or unsupported fields" };
+  }
+  if (metadata.failureReason !== undefined &&
+      (typeof metadata.failureReason !== "string" || metadata.failureReason.length > 500)) {
+    return { ok: false, reason: "Failure reason must be a bounded string" };
+  }
   const next = { ...record, ...metadata, status: nextStatus };
   if (nextStatus === "submitted" && (typeof next.signature !== "string" || next.signature.length < 32)) {
     return { ok: false, reason: "Submission requires a recorded transaction signature" };
