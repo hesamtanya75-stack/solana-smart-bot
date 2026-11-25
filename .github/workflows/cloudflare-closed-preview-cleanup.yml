@@ -61,7 +61,7 @@ jobs:
           : > "$RUNNER_TEMP/open-branches.txt"
           while read -r number branch source_repo; do
             [ -n "$branch" ] || continue
-            printf '%s %s\\n' "$source_repo" "$branch" >> "$RUNNER_TEMP/open-branches.txt"
+            printf '%s %s\n' "$source_repo" "$branch" >> "$RUNNER_TEMP/open-branches.txt"
           done < "$RUNNER_TEMP/open-prs.tsv"
           while read -r number branch source_repo base_branch; do
             [ -n "$number" ] || continue
