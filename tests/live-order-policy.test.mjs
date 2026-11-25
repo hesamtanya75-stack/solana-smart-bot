@@ -77,6 +77,12 @@ test("quote and risk evidence expire immediately beyond their exact freshness wi
   }, policy, now).ok, false);
 });
 
+test("mint addresses must have plausible Solana Base58 syntax", () => {
+  assert.equal(validateLiveOrderPolicy({ ...order, inputMint: "bad-mint" }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, outputMint: "0".repeat(32) }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, outputMint: "O".repeat(32) }, policy, now).ok, false);
+});
+
 test("array and malformed evidence payloads fail closed", () => {
   assert.equal(validateLiveOrderPolicy([], policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({
