@@ -21,6 +21,14 @@ export function isValidSolanaPublicKey(value) {
   return bytes === 32;
 }
 
+function formatAtomic(amount, decimals) {
+  const value = BigInt(amount);
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = (value % scale).toString().padStart(decimals, "0");
+  return decimals ? whole.toString() + "." + fraction : whole.toString();
+}
+
 function positiveSlot(context) {
   return Number.isSafeInteger(context?.slot) && context.slot >= 0 ? context.slot : null;
 }
@@ -53,7 +61,8 @@ export async function reconcileWalletReadOnly({ owner, getBalance, getTokenAccou
       const mint = info?.mint;
       const amount = info?.tokenAmount?.amount;
       const decimals = info?.tokenAmount?.decimals;
-      if (typeof mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) ||
+      if (!isValidSolanaPublicKey(mint) ||
+          info.owner !== owner || item?.account?.owner !== TOKEN_PROGRAMS[accountSets.indexOf(response)] ||
           typeof amount !== "string" || !/^\d+$/.test(amount) ||
           !Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
         return { ok: false, reason: "Token account parsing failed; refusing partial wallet snapshot" };
@@ -82,7 +91,7 @@ export async function reconcileWalletReadOnly({ owner, getBalance, getTokenAccou
       symbol: "SOL",
       decimals: 9,
       amountAtomic: String(native.value),
-      amount: (native.value / 1e9).toFixed(9)
+      amount: formatAtomic(String(native.value), 9)
     },
     positions: [...positions.values()].sort((a, b) => a.mint.localeCompare(b.mint)),
     tokenAccountCount: accountCount,
