@@ -48,6 +48,16 @@ test("order records reject unexpected fields and malformed finalization metadata
   assert.equal(validateOrderRecord({ ...base, failureReason: "x".repeat(501) }).ok, false);
 });
 
+test("transition metadata is accepted only for compatible target statuses", () => {
+  assert.equal(transitionOrder(base, "validated", { signature: "S".repeat(64) }).ok, false);
+  assert.equal(transitionOrder(base, "validated", { finalizedAt: 1_800_000_000_100 }).ok, false);
+  assert.equal(transitionOrder(base, "validated", { failureReason: "no-go" }).ok, false);
+  const validated = transitionOrder(base, "validated").record;
+  assert.equal(transitionOrder(validated, "submitted", { signature: "S".repeat(64) }).ok, true);
+  const submitted = transitionOrder(validated, "submitted", { signature: "S".repeat(64) }).record;
+  assert.equal(transitionOrder(submitted, "confirmed", { finalizedAt: 1_800_000_000_100 }).ok, true);
+});
+
 test("transition metadata cannot overwrite immutable order identity", () => {
   assert.equal(transitionOrder(base, "validated", { orderId: "attacker-overwrite-123" }).ok, false);
   assert.equal(transitionOrder(base, "validated", { createdAt: 9 }).ok, false);
