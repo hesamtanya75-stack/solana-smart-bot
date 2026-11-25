@@ -1,10 +1,11 @@
+import { isValidSolanaPublicKey } from "./solana-wallet-reconciliation.js";
+
 /**
  * Server-only HMAC attestation for binding an order request to its evidence.
  * Call only after the Worker has independently fetched/validated quote and risk data.
  * This module does not sign or submit Solana transactions.
  */
 const KEY_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
-const MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const AMOUNT_PATTERN = /^[1-9][0-9]{0,39}$/;
 
 function canonical(value) {
@@ -26,8 +27,8 @@ function canonical(value) {
 function validateBinding(binding) {
   if (!binding || typeof binding !== "object" || Array.isArray(binding) ||
       !KEY_PATTERN.test(binding.idempotencyKey || "") ||
-      !MINT_PATTERN.test(binding.inputMint || "") ||
-      !MINT_PATTERN.test(binding.outputMint || "") ||
+      !isValidSolanaPublicKey(binding.inputMint) ||
+      !isValidSolanaPublicKey(binding.outputMint) ||
       binding.inputMint === binding.outputMint ||
       typeof binding.amountAtomic !== "string" || !AMOUNT_PATTERN.test(binding.amountAtomic)) {
     throw new TypeError("Attestation order binding is invalid");
