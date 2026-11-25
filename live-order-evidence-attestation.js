@@ -115,9 +115,23 @@ export async function verifyOrderEvidenceAttestation({ attestation, expectedBind
     const valid = await crypto.subtle.verify("HMAC", await importHmacKey(secret),
       base64UrlToBytes(attestation.signature), new TextEncoder().encode(canonical(payload)));
     if (!valid) return { ok: false, reason: "Attestation signature is invalid" };
-    if (!payload.risk || payload.risk.passed !== true || payload.risk.mint !== expectedBinding.outputMint ||
-        !riskMetricsAreSafe(payload.risk)) {
-      return { ok: false, reason: "Attested risk metrics are missing or unsafe" };
+    const quote = payload.quote;
+    const evidenceTtl = payload.expiresAt - payload.issuedAt;
+    if (!quote || quote.provider !== "jupiter-swap-v2" ||
+        quote.evidenceClass !== "provider-response-unverified" ||
+        quote.inputMint !== expectedBinding.inputMint ||
+        quote.outputMint !== expectedBinding.outputMint ||
+        quote.inputAmountAtomic !== expectedBinding.amountAtomic ||
+        typeof quote.outputAmountAtomic !== "string" || !AMOUNT_PATTERN.test(quote.outputAmountAtomic) ||
+        !Number.isSafeInteger(quote.fetchedAt) || quote.fetchedAt > payload.issuedAt ||
+        payload.issuedAt - quote.fetchedAt > evidenceTtl) {
+      return { ok: false, reason: "Attested quote does not bind to the requested order" };
+    }
+    if (!payload.risk || payload.risk.passed !== true ||
+        payload.risk.mint !== expectedBinding.outputMint || !riskMetricsAreSafe(payload.risk) ||
+        !Number.isSafeInteger(payload.risk.checkedAt) || payload.risk.checkedAt > payload.issuedAt ||
+        payload.issuedAt - payload.risk.checkedAt > evidenceTtl) {
+      return { ok: false, reason: "Attested risk metrics are missing, stale, or unsafe" };
     }
     return { ok: true, payload };
   } catch {
