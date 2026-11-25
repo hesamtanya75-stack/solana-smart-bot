@@ -195,3 +195,8 @@ This verifies the source-level credential/opt-in boundaries, not the presence of
 ## Final policy-gate CI confirmation — 2026-11-25
 
 The documentation-only commit `0fc976a69faf90d0f41078ef41f6e47a7372caef` was validated by Live Order Policy CI [45543797861](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543797861): **success**. Worker and Durable Object syntax checks, Wrangler deployment configuration dry-run, and policy unit tests all passed. This is validation of branch code and configuration only. Preview runtime remains blocked on separately configured Cloudflare credentials/explicit opt-in, and provider quote authenticity remains unverified. No merge, Production deploy, signing, or Mainnet transaction was performed.
+
+
+## Latest policy CI confirmation — 2026-11-25
+
+Branch HEAD `acf30ee8567b71aab0f7183c54006442b7123ac5` completed Live Order Policy CI run [45543901886](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543901886) successfully. Worker and Durable Object syntax validation, Wrangler configuration dry-run, and policy unit tests all passed. This confirms the branch's policy/build checks only; it does not resolve the authenticated Cloudflare Preview runtime or trusted provider quote provenance blockers. Keep all execution fail-closed. No merge, Production deployment, wallet signing, or Mainnet transaction was performed.
