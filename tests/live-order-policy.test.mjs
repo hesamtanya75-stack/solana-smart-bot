@@ -35,7 +35,8 @@ test("order and daily spend limits are enforced", () => {
   assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: 0.49 }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, openPositions: 4 }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, estimatedFeeSol: 0.01 }, policy, now).ok, false);
-  assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: 0.449 }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: 0.449 }, policy, now).ok, true); // projected spend is exactly the limit
+  assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: 0.4491 }, policy, now).ok, false);
   assert.equal(validateLiveOrderPolicy({ ...order, dailySpendSol: Number.MAX_VALUE }, policy, now).ok, false);
 });
 
