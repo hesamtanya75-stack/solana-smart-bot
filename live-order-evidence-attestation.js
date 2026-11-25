@@ -24,6 +24,14 @@ function canonical(value) {
   return "{" + keys.map(key => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
 }
 
+function riskMetricsAreSafe(risk) {
+  const metrics = risk?.riskSummary;
+  return metrics &&
+    Number.isFinite(metrics.rugScore) && metrics.rugScore >= 0 && metrics.rugScore <= 2500 &&
+    Number.isFinite(metrics.largestHolderPct) && metrics.largestHolderPct >= 0 && metrics.largestHolderPct <= 30 &&
+    Number.isFinite(metrics.topTenHolderPct) && metrics.topTenHolderPct >= 0 && metrics.topTenHolderPct <= 50;
+}
+
 function validateBinding(binding) {
   if (!binding || typeof binding !== "object" || Array.isArray(binding) ||
       !KEY_PATTERN.test(binding.idempotencyKey || "") ||
@@ -78,7 +86,7 @@ export async function createOrderEvidenceAttestation({ binding, quote, risk, sec
     throw new TypeError("Quote does not bind to this order or has an unsupported provenance class");
   }
   if (!risk || risk.passed !== true || risk.mint !== binding.outputMint ||
-      !Number.isSafeInteger(risk.checkedAt) || risk.checkedAt > now ||
+      !riskMetricsAreSafe(risk) || !Number.isSafeInteger(risk.checkedAt) || risk.checkedAt > now ||
       now - risk.checkedAt > ttlMs) {
     throw new TypeError("Risk evidence is missing, failed, or stale");
   }
@@ -107,6 +115,10 @@ export async function verifyOrderEvidenceAttestation({ attestation, expectedBind
     const valid = await crypto.subtle.verify("HMAC", await importHmacKey(secret),
       base64UrlToBytes(attestation.signature), new TextEncoder().encode(canonical(payload)));
     if (!valid) return { ok: false, reason: "Attestation signature is invalid" };
+    if (!payload.risk || payload.risk.passed !== true || payload.risk.mint !== expectedBinding.outputMint ||
+        !riskMetricsAreSafe(payload.risk)) {
+      return { ok: false, reason: "Attested risk metrics are missing or unsafe" };
+    }
     return { ok: true, payload };
   } catch {
     return { ok: false, reason: "Attestation verification failed closed" };
