@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+const rpcResponseSource = await readFile(new URL("../solana-rpc-response.js", import.meta.url), "utf8");
+const rpcResponseModuleUrl = "data:text/javascript;base64," + Buffer.from(rpcResponseSource).toString("base64");
+const { parseRpcSingleResponse, parseRpcBatchResponse } = await import(rpcResponseModuleUrl);
 const start = source.indexOf("async function rpcBatch(calls, env) {");
 const end = source.indexOf("\nasync function getJson(", start);
 assert.ok(start >= 0 && end > start, "rpcBatch function must be present");
@@ -23,7 +26,9 @@ function loadRpcBatch(fetchImpl) {
     Map,
     Object,
     String,
-    Error
+    Error,
+    parseRpcSingleResponse,
+    parseRpcBatchResponse
   };
   const fn = vm.runInNewContext("(" + rpcBatchSource + ")", context);
   return { fn, diagnostics };
