@@ -69,18 +69,14 @@
       }
     ]
   },
-  "exports": {
-    "PaperStateCoordinator": {
-      "type": "durable-object",
-      "storage": "sqlite"
-    },
-    "LiveOrderLedgerObject": {
-      "type": "durable-object",
-      "storage": "sqlite"
-    },
-    "MfaRateLimiter": {
-      "type": "durable-object",
-      "storage": "sqlite"
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "PaperStateCoordinator",
+        "LiveOrderLedgerObject",
+        "MfaRateLimiter"
+      ]
     }
-  }
+  ]
 }
