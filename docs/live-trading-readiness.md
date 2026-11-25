@@ -176,3 +176,10 @@ The Preview smoke-script hostname assertion was corrected and verified by CI run
 Draft PR #58 (`chore/cloudflare-preview-main-trigger`, head `6310feae64d2a5c42d2890df2e1f0746612738a9`) completed its GitHub Actions run [44972326959](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/44972326959) successfully. Regression tests and the pinned Wrangler 4.135.0 dry-run passed. The workflow's credential-detection step succeeded, but its explicit `Publish isolated Cloudflare Worker Preview` step was **skipped** because the required Preview credentials were unavailable to that job. The separate Cloudflare Workers GitHub App check reported a Preview build, not evidence of an authenticated runtime smoke test.
 
 Therefore this PR's green CI does not close the Preview runtime blocker. No Production deployment, merge, signing, transaction submission, or Mainnet trading occurred. PR #58 remains Draft.
+
+
+## Latest branch CI and workflow trigger coverage — 2026-11-25
+
+The branch commit `5dd490ea51ef5153bc70f4f2ff9b99f3aa08dccd` updated the Worker CI push path filters to include the Preview smoke-check script, Preview URL extractor, and Cloudflare Preview workflow. CI run [45543454035](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45543454035) completed successfully: **218/218 tests passed**, migration-helper syntax passed, and the Cloudflare Worker/Durable Object Wrangler dry-run passed. This is source-level regression/build validation; it is not an authenticated Cloudflare Preview runtime test and does not establish live-trading readiness.
+
+The authenticated read-only Preview runtime remains unverified because the workflow's Preview publishing step previously skipped when Cloudflare Preview credentials were unavailable. Keep quote provenance unverified, policy fail-closed, and all signing/order submission/Mainnet execution disabled. No merge or deployment was performed.
