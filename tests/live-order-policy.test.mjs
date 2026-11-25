@@ -52,6 +52,12 @@ test("missing, stale, future, or mismatched quote and risk evidence fail closed"
   assert.equal(validateLiveOrderPolicy({ ...order, estimatedFeeSol: undefined }, policy, now).ok, false);
 });
 
+test("idempotency key rejects whitespace and unsafe characters", () => {
+  assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "key with spaces 123" }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "key/unsafe-123456" }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, idempotencyKey: "valid-key_123456789" }, policy, now).ok, true);
+});
+
 test("invalid values, clock, and absent idempotency key are rejected", () => {
   assert.equal(validateLiveOrderPolicy(order, policy, NaN).ok, false);
   assert.equal(validateLiveOrderPolicy(order, policy, Infinity).ok, false);
