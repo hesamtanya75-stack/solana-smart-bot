@@ -18,8 +18,20 @@ export function validateOrderRecord(record) {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     return { ok: false, reason: "Order record must be an object" };
   }
+  const allowedFields = new Set(["orderId", "status", "createdAt", "signature", "finalizedAt", "failureReason"]);
+  if (Object.keys(record).some(key => !allowedFields.has(key))) {
+    return { ok: false, reason: "Order record contains unsupported fields" };
+  }
   if (typeof record.orderId !== "string" || !/^[A-Za-z0-9._:-]{16,128}$/.test(record.orderId)) {
     return { ok: false, reason: "Order ID must be a bounded idempotency identifier" };
+  }
+  if (record.finalizedAt !== undefined &&
+      (!Number.isSafeInteger(record.finalizedAt) || record.finalizedAt <= 0)) {
+    return { ok: false, reason: "Finalization time must be a positive safe integer" };
+  }
+  if (record.failureReason !== undefined &&
+      (typeof record.failureReason !== "string" || record.failureReason.length > 500)) {
+    return { ok: false, reason: "Failure reason must be a bounded string" };
   }
   if (!STATES.has(record.status)) {
     return { ok: false, reason: "Unknown order status" };
