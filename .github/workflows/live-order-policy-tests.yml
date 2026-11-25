@@ -1,0 +1,32 @@
+name: Live Order Policy Tests
+
+on:
+  push:
+    branches:
+      - live-trading-readiness-prep
+    paths:
+      - "live-order-policy.js"
+      - "tests/live-order-policy.test.mjs"
+      - ".github/workflows/live-order-policy-tests.yml"
+  pull_request:
+    paths:
+      - "live-order-policy.js"
+      - "tests/live-order-policy.test.mjs"
+      - ".github/workflows/live-order-policy-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  policy-tests:
+    name: Fail-closed order policy tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run policy unit tests
+        run: node --test tests/live-order-policy.test.mjs
