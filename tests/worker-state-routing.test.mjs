@@ -765,3 +765,25 @@ test("blank MFA secret is rejected before issuing a challenge", async () => {
   assert.equal(response.status, 503);
   assert.equal([...values.keys()].some(key => key.startsWith("session:") || key.startsWith("mfa_challenge:")), false);
 });
+
+test("wallet reconciliation rejects invalid public addresses without touching paper state", async () => {
+  const { env, coordinator, touchedKvKeys } = environment();
+  const before = await coordinator.snapshot();
+  const response = await worker.fetch(request("/api/wallet/reconcile", "POST", { owner: "invalid-address" }), env);
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Invalid Solana public address/);
+  const after = await coordinator.snapshot();
+  assert.deepEqual(after, before);
+  assert.ok(!touchedKvKeys.some(([, key]) => key === "bot_state"));
+});
+
+test("wallet reconciliation rejects secret-like extra fields before RPC access", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(request("/api/wallet/reconcile", "POST", {
+    owner: "11111111111111111111111111111111",
+    privateKey: "must-never-be-accepted"
+  }), env);
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Only a public wallet owner address is accepted/);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
