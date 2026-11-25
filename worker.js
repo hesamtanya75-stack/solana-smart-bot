@@ -856,6 +856,15 @@ export default {
       }
       if (url.pathname === "/api/live-order/evidence" && request.method === "POST") {
         // Read-only preparation endpoint. It never builds, signs, or submits a transaction.
+        // Require the existing authenticated dashboard session before invoking
+        // paid/remote risk and quote providers or reserving durable evidence.
+        try {
+          if (!(await authorized(request, env))) {
+            return json({ error: "Authentication required for live-order evidence preparation" }, 401);
+          }
+        } catch {
+          return json({ error: "Authentication service unavailable; evidence request denied" }, 503);
+        }
         if (env.LIVE_ORDER_EVIDENCE_HMAC_SECRET === undefined ||
             typeof env.LIVE_ORDER_EVIDENCE_HMAC_SECRET !== "string" ||
             env.LIVE_ORDER_EVIDENCE_HMAC_SECRET.length < 32) {
