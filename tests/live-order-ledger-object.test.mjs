@@ -36,7 +36,7 @@ async function attested() {
   const t = Date.now();
   const result = await prepareLiveOrderEvidence({
     binding, secret, now: () => t,
-    inspectRisk: async mint => ({ ok: true, mint, rugScore: 100 }),
+    inspectRisk: async mint => ({ ok: true, mint, rugScore: 100, largestPct: 10, topTenPct: 25 }),
     fetchQuote: async q => ({
       provider: "jupiter-swap-v2", inputMint: q.inputMint, outputMint: q.outputMint,
       inputAmountAtomic: q.amountAtomic, outputAmountAtomic: "800000",
