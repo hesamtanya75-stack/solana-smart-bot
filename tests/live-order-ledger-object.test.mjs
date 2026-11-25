@@ -33,7 +33,7 @@ function mockStorage() {
   };
 }
 async function attested() {
-  const t = 1_800_000_000_000;
+  const t = Date.now();
   const result = await prepareLiveOrderEvidence({
     binding, secret, now: () => t,
     inspectRisk: async mint => ({ ok: true, mint, rugScore: 100 }),
