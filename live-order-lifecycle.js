@@ -67,6 +67,15 @@ export function transitionOrder(record, nextStatus, metadata = {}) {
       (typeof metadata.failureReason !== "string" || metadata.failureReason.length > 500)) {
     return { ok: false, reason: "Failure reason must be a bounded string" };
   }
+  if (metadata.signature !== undefined && nextStatus !== "submitted") {
+    return { ok: false, reason: "Transaction signature may only be added at submission" };
+  }
+  if (metadata.finalizedAt !== undefined && !["confirmed", "failed"].includes(nextStatus)) {
+    return { ok: false, reason: "Finalization time is only valid for terminal outcomes" };
+  }
+  if (metadata.failureReason !== undefined && !["failed", "rejected"].includes(nextStatus)) {
+    return { ok: false, reason: "Failure reason is only valid for failed or rejected orders" };
+  }
   const next = { ...record, ...metadata, status: nextStatus };
   if (nextStatus === "submitted" && (typeof next.signature !== "string" || next.signature.length < 32)) {
     return { ok: false, reason: "Submission requires a recorded transaction signature" };
