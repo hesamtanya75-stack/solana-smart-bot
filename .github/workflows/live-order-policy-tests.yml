@@ -13,6 +13,7 @@ on:
   pull_request:
     paths:
       - "live-order-policy.js"
+      - "live-order-units.js"
       - "tests/live-order-policy.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
 
