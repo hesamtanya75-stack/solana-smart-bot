@@ -11,7 +11,13 @@ if (preview.protocol !== "https:" ||
 }
 
 async function getJson(path) {
-  const response = await fetch(new URL(path, preview), { signal: AbortSignal.timeout(15000) });
+  const response = await fetch(new URL(path, preview), {
+    redirect: "manual",
+    signal: AbortSignal.timeout(15000)
+  });
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error(`${path}: refusing to follow redirect from the Preview origin`);
+  }
   if (!response.ok) throw new Error(`${path}: expected HTTP 200, received ${response.status}`);
   const value = await response.json();
   if (!value || typeof value !== "object") throw new Error(`${path}: invalid JSON response`);
