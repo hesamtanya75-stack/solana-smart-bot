@@ -10,13 +10,13 @@ const policy = {
 const order = {
   amountSol: 0.05, dailySpendSol: 0.1, estimatedFeeSol: 0.001, openPositions: 1,
   inputMint: "So11111111111111111111111111111111111111112",
-  outputMint: "TokenMintExample111111111111111111111111111",
+  outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   idempotencyKey: "order-key-123456789",
   riskEvidence: { passed: true, checkedAt: now - 1000 },
   quote: {
     trusted: true, checkedAt: now - 1000,
     inputMint: "So11111111111111111111111111111111111111112",
-    outputMint: "TokenMintExample111111111111111111111111111",
+    outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     inputAmount: 0.05, minimumOutput: 100, slippageBps: 250
   }
 };
