@@ -51,7 +51,7 @@ test("prepares authenticated read-only evidence from injected server providers",
 test("unverified provider quote remains explicitly untrusted after HMAC binding", async () => {
   const result = await prepareLiveOrderEvidence({
     binding, secret, now: () => 1_800_000_000_000,
-    inspectRisk: async () => ({ ok: true }),
+    inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }),
     fetchQuote: async () => quote(1_800_000_000_000)
   });
   assert.equal(result.quote.evidenceClass, "provider-response-unverified");
@@ -75,11 +75,11 @@ test("risk failure prevents quote fetching and fails closed", async () => {
 test("malformed order or absent trusted providers are rejected", async () => {
   await assert.rejects(prepareLiveOrderEvidence({
     binding: { ...binding, inputMint: "11111111111111111111111111111111111111111111" }, secret,
-    inspectRisk: async () => ({ ok: true }), fetchQuote: async () => quote(Date.now())
+    inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }), fetchQuote: async () => quote(Date.now())
   }));
   await assert.rejects(prepareLiveOrderEvidence({
     binding: { ...binding, amountAtomic: "0" }, secret,
-    inspectRisk: async () => ({ ok: true }), fetchQuote: async () => quote(Date.now())
+    inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }), fetchQuote: async () => quote(Date.now())
   }));
   await assert.rejects(prepareLiveOrderEvidence({ binding, secret }));
 });
@@ -88,7 +88,7 @@ test("stale risk evidence fails attestation after slow quote provider", async ()
   let clock = 1_800_000_000_000;
   await assert.rejects(prepareLiveOrderEvidence({
     binding, secret, now: () => clock,
-    inspectRisk: async () => ({ ok: true }),
+    inspectRisk: async () => ({ ok: true, rugScore: 200, largestPct: 10, topTenPct: 25 }),
     fetchQuote: async () => { clock += 16000; return quote(clock); }
   }));
 });
