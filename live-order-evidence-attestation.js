@@ -46,7 +46,12 @@ function base64UrlToBytes(value) {
     throw new TypeError("Attestation signature format is invalid");
   }
   const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=");
-  return Uint8Array.from(binary, char => char.charCodeAt(0));
+  const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+  // Reject non-canonical Base64URL encodings (unused trailing bits must be zero).
+  if (bytesToBase64Url(bytes) !== value) {
+    throw new TypeError("Attestation signature encoding is not canonical");
+  }
+  return bytes;
 }
 
 async function importHmacKey(secret) {
