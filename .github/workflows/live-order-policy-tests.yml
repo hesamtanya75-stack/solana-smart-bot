@@ -18,6 +18,8 @@ on:
       - "live-order-units.js"
       - "live-order-lifecycle.js"
       - "tests/live-order-policy.test.mjs"
+      - "tests/live-order-units.test.mjs"
+      - "tests/live-order-lifecycle.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
 
 permissions:
