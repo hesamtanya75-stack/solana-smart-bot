@@ -787,3 +787,14 @@ test("wallet reconciliation rejects secret-like extra fields before RPC access",
   assert.match((await response.json()).error, /Only a public wallet owner address is accepted/);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+test("wallet reconciliation is protected by the existing authenticated session", async () => {
+  const { env, coordinator } = environment();
+  const response = await worker.fetch(new Request("https://worker.test/api/wallet/reconcile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner: "11111111111111111111111111111111" })
+  }), env);
+  assert.equal(response.status, 401);
+  assert.equal((await coordinator.snapshot()).initialized, false);
+});
