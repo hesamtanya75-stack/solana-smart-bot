@@ -13,7 +13,7 @@ function fixture(amounts = ["60", "25", "15"], owners = [ownerA, ownerA, ownerB]
     data: { parsed: { type: "account", info: {
       mint, owner: owners[i], tokenAmount: { amount }
     } } }
-  )) };
+  })) };
   return { mint, supplyAtomic: amounts.reduce((sum, n) => sum + BigInt(n), 0n).toString(), largestAccounts, accountDetails };
 }
 
