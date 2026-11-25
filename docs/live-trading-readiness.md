@@ -13,6 +13,10 @@ This branch is preparation only. It is not a live-trading release and does not e
 - The authorized `/api/state` interface can update paper-state fields, including the simulated balance. This is not a wallet balance endpoint and must remain isolated from any future live ledger.
 - The scheduled handler only calls the paper `refreshTrades()` and `autoBuy()` paths. It must not be repurposed to submit live orders until a separate execution and authorization design is implemented.
 
+## Scope of the current policy helper
+
+The branch's `validateLiveOrderPolicy()` is a local fail-closed input validator only. It checks the shape and freshness of supplied evidence; a `trusted: true` flag or `passed: true` value does not prove who produced that evidence or that it was tamper-resistant. The helper also checks that an idempotency key is present and bounded, but it does not store keys or prevent replay by itself. Before any execution path exists, quote/risk provenance must be authenticated server-side and idempotency must be enforced with durable, atomic order-state storage and reconciliation.
+
 ## Implementation acceptance checklist
 
 A live execution implementation is not complete until all of these are implemented and tested:
