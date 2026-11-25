@@ -41,6 +41,16 @@ test("invalid identifiers, statuses, timestamps, and signatures fail closed", ()
   assert.equal(transitionOrder(base, "validated", []).ok, false);
 });
 
+test("stored records reject signature and outcome fields in incompatible states", () => {
+  assert.equal(validateOrderRecord({ ...base, signature: "S".repeat(64) }).ok, false);
+  assert.equal(validateOrderRecord({ ...base, finalizedAt: 1_800_000_000_100 }).ok, false);
+  assert.equal(validateOrderRecord({ ...base, failureReason: "rejected" }).ok, false);
+  const failedWithoutSignature = { ...base, status: "failed", finalizedAt: 1_800_000_000_100 };
+  assert.equal(validateOrderRecord(failedWithoutSignature).ok, false);
+  const failedWithSignature = { ...failedWithoutSignature, signature: "S".repeat(64) };
+  assert.equal(validateOrderRecord(failedWithSignature).ok, true);
+});
+
 test("order records reject unexpected fields and malformed finalization metadata", () => {
   assert.equal(validateOrderRecord({ ...base, walletPrivateKey: "never-allow" }).ok, false);
   assert.equal(validateOrderRecord({ ...base, clientOverride: true }).ok, false);
