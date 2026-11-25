@@ -14,7 +14,7 @@ const order = {
   idempotencyKey: "order-key-123456789",
   riskEvidence: { passed: true, checkedAt: now - 1000 },
   quote: {
-    trusted: true, checkedAt: now - 1000,
+    trusted: true, evidenceClass: "provider-response-authenticated", checkedAt: now - 1000,
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     inputAmount: 0.05, minimumOutput: 100, slippageBps: 250
@@ -23,6 +23,12 @@ const order = {
 
 test("valid fresh order policy passes without performing execution", () => {
   assert.deepEqual(validateLiveOrderPolicy(order, policy, now), { ok: true, errors: [] });
+});
+
+test("a trusted boolean cannot promote provider-unverified quote data", () => {
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, evidenceClass: "provider-response-unverified" } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, evidenceClass: undefined } }, policy, now).ok, false);
+  assert.equal(validateLiveOrderPolicy({ ...order, quote: { ...order.quote, trusted: false } }, policy, now).ok, false);
 });
 
 test("live mode and emergency pause fail closed", () => {
