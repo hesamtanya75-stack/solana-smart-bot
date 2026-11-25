@@ -79,3 +79,10 @@ test("zero-balance token accounts count toward reconciliation but not holder ran
   assert.equal(result.supplyAtomic, "100");
   assert.equal(result.largestAccounts.length, 2);
 });
+
+
+test("rejects malformed token-account public keys before producing holder evidence", () => {
+  const f = fixture();
+  f.splResult.value[0].pubkey = "not-a-solana-address";
+  assert.throws(() => buildCompleteHolderEnumeration(f), /invalid or duplicate account/);
+});
