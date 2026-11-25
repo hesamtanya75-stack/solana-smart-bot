@@ -40,3 +40,9 @@ test("invalid identifiers, statuses, timestamps, and signatures fail closed", ()
   assert.equal(validateOrderRecord({ ...base, status: "submitted" }).ok, false);
   assert.equal(transitionOrder(base, "validated", []).ok, false);
 });
+
+test("transition metadata cannot overwrite immutable order identity", () => {
+  assert.equal(transitionOrder(base, "validated", { orderId: "attacker-overwrite-123" }).ok, false);
+  assert.equal(transitionOrder(base, "validated", { createdAt: 9 }).ok, false);
+  assert.equal(transitionOrder(base, "validated", { requestHash: "x" }).ok, false);
+});
