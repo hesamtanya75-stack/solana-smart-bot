@@ -4,12 +4,24 @@ import { LiveOrderLedger } from "../live-order-ledger.js";
 
 function fakeStorage() {
   const data = new Map();
+  let tail = Promise.resolve();
   return {
     data,
     async get(key) { return data.get(key); },
     async transaction(fn) {
-      // Simulates serialized atomic transaction for deterministic unit coverage.
-      return fn({ get: async key => data.get(key), put: async (key, value) => data.set(key, value) });
+      // Serialized transaction mock: useful for race tests, not Cloudflare runtime proof.
+      const previous = tail;
+      let release;
+      tail = new Promise(resolve => { release = resolve; });
+      await previous;
+      try {
+        return await fn({
+          get: async key => data.get(key),
+          put: async (key, value) => data.set(key, value)
+        });
+      } finally {
+        release();
+      }
     }
   };
 }
@@ -29,7 +41,19 @@ test("rejects reuse of an idempotency key for a different request", async () => 
   assert.equal(result.conflict, true);
 });
 
-test("uses version checks for atomic state changes", async () => {
+test("serial transaction mock permits only one concurrent create for a key", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  const results = await Promise.all([
+    ledger.create(order, hash),
+    ledger.create(order, hash),
+    ledger.create(order, hash)
+  ]);
+  assert.equal(results.filter(result => !result.duplicate).length, 1);
+  assert.equal(results.filter(result => result.duplicate).length, 2);
+  assert.equal((await ledger.get(order.orderId)).version, 1);
+});
+
+test("uses version checks for state changes and rejects stale versions", async () => {
   const ledger = new LiveOrderLedger(fakeStorage());
   await ledger.create(order, hash);
   const validated = await ledger.transition(order.orderId, 1, "validated");
@@ -37,6 +61,18 @@ test("uses version checks for atomic state changes", async () => {
   assert.equal(validated.version, 2);
   const stale = await ledger.transition(order.orderId, 1, "rejected");
   assert.equal(stale.conflict, true);
+});
+
+test("concurrent compare-and-swap transitions cannot both consume one version", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  await ledger.create(order, hash);
+  const results = await Promise.all([
+    ledger.transition(order.orderId, 1, "validated"),
+    ledger.transition(order.orderId, 1, "rejected")
+  ]);
+  assert.equal(results.filter(result => result.ok).length, 1);
+  assert.equal(results.filter(result => result.conflict).length, 1);
+  assert.equal((await ledger.get(order.orderId)).version, 2);
 });
 
 test("does not permit uncertain orders to be blindly resubmitted", async () => {
