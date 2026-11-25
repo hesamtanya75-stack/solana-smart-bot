@@ -13,7 +13,7 @@ export async function prepareLiveOrderEvidence({
   binding, inspectRisk, fetchQuote, secret, now = Date.now
 }) {
   if (!binding || typeof binding !== "object" || Array.isArray(binding) ||
-      !KEY_PATTERN.test(binding.idempotencyKey || "") ||
+      (typeof binding.idempotencyKey !== "string" || !KEY_PATTERN.test(binding.idempotencyKey)) ||
       !isValidSolanaPublicKey(binding.inputMint) ||
       !isValidSolanaPublicKey(binding.outputMint) ||
       binding.inputMint === binding.outputMint ||
