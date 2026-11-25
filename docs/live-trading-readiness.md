@@ -169,3 +169,10 @@ The Worker evidence endpoint now returns HTTP 503 for provider/attestation-servi
 
 
 The Preview smoke-script hostname assertion was corrected and verified by CI run [45542283254](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/45542283254): **171/171 tests passed**, Worker/DO syntax passed, and Wrangler dry-run passed. The test validates source/configuration behavior only; it does not claim a Cloudflare Preview runtime deployment was exercised.
+
+
+## Main-PR Preview workflow audit — 2026-11-25
+
+Draft PR #58 (`chore/cloudflare-preview-main-trigger`, head `6310feae64d2a5c42d2890df2e1f0746612738a9`) completed its GitHub Actions run [44972326959](https://github.com/hesamtanya75-stack/solana-smart-bot/actions/runs/44972326959) successfully. Regression tests and the pinned Wrangler 4.135.0 dry-run passed. The workflow's credential-detection step succeeded, but its explicit `Publish isolated Cloudflare Worker Preview` step was **skipped** because the required Preview credentials were unavailable to that job. The separate Cloudflare Workers GitHub App check reported a Preview build, not evidence of an authenticated runtime smoke test.
+
+Therefore this PR's green CI does not close the Preview runtime blocker. No Production deployment, merge, signing, transaction submission, or Mainnet trading occurred. PR #58 remains Draft.
