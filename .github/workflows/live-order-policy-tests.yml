@@ -10,6 +10,8 @@ on:
       - "live-order-lifecycle.js"
       - "live-order-ledger.js"
       - "jupiter-quote-client.js"
+      - "live-order-evidence-service.js"
+      - "worker.js"
       - "solana-signature-reconciler.js"
       - "live-order-evidence-attestation.js"
       - "tests/live-order-policy.test.mjs"
@@ -19,6 +21,7 @@ on:
       - "tests/jupiter-quote-client.test.mjs"
       - "tests/solana-signature-reconciler.test.mjs"
       - "tests/live-order-evidence-attestation.test.mjs"
+      - "tests/live-order-evidence-service.test.mjs"
       - ".github/workflows/live-order-policy-tests.yml"
   pull_request:
     paths:
