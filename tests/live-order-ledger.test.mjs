@@ -114,3 +114,76 @@ test("does not permit uncertain orders to be blindly resubmitted", async () => {
   assert.equal(sent.ok, true);
   assert.equal((await ledger.get(order.orderId)).record.status, "submitted");
 });
+
+
+async function makeUncertain(ledger, id = order.orderId) {
+  await ledger.create({ ...order, orderId: id }, hash);
+  await ledger.transition(id, 1, "validated");
+  await ledger.transition(id, 2, "submitted", { signature: "S".repeat(64) });
+  return ledger.transition(id, 3, "reconciliation_required");
+}
+
+test("ledger rejects caller-supplied terminal reconciliation metadata", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage());
+  await makeUncertain(ledger);
+  const forged = await ledger.transition(order.orderId, 4, "confirmed", {
+    finalizedAt: 1_800_000_000_100,
+    reconciledAt: 1_800_000_000_100,
+    reconciliationResult: "confirmed"
+  });
+  assert.equal(forged.ok, false);
+  assert.match(forged.reason, /server-side signature reconciliation/);
+});
+
+test("server reconciler binds finalized evidence to stored signature before terminal commit", async () => {
+  let observedSignature;
+  const ledger = new LiveOrderLedger(fakeStorage(), {
+    reconcileSignature: async signature => {
+      observedSignature = signature;
+      return { signature, outcome: "confirmed", observedAt: 1_800_000_000_100, slot: 99 };
+    }
+  });
+  await makeUncertain(ledger);
+  const reconciled = await ledger.reconcile(order.orderId, 4);
+  assert.equal(observedSignature, "S".repeat(64));
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.record.status, "confirmed");
+  assert.equal(reconciled.record.signature, observedSignature);
+  assert.equal(reconciled.record.reconciliationResult, "confirmed");
+  assert.equal(reconciled.record.reconciledAt, 1_800_000_000_100);
+  assert.equal(reconciled.version, 5);
+});
+
+test("pending reconciliation leaves uncertain order untouched", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage(), {
+    reconcileSignature: async signature => ({ signature, outcome: "pending", observedAt: 1_800_000_000_100 })
+  });
+  await makeUncertain(ledger);
+  const pending = await ledger.reconcile(order.orderId, 4);
+  assert.equal(pending.ok, true);
+  assert.equal(pending.pending, true);
+  assert.equal((await ledger.get(order.orderId)).record.status, "reconciliation_required");
+});
+
+test("mismatched or malformed server evidence cannot finalize an order", async () => {
+  for (const evidence of [
+    { signature: "X".repeat(64), outcome: "confirmed", observedAt: 1_800_000_000_100, slot: 9 },
+    { signature: "S".repeat(64), outcome: "confirmed", observedAt: 1_800_000_000_100 },
+    { signature: "S".repeat(64), outcome: "confirmed", observedAt: 1_800_000_000_100, slot: 0 }
+  ]) {
+    const ledger = new LiveOrderLedger(fakeStorage(), { reconcileSignature: async () => evidence });
+    await makeUncertain(ledger);
+    assert.equal((await ledger.reconcile(order.orderId, 4)).ok, false);
+    assert.equal((await ledger.get(order.orderId)).record.status, "reconciliation_required");
+  }
+});
+
+test("RPC reconciliation failure and stale version fail closed", async () => {
+  const ledger = new LiveOrderLedger(fakeStorage(), {
+    reconcileSignature: async () => { throw new Error("private RPC error"); }
+  });
+  await makeUncertain(ledger);
+  assert.equal((await ledger.reconcile(order.orderId, 3)).conflict, true);
+  assert.equal((await ledger.reconcile(order.orderId, 4)).ok, false);
+  assert.equal((await ledger.get(order.orderId)).record.status, "reconciliation_required");
+});
