@@ -40,9 +40,27 @@ test("prepares authenticated read-only evidence from injected server providers",
   });
   assert.equal(result.mode, "read-only-evidence");
   assert.equal(result.execution, "not-authorized");
+  assert.equal(result.quote.evidenceClass, "provider-response-unverified");
+  assert.equal(Object.hasOwn(result.quote, "trusted"), false);
+  assert.equal(result.attestation.payload.quote.evidenceClass, "provider-response-unverified");
   assert.equal((await verifyOrderEvidenceAttestation({
     attestation: result.attestation, expectedBinding: binding, secret, now: clock + 1
   })).ok, true);
+});
+
+test("unverified provider quote remains explicitly untrusted after HMAC binding", async () => {
+  const result = await prepareLiveOrderEvidence({
+    binding, secret, now: () => 1_800_000_000_000,
+    inspectRisk: async () => ({ ok: true }),
+    fetchQuote: async () => quote(1_800_000_000_000)
+  });
+  assert.equal(result.quote.evidenceClass, "provider-response-unverified");
+  assert.equal(result.execution, "not-authorized");
+  const verified = await verifyOrderEvidenceAttestation({
+    attestation: result.attestation, expectedBinding: binding, secret, now: 1_800_000_000_001
+  });
+  assert.equal(verified.ok, true);
+  assert.equal(verified.payload.quote.evidenceClass, "provider-response-unverified");
 });
 
 test("risk failure prevents quote fetching and fails closed", async () => {
