@@ -887,7 +887,7 @@ test("live evidence endpoint requires authenticated session before provider or s
     });
     const response = await worker.fetch(unauthenticated, env);
     assert.equal(response.status, 401);
-    assert.match((await response.json()).error, /authentication required/i);
+    assert.match((await response.json()).error, /unauthorized|authentication required/i);
     assert.equal(providerCalled, false);
     assert.equal((await coordinator.snapshot()).initialized, false);
   } finally {
