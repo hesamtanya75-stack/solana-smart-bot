@@ -863,6 +863,9 @@ export default {
           if (error?.code === "RISK_REJECTED") {
             return json({ ok: false, error: "Token risk checks rejected this evidence request", reasons: error.reasons || [] }, 422);
           }
+          if (Number.isInteger(error?.status) && error.status >= 400 && error.status <= 499) {
+            return json({ error: error.message }, error.status);
+          }
           return json({ error: "Unable to prepare trusted order evidence; no order was submitted" }, 400);
         }
       }
