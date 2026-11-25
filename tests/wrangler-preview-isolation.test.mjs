@@ -125,3 +125,24 @@ test("Preview namespace quota cannot be reported as a runtime validation pass", 
   assert.match(workflow, /Preview runtime validation did not run/);
   assert.match(workflow, /exit 1/);
 });
+
+
+test("Preview publishing and runtime smoke remain gated by explicit opt-in and credentials", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
+  assert.match(workflow, /vars\.CLOUDFLARE_PREVIEW_ENABLED == 'true'/,
+    "Preview publishing must require explicit repository opt-in");
+  assert.match(workflow, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/,
+    "do not publish previews for fork PRs with repository secrets");
+  assert.match(workflow, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.match(workflow, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ secrets\.CLOUDFLARE_ACCOUNT_ID \}\}/);
+  assert.match(workflow, /echo "available=false" >> "\$GITHUB_OUTPUT"/,
+    "missing credentials must disable publishing");
+  assert.match(workflow, /if: steps\.preview_credentials\.outputs\.available == 'true'/,
+    "publishing must be conditional on both credentials");
+  assert.match(workflow, /if: steps\.preview_credentials\.outputs\.available == 'true' && steps\.publish_preview\.outputs\.preview_url != ''/,
+    "runtime smoke must require an actual published Preview URL");
+  assert.match(workflow, /npx --yes wrangler@4\.135\.0 preview --name pr-/,
+    "workflow must publish isolated PR Preview, not Production");
+  assert.doesNotMatch(workflow, /wrangler@4\.135\.0 deploy(?! --dry-run)/,
+    "Preview workflow must not contain a production deploy command");
+});
