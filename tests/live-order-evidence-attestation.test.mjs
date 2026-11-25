@@ -71,3 +71,16 @@ test("rejects malformed bindings and tampered signatures", async () => {
   const badSig = { ...attestation, signature: "A".repeat(43) };
   assert.equal((await verifyOrderEvidenceAttestation({ attestation: badSig, expectedBinding: binding, secret, now: now + 1 })).ok, false);
 });
+
+test("rejects noncanonical Base64URL signature trailing bits", async () => {
+  const attestation = await createOrderEvidenceAttestation({ binding, quote, risk, secret, now });
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const last = attestation.signature.at(-1);
+  const index = alphabet.indexOf(last);
+  // Base64URL encodes 32 bytes in 43 chars; the final two bits are unused.
+  const alternate = alphabet[index & 60 | ((index + 1) & 3)];
+  const altered = { ...attestation, signature: attestation.signature.slice(0, -1) + alternate };
+  assert.equal((await verifyOrderEvidenceAttestation({
+    attestation: altered, expectedBinding: binding, secret, now: now + 1
+  })).ok, false);
+});
