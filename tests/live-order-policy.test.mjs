@@ -5,7 +5,7 @@ import { validateLiveOrderPolicy } from "../live-order-policy.js";
 const now = 1_800_000_000_000;
 const policy = {
   liveEnabled: true, emergencyPause: false, maxOrderSol: 0.1,
-  maxDailySol: 0.5, maxOpenPositions: 4, maxSlippageBps: 500, maxPriorityFeeSol: 0.002
+  maxDailySol: 0.5, maxOpenPositions: 4, maxSlippageBps: 500, maxEstimatedFeeSol: 0.002
 };
 const order = {
   amountSol: 0.05, dailySpendSol: 0.1, estimatedFeeSol: 0.001, openPositions: 1,
