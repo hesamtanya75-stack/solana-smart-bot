@@ -828,20 +828,29 @@ export default {
       if (url.pathname === "/api/wallet/reconcile" && request.method === "POST") {
         // Read-only wallet inspection using a public address only.
         const declaredLength = request.headers.get("Content-Length");
-        if (declaredLength !== null && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > 128)) {
+        if (declaredLength !== null && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 128)) {
           return json({ error: "Wallet request is malformed or too large" }, 413);
         }
+        if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+          return json({ error: "JSON content type required" }, 415);
+        }
+        let raw, body;
         try {
-          const raw = await request.text();
-          if (new TextEncoder().encode(raw).length > 128) return json({ error: "Wallet request is too large" }, 413);
-          if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
-            return json({ error: "JSON content type required" }, 415);
+          raw = await request.text();
+          const actualLength = new TextEncoder().encode(raw).length;
+          if (actualLength > 128) return json({ error: "Wallet request is too large" }, 413);
+          if (declaredLength !== null && Number(declaredLength) !== actualLength) {
+            return json({ error: "Content-Length does not match request body" }, 400);
           }
-          const body = JSON.parse(raw);
-          if (!body || typeof body !== "object" || Array.isArray(body) ||
-              Object.keys(body).join(",") !== "owner" || typeof body.owner !== "string") {
-            return json({ error: "Only a public wallet owner address is accepted" }, 400);
-          }
+          body = JSON.parse(raw);
+        } catch {
+          return json({ error: "Wallet request JSON is malformed" }, 400);
+        }
+        if (!body || typeof body !== "object" || Array.isArray(body) ||
+            Object.keys(body).join(",") !== "owner" || typeof body.owner !== "string") {
+          return json({ error: "Only a public wallet owner address is accepted" }, 400);
+        }
+        try {
           const snapshot = await reconcileWalletReadOnly({
             owner: body.owner,
             getBalance: (owner, config) => rpc("getBalance", [owner, config], env),
