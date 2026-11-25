@@ -20,10 +20,10 @@ export function calculateCompleteHolderConcentration({ mint, supplyAtomic, large
   if (!BASE58.test(mint || "")) throw new TypeError("Mint address is invalid");
   const supply = atomic(supplyAtomic, "Mint supply");
   if (supply <= 0n) throw new TypeError("Mint supply must be positive");
-  if (!Array.isArray(largestAccounts) || largestAccounts.length < 1 || largestAccounts.length > 20 ||
+  if (!Array.isArray(largestAccounts) || largestAccounts.length < 1 || largestAccounts.length > 50000 ||
       !accountDetails || !Array.isArray(accountDetails.value) ||
       accountDetails.value.length !== largestAccounts.length) {
-    throw new Error("Holder account sample is incomplete");
+    throw new Error("Holder account sample is incomplete or exceeds safety limit");
   }
 
   const owners = new Map();
