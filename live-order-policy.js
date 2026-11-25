@@ -67,8 +67,8 @@ export function validateLiveOrderPolicy(order, policy, now = Date.now()) {
       (finitePositive(order.amountSol) && Math.abs(order.quote.inputAmount - order.amountSol) > 1e-9)) {
     errors.push("Quote mint or amount fields do not match the requested order");
   }
-  if (!order?.idempotencyKey || typeof order.idempotencyKey !== "string" ||
-      order.idempotencyKey.trim().length < 16 || order.idempotencyKey.length > 128) {
+  if (typeof order?.idempotencyKey !== "string" ||
+      !/^[A-Za-z0-9._:-]{16,128}$/.test(order.idempotencyKey)) {
     errors.push("A bounded idempotency key is required");
   }
   return { ok: errors.length === 0, errors };
