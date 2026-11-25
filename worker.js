@@ -5,6 +5,7 @@ import { fetchJupiterQuote } from "./jupiter-quote-client.js";
 import { prepareLiveOrderEvidence } from "./live-order-evidence-service.js";
 import { parseLiveOrderEvidenceRequest } from "./live-order-evidence-request.js";
 import { reconcileWalletReadOnly } from "./solana-wallet-reconciliation.js";
+import { parseRpcBatchResponse, parseRpcSingleResponse } from "./solana-rpc-response.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -202,12 +203,7 @@ async function rpcBatch(calls, env) {
       const retryAfter = response.headers.get("Retry-After");
       throw new Error("HTTP " + response.status + (retryAfter ? " (Retry-After " + retryAfter + "s)" : ""));
     }
-    const item = await response.json();
-    if (item?.error) throw new Error(item.error.message || "RPC error");
-    if (!item || !Object.prototype.hasOwnProperty.call(item, "result")) {
-      throw new Error("RPC single response missing result");
-    }
-    return item.result;
+    return parseRpcSingleResponse(await response.json(), id);
   }
 
   for (const endpoint of resolved.endpoints) {
@@ -233,14 +229,7 @@ async function rpcBatch(calls, env) {
         rpcDiagnostics.successes.push(endpoint.label + " (single-request fallback)");
         return results;
       }
-      const byId = new Map(data.map(item => [item.id, item]));
-      const results = calls.map((_, index) => {
-        const item = byId.get(index + 1);
-        if (!item || item.error || !Object.prototype.hasOwnProperty.call(item, "result")) {
-          throw new Error(item?.error?.message || "RPC batch item missing result");
-        }
-        return item.result;
-      });
+      const results = parseRpcBatchResponse(data, calls.length);
       rpcDiagnostics.successes.push(endpoint.label);
       return results;
     } catch (error) {
