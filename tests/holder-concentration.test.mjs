@@ -61,7 +61,7 @@ test("risk limits use exact integer ratios at and just above boundaries", () => 
   const atThirty = fixture(["30", "25", "25", "20"], [ownerA, ownerB, mint, "11111111111111111111111111111112"]);
   assert.equal(calculateCompleteHolderConcentration(atThirty).largestOwnerAbove30Percent, false);
   const amounts = ["6", "4", ...Array(18).fill("5")];
-  const owners = [ownerA, ownerA, ...Array.from({ length: 18 }, (_, i) => "1".repeat(32 - String(i + 1).length) + String(i + 1))];
+  const owners = [ownerA, ownerA, ...Array.from({ length: 18 }, (_, i) => "1".repeat(31) + "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"[i])];
   const aboveFifty = fixture(amounts, owners);
   assert.equal(calculateCompleteHolderConcentration(aboveFifty).topTenOwnersAbove50Percent, true);
 });
