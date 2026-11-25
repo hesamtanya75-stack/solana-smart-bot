@@ -22,6 +22,8 @@ on:
       - "live-order-units.js"
       - "live-order-lifecycle.js"
       - "live-order-ledger.js"
+      - "jupiter-quote-client.js"
+      - "tests/jupiter-quote-client.test.mjs"
       - "tests/live-order-policy.test.mjs"
       - "tests/live-order-units.test.mjs"
       - "tests/live-order-lifecycle.test.mjs"
