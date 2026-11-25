@@ -94,6 +94,8 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
   assert.ok(extractor.includes("Captured the exact immutable Wrangler Preview deployment URL."));
   assert.match(smoke, /Refusing to smoke-test a non-Preview URL/);
   assert.match(smoke, /EXPECTED_BUILD_ID/);
+  assert.match(smoke, /redirect: "manual"/, "health/version/asset checks must not follow redirects off the Preview origin");
+  assert.match(smoke, /refusing to follow redirect from the Preview origin/i);
   assert.ok(smoke.includes(String.raw`solana-smart-bot-new\.hesamtanya75\.workers\.dev`), "smoke test must restrict host to the Preview worker domain");
   assert.match(smoke, /redirect: "manual"/);
   assert.match(smoke, /response\.status !== 404/);
