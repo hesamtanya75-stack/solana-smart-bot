@@ -38,3 +38,10 @@ A live execution implementation is not complete until all of these are implement
 - Validate in isolated Preview with no funded wallet and no production state migration.
 - Review all limits, wallet/signing model, and transaction authorization before any funded test.
 - Production activation and actual trades require a separate explicit operation approval.
+
+
+## Numeric and address validation boundaries
+
+The current helper accepts SOL-denominated amounts as JavaScript numbers and compares quote input amounts using a floating-point tolerance. This is suitable only for the present validation fixture; it is not an execution-grade amount representation. A future live path must use integer lamports for SOL and integer atomic units for tokens, with explicit mint decimals and checked conversions. It must not use floating-point values as the authoritative amount for transaction construction, daily accounting, or fee enforcement.
+
+The Base58 mint check currently verifies only a plausible character set and string length. It does not decode the address to confirm exactly 32 bytes, prove that the account exists, or verify its on-chain owner and token-program type. Those checks must be performed against trusted chain data before any live order is authorized.
