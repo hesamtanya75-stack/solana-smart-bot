@@ -18,7 +18,7 @@ This branch is preparation only. It is not a live-trading release and does not e
 A live execution implementation is not complete until all of these are implemented and tested:
 
 1. Separate real-wallet positions and accounting from paper state; never infer wallet funds from the paper balance.
-2. Define explicit operator-configured limits: per-order spend, daily spend, open positions, slippage, priority fee, and emergency pause.
+2. Define explicit operator-configured limits: per-order spend, daily spend, open positions, slippage, estimated total transaction fee, and emergency pause.
 3. Require fresh, trusted quote and token-risk evidence at order time; reject stale, missing, malformed, or inconsistent evidence.
 4. Build and validate the swap transaction from a trusted provider; verify input/output mints, amount, recipient, minimum output, and fee bounds before signing.
 5. Keep signing material out of Worker source, KV, logs, GitHub, and browser storage. Use a supported secure signing boundary or explicit wallet approval; never accept a seed phrase/private key through the dashboard.
