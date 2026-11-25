@@ -798,3 +798,42 @@ test("wallet reconciliation is protected by the existing authenticated session",
   assert.equal(response.status, 401);
   assert.equal((await coordinator.snapshot()).initialized, false);
 });
+
+test("authenticated wallet reconciliation returns mocked finalized snapshot without paper mutation", async () => {
+  const { env, coordinator } = environment();
+  env.SOLANA_RPC_URL = "https://rpc.mock.example";
+  const before = await coordinator.snapshot();
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    const payload = JSON.parse(init.body);
+    calls.push(payload);
+    if (payload.method === "getBalance") {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: {
+        context: { slot: 987 }, value: 2_500_000_000
+      }}), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (payload.method === "getTokenAccountsByOwner") {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: {
+        context: { slot: 988 }, value: []
+      }}), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error("Unexpected RPC method: " + payload.method);
+  };
+  try {
+    const response = await worker.fetch(request("/api/wallet/reconcile", "POST", {
+      owner: "11111111111111111111111111111111"
+    }), env);
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.wallet.native.amount, "2.500000000");
+    assert.equal(data.wallet.commitment, "finalized");
+    assert.equal(data.wallet.execution, "not-authorized");
+    assert.equal(calls.length, 3);
+    assert.ok(calls.every(call => ["getBalance", "getTokenAccountsByOwner"].includes(call.method)));
+    assert.ok(calls.every(call => call.params.at(-1).commitment === "finalized"));
+    assert.deepEqual(await coordinator.snapshot(), before);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
