@@ -33,10 +33,33 @@ jobs:
            github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Report closed-PR Preview cleanup request (report only)
+      - name: Validate closed PR and report cleanup candidate (report only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.preview_pr_number }}
         run: |
-          echo "REPORT ONLY: no Preview deployment or Durable Object namespace was deleted."
-          echo "Resource cleanup is not automated; review the Cloudflare inventory manually."
+          set -euo pipefail
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A valid PR number is required for the read-only audit."
+            exit 1
+          fi
+          metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$PR_NUMBER" --jq '[.state, .head.ref, .head.repo.full_name, .base.ref] | @tsv')"
+          IFS=$'\t' read -r state branch source_repo base_branch <<< "$metadata"
+          if [ "$state" != "closed" ] || [ "$source_repo" != "$GITHUB_REPOSITORY" ] ||
+             [ -z "$branch" ] || [ "$branch" = "$base_branch" ] || [ "$branch" = "main" ] ||
+             ! [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$branch" == *".."* ]] || [[ "$branch" == -* ]]; then
+            echo "::error::PR is not a safe closed same-repository Preview candidate."
+            exit 1
+          fi
+          {
+            echo "## Cloudflare Preview cleanup audit — REPORT ONLY"
+            echo "PR: #$PR_NUMBER"
+            echo "Branch: $branch"
+            echo "Candidate: manual review only; no deletion"
+            echo ""
+            echo "No Cloudflare API, Wrangler delete, Durable Object, KV, or bot-state operation was performed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Report complete. Resource deletion requires a separately reviewed, explicitly approved action."
 
   preview:
     name: Build and publish isolated Preview
