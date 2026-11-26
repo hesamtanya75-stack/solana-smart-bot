@@ -955,7 +955,7 @@ test("Gmail OTP challenge is invalidated after five incorrect code attempts", as
   const originalFetch = globalThis.fetch;
   let deliveredCode = "";
   globalThis.fetch = async (_url, init) => {
-    deliveredCode = JSON.parse(init.body).text.match(/\\d{6}/)?.[0] || "";
+    deliveredCode = JSON.parse(init.body).text.match(/\d{6}/)?.[0] || "";
     return new Response("{}", { status: 200 });
   };
   try {
