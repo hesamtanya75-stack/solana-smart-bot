@@ -627,14 +627,13 @@ test("malformed legacy activity metadata permanently closes the browser migratio
       balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
     });
     const result = await call(instance, { operation: "get" });
-    assert.equal(result.status, 200);
-    assert.equal(result.body.migrationOpen, false);
-    const attempt = await call(instance, {
-      operation: "migrate-legacy",
-      expectedRevision: result.body.revision,
-      state: { balance: 65, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    // Bootstrap must fail before cleaning or consuming malformed legacy metadata.
+    assert.equal(result.status, 503);
+    assert.equal(instance.storage.values.has("paper_state_v1"), false);
+    assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
+    assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), {
+      balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
     });
-    assert.equal(attempt.status, 409);
   }
 });
 
