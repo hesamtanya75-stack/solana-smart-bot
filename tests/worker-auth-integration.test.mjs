@@ -568,6 +568,41 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
 });
 
 
+test("Worker rejects malformed paper-state migration values without changing the ledger", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const initial = await (await get("/api/state", env, token)).json();
+  assert.equal(initial.canMigrateLegacy, true);
+
+  const invalidBalance = await put("/api/state", {
+    expectedRevision: initial.revision,
+    balance: "not-a-number",
+    trades: [],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(invalidBalance.status, 400);
+
+  const invalidTrade = await put("/api/state", {
+    expectedRevision: initial.revision,
+    balance: 82.5,
+    trades: [{ mint: "So11111111111111111111111111111111111111112", amount: 5, buyPrice: "broken", tokens: 2 }],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(invalidTrade.status, 400);
+
+  const unchanged = await (await get("/api/state", env, token)).json();
+  assert.equal(unchanged.balance, 100);
+  assert.deepEqual(unchanged.trades, []);
+  assert.equal(unchanged.revision, initial.revision);
+  assert.equal(unchanged.canMigrateLegacy, true);
+});
+
 test("Worker exposes one-time paper-state migration and rejects stale repeat writes", async () => {
   const { env } = makeEnvironment();
   const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
