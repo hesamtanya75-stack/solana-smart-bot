@@ -2,12 +2,6 @@ name: Cloudflare Closed Preview Cleanup
 
 on:
   workflow_dispatch:
-    inputs:
-      execute_cleanup:
-        description: "Actually delete isolated Previews for closed same-repository PRs (open PR branches are protected)"
-        required: true
-        type: boolean
-        default: false
   push:
     branches: [main]
     paths:
@@ -62,11 +56,3 @@ jobs:
         run: |
           echo "REPORT ONLY: no Cloudflare resources or namespaces will be deleted."
           echo "Closed-PR Preview candidates were listed above for manual review."
-
-      - name: Report-only mode
-        if: >-
-          ${{ github.event_name == 'workflow_dispatch' &&
-              inputs.execute_cleanup != true }}
-        run: |
-          echo "REPORT ONLY: no Cloudflare resources were deleted."
-          echo "Cleanup execution is intentionally disabled by repository safety policy."
