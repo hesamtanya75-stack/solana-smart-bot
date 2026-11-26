@@ -623,17 +623,16 @@ test("malformed legacy activity metadata permanently closes the browser migratio
     { scannedMints: { mint: mintA } }
   ];
   for (const extra of malformedCases) {
-    const { instance } = makeDO({
+    const legacy = {
       balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
-    });
+    };
+    const { instance, storage } = makeDO(legacy);
     const result = await call(instance, { operation: "get" });
     // Bootstrap must fail before cleaning or consuming malformed legacy metadata.
     assert.equal(result.status, 503);
-    assert.equal(instance.storage.values.has("paper_state_v1"), false);
+    assert.equal(storage.values.has("paper_state_v1"), false);
     assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
-    assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), {
-      balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
-    });
+    assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), legacy);
   }
 });
 
