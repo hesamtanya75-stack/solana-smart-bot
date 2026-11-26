@@ -105,6 +105,20 @@ test("PaperTradingState imports the existing KV paper state once", async () => {
   assert.equal(result.body.revision, 0);
 });
 
+test("bootstrap rejects malformed legacy metadata before writing marker or DO record", async () => {
+  const legacy = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], lastScanReport: [{ mint: mintA, status: "blocked", reasons: [7] }]
+  };
+  const { instance, storage } = makeDO(legacy);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  const marker = await instance.env.BOT_STATE.get("paper_state_do_migration_v1");
+  assert.equal(marker, null);
+  assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), legacy);
+});
+
 test("interrupted initializing marker safely resumes the one-time KV import", async () => {
   const kv = new MemoryKV({ balance: 61.5, trades: [], updatedAt: "2026-11-01T00:00:00.000Z" });
   await kv.put("paper_state_do_migration_v1", "initializing");
