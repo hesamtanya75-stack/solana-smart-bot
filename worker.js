@@ -645,7 +645,11 @@ export default {
         }
         const sendLimit = await authRateLimitRequest(env, "/email-send-reserve", { ipHash });
         if (!sendLimit.allowed) return json({ error: "Too many email codes requested; wait 15 minutes." }, 429);
-        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+        let otpRandom;
+        do {
+          otpRandom = crypto.getRandomValues(new Uint32Array(1))[0];
+        } while (otpRandom >= 4294000000; // Reject the incomplete range to avoid modulo bias.
+        const code = String(otpRandom % 1000000).padStart(6, "0");
         const challengeId = crypto.randomUUID();
         const mailResponse = await fetch("https://api.resend.com/emails", {
           method: "POST",
