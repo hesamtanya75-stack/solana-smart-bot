@@ -22,6 +22,40 @@ function cleanState(value) {
   if (s.trades !== undefined && !Array.isArray(s.trades)) {
     throw new Error("Paper trading state integrity error: trades must be an array");
   }
+  for (const key of ["autoEnabled", "paused"]) {
+    if (s[key] !== undefined && typeof s[key] !== "boolean") {
+      throw new Error(`Paper trading state integrity error: invalid ${key}`);
+    }
+  }
+  if (s.scannedMints !== undefined &&
+      (!Array.isArray(s.scannedMints) || s.scannedMints.some(mint =>
+        typeof mint !== "string" || !mint.trim() || mint.length > 64))) {
+    throw new Error("Paper trading state integrity error: invalid scanned mints");
+  }
+  if (s.deferredMints !== undefined &&
+      (!Array.isArray(s.deferredMints) || s.deferredMints.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+        typeof item.retryAt !== "number" || !Number.isFinite(item.retryAt)))) {
+    throw new Error("Paper trading state integrity error: invalid deferred mints");
+  }
+  if (s.lastScanReport !== undefined &&
+      (!Array.isArray(s.lastScanReport) || s.lastScanReport.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.mint !== "string" || item.mint.length > 64 ||
+        typeof item.status !== "string" || item.status.length > 40 ||
+        (item.reasons !== undefined && (!Array.isArray(item.reasons) ||
+          item.reasons.some(reason => typeof reason !== "string" || reason.length > 300))))) {
+    throw new Error("Paper trading state integrity error: invalid scan report");
+  }
+  for (const key of ["lastRunAt", "updatedAt"]) {
+    if (s[key] !== undefined && s[key] !== null && typeof s[key] !== "string") {
+      throw new Error(`Paper trading state integrity error: invalid ${key}`);
+    }
+  }
+  if (s.lastMessage !== undefined && typeof s.lastMessage !== "string") {
+    throw new Error("Paper trading state integrity error: invalid last message");
+  }
   const sourceTrades = s.trades || [];
   const finite = (value, fallback = 0) =>
     value === undefined ? fallback :
@@ -52,19 +86,16 @@ function cleanState(value) {
     trades,
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
-    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.filter(x => typeof x === "string" && x.length <= 64).slice(-1000) : [],
-    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).flatMap(x =>
-      x && typeof x === "object" && !Array.isArray(x) && typeof x.mint === "string" &&
-      x.mint.length <= 64 && Number.isFinite(Number(x.retryAt))
-        ? [{ mint: x.mint, retryAt: Number(x.retryAt) }] : []) : [],
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).map(x =>
+      ({ mint: x.mint, retryAt: x.retryAt })) : [],
     lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt.slice(0, 64) : null,
     lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).flatMap(x =>
-      x && typeof x === "object" && !Array.isArray(x) ? [{
-        mint: typeof x.mint === "string" ? x.mint.slice(0, 64) : "",
-        status: typeof x.status === "string" ? x.status.slice(0, 40) : "",
-        reasons: Array.isArray(x.reasons) ? x.reasons.filter(v => typeof v === "string").slice(0, 10).map(v => v.slice(0, 300)) : []
-      }] : []) : [],
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).map(x => ({
+      mint: x.mint.slice(0, 64),
+      status: x.status.slice(0, 40),
+      reasons: Array.isArray(x.reasons) ? x.reasons.slice(0, 10).map(v => v.slice(0, 300)) : []
+    })) : [],
     updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
 }
