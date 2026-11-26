@@ -643,6 +643,86 @@ export default {
         }
         await authRateLimitRequest(env, "/login-clear", { ipHash });
         await env.BOT_STATE.delete("login_fail:" + ip);
+        // Require a private email factor after password validation; use the
+        // existing atomic Durable Object so parallel requests cannot exceed quota.
+        const adminEmail = String(env.ADMIN_EMAIL || "").trim();
+        const resendKey = String(env.RESEND_API_KEY || "").trim();
+        const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
+        if (!adminEmail || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(adminEmail) || !resendKey) {
+          return json({ error: "ADMIN_EMAIL and RESEND_API_KEY must be configured for email verification." }, 503);
+        }
+        const emailSendLimit = await authRateLimitRequest(env, "/email-send-reserve", { ipHash });
+        if (!emailSendLimit.allowed) return json({ error: "Too many email codes requested; wait 15 minutes." }, 429);
+        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+        const emailChallengeId = crypto.randomUUID();
+        const mailResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + resendKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: fromEmail, to: [adminEmail], subject: "Solana Smart Bot sign-in code",
+            text: "Your sign-in code is " + code + ". It expires in 10 minutes.",
+            html: "<p>Solana Smart Bot sign-in code:</p><strong style='font-size:28px'>" + code + "</strong><p>Expires in 10 minutes.</p>"
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!mailResponse.ok) {
+          console.error("Resend delivery failed", mailResponse.status);
+          return json({ error: "Email verification delivery failed." }, 503);
+        }
+        await env.BOT_STATE.put("email_login_challenge:" + emailChallengeId, JSON.stringify({
+          codeHash: await hashText(code), createdAt: Date.now()
+        }), { expirationTtl: 600 });
+        const at = adminEmail.indexOf("@");
+        const maskedEmail = adminEmail.slice(0, Math.min(2, at)) + "***" + adminEmail.slice(at);
+        return json({ ok: true, emailOtpRequired: true, challengeId: emailChallengeId, email: maskedEmail });
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "Authentication security service is unavailable; try later." }, 503);
+        console.error("Email OTP request failed", String(error?.message || error));
+        return json({ error: "Could not send sign-in verification code." }, 503);
+      }
+    }
+    if (url.pathname === "/api/login/email" && request.method === "POST") {
+      try {
+        const { challengeId, code } = await request.json();
+        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) || typeof code !== "string" || !/^\\d{6}$/.test(code)) {
+          return json({ error: "Enter a valid six-digit email code." }, 400);
+        }
+        const key = "email_login_challenge:" + challengeId;
+        const challenge = await env.BOT_STATE.get(key, "json");
+        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 600000) {
+          return json({ error: "Email code expired; sign in again." }, 401);
+        }
+        const attempt = await authRateLimitRequest(env, "/email-attempt-reserve", { challengeId });
+        if (!attempt.allowed) {
+          await env.BOT_STATE.delete(key);
+          return json({ error: "Email code attempts exhausted; sign in again." }, 429);
+        }
+        if (await hashText(code) !== challenge.codeHash) return json({ error: "Incorrect email code." }, 401);
+        const claim = await authRateLimitRequest(env, "/email-challenge-claim", { challengeId });
+        if (!claim.claimed) return json({ error: "This email challenge has already been used." }, 409);
+        await env.BOT_STATE.delete(key);
+        const profile = await readProfile(env);
+        if (profile.totpEnabled) {
+          if (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) {
+            return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+          }
+          const nextChallengeId = crypto.randomUUID();
+          await env.BOT_STATE.put("mfa_challenge:" + nextChallengeId, JSON.stringify({
+            createdAt: Date.now(), attempts: 0, emailVerified: true
+          }), { expirationTtl: 300 });
+          return json({ ok: true, mfaRequired: true, challengeId: nextChallengeId });
+        }
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + SESSION_MS;
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({
+          expiresAt, authVersion: Number(profile.authVersion || 0), emailVerified: true
+        }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return json({ ok: true, token });
+      } catch (error) {
+        if (error?.status === 503) return json({ error: "Authentication security service is unavailable; try later." }, 503);
+        return json({ error: "Could not verify email code." }, 400);
+      }
+    }
         const profile = await readProfile(env);
         // A damaged MFA profile must never downgrade to password-only login.
         if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
@@ -671,7 +751,7 @@ export default {
         const ipFailureKey = "totp_fail:" + ip;
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        if (!challenge || challenge.emailVerified !== true || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "Email verification is required; sign in again." }, 401);
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
         const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
