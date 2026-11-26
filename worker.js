@@ -648,7 +648,7 @@ export default {
         const adminEmail = String(env.ADMIN_EMAIL || "").trim();
         const resendKey = String(env.RESEND_API_KEY || "").trim();
         const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
-        if (!adminEmail || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(adminEmail) || !resendKey) {
+        if (!adminEmail || !/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(adminEmail) || !resendKey) {
           return json({ error: "ADMIN_EMAIL and RESEND_API_KEY must be configured for email verification." }, 503);
         }
         const emailSendLimit = await authRateLimitRequest(env, "/email-send-reserve", { ipHash });
@@ -684,7 +684,7 @@ export default {
     if (url.pathname === "/api/login/email" && request.method === "POST") {
       try {
         const { challengeId, code } = await request.json();
-        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) || typeof code !== "string" || !/^\\d{6}$/.test(code)) {
+        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) || typeof code !== "string" || !/^\d{6}$/.test(code)) {
           return json({ error: "Enter a valid six-digit email code." }, 400);
         }
         const key = "email_login_challenge:" + challengeId;
