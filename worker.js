@@ -625,6 +625,7 @@ export default {
       });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
+      let pendingEmailChallengeKey = "";
       try {
         const { password } = await request.json();
         const expected = env.BOT_LOGIN_PASSWORD;
@@ -651,6 +652,9 @@ export default {
         } while (otpRandom >= 4294000000); // Reject the incomplete range to avoid modulo bias.
         const code = String(otpRandom % 1000000).padStart(6, "0");
         const challengeId = crypto.randomUUID();
+        pendingEmailChallengeKey = "email_login_challenge:" + challengeId;
+        // Store first so the code cannot arrive before its verification record.
+        await env.BOT_STATE.put(pendingEmailChallengeKey, JSON.stringify({ codeHash: await hashText(code), createdAt: Date.now() }), { expirationTtl: 600 });
         const mailResponse = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: "Bearer " + resendKey, "Content-Type": "application/json" },
@@ -662,14 +666,21 @@ export default {
           signal: AbortSignal.timeout(10000)
         });
         if (!mailResponse.ok) {
+          await env.BOT_STATE.delete(pendingEmailChallengeKey);
+          pendingEmailChallengeKey = "";
           console.error("Resend delivery failed", mailResponse.status);
           return json({ error: "Email verification delivery failed." }, 503);
         }
-        await env.BOT_STATE.put("email_login_challenge:" + challengeId, JSON.stringify({ codeHash: await hashText(code), createdAt: Date.now() }), { expirationTtl: 600 });
+        pendingEmailChallengeKey = "";
         const at = adminEmail.indexOf("@");
         const maskedEmail = adminEmail.slice(0, Math.min(2, at)) + "***" + adminEmail.slice(at);
         return json({ ok: true, emailOtpRequired: true, challengeId, email: maskedEmail });
       } catch (error) {
+        if (pendingEmailChallengeKey) {
+          try { await env.BOT_STATE.delete(pendingEmailChallengeKey); } catch (cleanupError) {
+            console.error("Failed to clear unsent email OTP challenge", String(cleanupError?.message || cleanupError));
+          }
+        }
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         console.error("Email OTP send error", String(error?.message || error));
         return json({ error: "Could not send sign-in verification code." }, 503);
