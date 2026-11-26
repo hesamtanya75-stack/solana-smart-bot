@@ -694,7 +694,12 @@ export default {
         }
         const key = "email_login_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 600000) return json({ error: "Email code expired; sign in again." }, 401);
+        const challengeCreatedAt = challenge?.createdAt;
+        const challengeAge = Date.now() - challengeCreatedAt;
+        if (!challenge || !Number.isSafeInteger(challengeCreatedAt) || challengeCreatedAt <= 0 ||
+            challengeCreatedAt > Date.now() || challengeAge > 600000) {
+          return json({ error: "Email code expired; sign in again." }, 401);
+        }
         const attempt = await authRateLimitRequest(env, "/email-attempt-reserve", { challengeId });
         if (!attempt.allowed) {
           await env.BOT_STATE.delete(key);
