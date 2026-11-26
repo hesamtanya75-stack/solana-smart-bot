@@ -2,7 +2,6 @@ name: Cloudflare Closed Preview Cleanup
 
 on:
   workflow_dispatch:
-  # Sweep closed PR previews immediately after this workflow lands on main.
   push:
     branches: [main]
     paths:
@@ -23,31 +22,13 @@ concurrency:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Check out Wrangler configuration
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
-
-      - name: Verify Cloudflare credentials
-        id: credentials
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Preview cleanup skipped: Cloudflare API credentials are not configured."
-          fi
-
       - name: Collect closed pull request branches
-        if: steps.credentials.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             number="${{ github.event.pull_request.number }}"
             state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq .state)"
@@ -59,60 +40,19 @@ jobs:
           else
             gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=closed&per_page=100" --jq '.[] | [.number, .head.ref, .head.repo.full_name, .base.ref] | @tsv' > "$RUNNER_TEMP/closed-prs.tsv"
           fi
-          echo "Closed PR preview branches selected:"
+          echo "Closed PR Preview candidates:"
           cat "$RUNNER_TEMP/closed-prs.tsv"
 
-      - name: Delete only closed-PR Preview resources
-        if: steps.credentials.outputs.available == 'true'
+      - name: Collect open pull request branches
         env:
           GH_TOKEN: ${{ github.token }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          failures=0
-          while IFS=$'\t' read -r number branch source_repo base_branch; do
-            [ -n "$number" ] || continue
-            if ! [[ "$number" =~ ^[0-9]+$ ]] ||
-               [ "$source_repo" != "$GITHUB_REPOSITORY" ] ||
-               [ -z "$branch" ] ||
-               [ "$branch" = "$base_branch" ] ||
-               [ "$branch" = "main" ] ||
-               ! [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] ||
-               [[ "$branch" == *".."* ]] ||
-               [[ "$branch" == -* ]]; then
-              echo "::warning::Skipping unsafe or external PR Preview entry: #$number"
-              continue
-            fi
+          set -euo pipefail
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq '.[] | [.number, .head.ref, .head.repo.full_name] | @tsv' > "$RUNNER_TEMP/open-prs.tsv"
+          echo "Open PR branches protected from deletion:"
+          cat "$RUNNER_TEMP/open-prs.tsv"
 
-            # Re-read authoritative PR metadata immediately before deletion.
-            metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$number" --jq '[.state, .head.ref, .head.repo.full_name, .base.ref] | @tsv')"
-            IFS=$'\t' read -r state current_branch current_repo current_base <<< "$metadata"
-            if [ "$state" != "closed" ] || [ "$current_repo" != "$GITHUB_REPOSITORY" ] ||
-               [ "$current_branch" != "$branch" ] || [ "$current_branch" = "$current_base" ] ||
-               [ "$current_branch" = "main" ]; then
-              echo "Skipping PR #$number because its state or branch changed."
-              continue
-            fi
-
-            # Workers Builds names Previews by the source branch. The older
-            # workflow tried pr-N, which often returned 10025 and left the
-            # branch Preview's isolated Durable Object namespace allocated.
-            for preview in "$branch" "pr-$number"; do
-              echo "Deleting isolated Preview '$preview' for closed PR #$number"
-              output="$(npx --yes wrangler@4.135.0 preview delete --name "$preview" --worker-name solana-smart-bot-new --skip-confirmation --config wrangler.jsonc 2>&1)" && {
-                echo "$output"
-                continue
-              }
-              echo "$output"
-              if echo "$output" | grep -Eq 'Preview not found|code: 10025'; then
-                echo "Preview '$preview' is already absent; no cleanup needed."
-              else
-                echo "::warning::Could not delete Preview '$preview' for closed PR #$number."
-                failures=$((failures + 1))
-              fi
-            done
-          done < "$RUNNER_TEMP/closed-prs.tsv"
-          echo "Cleanup finished. Preview deletion errors (excluding already-absent previews): $failures"
-          if [ "$failures" -gt 0 ]; then
-            echo "::warning::Some closed-PR Preview resources may need manual review."
-          fi
+      - name: Report-only cleanup plan
+        run: |
+          echo "REPORT ONLY: no Cloudflare resources or namespaces will be deleted."
+          echo "Closed-PR Preview candidates were listed above for manual review."

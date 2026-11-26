@@ -98,17 +98,17 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
   }
 });
 
-test("closed PRs clean up only their isolated Preview and are not redeployed", async () => {
+test("closed-PR Preview cleanup is report-only and does not delete or redeploy", async () => {
   const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
   assert.match(workflow, /- closed/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /preview_pr_number:/);
   assert.match(workflow, /github\.event\.action != 'closed'/);
   assert.match(workflow, /github\.event\.action == 'closed'/);
-  assert.ok(workflow.includes('preview delete --name "$preview_name"'));
+  assert.match(workflow, /REPORT ONLY: no Preview deployment or Durable Object namespace was deleted/);
+  assert.doesNotMatch(workflow, /wrangler[^\\n]*\\bpreview\\s+delete/i);
   assert.match(workflow, /inputs\.preview_pr_number/);
   assert.match(workflow, /github\.event\.pull_request\.number/);
-  assert.match(workflow, /Check whether the selected pull request is closed/);
 });
 
 test("Preview namespace quota cannot be reported as a runtime validation pass", async () => {

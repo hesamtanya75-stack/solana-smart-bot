@@ -15,6 +15,7 @@ on:
       - "tests/paper-state-storage-boundary.test.mjs"
       - "tests/migration-safety.test.mjs"
       - "tests/dashboard-inline-script-syntax.test.mjs"
+      - "tests/preview-cleanup-safety.test.js"
       - "scripts/migration-safety.mjs"
       - "package.json"
       - "scripts/migrate-deno-state.mjs"
