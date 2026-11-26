@@ -57,6 +57,15 @@ test("internal state endpoint rejects oversized request bodies before JSON parsi
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("legacy zero currentPrice is preserved instead of replaced by buyPrice", async () => {
+  const { instance } = makeDO({ balance: 95, trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 0, tokens: 2.5, sold: false
+  }], updatedAt: null });
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.trades[0].currentPrice, 0);
+});
+
 test("PaperTradingState imports the existing KV paper state once", async () => {
   const { instance } = makeDO({ balance: 73.25, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2.1, tokens: 2.5, sold: false
@@ -122,6 +131,100 @@ test("missing Durable Object storage never resurrects the stale KV snapshot", as
   assert.equal(result.body.error, "Paper trading state operation failed");
 });
 
+
+test("corrupted persisted balance fails closed without resetting or overwriting the ledger", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.state.balance = "not-a-number";
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, "Paper trading state operation failed");
+  const unchanged = await storage.get("paper_state_v1");
+  assert.equal(unchanged.state.balance, "not-a-number");
+  assert.equal(unchanged.revision, 0);
+});
+
+test("malformed trade records fail closed instead of being silently discarded", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.state.trades = [{ mint: mintA, amount: 5, buyPrice: "broken", tokens: 2.5 }];
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  const unchanged = await storage.get("paper_state_v1");
+  assert.equal(unchanged.state.trades.length, 1);
+  assert.equal(unchanged.state.trades[0].buyPrice, "broken");
+});
+
+test("compare-and-set refuses malformed balance and leaves the last valid state intact", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  const initial = await call(instance, { operation: "get" });
+  const rejected = await call(instance, {
+    operation: "compare-and-set", expectedRevision: initial.body.revision,
+    state: { ...initial.body.state, balance: "100" }
+  });
+  assert.equal(rejected.status, 503);
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.status, 200);
+  assert.equal(current.body.state.balance, 72);
+  assert.equal(current.body.revision, 0);
+  assert.equal((await storage.get("paper_state_v1")).state.balance, 72);
+});
+
+test("malformed persisted scan and automation fields fail closed without rewriting state", async () => {
+  const corruptions = [
+    ["autoEnabled", "yes"],
+    ["paused", 1],
+    ["scannedMints", [mintA, 7]],
+    ["deferredMints", [{ mint: mintA, retryAt: "tomorrow" }]],
+    ["lastScanReport", [{ mint: mintA, status: "ok", reasons: ["safe", 9] }]],
+    ["lastScanReport", [{ mint: "", status: "ok", reasons: [] }]],
+    ["lastScanReport", [{ mint: mintA, status: " ", reasons: [] }]]
+  ];
+  for (const [field, invalidValue] of corruptions) {
+    const { instance, storage } = makeDO({
+      balance: 72, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], deferredMints: [], lastScanReport: [], updatedAt: null
+    });
+    await call(instance, { operation: "get" });
+    const record = await storage.get("paper_state_v1");
+    record.state[field] = invalidValue;
+    await storage.put("paper_state_v1", record);
+
+    const rejected = await call(instance, { operation: "get" });
+    assert.equal(rejected.status, 503, `field ${field} must fail closed`);
+    const preserved = await storage.get("paper_state_v1");
+    assert.deepEqual(preserved.state[field], invalidValue, `field ${field} must not be normalized`);
+    assert.equal(preserved.revision, record.revision);
+  }
+});
+
+test("corrupted ledger revision fails closed and preserves the stored record", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  record.revision = -1;
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal((await storage.get("paper_state_v1")).revision, -1);
+});
+
+test("duplicate idempotency records fail closed without rewriting history", async () => {
+  const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
+  await call(instance, { operation: "get" });
+  const record = await storage.get("paper_state_v1");
+  const invalid = { id: requestId("duplicate"), operation: "clear-history", intent: "" };
+  record.recentOperations = [invalid, { ...invalid }];
+  await storage.put("paper_state_v1", record);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  const preserved = await storage.get("paper_state_v1");
+  assert.equal(preserved.recentOperations.length, 2);
+});
 test("compare-and-set rejects stale snapshots without overwriting current state", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const first = await call(instance, { operation: "get" });
@@ -156,6 +259,46 @@ test("idle cron snapshots do not close the one-time browser migration window", a
   });
   assert.equal(migrated.status, 200);
   assert.equal(migrated.body.state.balance, 75);
+});
+
+test("scan metadata activity closes the one-time migration window", async () => {
+  for (const [field, value] of [
+    ["deferredMints", [{ mint: mintA, retryAt: 123 }]],
+    ["lastScanReport", [{ mint: mintA, status: "deferred", reasons: [] }]]
+  ]) {
+    const legacy = {
+      balance: 100, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], deferredMints: [], lastScanReport: [], updatedAt: null,
+      [field]: value
+    };
+    const { instance } = makeDO(legacy);
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, false, `legacy ${field} activity closes migration`);
+    const rejected = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: initial.body.revision,
+      state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(rejected.status, 409);
+  }
+
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const initial = await call(instance, { operation: "get" });
+  const activity = await call(instance, {
+    operation: "compare-and-set",
+    expectedRevision: initial.body.revision,
+    state: {
+      ...initial.body.state,
+      deferredMints: [{ mint: mintA, retryAt: 123 }]
+    }
+  });
+  assert.equal(activity.status, 200);
+  const rejected = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: activity.body.revision,
+    state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(rejected.status, 409);
 });
 
 test("changing automation closes the one-time browser migration window", async () => {

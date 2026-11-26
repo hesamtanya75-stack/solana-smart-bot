@@ -12,42 +12,99 @@ const DEFAULT_STATE = {
 };
 
 function cleanState(value) {
-  const s = value && typeof value === "object" ? value : {};
-  const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
-  const trades = Array.isArray(s.trades) ? s.trades.slice(-500).flatMap(trade => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Paper trading state integrity error: state must be an object");
+  }
+  const s = value;
+  if (typeof s.balance !== "number" || !Number.isFinite(s.balance) || s.balance < 0) {
+    throw new Error("Paper trading state integrity error: invalid balance");
+  }
+  if (s.trades !== undefined && !Array.isArray(s.trades)) {
+    throw new Error("Paper trading state integrity error: trades must be an array");
+  }
+  for (const key of ["autoEnabled", "paused"]) {
+    if (s[key] !== undefined && typeof s[key] !== "boolean") {
+      throw new Error(`Paper trading state integrity error: invalid ${key}`);
+    }
+  }
+  if (s.scannedMints !== undefined &&
+      (!Array.isArray(s.scannedMints) || s.scannedMints.some(mint =>
+        typeof mint !== "string" || !mint.trim() || mint.length > 64))) {
+    throw new Error("Paper trading state integrity error: invalid scanned mints");
+  }
+  if (s.deferredMints !== undefined &&
+      (!Array.isArray(s.deferredMints) || s.deferredMints.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+        typeof item.retryAt !== "number" || !Number.isFinite(item.retryAt)))) {
+    throw new Error("Paper trading state integrity error: invalid deferred mints");
+  }
+  if (s.lastScanReport !== undefined &&
+      (!Array.isArray(s.lastScanReport) || s.lastScanReport.some(item =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+        typeof item.status !== "string" || !item.status.trim() || item.status.length > 40 ||
+        (item.reasons !== undefined && (!Array.isArray(item.reasons) ||
+          item.reasons.some(reason => typeof reason !== "string" || reason.length > 300)))))) {
+    throw new Error("Paper trading state integrity error: invalid scan report");
+  }
+  for (const key of ["lastRunAt", "updatedAt"]) {
+    if (s[key] !== undefined && s[key] !== null && typeof s[key] !== "string") {
+      throw new Error(`Paper trading state integrity error: invalid ${key}`);
+    }
+  }
+  if (s.lastMessage !== undefined && typeof s.lastMessage !== "string") {
+    throw new Error("Paper trading state integrity error: invalid last message");
+  }
+  const sourceTrades = s.trades || [];
+  const finite = (value, fallback = 0) =>
+    value === undefined ? fallback :
+    typeof value === "number" && Number.isFinite(value) ? value : NaN;
+  const trades = sourceTrades.slice(-500).map(trade => {
     if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
-        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return [];
+        typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) {
+      throw new Error("Paper trading state integrity error: malformed trade record");
+    }
     const amount = finite(trade.amount), buyPrice = finite(trade.buyPrice), tokens = finite(trade.tokens);
-    if (amount <= 0 || buyPrice <= 0 || tokens <= 0) return [];
-    return [{
+    const currentPrice = finite(trade.currentPrice, buyPrice);
+    const sellPrice = finite(trade.sellPrice), saleValue = finite(trade.saleValue);
+    if (![amount, buyPrice, tokens, currentPrice, sellPrice, saleValue].every(Number.isFinite) ||
+        amount <= 0 || buyPrice <= 0 || tokens <= 0 || currentPrice < 0 ||
+        sellPrice < 0 || saleValue < 0 || (trade.sold !== undefined && typeof trade.sold !== "boolean")) {
+      throw new Error("Paper trading state integrity error: invalid trade values");
+    }
+    return {
       mint: trade.mint.trim(), amount, buyPrice,
-      currentPrice: finite(trade.currentPrice) || buyPrice, tokens,
-      sold: trade.sold === true, sellPrice: finite(trade.sellPrice),
-      saleValue: finite(trade.saleValue),
+      currentPrice, tokens,
+      sold: trade.sold === true, sellPrice, saleValue,
       boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
       soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
-    }];
-  }) : [];
+    };
+  });
   return {
-    balance: Number.isFinite(Number(s.balance)) && Number(s.balance) >= 0 ? Number(s.balance) : DEFAULT_STATE.balance,
+    balance: s.balance,
     trades,
     autoEnabled: s.autoEnabled === true,
     paused: s.paused === true,
-    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.filter(x => typeof x === "string" && x.length <= 64).slice(-1000) : [],
-    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).flatMap(x =>
-      x && typeof x === "object" && !Array.isArray(x) && typeof x.mint === "string" &&
-      x.mint.length <= 64 && Number.isFinite(Number(x.retryAt))
-        ? [{ mint: x.mint, retryAt: Number(x.retryAt) }] : []) : [],
+    scannedMints: Array.isArray(s.scannedMints) ? s.scannedMints.slice(-1000) : [],
+    deferredMints: Array.isArray(s.deferredMints) ? s.deferredMints.slice(-1000).map(x =>
+      ({ mint: x.mint, retryAt: x.retryAt })) : [],
     lastRunAt: typeof s.lastRunAt === "string" ? s.lastRunAt.slice(0, 64) : null,
     lastMessage: typeof s.lastMessage === "string" ? s.lastMessage.slice(0, 2000) : DEFAULT_STATE.lastMessage,
-    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).flatMap(x =>
-      x && typeof x === "object" && !Array.isArray(x) ? [{
-        mint: typeof x.mint === "string" ? x.mint.slice(0, 64) : "",
-        status: typeof x.status === "string" ? x.status.slice(0, 40) : "",
-        reasons: Array.isArray(x.reasons) ? x.reasons.filter(v => typeof v === "string").slice(0, 10).map(v => v.slice(0, 300)) : []
-      }] : []) : [],
+    lastScanReport: Array.isArray(s.lastScanReport) ? s.lastScanReport.slice(-20).map(x => ({
+      mint: x.mint.slice(0, 64),
+      status: x.status.slice(0, 40),
+      reasons: Array.isArray(x.reasons) ? x.reasons.slice(0, 10).map(v => v.slice(0, 300)) : []
+    })) : [],
     updatedAt: typeof s.updatedAt === "string" ? s.updatedAt.slice(0, 64) : null
   };
+}
+
+function isMigrationPristine(state) {
+  return state.balance === 100 && state.trades.length === 0 &&
+    state.autoEnabled === false && state.paused === false &&
+    state.scannedMints.length === 0 && state.deferredMints.length === 0 &&
+    state.lastScanReport.length === 0;
 }
 
 async function readBoundedJson(request, maxBytes = 262144) {
@@ -87,6 +144,40 @@ function response(data, status = 200) {
   });
 }
 
+function validateRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record) ||
+      !Number.isSafeInteger(record.revision) || record.revision < 0 ||
+      !Array.isArray(record.recentOperations) || record.recentOperations.length > 500 ||
+      (record.migrationOpen !== undefined && typeof record.migrationOpen !== "boolean") ||
+      (record.migrationMarkerPending !== undefined && typeof record.migrationMarkerPending !== "boolean")) {
+    throw new Error("Paper trading state integrity error: invalid ledger record envelope");
+  }
+  cleanState(record.state);
+  const seen = new Set();
+  for (const item of record.recentOperations) {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        typeof item.id !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(item.id) ||
+        seen.has(item.id) || !["paper-buy", "clear-history"].includes(item.operation) ||
+        typeof item.intent !== "string") {
+      throw new Error("Paper trading state integrity error: invalid idempotency record");
+    }
+    seen.add(item.id);
+    if (item.operation === "clear-history") {
+      if (item.intent !== "") throw new Error("Paper trading state integrity error: invalid clear-history intent");
+    } else {
+      let intent;
+      try { intent = JSON.parse(item.intent); }
+      catch { throw new Error("Paper trading state integrity error: malformed paper-buy intent"); }
+      if (!intent || typeof intent !== "object" || Array.isArray(intent) ||
+          typeof intent.mint !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(intent.mint) ||
+          typeof intent.price !== "number" || !Number.isFinite(intent.price) || intent.price <= 0 ||
+          Object.keys(intent).some(key => !["mint", "price"].includes(key))) {
+        throw new Error("Paper trading state integrity error: invalid paper-buy intent");
+      }
+    }
+  }
+  return record;
+}
 export class PaperTradingState {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -97,6 +188,9 @@ export class PaperTradingState {
     const migrationKey = "paper_state_do_migration_v1";
     let record = await this.ctx.storage.get("paper_state_v1");
     if (record) {
+      // Validate persisted ledger data before returning it or allowing any later
+      // compare-and-set write. Corruption must fail closed, never normalize to $100.
+      validateRecord(record);
       // If the DO record committed but the KV completion marker write failed,
       // finish that marker before ever allowing recovery from the legacy snapshot.
       if (record.migrationMarkerPending !== false) {
@@ -104,7 +198,9 @@ export class PaperTradingState {
         if (marker !== "complete") await this.env.BOT_STATE.put(migrationKey, "complete");
         record = await this.ctx.storage.transaction(async txn => {
           const current = await txn.get("paper_state_v1");
-          if (!current || current.migrationMarkerPending === false) return current;
+          if (!current) return current;
+          validateRecord(current);
+          if (current.migrationMarkerPending === false) return current;
           const completed = { ...current, migrationMarkerPending: false };
           await txn.put("paper_state_v1", completed);
           return completed;
@@ -117,7 +213,7 @@ export class PaperTradingState {
       // Never re-import an old KV snapshot if the Durable Object's own storage
       // was reset after a completed migration; fail closed instead of resurrecting stale trades.
       record = await this.ctx.storage.get("paper_state_v1");
-      if (record) return record;
+      if (record) return validateRecord(record);
       throw new Error("PaperTradingState storage is missing after its one-time KV migration");
     }
     // An "initializing" marker is recoverable: a prior isolate may have stopped
@@ -126,20 +222,20 @@ export class PaperTradingState {
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
-    const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
-      initialState.autoEnabled === false && initialState.paused === false &&
-      initialState.scannedMints.length === 0;
+    const migrationOpen = isMigrationPristine(initialState);
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
-      if (existing) return existing;
+      if (existing) return validateRecord(existing);
       await txn.put("paper_state_v1", candidate);
       return candidate;
     });
     await this.env.BOT_STATE.put(migrationKey, "complete");
     record = await this.ctx.storage.transaction(async txn => {
       const current = await txn.get("paper_state_v1");
-      if (!current || current.migrationMarkerPending === false) return current;
+      if (!current) return current;
+      validateRecord(current);
+      if (current.migrationMarkerPending === false) return current;
       const completed = { ...current, migrationMarkerPending: false };
       await txn.put("paper_state_v1", completed);
       return completed;
@@ -150,7 +246,7 @@ export class PaperTradingState {
   async transact(mutator) {
     await this.ensureRecord();
     return this.ctx.storage.transaction(async txn => {
-      const record = await txn.get("paper_state_v1");
+      const record = validateRecord(await txn.get("paper_state_v1"));
       const result = await mutator(record);
       if (result?.write) await txn.put("paper_state_v1", result.record);
       return result?.value;
@@ -181,10 +277,7 @@ export class PaperTradingState {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
           const nextState = cleanState(body.state);
-          const migrationStillOpen = record.migrationOpen === true &&
-            nextState.balance === 100 && nextState.trades.length === 0 &&
-            nextState.autoEnabled === false && nextState.paused === false &&
-            nextState.scannedMints.length === 0;
+          const migrationStillOpen = record.migrationOpen === true && isMigrationPristine(nextState);
           const next = {
             ...record,
             state: nextState,
@@ -207,10 +300,7 @@ export class PaperTradingState {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
           const current = record.state;
-          const canMigrate = record.migrationOpen === true &&
-            current.balance === 100 && current.trades.length === 0 &&
-            current.autoEnabled === false && current.paused === false &&
-            current.scannedMints.length === 0;
+          const canMigrate = record.migrationOpen === true && isMigrationPristine(current);
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
