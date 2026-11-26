@@ -33,7 +33,7 @@ jobs:
            github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Validate closed PR and report cleanup candidate (report only)
+      - name: Report closed-PR Preview cleanup request (report only)
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.preview_pr_number }}
@@ -57,6 +57,7 @@ jobs:
             echo "Branch: $branch"
             echo "Candidate: manual review only; no deletion"
             echo ""
+            echo "REPORT ONLY: no Preview deployment or Durable Object namespace was deleted."
             echo "No Cloudflare API, Wrangler delete, Durable Object, KV, or bot-state operation was performed."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Report complete. Resource deletion requires a separately reviewed, explicitly approved action."
