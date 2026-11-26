@@ -58,68 +58,10 @@ jobs:
           echo "Open PR branches protected from deletion:"
           cat "$RUNNER_TEMP/open-prs.tsv"
 
-      - name: Detect Cloudflare credentials
-        id: cf
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Report-only cleanup plan
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Cloudflare credentials are not configured; no Preview deletion will run."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Delete only closed-PR isolated Previews
-        if: >-
-          ${{ steps.cf.outputs.available == 'true' &&
-              ((github.event_name == 'workflow_dispatch' && inputs.execute_cleanup == true) ||
-               github.event_name == 'schedule' ||
-               github.event_name == 'pull_request' ||
-               github.event_name == 'push') }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          : > "$RUNNER_TEMP/open-branches.txt"
-          while IFS=$'\t' read -r number branch source_repo; do
-            [ -n "$branch" ] || continue
-            printf '%s %s\n' "$source_repo" "$branch" >> "$RUNNER_TEMP/open-branches.txt"
-          done < "$RUNNER_TEMP/open-prs.tsv"
-
-          attempted=0
-          succeeded=0
-          while IFS=$'\t' read -r number branch source_repo base_branch; do
-            [ -n "$number" ] || continue
-            [ "$source_repo" = "$GITHUB_REPOSITORY" ] || continue
-            [ -n "$branch" ] || continue
-            [ "$branch" != "$base_branch" ] || continue
-            [ "$branch" != "main" ] || continue
-            if grep -Fxq "$source_repo $branch" "$RUNNER_TEMP/open-branches.txt"; then
-              echo "Protected: PR #$number branch '$branch' is referenced by an open PR."
-              continue
-            fi
-
-            echo "Eligible closed PR #$number: isolated Preview '$branch' and legacy alias 'pr-$number'."
-            for preview_name in "$branch" "pr-$number"; do
-              [ "$preview_name" = "$branch" ] && [ "$branch" = "pr-$number" ] && continue
-              attempted=$((attempted + 1))
-              if npx --yes wrangler@4.135.0 preview delete --name "$preview_name" --skip-confirmation --config wrangler.jsonc; then
-                succeeded=$((succeeded + 1))
-                echo "Deleted isolated Preview: $preview_name"
-              else
-                echo "::warning::Preview '$preview_name' was absent or could not be deleted; inspect this log if quota remains."
-              fi
-            done
-          done < "$RUNNER_TEMP/closed-prs.tsv"
-
-          echo "Preview cleanup attempted $attempted targeted deletion(s); $succeeded succeeded."
-          if [ "$attempted" -gt 0 ] && [ "$succeeded" -eq 0 ]; then
-            echo "::error::No Preview deletion succeeded. Check Cloudflare token scope/account and Wrangler logs."
-            exit 1
-          fi
+          echo "REPORT ONLY: no Cloudflare resources or namespaces will be deleted."
+          echo "Closed-PR Preview candidates were listed above for manual review."
 
       - name: Report-only mode
         if: >-
@@ -127,4 +69,4 @@ jobs:
               inputs.execute_cleanup != true }}
         run: |
           echo "REPORT ONLY: no Cloudflare resources were deleted."
-          echo "Run this workflow again with execute_cleanup=true to remove eligible closed-PR Previews."
+          echo "Cleanup execution is intentionally disabled by repository safety policy."
