@@ -100,6 +100,13 @@ function cleanState(value) {
   };
 }
 
+function isMigrationPristine(state) {
+  return state.balance === 100 && state.trades.length === 0 &&
+    state.autoEnabled === false && state.paused === false &&
+    state.scannedMints.length === 0 && state.deferredMints.length === 0 &&
+    state.lastScanReport.length === 0;
+}
+
 async function readBoundedJson(request, maxBytes = 262144) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("Request body required");
@@ -215,9 +222,7 @@ export class PaperTradingState {
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
-    const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
-      initialState.autoEnabled === false && initialState.paused === false &&
-      initialState.scannedMints.length === 0;
+    const migrationOpen = isMigrationPristine(initialState);
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
@@ -272,10 +277,7 @@ export class PaperTradingState {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
           const nextState = cleanState(body.state);
-          const migrationStillOpen = record.migrationOpen === true &&
-            nextState.balance === 100 && nextState.trades.length === 0 &&
-            nextState.autoEnabled === false && nextState.paused === false &&
-            nextState.scannedMints.length === 0;
+          const migrationStillOpen = record.migrationOpen === true && isMigrationPristine(nextState);
           const next = {
             ...record,
             state: nextState,
@@ -298,10 +300,7 @@ export class PaperTradingState {
             return { value: { conflict: true, revision: record.revision, state: record.state } };
           }
           const current = record.state;
-          const canMigrate = record.migrationOpen === true &&
-            current.balance === 100 && current.trades.length === 0 &&
-            current.autoEnabled === false && current.paused === false &&
-            current.scannedMints.length === 0;
+          const canMigrate = record.migrationOpen === true && isMigrationPristine(current);
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
