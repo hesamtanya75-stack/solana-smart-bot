@@ -105,8 +105,8 @@ test("closed Preview cleanup remains report-only and never deletes resources", a
   assert.match(workflow, /Report closed-PR Preview cleanup request \(report only\)/);
   assert.match(workflow, /REPORT ONLY: no Preview deployment or Durable Object namespace was deleted/);
   assert.doesNotMatch(workflow, /wrangler[^\n]*preview delete|preview delete --name/);
-  const cleanupJob = workflow.split("\
-  preview:")[0];\n  assert.doesNotMatch(cleanupJob, /CLOUDFLARE_API_TOKEN/);
+  const cleanupJob = workflow.split("\\n  preview:")[0];
+  assert.doesNotMatch(cleanupJob, /CLOUDFLARE_API_TOKEN/);
   assert.match(audit, /Cloudflare Closed Preview Audit \(Report Only\)/);
   assert.match(audit, /No Cloudflare API, Wrangler delete, Durable Object, KV, or bot-state operation was performed/);
   assert.doesNotMatch(audit, /wrangler[^\n]*delete|preview delete/);
