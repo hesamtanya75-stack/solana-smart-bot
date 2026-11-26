@@ -345,7 +345,7 @@ test("MFA challenge is deleted after five invalid codes", async () => {
   const { env, authStorage } = environment();
   const values = new Map([
     ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null })],
-    ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
+    ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0, emailVerified: true })]
   ]);
   env.BOT_STATE.get = async (key, type) => {
     const value = values.get(key);
