@@ -1732,7 +1732,14 @@ if (serverLogoutButton) {
       await serverRequest("/api/logout", { method: "POST" });
       serverModeReady = false;
       serverToken = "";
+      serverMfaChallenge = "";
+      serverEmailChallenge = "";
       localStorage.removeItem("solanaBotSession");
+      const emailCode = document.getElementById("serverEmailCode");
+      if (emailCode) emailCode.remove();
+      const totpCode = document.getElementById("serverTotpCode");
+      if (totpCode) totpCode.remove();
+      document.getElementById("serverLoginButton").textContent = "چوونەژوورەوە";
       serverLogoutButton.hidden = true;
       serverLogin.style.display = "flex";
       document.getElementById("serverPassword").value = "";
@@ -1751,6 +1758,9 @@ function clearExpiredServerSession() {
   serverToken = "";
   localStorage.removeItem("solanaBotSession");
   serverMfaChallenge = "";
+  serverEmailChallenge = "";
+  const emailCode = document.getElementById("serverEmailCode");
+  if (emailCode) emailCode.remove();
   const logoutButton = document.getElementById("serverLogoutButton");
   if (logoutButton) logoutButton.hidden = true;
   const otp = document.getElementById("serverTotpCode");
