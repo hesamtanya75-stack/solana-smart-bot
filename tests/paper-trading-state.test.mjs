@@ -180,7 +180,9 @@ test("malformed persisted scan and automation fields fail closed without rewriti
     ["paused", 1],
     ["scannedMints", [mintA, 7]],
     ["deferredMints", [{ mint: mintA, retryAt: "tomorrow" }]],
-    ["lastScanReport", [{ mint: mintA, status: "ok", reasons: ["safe", 9] }]]
+    ["lastScanReport", [{ mint: mintA, status: "ok", reasons: ["safe", 9] }]],
+    ["lastScanReport", [{ mint: "", status: "ok", reasons: [] }]],
+    ["lastScanReport", [{ mint: mintA, status: " ", reasons: [] }]]
   ];
   for (const [field, invalidValue] of corruptions) {
     const { instance, storage } = makeDO({
