@@ -186,11 +186,14 @@ export class LiveTradeCoordinator {
   }
 
   async setKillSwitch(body) {
-    if (typeof body?.enabled !== "boolean") throw new Error("enabled must be a boolean");
+    if (body?.enabled !== true) {
+      throw new Error("Kill switch re-arm is disabled until operator authorization, MFA, and audit logging are implemented");
+    }
     return this.withState(state => {
-      state.killSwitch = body.enabled;
+      // This endpoint may only move the system toward the safer state.
+      state.killSwitch = true;
       state.killSwitchUpdatedAt = new Date().toISOString();
-      return { ok: true, killSwitch: state.killSwitch };
+      return { ok: true, killSwitch: true };
     });
   }
 
