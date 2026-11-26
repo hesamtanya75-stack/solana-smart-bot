@@ -20,7 +20,7 @@ function hasNoMigrationMetadata(value) {
 function validateMigrationMetadata(value) {
   if (value.scannedMints !== undefined &&
       (!Array.isArray(value.scannedMints) || value.scannedMints.length > 1000 ||
-       value.scannedMints.some(mint => typeof mint !== "string" || mint.length > 64))) {
+       value.scannedMints.some(mint => typeof mint !== "string" || !mint.trim() || mint.length > 64))) {
     throw new Error("Paper trading migration integrity error: invalid scanned mints");
   }
   if (value.deferredMints !== undefined &&
@@ -33,8 +33,8 @@ function validateMigrationMetadata(value) {
   if (value.lastScanReport !== undefined &&
       (!Array.isArray(value.lastScanReport) || value.lastScanReport.length > 20 ||
        value.lastScanReport.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
-         typeof item.mint !== "string" || item.mint.length > 64 ||
-         typeof item.status !== "string" || item.status.length > 40 ||
+         typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+         typeof item.status !== "string" || !item.status.trim() || item.status.length > 40 ||
          !Array.isArray(item.reasons) || item.reasons.length > 10 ||
          item.reasons.some(reason => typeof reason !== "string" || reason.length > 300)))) {
     throw new Error("Paper trading migration integrity error: invalid scan report");
@@ -215,6 +215,9 @@ export class PaperTradingState {
     // after writing the marker but before committing the Durable Object record.
     // If a record had committed, the first storage.get above would have returned it.
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+    // Validate the untouched legacy snapshot before creating a migration marker
+    // or a Durable Object record; cleanState may normalize optional metadata.
+    validateMigrationMetadata(legacy || DEFAULT_STATE);
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
     // cleanState intentionally filters malformed optional metadata for normal
