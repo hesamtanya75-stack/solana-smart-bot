@@ -869,6 +869,28 @@ test("expired Gmail OTP challenge cannot create a session", async () => {
   assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
 });
 
+test("malformed Gmail OTP timestamps fail closed without issuing a session", async () => {
+  const invalidCreatedAt = [undefined, "not-a-timestamp", NaN, 0, -1, Date.now() + 60000];
+  for (const [index, createdAt] of invalidCreatedAt.entries()) {
+    const { env } = environment();
+    const challenge = { codeHash: "irrelevant" };
+    if (createdAt !== undefined) challenge.createdAt = createdAt;
+    const values = new Map([[\`email_login_challenge:bad_time_\${index}\`, JSON.stringify(challenge)]]);
+    env.BOT_STATE.get = async (key, type) => {
+      const value = values.get(key);
+      return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+    };
+    env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+    env.BOT_STATE.delete = async key => { values.delete(key); };
+    const response = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: \`bad_time_\${index}\`, code: "123456" })
+    }), env);
+    assert.equal(response.status, 401);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+  }
+});
+
 test("Gmail OTP delivery failure cleans the pending challenge and fails closed", async () => {
   const { env } = environment();
   env.BOT_LOGIN_PASSWORD = "otp-test-password";
