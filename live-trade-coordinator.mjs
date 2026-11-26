@@ -178,31 +178,11 @@ export class LiveTradeCoordinator {
     });
   }
 
-  async transition(body, targetStatus) {
-    const key = validateIdempotencyKey(body?.idempotencyKey);
-    return this.withState(state => {
-      const reservation = state.reservations[key];
-      if (!reservation) throw new Error("Reservation not found");
-      if (reservation.status === targetStatus) return { ok: true, duplicate: true, reservation };
-      if (targetStatus === "confirmed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be confirmed");
-      }
-      if (targetStatus === "failed" && reservation.status !== "pending") {
-        throw new Error("Only pending reservations can be failed");
-      }
-      if (targetStatus === "failed" &&
-          (body?.definitelyNotSubmitted !== true ||
-           typeof body?.resolutionReason !== "string" ||
-           body.resolutionReason.trim().length < 12)) {
-        throw new Error("Fail resolution requires explicit proof of non-submission and a reason of at least 12 characters");
-      }
-      if (targetStatus === "closed" && reservation.status !== "confirmed") {
-        throw new Error("Only confirmed positions can be closed");
-      }
-      reservation.status = targetStatus;
-      reservation.updatedAt = new Date().toISOString();
-      return { ok: true, duplicate: false, reservation };
-    });
+  async transition(_body, _targetStatus) {
+    // No trusted finalized-chain reconciler exists yet. Caller-supplied
+    // assertions (including "definitelyNotSubmitted") must never settle a
+    // reservation or release spend/position capacity.
+    throw new Error("Settlement is disabled until trusted finalized-chain reconciliation is implemented");
   }
 
   async setKillSwitch(body) {
