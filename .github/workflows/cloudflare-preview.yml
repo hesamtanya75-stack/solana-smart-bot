@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       preview_pr_number:
-        description: "Closed pull request number whose isolated Preview should be deleted"
+        description: "Closed pull request number to include in the manual cleanup audit"
         required: true
         type: number
 
@@ -28,59 +28,15 @@ concurrency:
 jobs:
   cleanup:
     if: >-
-      ${{ vars.CLOUDFLARE_PREVIEW_ENABLED == 'true' &&
-          ((github.event_name == 'workflow_dispatch' && inputs.preview_pr_number != '') ||
-           (github.event.action == 'closed' &&
-            github.event.pull_request.head.repo.full_name == github.repository)) }}
+      ${{ (github.event.action == 'closed' &&
+            github.event.pull_request.head.repo.full_name == github.repository) ||
+           github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: Check out repository configuration
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Detect Preview credentials
-        id: preview_credentials
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Report closed-PR Preview cleanup request (report only)
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Closed-PR Preview cleanup skipped: Cloudflare credentials are not configured."
-          fi
-
-      - name: Check whether the selected pull request is closed
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.preview_pr_number }}" --jq .state)"
-          if [ "$state" != "closed" ]; then
-            echo "::error::Refusing to delete a Preview for an open or unknown pull request."
-            exit 1
-          fi
-
-      - name: Delete closed pull request Preview only
-        if: steps.preview_credentials.outputs.available == 'true'
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            preview_name="pr-${{ inputs.preview_pr_number }}"
-          else
-            preview_name="pr-${{ github.event.pull_request.number }}"
-          fi
-          npx --yes wrangler@4.135.0 preview delete --name "$preview_name" --skip-confirmation --config wrangler.jsonc
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          echo "REPORT ONLY: no Preview deployment or Durable Object namespace was deleted."
+          echo "Resource cleanup is not automated; review the Cloudflare inventory manually."
 
   preview:
     name: Build and publish isolated Preview
