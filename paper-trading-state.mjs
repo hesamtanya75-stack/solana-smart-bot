@@ -41,7 +41,7 @@ function cleanState(value) {
     }
     return {
       mint: trade.mint.trim(), amount, buyPrice,
-      currentPrice: currentPrice || buyPrice, tokens,
+      currentPrice, tokens,
       sold: trade.sold === true, sellPrice, saleValue,
       boughtAt: typeof trade.boughtAt === "string" ? trade.boughtAt.slice(0, 64) : null,
       soldAt: typeof trade.soldAt === "string" ? trade.soldAt.slice(0, 64) : null
