@@ -20,11 +20,11 @@ Required: obtain the SOL/USD quote inside trusted server-side code from an allow
 
 ### High — coordinator endpoints require a provisioned internal credential
 
-The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes.
+The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes. The current `/kill-switch` endpoint can still re-arm when called with the internal token; before integration, re-arming must require separate operator authorization/MFA and an append-only audit record.
 
 ### High — lifecycle transitions are not chain-verified
 
-`/confirm` accepts a caller assertion without a transaction signature or finalized-chain lookup. `/close` accepts a caller assertion without verified settlement. `/fail` now requires an explicit non-submission assertion and reason, which is a useful guard, but the assertion itself is not independently verified. A future reconciler must query the correct cluster and prove transaction outcome before changing state or releasing capacity.
+`/confirm`, `/close`, and `/fail` are now deliberately disabled: the coordinator rejects every settlement transition until a trusted reconciler verifies transaction outcome against the correct cluster and finalized chain. Caller-provided signatures, reasons, or `definitelyNotSubmitted` booleans are not proof and cannot release capacity. The implementation and tests preserve pending spend/position reservations on these requests.
 
 ### High — idempotency now binds the immutable order intent, but caller evidence remains untrusted
 
@@ -48,7 +48,7 @@ DexScreener liquidity/volume/sells and RugCheck score are useful signals, not pr
 - Per-trade cap is $3; daily cap is $5; open-position cap is 10.
 - Quote timestamp age is limited to 30 seconds, but the timestamp, price, and risk assertion are currently caller-supplied and not trusted.
 - Idempotency binds amount, input/output mint, destination, slippage, and quote identity; changed immutable order intent is rejected.
-- Ambiguous pending reservations cannot be failed without an explicit non-submission assertion and reason.
+- Settlement transitions (`/confirm`, `/close`, `/fail`) fail closed until trusted finalized-chain reconciliation exists; caller assertions cannot release reserved spend or position capacity.
 - Storage mutations use a Durable Object storage transaction.
 - Coordinator routes require a dedicated internal Bearer secret; no secret is configured, so the isolated coordinator fails closed. No live route, signing, or transaction submission is present.
 
