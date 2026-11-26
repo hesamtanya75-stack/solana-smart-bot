@@ -790,3 +790,151 @@ test("email OTP challenge can be claimed only once under concurrent success atte
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(results.filter(value => !value).length, 9);
 });
+
+
+test("Gmail OTP login issues no session until correct code and rejects replay", async () => {
+  const { env, authStorage } = environment();
+  env.BOT_LOGIN_PASSWORD = "otp-test-password";
+  env.ADMIN_EMAIL = "admin@example.com";
+  env.RESEND_API_KEY = "test-resend-key";
+  const values = new Map();
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const originalFetch = globalThis.fetch;
+  let deliveredCode = "";
+  globalThis.fetch = async (_url, init) => {
+    const mail = JSON.parse(init.body);
+    deliveredCode = mail.text.match(/\d{6}/)?.[0] || "";
+    return new Response(JSON.stringify({ id: "preview-email" }), { status: 200 });
+  };
+  try {
+    const login = await worker.fetch(new Request("https://worker.test/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.90" },
+      body: JSON.stringify({ password: env.BOT_LOGIN_PASSWORD })
+    }), env);
+    assert.equal(login.status, 200);
+    const challenge = await login.json();
+    assert.equal(challenge.emailOtpRequired, true);
+    assert.equal(deliveredCode.length, 6);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+
+    const bad = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: challenge.challengeId, code: "999999" })
+    }), env);
+    assert.equal(bad.status, 401);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+
+    const verified = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: challenge.challengeId, code: deliveredCode })
+    }), env);
+    assert.equal(verified.status, 200);
+    const session = await verified.json();
+    assert.ok(session.token);
+    assert.equal(values.has("email_login_challenge:" + challenge.challengeId), false);
+    assert.equal(values.has("session:" + session.token), true);
+
+    const replay = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: challenge.challengeId, code: deliveredCode })
+    }), env);
+    assert.equal(replay.status, 401);
+    assert.equal(authStorage.values.has("auth:email-challenge-claim:" + challenge.challengeId), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("expired Gmail OTP challenge cannot create a session", async () => {
+  const { env } = environment();
+  const values = new Map([["email_login_challenge:expired_test", JSON.stringify({
+    codeHash: "irrelevant", createdAt: Date.now() - 601000
+  })]]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const response = await worker.fetch(new Request("https://worker.test/api/login/email", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId: "expired_test", code: "123456" })
+  }), env);
+  assert.equal(response.status, 401);
+  assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+});
+
+test("Gmail OTP delivery failure cleans the pending challenge and fails closed", async () => {
+  const { env } = environment();
+  env.BOT_LOGIN_PASSWORD = "otp-test-password";
+  env.ADMIN_EMAIL = "admin@example.com";
+  env.RESEND_API_KEY = "test-resend-key";
+  const values = new Map();
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("provider error", { status: 500 });
+  try {
+    const response = await worker.fetch(new Request("https://worker.test/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: env.BOT_LOGIN_PASSWORD })
+    }), env);
+    assert.equal(response.status, 503);
+    assert.equal([...values.keys()].some(key => key.startsWith("email_login_challenge:")), false);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Gmail verification precedes TOTP and creates an email-verified MFA challenge", async () => {
+  const { env } = environment();
+  env.BOT_LOGIN_PASSWORD = "otp-test-password";
+  env.ADMIN_EMAIL = "admin@example.com";
+  env.RESEND_API_KEY = "test-resend-key";
+  const values = new Map([["admin_profile", JSON.stringify({
+    totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null, authVersion: 2
+  })]]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const originalFetch = globalThis.fetch;
+  let deliveredCode = "";
+  globalThis.fetch = async (_url, init) => {
+    deliveredCode = JSON.parse(init.body).text.match(/\d{6}/)?.[0] || "";
+    return new Response("{}", { status: 200 });
+  };
+  try {
+    const login = await worker.fetch(new Request("https://worker.test/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: env.BOT_LOGIN_PASSWORD })
+    }), env);
+    const first = await login.json();
+    assert.equal(first.emailOtpRequired, true);
+    assert.equal([...values.keys()].some(key => key.startsWith("mfa_challenge:")), false);
+
+    const email = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId: first.challengeId, code: deliveredCode })
+    }), env);
+    assert.equal(email.status, 200);
+    const totp = await email.json();
+    assert.equal(totp.mfaRequired, true);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+    assert.equal(JSON.parse(values.get("mfa_challenge:" + totp.challengeId)).emailVerified, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
