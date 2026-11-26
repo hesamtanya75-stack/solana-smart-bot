@@ -180,10 +180,20 @@ test("concurrent reservations cannot exceed the $5 daily cap", async () => {
   assert.equal(results.filter(result => result.status === 409).length, 1);
 });
 
-test("emergency stop blocks new reservations immediately", async () => {
+test("kill switch cannot be re-armed through the internal endpoint", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
-  await post(coordinator, "/kill-switch", { enabled: true });
+  const attempt = await post(coordinator, "/kill-switch", { enabled: false });
+  assert.equal(attempt.status, 409);
+  assert.match(attempt.body.error, /operator authorization, MFA, and audit logging/);
+  const status = await coordinator.status();
+  assert.equal(status.killSwitch, true);
+});
+
+test("emergency stop activation is always permitted and blocks reservations", async () => {
+  const { coordinator } = makeCoordinator();
+  const activated = await post(coordinator, "/kill-switch", { enabled: true });
+  assert.equal(activated.status, 200);
+  assert.equal(activated.body.killSwitch, true);
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
 });
