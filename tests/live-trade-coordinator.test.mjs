@@ -57,7 +57,7 @@ function validReservation(overrides = {}) {
     idempotencyKey: "order-key-0001",
     inputMint: "So11111111111111111111111111111111111111112",
     outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    destination: "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy",
+    destination: "4wBqpZM9xaSheZzJSMawUKKwhdpChKbZ5eu5ky4Vigw",
     slippageBps: 50,
     quoteId: "coinbase-quote-0001",
     amountLamports: 10_000_000,
@@ -251,6 +251,42 @@ test("reservation fails closed when the reviewed priority-fee ceiling is absent 
   const exceeded = await post(coordinator, "/reserve", validReservation());
   assert.equal(exceeded.status, 409);
   assert.match(exceeded.body.error, /Priority fee exceeds the reviewed maximum/);
+});
+
+test("reservation rejects malformed and overflowing all-in cost components", async () => {
+  const invalidCosts = [
+    { computeUnitPriceMicroLamports: "-1" },
+    { computeUnitPriceMicroLamports: "1.5" },
+    { computeUnitLimit: 1_400_001 },
+    { baseFeeLamports: -1 },
+    { tipLamports: 0.5 },
+    { rentLamports: Number.MAX_SAFE_INTEGER + 1 },
+    { otherOutflowLamports: "100" }
+  ];
+  for (let index = 0; index < invalidCosts.length; index++) {
+    const { coordinator } = makeCoordinator(async () => trustedEvidence({
+      costs: { ...trustedEvidence().costs, ...invalidCosts[index] }
+    }));
+    await post(coordinator, "/kill-switch", { enabled: false });
+    const result = await post(coordinator, "/reserve", validReservation({
+      idempotencyKey: "invalid-cost-component-" + index
+    }));
+    assert.equal(result.status, 409, "invalid cost component " + index + " must block reservation");
+  }
+
+  const { coordinator } = makeCoordinator(async () => trustedEvidence({
+    costs: {
+      ...trustedEvidence().costs,
+      baseFeeLamports: Number.MAX_SAFE_INTEGER,
+      rentLamports: Number.MAX_SAFE_INTEGER
+    }
+  }));
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const overflow = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "all-in-cost-overflow"
+  }));
+  assert.equal(overflow.status, 409);
+  assert.match(overflow.body.error, /All-in transaction cost exceeds safe accounting limits/);
 });
 
 test("reservation stores the complete all-in lamport cost breakdown", async () => {
@@ -575,6 +611,16 @@ test("coordinator requires a well-formed Bearer authorization header", async () 
   }
 });
 
+test("coordinator rejects malformed non-canonical Phantom destination keys", async () => {
+  const { coordinator } = makeCoordinator();
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const malformed = await post(coordinator, "/reserve", validReservation({
+    destination: "11111111111111111111111111111111111111111111"
+  }));
+  assert.equal(malformed.status, 400);
+  assert.match(malformed.body.error, /complete immutable order intent/i);
+});
+
 test("idempotency binds mint, destination, slippage and quote identity", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
@@ -583,10 +629,38 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   const changed = await post(coordinator, "/reserve", validReservation({
     destination: "11111111111111111111111111111111"
   }));
-  assert.equal(changed.status, 400);
-  assert.match(changed.body.error, /immutable order intent/);
+  assert.equal(changed.status, 409);
+  assert.match(changed.body.error, /idempotency key reused with a different order intent/i);
 });
 
+
+test("settlement owner is bound to the approved Phantom destination", async () => {
+  const phantomWallet = "11111111111111111111111111111111";
+  let verifiedOwner = null;
+  const { coordinator } = makeCoordinator(undefined, async args => {
+    verifiedOwner = args.expectedOwner;
+    return {
+      verified: true, signature: "phantom-devnet-signature",
+      inputMint: args.inputMint, inputAmount: args.inputAmount,
+      outputMint: args.outputMint, outputAmount: "900000",
+      owner: args.expectedOwner, confirmationStatus: "finalized"
+    };
+  });
+  await post(coordinator, "/kill-switch", { enabled: false });
+  const reservation = await post(coordinator, "/reserve", validReservation({
+    idempotencyKey: "phantom-wallet-order-01",
+    destination: phantomWallet
+  }));
+  assert.equal(reservation.status, 200);
+  const confirmed = await post(coordinator, "/confirm", {
+    idempotencyKey: "phantom-wallet-order-01",
+    signature: "phantom-devnet-signature",
+    outputAmount: "900000"
+  });
+  assert.equal(confirmed.status, 200);
+  assert.equal(verifiedOwner, phantomWallet);
+  assert.equal(confirmed.body.reservation.settlementProof.owner, phantomWallet);
+});
 
 test("reservation history is bounded without discarding idempotency records", async () => {
   const { coordinator } = makeCoordinator();

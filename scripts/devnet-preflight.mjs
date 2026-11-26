@@ -1,5 +1,21 @@
 // Prefer a dedicated Devnet RPC supplied as a GitHub Actions secret.
-const DEVNET_RPC = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
+// If that provider has a transient network failure, retry against Solana's
+// official public Devnet endpoint. Cluster genesis is checked before any
+// subsequent RPC evidence is trusted; no Mainnet endpoint is ever used.
+const configuredDevnetRpc = process.env.DEVNET_RPC_URL?.trim();
+function isSecureDevnetRpcEndpoint(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && Boolean(parsed.hostname) &&
+      !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+const DEVNET_RPCS = [...new Set([
+  configuredDevnetRpc,
+  "https://api.devnet.solana.com"
+].filter(value => value && isSecureDevnetRpcEndpoint(value)))];
 const EXPECTED_DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const TOKEN_PROGRAMS = new Set([
@@ -22,49 +38,59 @@ function retryDelayMs(response, attempt) {
 }
 
 async function rpc(method, params = []) {
-  let response;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      response = await fetch(DEVNET_RPC, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(15000)
-      });
-    } catch (error) {
-      // Retry transient network failures/timeouts as well as retryable HTTP
-      // responses; never print the RPC URL because it may contain a key.
-      if (attempt === 3) {
-        throw new Error(method + " network request failed after 4 attempts: " +
-          String(error?.name || "network error"));
+  const networkFailures = [];
+  for (let endpointIndex = 0; endpointIndex < DEVNET_RPCS.length; endpointIndex++) {
+    const endpoint = DEVNET_RPCS[endpointIndex];
+    let response;
+    let endpointFailed = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+          signal: AbortSignal.timeout(15000)
+        });
+      } catch (error) {
+        if (attempt === 3) {
+          const causeCode = typeof error?.cause?.code === "string"
+            ? " (" + error.cause.code + ")" : "";
+          networkFailures.push("endpoint " + (endpointIndex + 1) + ": " +
+            String(error?.name || "network error") + causeCode);
+          endpointFailed = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
       }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-      continue;
+      if (response.ok) break;
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
+        throw new Error(method + " returned HTTP " + response.status +
+          " from Devnet RPC endpoint " + (endpointIndex + 1));
+      }
+      try { await response.body?.cancel(); } catch {}
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs(response, attempt)));
     }
-    if (response.ok) break;
-    if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 3) {
-      throw new Error(method + " returned HTTP " + response.status);
+    if (endpointFailed) continue;
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error(method + " returned invalid JSON from Devnet RPC endpoint " +
+        (endpointIndex + 1));
     }
-    // Release the retryable response before waiting, and respect a bounded
-    // Retry-After hint so public Devnet RPC rate limits are not amplified.
-    try { await response.body?.cancel(); } catch {}
-    await new Promise(resolve => setTimeout(resolve, retryDelayMs(response, attempt)));
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+        payload.jsonrpc !== "2.0" || payload.id !== 1) {
+      throw new Error(method + " returned a mismatched JSON-RPC envelope");
+    }
+    if (payload.error) throw new Error(method + " RPC error: " + (payload.error.message || "unknown"));
+    if (!Object.prototype.hasOwnProperty.call(payload, "result")) {
+      throw new Error(method + " response missing result");
+    }
+    return payload.result;
   }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error(method + " returned invalid JSON");
-  }
-  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
-      payload.jsonrpc !== "2.0" || payload.id !== 1) {
-    throw new Error(method + " returned a mismatched JSON-RPC envelope");
-  }
-  if (payload.error) throw new Error(method + " RPC error: " + (payload.error.message || "unknown"));
-  if (!Object.prototype.hasOwnProperty.call(payload, "result")) {
-    throw new Error(method + " response missing result");
-  }
-  return payload.result;
+  throw new Error(method + " network request failed for all Devnet RPC endpoints after retries: " +
+    networkFailures.join("; "));
 }
 
 async function fetchSolUsdSpot() {

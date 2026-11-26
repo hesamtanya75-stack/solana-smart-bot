@@ -1,0 +1,184 @@
+name: Manual funded Devnet lifecycle
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/devnet-manual-lifecycle.yml"
+      - "scripts/devnet-preflight.mjs"
+      - "scripts/devnet-signed-lifecycle.mjs"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type DEVNET_ONLY to run the ephemeral-key Devnet transfer test"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install isolated Durable Objects test runtime
+        run: npm install --no-save --ignore-scripts --package-lock=true miniflare@5.20261113.0-beta
+      - name: Generate temporary dependency lockfile for audit
+        run: npm install --package-lock-only --ignore-scripts --package-lock=true miniflare@5.20261113.0-beta
+      - name: Apply non-breaking fixes to isolated test dependencies
+        run: npm audit fix --ignore-scripts --no-fund || true
+      - name: Enforce dependency audit for isolated test runtime
+        run: |
+          npm audit --json > npm-audit.json || audit_exit=$?
+          AUDIT_EXIT="${audit_exit:-0}" node --input-type=commonjs <<'NODE'
+          const fs = require("node:fs");
+          let audit;
+          try {
+            audit = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
+          } catch {
+            console.error("npm audit did not produce valid JSON.");
+            process.exit(1);
+          }
+          const vulnerabilities = Object.entries(audit.vulnerabilities || {});
+          for (const [name, vulnerability] of vulnerabilities) {
+            console.log(JSON.stringify({ name, severity: vulnerability.severity, range: vulnerability.range }));
+          }
+          if (vulnerabilities.length || process.env.AUDIT_EXIT !== "0") {
+            console.error("Dependency audit failed.");
+            process.exit(1);
+          }
+          console.log("No dependency vulnerabilities reported by npm audit.");
+          NODE
+      - name: Run safety and Durable Objects runtime tests
+        run: npm test
+
+  validate-new-worker:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the live-trading preparation branch
+        uses: actions/checkout@v4
+        with:
+          ref: phantom-wallet-settlement-foundation
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify Wrangler targets the active Worker
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          if (config.name !== "solana-smart-bot-new") throw new Error("Unexpected Worker name");
+          if (config.main !== "worker.js") throw new Error("Unexpected Worker entry point");
+          if (config.assets?.run_worker_first !== true) throw new Error("Static asset allowlist routing is required");
+          if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) throw new Error("BOT_STATE KV binding is missing");
+          const requiredBindings = [["LIVE_TRADE_COORDINATOR", "LiveTradeCoordinator"], ["AUTH_GUARD", "AuthGuard"], ["PAPER_TRADING_STATE", "PaperTradingState"]];
+          for (const [name, className] of requiredBindings) {
+            if (!config.durable_objects?.bindings?.some(binding => binding.name === name && binding.class_name === className)) {
+              throw new Error(`${name} Durable Object binding is missing`);
+            }
+          }
+          for (const [tag, className] of [["v1-live-trade-coordinator", "LiveTradeCoordinator"], ["v2-auth-guard", "AuthGuard"], ["v3-paper-trading-state", "PaperTradingState"]]) {
+            if (!(config.migrations || []).some(migration => migration.tag === tag && migration.new_sqlite_classes?.includes(className))) {
+              throw new Error(`${tag} migration is missing`);
+            }
+          }
+          console.log("Worker configuration and Durable Object migrations validated.");
+          NODE
+      - name: Build Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
+
+  validate-workflow:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the live-trading preparation branch for tests
+        uses: actions/checkout@v4
+        with:
+          ref: phantom-wallet-settlement-foundation
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install isolated test dependencies
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@5.20261113.0-beta @solana/web3.js@1.98.4
+
+      - name: Run unit and Durable Objects runtime tests
+        run: npm test
+
+      - name: Check Devnet lifecycle scripts parse
+        run: |
+          node --check scripts/devnet-preflight.mjs
+          node --check scripts/devnet-signed-lifecycle.mjs
+
+  funded-devnet-lifecycle:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'DEVNET_ONLY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
+      DEVNET_MANUAL_FUNDING: '1'
+    steps:
+      - name: Check out the live-trading preparation branch
+        uses: actions/checkout@v4
+        with:
+          ref: phantom-wallet-settlement-foundation
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install isolated Devnet test dependencies
+        run: npm install --no-save --ignore-scripts --package-lock=false miniflare@5.20261113.0-beta @solana/web3.js@1.98.4
+
+      - name: Run unit and Durable Objects runtime tests
+        run: npm test
+
+      - name: Verify Devnet cluster identity and read-only RPC methods
+        run: node scripts/devnet-preflight.mjs
+
+      - name: Verify ephemeral signing and submit a manually funded Devnet test transfer
+        run: node scripts/devnet-signed-lifecycle.mjs
+
+      - name: Report safety boundary
+        if: always()
+        run: |
+          {
+            echo "### Manual Devnet lifecycle"
+            echo ""
+            echo "- Cluster: Devnet only (genesis hash is checked before signing)"
+            echo "- Wallet: ephemeral CI keypair; no Phantom secret or user private key"
+            echo "- Mainnet: not accessed"
+            echo "- Swap: not executed"
+            echo "- Transfer: 0.001 SOL on Devnet only, after manual funding is detected"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  require-explicit-confirmation:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation != 'DEVNET_ONLY' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed when explicit confirmation is missing
+        run: |
+          echo "::error::Confirmation must equal DEVNET_ONLY. No signing or transaction submission was attempted."
+          exit 1

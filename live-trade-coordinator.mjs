@@ -1,4 +1,4 @@
-import { fetchTrustedLiveEvidence, verifyFinalizedJupiterSettlement } from "./trusted-live-evidence.mjs";
+import { fetchTrustedLiveEvidence, isCanonicalPublicKey, verifyFinalizedJupiterSettlement } from "./trusted-live-evidence.mjs";
 
 const MAX_TRADE_USD_CENTS = 300;
 const MAX_DAILY_SPEND_USD_CENTS = 500;
@@ -8,7 +8,6 @@ const MAX_RESERVATIONS = 1000;
 const MAX_KILL_SWITCH_AUDIT_EVENTS = 1000;
 const MAX_QUOTE_AGE_MS = 30_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
-const EXPECTED_BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
 const EXPECTED_TOKEN_CHECKS = [
   "mintAuthoritySafe", "freezeAuthoritySafe", "token2022ExtensionsSafe",
   "holderConcentrationSafe", "sellRouteAvailable", "marketLiquiditySafe",
@@ -161,13 +160,12 @@ function constantTimeEqual(left, right) {
 }
 
 function orderIntentFingerprint(body, amountLamports) {
-  const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   const inputMint = String(body?.inputMint || "");
   const outputMint = String(body?.outputMint || "");
   const destination = String(body?.destination || "");
   const slippageBps = Number(body?.slippageBps);
-  if (!base58.test(inputMint) || !base58.test(outputMint) || inputMint === outputMint ||
-      !base58.test(destination) || destination !== EXPECTED_BOT_WALLET ||
+  if (!isCanonicalPublicKey(inputMint) || !isCanonicalPublicKey(outputMint) ||
+      inputMint === outputMint || !isCanonicalPublicKey(destination) ||
       !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 100 ||
       inputMint !== "So11111111111111111111111111111111111111112") {
     throw new Error("Complete immutable order intent is required");
@@ -431,7 +429,7 @@ export class LiveTradeCoordinator {
       outputMint: reservation.item.outputMint,
       inputAmount: String(reservation.item.amountLamports),
       outputAmount,
-      expectedOwner: EXPECTED_BOT_WALLET
+      expectedOwner: reservation.item.destination
     }, this.env?.FETCH_IMPL || fetch);
     if (!proof || proof.verified !== true ||
         proof.signature !== signature ||
@@ -439,7 +437,7 @@ export class LiveTradeCoordinator {
         proof.inputAmount !== String(reservation.item.amountLamports) ||
         proof.outputMint !== reservation.item.outputMint ||
         proof.outputAmount !== outputAmount ||
-        proof.owner !== EXPECTED_BOT_WALLET ||
+        proof.owner !== reservation.item.destination ||
         proof.confirmationStatus !== "finalized") {
       throw new Error("Independent finalized settlement proof is incomplete or mismatched");
     }
