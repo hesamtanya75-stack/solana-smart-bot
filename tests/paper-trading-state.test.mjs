@@ -174,6 +174,32 @@ test("compare-and-set refuses malformed balance and leaves the last valid state 
   assert.equal((await storage.get("paper_state_v1")).state.balance, 72);
 });
 
+test("malformed persisted scan and automation fields fail closed without rewriting state", async () => {
+  const corruptions = [
+    ["autoEnabled", "yes"],
+    ["paused", 1],
+    ["scannedMints", [mintA, 7]],
+    ["deferredMints", [{ mint: mintA, retryAt: "tomorrow" }]],
+    ["lastScanReport", [{ mint: mintA, status: "ok", reasons: ["safe", 9] }]]
+  ];
+  for (const [field, invalidValue] of corruptions) {
+    const { instance, storage } = makeDO({
+      balance: 72, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], deferredMints: [], lastScanReport: [], updatedAt: null
+    });
+    await call(instance, { operation: "get" });
+    const record = await storage.get("paper_state_v1");
+    record.state[field] = invalidValue;
+    await storage.put("paper_state_v1", record);
+
+    const rejected = await call(instance, { operation: "get" });
+    assert.equal(rejected.status, 503, `field ${field} must fail closed`);
+    const preserved = await storage.get("paper_state_v1");
+    assert.deepEqual(preserved.state[field], invalidValue, `field ${field} must not be normalized`);
+    assert.equal(preserved.revision, record.revision);
+  }
+});
+
 test("corrupted ledger revision fails closed and preserves the stored record", async () => {
   const { instance, storage } = makeDO({ balance: 72, trades: [], updatedAt: null });
   await call(instance, { operation: "get" });
