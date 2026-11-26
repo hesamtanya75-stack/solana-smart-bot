@@ -98,17 +98,19 @@ test("Preview CI performs read-only runtime and public asset boundary checks", a
   }
 });
 
-test("closed PRs clean up only their isolated Preview and are not redeployed", async () => {
+test("closed Preview cleanup remains report-only and never deletes resources", async () => {
   const workflow = await readFile(new URL("../.github/workflows/cloudflare-preview.yml", import.meta.url), "utf8");
+  const audit = await readFile(new URL("../.github/workflows/cloudflare-closed-preview-cleanup.yml", import.meta.url), "utf8");
   assert.match(workflow, /- closed/);
-  assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /preview_pr_number:/);
-  assert.match(workflow, /github\.event\.action != 'closed'/);
-  assert.match(workflow, /github\.event\.action == 'closed'/);
-  assert.ok(workflow.includes('preview delete --name "$preview_name"'));
-  assert.match(workflow, /inputs\.preview_pr_number/);
-  assert.match(workflow, /github\.event\.pull_request\.number/);
-  assert.match(workflow, /Check whether the selected pull request is closed/);
+  assert.match(workflow, /Report closed-PR Preview cleanup request \(report only\)/);
+  assert.match(workflow, /REPORT ONLY: no Preview deployment or Durable Object namespace was deleted/);
+  assert.doesNotMatch(workflow, /wrangler[^\n]*preview delete|preview delete --name/);
+  const cleanupJob = workflow.split("\n  preview:")[0];
+  assert.doesNotMatch(cleanupJob, /CLOUDFLARE_API_TOKEN/);
+  assert.match(audit, /Cloudflare Closed Preview Audit \(Report Only\)/);
+  assert.match(audit, /No Cloudflare API, Wrangler delete, Durable Object, KV, or bot-state operation was performed/);
+  assert.doesNotMatch(audit, /wrangler[^\n]*delete|preview delete/);
+  assert.doesNotMatch(audit, /CLOUDFLARE_API_TOKEN/);
 });
 
 test("Preview namespace quota cannot be reported as a runtime validation pass", async () => {
