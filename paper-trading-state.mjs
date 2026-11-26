@@ -42,8 +42,8 @@ function cleanState(value) {
   if (s.lastScanReport !== undefined &&
       (!Array.isArray(s.lastScanReport) || s.lastScanReport.some(item =>
         !item || typeof item !== "object" || Array.isArray(item) ||
-        typeof item.mint !== "string" || item.mint.length > 64 ||
-        typeof item.status !== "string" || item.status.length > 40 ||
+        typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+        typeof item.status !== "string" || !item.status.trim() || item.status.length > 40 ||
         (item.reasons !== undefined && (!Array.isArray(item.reasons) ||
           item.reasons.some(reason => typeof reason !== "string" || reason.length > 300)))))) {
     throw new Error("Paper trading state integrity error: invalid scan report");
