@@ -613,13 +613,12 @@ test("compare-and-set permanently closes legacy migration after deferred or scan
 });
 
 
-test("malformed legacy activity metadata permanently closes the browser migration window", async () => {
+test("malformed legacy activity metadata fails bootstrap; valid activity closes browser migration", async () => {
   const malformedCases = [
     { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
     { deferredMints: { mint: mintA, retryAt: 123 } },
     { lastScanReport: [{ mint: 7, status: null, reasons: "invalid" }] },
     { lastScanReport: { mint: mintA, status: "blocked" } },
-    { scannedMints: ["malformed-but-nonempty"] },
     { scannedMints: { mint: mintA } }
   ];
   for (const extra of malformedCases) {
@@ -628,14 +627,28 @@ test("malformed legacy activity metadata permanently closes the browser migratio
     };
     const { instance, storage } = makeDO(legacy);
     const result = await call(instance, { operation: "get" });
-    // Bootstrap must fail before cleaning or consuming malformed legacy metadata.
+    // Invalid raw structures must be rejected before a marker or DO record exists.
     assert.equal(result.status, 503);
     assert.equal(storage.values.has("paper_state_v1"), false);
     assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
     assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), legacy);
   }
-});
 
+  const legacyWithActivity = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: ["valid-but-nonempty"]
+  };
+  const { instance } = makeDO(legacyWithActivity);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.migrationOpen, false);
+  const attempt = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: result.body.revision,
+    state: { balance: 65, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(attempt.status, 409);
+});
 
 test("compare-and-set closes migration on malformed or non-empty raw activity metadata", async () => {
   const cases = [
