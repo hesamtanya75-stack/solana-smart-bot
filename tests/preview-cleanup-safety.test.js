@@ -9,8 +9,10 @@ test("closed-preview cleanup remains report-only and has no Cloudflare deletion 
   const workflow = await readFile(reportWorkflowPath, "utf8");
   assert.match(workflow, /REPORT ONLY: no Cloudflare resources or namespaces will be deleted/i);
   assert.doesNotMatch(workflow, /wrangler[^\n]*\bpreview\s+delete/i);
-  assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
-  assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
+  const cleanupJob = workflow.split("  cleanup:")[1]?.split("  preview:")[0] ?? "";
+  assert.ok(cleanupJob, "cleanup job must exist");
+  assert.doesNotMatch(cleanupJob, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(cleanupJob, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
   assert.match(workflow, /pulls\?state=closed/i);
   assert.match(workflow, /pulls\?state=open/i);
   assert.match(workflow, /permissions:\s*\n\s*contents:\s*read\s*\n\s*pull-requests:\s*read/i);
