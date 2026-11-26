@@ -63,7 +63,7 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   assert.equal(stale.status, 409);
 });
 
-test("daily spend cap is enforced atomically and confirmed/closed spend remains counted", async () => {
+test("daily spend cap is enforced atomically while settlement remains disabled", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({
@@ -74,8 +74,6 @@ test("daily spend cap is enforced atomically and confirmed/closed spend remains 
   }));
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
-  await post(coordinator, "/confirm", { idempotencyKey: "order-key-0001" });
-  await post(coordinator, "/close", { idempotencyKey: "order-key-0001" });
   const third = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "order-key-0003", amountLamports: 1_000_000, solUsd: 200
   }));
@@ -122,19 +120,24 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
   assert.equal(status.dailySpendUsdCents, 200);
 });
 
-test("only explicitly confirmed non-submission can release a pending reservation", async () => {
+test("caller assertions cannot settle or release a pending reservation", async () => {
   const { coordinator } = makeCoordinator();
   await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
-  const failed = await post(coordinator, "/fail", {
-    idempotencyKey: "order-key-0001",
-    definitelyNotSubmitted: true,
-    resolutionReason: "RPC confirmed no transaction was submitted"
-  });
-  assert.equal(failed.status, 200);
+
+  for (const path of ["/confirm", "/fail", "/close"]) {
+    const result = await post(coordinator, path, {
+      idempotencyKey: "order-key-0001",
+      definitelyNotSubmitted: true,
+      resolutionReason: "Caller claims no transaction submission"
+    });
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /finalized-chain reconciliation/);
+  }
+
   const status = await coordinator.status();
-  assert.equal(status.openPositions, 0);
-  assert.equal(status.dailySpendUsdCents, 0);
+  assert.equal(status.openPositions, 1);
+  assert.equal(status.dailySpendUsdCents, 200);
 });
 
 test("missing server-side risk approval fails closed", async () => {
