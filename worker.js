@@ -654,7 +654,7 @@ export default {
         const challengeId = crypto.randomUUID();
         pendingEmailChallengeKey = "email_login_challenge:" + challengeId;
         // Store first so the code cannot arrive before its verification record.
-        await env.BOT_STATE.put(pendingEmailChallengeKey, JSON.stringify({ codeHash: await hashText(code), createdAt: Date.now() }), { expirationTtl: 600 });
+        await env.BOT_STATE.put(pendingEmailChallengeKey, JSON.stringify({ codeHash: await hashText(challengeId + ":" + code + ":" + expected), createdAt: Date.now() }), { expirationTtl: 600 });
         const mailResponse = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: "Bearer " + resendKey, "Content-Type": "application/json" },
@@ -700,7 +700,7 @@ export default {
           await env.BOT_STATE.delete(key);
           return json({ error: "Email code attempts exhausted; sign in again." }, 429);
         }
-        if (await hashText(code) !== challenge.codeHash) return json({ error: "Incorrect email code." }, 401);
+        if (await hashText(challengeId + ":" + code + ":" + String(env.BOT_LOGIN_PASSWORD || "")) !== challenge.codeHash) return json({ error: "Incorrect email code." }, 401);
         const claim = await authRateLimitRequest(env, "/email-challenge-claim", { challengeId });
         if (!claim.claimed) return json({ error: "This email challenge has already been used." }, 409);
         await env.BOT_STATE.delete(key);
