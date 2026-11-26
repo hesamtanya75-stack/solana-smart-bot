@@ -20,7 +20,7 @@ Required: obtain the SOL/USD quote inside trusted server-side code from an allow
 
 ### High — coordinator endpoints require a provisioned internal credential
 
-The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes. The current `/kill-switch` endpoint can still re-arm when called with the internal token; before integration, re-arming must require separate operator authorization/MFA and an append-only audit record.
+The Durable Object now requires a constant-time-checked Bearer credential of at least 32 characters for every endpoint, including status. Missing or invalid credentials receive HTTP 401. The secret is intentionally not configured in this PR or production Worker, so the isolated coordinator remains inaccessible until a trusted server-side integration is separately reviewed. This is defense in depth, not a substitute for operator-only authorization of kill-switch changes. The `/kill-switch` endpoint now permits only activation (`enabled: true`); attempts to re-arm (`enabled: false`) are rejected until separate operator authorization/MFA and append-only audit logging are implemented. This keeps the API one-way toward the safer state.
 
 ### High — lifecycle transitions are not chain-verified
 
