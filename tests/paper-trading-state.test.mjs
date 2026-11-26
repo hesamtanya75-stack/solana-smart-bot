@@ -57,6 +57,15 @@ test("internal state endpoint rejects oversized request bodies before JSON parsi
   assert.deepEqual(await response.json(), { error: "Request body too large" });
 });
 
+test("legacy zero currentPrice is preserved instead of replaced by buyPrice", async () => {
+  const { instance } = makeDO({ balance: 95, trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 0, tokens: 2.5, sold: false
+  }], updatedAt: null });
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.trades[0].currentPrice, 0);
+});
+
 test("PaperTradingState imports the existing KV paper state once", async () => {
   const { instance } = makeDO({ balance: 73.25, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2.1, tokens: 2.5, sold: false
