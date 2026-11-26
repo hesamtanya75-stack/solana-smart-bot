@@ -938,3 +938,49 @@ test("Gmail verification precedes TOTP and creates an email-verified MFA challen
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("Gmail OTP challenge is invalidated after five incorrect code attempts", async () => {
+  const { env } = environment();
+  env.BOT_LOGIN_PASSWORD = "otp-lockout-test-password";
+  env.ADMIN_EMAIL = "admin@example.com";
+  env.RESEND_API_KEY = "test-resend-key";
+  const values = new Map();
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+  };
+  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
+  env.BOT_STATE.delete = async key => { values.delete(key); };
+  const originalFetch = globalThis.fetch;
+  let deliveredCode = "";
+  globalThis.fetch = async (_url, init) => {
+    deliveredCode = JSON.parse(init.body).text.match(/\\d{6}/)?.[0] || "";
+    return new Response("{}", { status: 200 });
+  };
+  try {
+    const login = await worker.fetch(new Request("https://worker.test/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.91" },
+      body: JSON.stringify({ password: env.BOT_LOGIN_PASSWORD })
+    }), env);
+    assert.equal(login.status, 200);
+    const { challengeId } = await login.json();
+    const wrongCode = deliveredCode === "000000" ? "000001" : "000000";
+    for (let i = 0; i < 5; i++) {
+      const attempt = await worker.fetch(new Request("https://worker.test/api/login/email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId, code: wrongCode })
+      }), env);
+      assert.equal(attempt.status, 401);
+    }
+    const exhausted = await worker.fetch(new Request("https://worker.test/api/login/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeId, code: wrongCode })
+    }), env);
+    assert.equal(exhausted.status, 429);
+    assert.equal(values.has("email_login_challenge:" + challengeId), false);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
