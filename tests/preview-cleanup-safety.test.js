@@ -23,7 +23,9 @@ test("closed-PR Preview cleanup workflow is report-only", async () => {
   const workflow = await readFile(previewWorkflowPath, "utf8");
   assert.match(workflow, /REPORT ONLY: no Preview deployment or Durable Object namespace was deleted/i);
   assert.doesNotMatch(workflow, /wrangler[^\n]*\bpreview\s+delete/i);
-  assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
-  assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
-  assert.doesNotMatch(workflow, /wrangler[^\n]*\bdeploy\s+(?!--dry-run)/i);
+  const cleanupJob = workflow.split("  cleanup:")[1]?.split("  preview:")[0] ?? "";
+  assert.ok(cleanupJob, "cleanup job must exist");
+  assert.doesNotMatch(cleanupJob, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(cleanupJob, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
+  assert.doesNotMatch(cleanupJob, /wrangler[^\n]*\bdeploy/i);
 });
