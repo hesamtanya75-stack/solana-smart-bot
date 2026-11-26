@@ -259,6 +259,46 @@ test("idle cron snapshots do not close the one-time browser migration window", a
   assert.equal(migrated.body.state.balance, 75);
 });
 
+test("scan metadata activity closes the one-time migration window", async () => {
+  for (const [field, value] of [
+    ["deferredMints", [{ mint: mintA, retryAt: 123 }]],
+    ["lastScanReport", [{ mint: mintA, status: "deferred", reasons: [] }]]
+  ]) {
+    const legacy = {
+      balance: 100, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], deferredMints: [], lastScanReport: [], updatedAt: null,
+      [field]: value
+    };
+    const { instance } = makeDO(legacy);
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, false, `legacy ${field} activity closes migration`);
+    const rejected = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: initial.body.revision,
+      state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(rejected.status, 409);
+  }
+
+  const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
+  const initial = await call(instance, { operation: "get" });
+  const activity = await call(instance, {
+    operation: "compare-and-set",
+    expectedRevision: initial.body.revision,
+    state: {
+      ...initial.body.state,
+      deferredMints: [{ mint: mintA, retryAt: 123 }]
+    }
+  });
+  assert.equal(activity.status, 200);
+  const rejected = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: activity.body.revision,
+    state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(rejected.status, 409);
+});
+
 test("changing automation closes the one-time browser migration window", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const enabled = await call(instance, { operation: "automation", settings: { enabled: true } });
