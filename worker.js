@@ -648,7 +648,7 @@ export default {
         let otpRandom;
         do {
           otpRandom = crypto.getRandomValues(new Uint32Array(1))[0];
-        } while (otpRandom >= 4294000000; // Reject the incomplete range to avoid modulo bias.
+        } while (otpRandom >= 4294000000); // Reject the incomplete range to avoid modulo bias.
         const code = String(otpRandom % 1000000).padStart(6, "0");
         const challengeId = crypto.randomUUID();
         const mailResponse = await fetch("https://api.resend.com/emails", {
