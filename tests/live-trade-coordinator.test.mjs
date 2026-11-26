@@ -14,8 +14,11 @@ class MemoryStorage {
     try { return await fn(); } finally { release(); }
   }
 }
-function makeCoordinator() {
+function makeCoordinator({ locked = false } = {}) {
   const storage = new MemoryStorage();
+  // Unit-test fixture: seed state directly rather than using the protected
+  // HTTP re-arm endpoint. Production starts locked by emptyState().
+  if (!locked) storage.values.set("coordinator_state", { killSwitch: false, reservations: {} });
   const coordinator = new LiveTradeCoordinator({ storage }, {
     COORDINATOR_INTERNAL_TOKEN: "test-only-internal-token-32-characters"
   });
@@ -44,7 +47,7 @@ async function post(coordinator, path, body) {
 }
 
 test("kill switch starts active and blocks reservations", async () => {
-  const { coordinator } = makeCoordinator();
+  const { coordinator } = makeCoordinator({ locked: true });
   const result = await post(coordinator, "/reserve", validReservation());
   assert.equal(result.status, 409);
   assert.match(result.body.error, /kill switch/);
@@ -52,7 +55,6 @@ test("kill switch starts active and blocks reservations", async () => {
 
 test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const tooLarge = await post(coordinator, "/reserve", validReservation({
     amountLamports: 15_000_001
   }));
@@ -65,7 +67,6 @@ test("reservation enforces $3 trade cap and fresh SOL/USD quote", async () => {
 
 test("daily spend cap is enforced atomically while settlement remains disabled", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({
     idempotencyKey: "order-key-0001", amountLamports: 12_500_000, solUsd: 200
   }));
@@ -83,7 +84,6 @@ test("daily spend cap is enforced atomically while settlement remains disabled",
 
 test("idempotency retries succeed after quote expiry and kill switch activation", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation());
   assert.equal(first.status, 200);
   await post(coordinator, "/kill-switch", { enabled: true });
@@ -97,7 +97,6 @@ test("idempotency retries succeed after quote expiry and kill switch activation"
 
 test("idempotency key rejects any changed immutable order intent", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation({ solUsd: 1 }));
   assert.equal(first.status, 200);
   const changed = await post(coordinator, "/reserve", validReservation({
@@ -109,7 +108,6 @@ test("idempotency key rejects any changed immutable order intent", async () => {
 
 test("ambiguous pending reservations cannot be failed or release capacity", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
   const rejected = await post(coordinator, "/fail", {
     idempotencyKey: "order-key-0001"
@@ -122,7 +120,6 @@ test("ambiguous pending reservations cannot be failed or release capacity", asyn
 
 test("caller assertions cannot settle or release a pending reservation", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   await post(coordinator, "/reserve", validReservation());
 
   for (const path of ["/confirm", "/fail", "/close"]) {
@@ -142,14 +139,12 @@ test("caller assertions cannot settle or release a pending reservation", async (
 
 test("missing server-side risk approval fails closed", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const result = await post(coordinator, "/reserve", validReservation({ riskPassed: false }));
   assert.equal(result.status, 409);
 });
 
 test("ten open reservations block an eleventh", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   for (let i = 0; i < 10; i++) {
     const result = await post(coordinator, "/reserve", validReservation({
       idempotencyKey: "position-key-" + String(i).padStart(4, "0"),
@@ -169,7 +164,6 @@ test("ten open reservations block an eleventh", async () => {
 
 test("concurrent reservations cannot exceed the $5 daily cap", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const requests = [0, 1, 2].map(i => post(coordinator, "/reserve", validReservation({
     idempotencyKey: "parallel-key-" + String(i).padStart(4, "0"),
     amountLamports: 12_500_000,
@@ -208,7 +202,6 @@ test("coordinator rejects requests without the internal bearer credential", asyn
 
 test("idempotency binds mint, destination, slippage and quote identity", async () => {
   const { coordinator } = makeCoordinator();
-  await post(coordinator, "/kill-switch", { enabled: false });
   const first = await post(coordinator, "/reserve", validReservation());
   assert.equal(first.status, 200);
   const changed = await post(coordinator, "/reserve", validReservation({
