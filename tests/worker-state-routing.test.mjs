@@ -765,3 +765,28 @@ test("blank MFA secret is rejected before issuing a challenge", async () => {
   assert.equal(response.status, 503);
   assert.equal([...values.keys()].some(key => key.startsWith("session:") || key.startsWith("mfa_challenge:")), false);
 });
+
+test("email OTP send quota is reserved atomically under concurrent requests", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const ipHash = createHash("sha256").update("email-send-test-ip").digest("hex");
+  const results = await Promise.all(Array.from({ length: 12 }, () => limiter.reserveEmailSend(ipHash)));
+  assert.equal(results.filter(result => result.allowed).length, 3);
+  assert.equal(results.filter(result => !result.allowed).length, 9);
+});
+
+test("email OTP wrong-code attempt budget is atomic under concurrent requests", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const results = await Promise.all(Array.from({ length: 15 }, () => limiter.reserveEmailAttempt("emailchallenge_test123")));
+  assert.equal(results.filter(result => result.allowed).length, 5);
+  assert.equal(results.filter(result => !result.allowed).length, 10);
+});
+
+test("email OTP challenge can be claimed only once under concurrent success attempts", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const results = await Promise.all(Array.from({ length: 10 }, () => limiter.claimEmailChallenge("emailchallenge_replay")));
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(results.filter(value => !value).length, 9);
+});
