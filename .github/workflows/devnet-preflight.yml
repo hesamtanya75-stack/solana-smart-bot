@@ -3,6 +3,12 @@ name: Devnet read-only preflight
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_devnet_lifecycle:
+        description: "Run ephemeral Devnet signing/submission/finalization test (requires repository variable DEVNET_LIFECYCLE_ENABLED=true)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,7 +28,19 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         run: node scripts/devnet-preflight.mjs
+
+  devnet-ephemeral-lifecycle:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_devnet_lifecycle == true && vars.DEVNET_LIFECYCLE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: Install isolated Devnet transaction test dependency
         run: npm install --no-save --ignore-scripts --package-lock=false @solana/web3.js@1.98.4
-      - name: Require signed and finalized ephemeral Devnet transaction (faucet-dependent)
+      - name: Require signed and finalized ephemeral Devnet transaction
         run: node scripts/devnet-signed-lifecycle.mjs
