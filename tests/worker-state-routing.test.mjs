@@ -739,12 +739,11 @@ test("enabled MFA with missing secret fails closed instead of granting a passwor
 
 
 test("backup code cannot authenticate after MFA is disabled or loses its secret", async () => {
-  const { env } = environment();
+  const { env, authGuard, guardStorage } = environment();
   const backupCode = "ABCD1234EFGH5678";
   const backupHash = createHash("sha256").update(backupCode).digest("hex");
-  const values = new Map([
-    ["mfa_challenge:pending", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
-  ]);
+  const challengeId = "11111111-1111-4111-8111-111111111111";
+  const values = new Map();
   env.BOT_STATE.get = async (key, type) => {
     const value = values.get(key);
     return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
@@ -755,11 +754,17 @@ test("backup code cannot authenticate after MFA is disabled or loses its secret"
     { totpEnabled: false, totpSecret: "JBSWY3DPEHPK3PXP", backupHash },
     { totpEnabled: true, totpSecret: null, backupHash }
   ]) {
+    guardStorage.values.set("auth_guard_state", {
+      initialized: true, backupHash, lastTotpCounter: -1, failures: {},
+      challenges: {}, totpEnabled: profile.totpEnabled, totpSecret: profile.totpSecret,
+      pendingTotpSecret: null, pendingTotpAt: null
+    });
+    await authGuard.createMfaChallenge(challengeId);
     values.set("admin_profile", JSON.stringify(profile));
     const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
       method: "POST",
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.67" },
-      body: JSON.stringify({ challengeId: "pending", code: backupCode })
+      body: JSON.stringify({ challengeId, code: backupCode })
     }), env);
     assert.equal(response.status, 401);
     assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
