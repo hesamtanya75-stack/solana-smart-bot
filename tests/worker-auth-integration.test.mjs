@@ -36,7 +36,7 @@ const workerContext = vm.createContext({
   fetchCompleteMintTokenAccounts,
   parseMintAccount
 });
-vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
+vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;\nglobalThis.__validateMigrationFields = validateMigrationFields;", workerContext);
 const worker = workerContext.__worker;
 
 const INTERNAL_TOKEN = "integration-test-internal-token-0123456789";
@@ -277,6 +277,13 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await profile.json()).totpEnabled, true);
 });
 
+
+test("Worker migration rejects blank scanned mint entries", () => {
+  assert.doesNotThrow(() => workerContext.__validateMigrationFields({ scannedMints: ["So11111111111111111111111111111111111111112"] }));
+  for (const mint of ["", "   "]) {
+    assert.throws(() => workerContext.__validateMigrationFields({ scannedMints: [mint] }), /Invalid migration scanned mints/);
+  }
+});
 
 test("Paper Buy rate limit is applied before expensive trusted token inspection", async () => {
   const route = workerSource.slice(workerSource.indexOf('url.pathname === "/api/paper/buy"'));
@@ -567,6 +574,53 @@ test("automation endpoint bounds payloads and rejects unknown or mistyped settin
   assert.equal(state.balance, 100);
 });
 
+
+test("Worker rejects malformed paper-state migration values without changing the ledger", async () => {
+  const { env } = makeEnvironment();
+  const login = await post("/api/login", { password: LOGIN_PASSWORD }, env);
+  assert.equal(login.status, 200);
+  const { token } = await login.json();
+  const initial = await (await get("/api/state", env, token)).json();
+  assert.equal(initial.canMigrateLegacy, true);
+
+  const invalidBalance = await put("/api/state", {
+    expectedRevision: initial.revision,
+    balance: "not-a-number",
+    trades: [],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(invalidBalance.status, 400);
+
+  const invalidTrade = await put("/api/state", {
+    expectedRevision: initial.revision,
+    balance: 82.5,
+    trades: [{ mint: "So11111111111111111111111111111111111111112", amount: 5, buyPrice: "broken", tokens: 2 }],
+    autoEnabled: false,
+    paused: false,
+    scannedMints: []
+  }, env, token);
+  assert.equal(invalidTrade.status, 400);
+
+  for (const mint of ["", "   "]) {
+    const invalidScannedMint = await put("/api/state", {
+      expectedRevision: initial.revision,
+      balance: 82.5,
+      trades: [],
+      autoEnabled: false,
+      paused: false,
+      scannedMints: [mint]
+    }, env, token);
+    assert.equal(invalidScannedMint.status, 400);
+  }
+
+  const unchanged = await (await get("/api/state", env, token)).json();
+  assert.equal(unchanged.balance, 100);
+  assert.deepEqual(unchanged.trades, []);
+  assert.equal(unchanged.revision, initial.revision);
+  assert.equal(unchanged.canMigrateLegacy, true);
+});
 
 test("Worker exposes one-time paper-state migration and rejects stale repeat writes", async () => {
   const { env } = makeEnvironment();
