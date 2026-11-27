@@ -113,7 +113,7 @@ test("concurrent first-time automation patches preserve both settings", async ()
   };
   const env = {
     BOT_STATE: {
-      get: async () => ({ expiresAt: Date.now() + 60_000 }),
+      get: async () => ({ expiresAt: Date.now() + 60_000, emailVerified: true }),
       put: async () => {},
       delete: async () => {}
     },
@@ -168,7 +168,7 @@ test("concurrent state API PUTs cannot overwrite a newer paper-state version", a
   };
   const env = {
     BOT_STATE: {
-      get: async () => ({ expiresAt: Date.now() + 60_000 }),
+      get: async () => ({ expiresAt: Date.now() + 60_000, emailVerified: true }),
       put: async () => {},
       delete: async () => {}
     },
