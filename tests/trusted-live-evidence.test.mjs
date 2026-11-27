@@ -241,10 +241,11 @@ function mockExecutableProgramRpcResponse(options, slot = 101, mutate = account 
 function mockExecutableProgramFetch(slot = 101, mutate) {
   return async (_url, options) => mockExecutableProgramRpcResponse(options, slot, mutate);
 }
-function mockAltAndExecutableFetch(slot = 101) {
+function mockAltAndExecutableFetch(slot = 101, executableRequests = []) {
   return async (_url, options) => {
     const request = JSON.parse(options.body);
     if (request.params[1]?.dataSlice) {
+      executableRequests.push(request);
       return mockExecutableProgramRpcResponse(options, slot);
     }
     return Response.json({ jsonrpc: "2.0", id: 1, result: {
@@ -495,10 +496,14 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
 });
 
 test("parser consumes only immutable finalized ALT evidence bound to the exact compiled message", async () => {
+  const executableRequests = [];
   const evidence = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
-    mockAltAndExecutableFetch()
+    mockAltAndExecutableFetch(101, executableRequests)
   );
+  assert.equal(executableRequests[0].params[1].commitment, "finalized");
+  assert.equal(executableRequests[0].params[1].minContextSlot, 100,
+    "program metadata must be fetched at or after the finalized ALT resolution slot");
   assert.equal(evidence.lookupTableResolution, "finalized-resolved");
   assert.equal(evidence.programExecutableFlagsVerified, true);
   assert.equal(evidence.programExecutableEvidence.contextSlot, 101);
