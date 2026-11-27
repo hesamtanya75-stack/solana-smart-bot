@@ -799,7 +799,7 @@ export default {
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await readBoundedJson(request, 4096, ["challengeId", "code"]);
-        if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) || typeof code !== "string" || !/^(?:\\d{6}|[a-z0-9-]{8,32})$/i.test(code.trim())) return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) || typeof code !== "string" || !/^(?:\d{6}|[a-z0-9-]{8,32})$/i.test(code.trim())) return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const failureScope = "totp:" + ipHash;
