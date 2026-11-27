@@ -32,12 +32,12 @@ async function readBoundedRouteJson(request, pathname) {
   const allowed = ROUTE_FIELDS.get(pathname);
   if (!allowed) return Object.create(null);
   const contentLength = request.headers.get("content-length");
-  if (contentLength !== null && (!/^(0|[1-9]\\d*)$/.test(contentLength) ||
+  if (contentLength !== null && (!/^(0|[1-9]\d*)$/.test(contentLength) ||
       Number(contentLength) > MAX_REQUEST_BYTES)) {
     throw new TypeError("Request body is too large or malformed");
   }
   const contentType = request.headers.get("content-type") || "";
-  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     throw new TypeError("Expected JSON request body");
   }
   if (!request.body) throw new TypeError("JSON request body is required");
