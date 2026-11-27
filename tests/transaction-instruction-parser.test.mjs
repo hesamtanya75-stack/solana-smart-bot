@@ -315,12 +315,14 @@ test("transaction parser rejects malformed System Program account layouts and un
 test("transaction parser rejects unsupported Classic Token and Token-2022 instruction variants", () => {
   const classicToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
   const token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  for (const tokenProgram of [classicToken, token2022]) {
-    assert.throws(() => parseSupportedInstructionMessage(
-      message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(99, 0) }],
-        [tokenProgram]),
-    ), /SPL Token instruction variant is unsupported/);
-  }
+  assert.throws(() => parseSupportedInstructionMessage(
+    message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(99, 0) }],
+      [classicToken]),
+  ), /SPL Token instruction variant is unsupported/);
+  assert.throws(() => parseSupportedInstructionMessage(
+    message([{ programIdIndex: 0, accountKeyIndexes: [], data: data(99, 0) }],
+      [token2022]),
+  ), /Token-2022 instructions are blocked until extension semantics are verified/);
 });
 
 test("transaction parser rejects sparse compiled instruction arrays", () => {
@@ -606,18 +608,20 @@ test("parser rejects SPL Token transfer when authority is not a signer", () => {
 });
 
 
-test("parser decodes bounded Token-2022 TransferChecked but never grants semantic trust", () => {
+test("parser rejects Token-2022 TransferChecked until extension semantics are verified", () => {
   const token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-  const authority = "11111111111111111111111111111112";
-  const source = "11111111111111111111111111111113";
-  const destination = "11111111111111111111111111111114";
-  const mint = "11111111111111111111111111111115";
   const tokenData = Buffer.alloc(10);
   tokenData[0] = 12;
   tokenData.writeBigUInt64LE(250n, 1);
   tokenData[9] = 6;
-  const parsed = parseSupportedInstructionMessage({
-    accountKeys: [authority, source, destination, mint, token2022Program],
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [
+      "11111111111111111111111111111112",
+      "11111111111111111111111111111113",
+      "11111111111111111111111111111114",
+      "11111111111111111111111111111115",
+      token2022Program
+    ],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
@@ -628,15 +632,7 @@ test("parser decodes bounded Token-2022 TransferChecked but never grants semanti
       accountKeyIndexes: [1, 3, 2, 0],
       data: tokenData.toString("base64")
     }]
-  });
-  assert.equal(parsed.instructions[0].programId, token2022Program);
-  assert.equal(parsed.instructions[0].variant, "transferChecked");
-  assert.equal(parsed.instructions[0].amount, 250n);
-  assert.equal(parsed.instructions[0].decimals, 6);
-  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
-  assert.equal(parsed.semanticVerification, "incomplete");
-  assert.equal(parsed.signingPermitted, false);
-  assert.equal(parsed.submissionPermitted, false);
+  }), /Token-2022 instructions are blocked until extension semantics are verified/);
 });
 
 
