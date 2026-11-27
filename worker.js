@@ -638,6 +638,14 @@ export default {
         await authRateLimitRequest(env, "/login-clear", { ipHash });
         await env.BOT_STATE.delete("login_fail:" + ip);
 
+        // Do not send an email OTP when the configured second factor is unusable.
+        // Keep the login flow fail-closed before creating or delivering a challenge.
+        const profile = await readProfile(env);
+        if (profile.totpEnabled &&
+            (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
+          return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+        }
+
         const adminEmail = String(env.ADMIN_EMAIL || "").trim();
         const resendKey = String(env.RESEND_API_KEY || "").trim();
         const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
