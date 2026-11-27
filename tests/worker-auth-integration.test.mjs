@@ -603,6 +603,18 @@ test("Worker rejects malformed paper-state migration values without changing the
   }, env, token);
   assert.equal(invalidTrade.status, 400);
 
+  for (const mint of ["", "   "]) {
+    const invalidScannedMint = await put("/api/state", {
+      expectedRevision: initial.revision,
+      balance: 82.5,
+      trades: [],
+      autoEnabled: false,
+      paused: false,
+      scannedMints: [mint]
+    }, env, token);
+    assert.equal(invalidScannedMint.status, 400);
+  }
+
   const unchanged = await (await get("/api/state", env, token)).json();
   assert.equal(unchanged.balance, 100);
   assert.deepEqual(unchanged.trades, []);
