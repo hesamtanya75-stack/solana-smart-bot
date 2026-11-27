@@ -140,7 +140,7 @@ async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  if (!session || !(session.expiresAt > Date.now())) return false;
+  if (!session || !(session.expiresAt > Date.now()) || session.emailVerified !== true) return false;
   const profile = await readProfile(env);
   return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
 }
@@ -799,7 +799,7 @@ export default {
           await env.BOT_STATE.delete(key);
           const token = crypto.randomUUID();
           const expiresAt = Date.now() + SESSION_MS;
-          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
           return json({ ok: true, token });
         } catch (error) {
           try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
