@@ -151,7 +151,7 @@ function validateMigrationFields(body) {
   }
   if (body.scannedMints !== undefined &&
       (!Array.isArray(body.scannedMints) || body.scannedMints.length > 1000 ||
-       body.scannedMints.some(mint => typeof mint !== "string" || mint.length > 64))) {
+       body.scannedMints.some(mint => typeof mint !== "string" || !mint.trim() || mint.length > 64))) {
     throw new Error("Invalid migration scanned mints");
   }
 }
