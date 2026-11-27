@@ -50,6 +50,12 @@ async function saveState(env, state) {
   state.updatedAt = new Date().toISOString();
   await env.BOT_STATE.put("bot_state", JSON.stringify(state));
 }
+async function authorized(request, env) {
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\\s+/i, "");
+  if (!token) return false;
+  const session = await env.BOT_STATE.get("session:" + token, "json");
+  return !!session && Number(session.expiresAt) > Date.now();
+}
 async function rpc(method, params, env) {
   const errors = [];
   // Try the existing Alchemy key first, then fall back to a public Solana RPC.
@@ -392,6 +398,8 @@ export default {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Workers KV" });
     }
     if (url.pathname.startsWith("/api/")) {
+
+      if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
       if (url.pathname === "/api/state" && request.method === "GET") return json(await readState(env));
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
