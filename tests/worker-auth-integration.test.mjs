@@ -36,7 +36,7 @@ const workerContext = vm.createContext({
   fetchCompleteMintTokenAccounts,
   parseMintAccount
 });
-vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;", workerContext);
+vm.runInContext(executableWorkerSource + "\nglobalThis.__worker = worker;\nglobalThis.__validateMigrationFields = validateMigrationFields;", workerContext);
 const worker = workerContext.__worker;
 
 const INTERNAL_TOKEN = "integration-test-internal-token-0123456789";
@@ -277,6 +277,13 @@ test("Worker TOTP setup and confirmation persist MFA state in AuthGuard", async 
   assert.equal((await profile.json()).totpEnabled, true);
 });
 
+
+test("Worker migration rejects blank scanned mint entries", () => {
+  assert.doesNotThrow(() => workerContext.__validateMigrationFields({ scannedMints: ["So11111111111111111111111111111111111111112"] }));
+  for (const mint of ["", "   "]) {
+    assert.throws(() => workerContext.__validateMigrationFields({ scannedMints: [mint] }), /Invalid migration scanned mints/);
+  }
+});
 
 test("Paper Buy rate limit is applied before expensive trusted token inspection", async () => {
   const route = workerSource.slice(workerSource.indexOf('url.pathname === "/api/paper/buy"'));
