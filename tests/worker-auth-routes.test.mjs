@@ -79,6 +79,10 @@ test("authentication JSON bodies are size-bounded and must be JSON objects", () 
   assert.ok(workerSource.includes("readBoundedJson(request, 4096)"));
   assert.ok(workerSource.includes('readBoundedJson(request, 2048, ["email", "phone"])'));
   assert.ok(workerSource.includes("Unexpected JSON field"));
+  assert.ok(workerSource.includes("Content-Type must be application/json"));
+  assert.ok(workerSource.includes('readBoundedJson(request, 4096, ["password"])'));
+  assert.ok(workerSource.includes('readBoundedJson(request, 4096, ["challengeId", "code"])'));
+  assert.ok(workerSource.includes("!/[a-f0-9-]{36}/i.test(challengeId)") || workerSource.includes("!/^\\\\[a-f0-9-\\\\]{36}"));
   assert.equal(workerSource.includes("const { code } = await request.json();"), false);
   assert.equal(workerSource.includes("const { password } = await request.json();"), false);
   assert.equal(workerSource.includes("const { challengeId, code } = await request.json();"), false);
