@@ -236,6 +236,22 @@ test("paper-buy idempotency rejects the same mint with a changed price", async (
   assert.equal(current.body.state.trades[0].buyPrice, 2);
 });
 
+test("paper-buy rejects non-number prices without changing paper state", async () => {
+  const { instance } = makeDO({ balance: 20, trades: [], updatedAt: null });
+  const invalidPrices = [true, "2", null];
+  for (const [index, price] of invalidPrices.entries()) {
+    const result = await call(instance, {
+      operation: "paper-buy", mint: mintA, price,
+      requestId: requestId("invalid-price-" + index)
+    });
+    assert.equal(result.status, 400);
+    assert.match(result.body.error, /price/i);
+  }
+  const current = await call(instance, { operation: "get" });
+  assert.equal(current.body.state.balance, 20);
+  assert.equal(current.body.state.trades.length, 0);
+});
+
 test("clearing history preserves the current paper balance", async () => {
   const { instance } = makeDO({ balance: 87.5, trades: [{
     mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: true, sellPrice: 2, saleValue: 5
