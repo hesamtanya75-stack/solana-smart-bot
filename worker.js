@@ -734,7 +734,13 @@ export default {
         const ipFailureKey = "totp_fail:" + ip;
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || challenge.emailVerified !== true || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "Email verification is required; sign in again." }, 401);
+        const challengeCreatedAt = challenge?.createdAt;
+        const challengeAge = Date.now() - challengeCreatedAt;
+        if (!challenge || challenge.emailVerified !== true ||
+            !Number.isSafeInteger(challengeCreatedAt) || challengeCreatedAt <= 0 ||
+            challengeCreatedAt > Date.now() || challengeAge > 300000) {
+          return json({ error: "Email verification is required; sign in again." }, 401);
+        }
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
         const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
