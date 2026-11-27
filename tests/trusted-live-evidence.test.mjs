@@ -418,6 +418,48 @@ test("combined validation binds a SHA-256 digest to the exact unsigned serialize
   );
 });
 
+test("v1 digest includes its version marker, excludes tail signatures, and binds all message bytes", async () => {
+  const original = validUnsignedV1Transaction();
+  const originalEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    original, BOT_WALLET
+  );
+  const originalBytes = Buffer.from(original, "base64");
+  const messageEnd = originalBytes.length - originalEvidence.signatureCount * 64;
+  const exactMessage = originalBytes.subarray(0, messageEnd);
+
+  assert.equal(originalEvidence.messageDigest.messageVersion, 1);
+  assert.equal(originalEvidence.messageDigest.byteLength, exactMessage.length);
+  assert.equal(
+    originalEvidence.messageDigest.value,
+    createHash("sha256").update(exactMessage).digest("hex"),
+    "v1 digest must include the 0x81 version marker and stop before the tail signatures"
+  );
+
+  // Signature bytes are outside the message range. The validator deliberately
+  // rejects nonzero signatures, so prove the boundary independently here.
+  const signatureChanged = Buffer.from(originalBytes);
+  signatureChanged[signatureChanged.length - 1] ^= 1;
+  assert.equal(
+    createHash("sha256")
+      .update(signatureChanged.subarray(0, messageEnd))
+      .digest("hex"),
+    originalEvidence.messageDigest.value,
+    "signature-only changes must not alter the message digest"
+  );
+
+  // Mutate a recent-blockhash byte while preserving the v1 structure.
+  const messageChanged = Buffer.from(originalBytes);
+  messageChanged[8] ^= 1;
+  const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    messageChanged.toString("base64"), BOT_WALLET
+  );
+  assert.notEqual(
+    changedEvidence.messageDigest.value,
+    originalEvidence.messageDigest.value,
+    "any v1 message-byte change must alter the digest"
+  );
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
