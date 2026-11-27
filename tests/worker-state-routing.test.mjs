@@ -40,7 +40,7 @@ function environment() {
     BOT_STATE: {
       get: async (key) => {
         touchedKvKeys.push(["get", key]);
-        if (key.startsWith("session:")) return { expiresAt: Date.now() + 60_000 };
+        if (key.startsWith("session:")) return { expiresAt: Date.now() + 60_000, emailVerified: true };
         return null;
       },
       put: async (key) => { touchedKvKeys.push(["put", key]); },
@@ -585,7 +585,7 @@ test("current session generation remains authorized after MFA activation", async
   });
   env.BOT_STATE.get = async (key, type) => {
     if (key === "session:current-session") {
-      const session = { expiresAt: Date.now() + 60000, authVersion: 3 };
+      const session = { expiresAt: Date.now() + 60000, authVersion: 3, emailVerified: true };
       return type === "json" ? session : JSON.stringify(session);
     }
     if (key === "admin_profile") {
@@ -598,6 +598,23 @@ test("current session generation remains authorized after MFA activation", async
     headers: { Authorization: "Bearer current-session" }
   }), env);
   assert.equal(response.status, 200);
+});
+
+test("legacy password-only session is rejected even when auth generation matches", async () => {
+  const { env } = environment();
+  const values = new Map([
+    ["session:legacy-session", { expiresAt: Date.now() + 60000, authVersion: 2 }],
+    ["admin_profile", { authVersion: 2, totpEnabled: false }]
+  ]);
+  env.BOT_STATE.get = async (key, type) => {
+    const value = values.get(key);
+    if (value == null) return null;
+    return type === "json" ? value : JSON.stringify(value);
+  };
+  const response = await worker.fetch(new Request("https://worker.test/api/state", {
+    headers: { Authorization: "Bearer legacy-session" }
+  }), env);
+  assert.equal(response.status, 401);
 });
 
 test("expired and missing admin sessions cannot read paper state", async () => {
