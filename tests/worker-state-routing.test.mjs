@@ -489,6 +489,54 @@ test("auth limiter rejects malformed claim identifiers and hashes as bad request
   }
 });
 
+test("MFA limiter rejects malformed, non-object, and unknown-field JSON at its HTTP boundary", async () => {
+  const { authLimiter, authStorage } = environment();
+  const cases = [
+    ["{", 400],
+    ["null", 400],
+    ["[]", 400],
+    [JSON.stringify({ challengeId: "valid-id", unexpected: "field" }), 400]
+  ];
+  for (const [body, expectedStatus] of cases) {
+    const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body
+    }));
+    assert.equal(response.status, expectedStatus);
+  }
+  assert.equal([...authStorage.values.keys()].some(key => key.startsWith("auth:email-challenge-claim:")), false);
+});
+
+test("MFA limiter rejects oversized route bodies before JSON processing", async () => {
+  const { authLimiter, authStorage } = environment();
+  const body = JSON.stringify({ challengeId: "a".repeat(3000) });
+  const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  }));
+  assert.equal(response.status, 400);
+  assert.equal([...authStorage.values.keys()].some(key => key.startsWith("auth:email-challenge-claim:")), false);
+});
+
+test("MFA limiter accepts the documented route fields and rejects unsupported content type", async () => {
+  const { authLimiter, authStorage } = environment();
+  const unsupported = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ challengeId: "valid-id" })
+  }));
+  assert.equal(unsupported.status, 400);
+  const accepted = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId: "valid-id" })
+  }));
+  assert.equal(accepted.status, 200);
+  assert.equal(authStorage.values.has("auth:email-challenge-claim:valid-id"), true);
+});
+
 test("auth limiter storage failures return service unavailable", async () => {
   const { authLimiter, authStorage } = environment();
   authStorage.transaction = async () => { throw new Error("storage unavailable"); };
