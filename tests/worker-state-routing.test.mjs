@@ -489,6 +489,54 @@ test("auth limiter rejects malformed claim identifiers and hashes as bad request
   }
 });
 
+test("MFA limiter rejects malformed, non-object, and unknown-field JSON at its HTTP boundary", async () => {
+  const { authLimiter, authStorage } = environment();
+  const cases = [
+    ["{", 400],
+    ["null", 400],
+    ["[]", 400],
+    [JSON.stringify({ challengeId: "valid-id", unexpected: "field" }), 400]
+  ];
+  for (const [body, expectedStatus] of cases) {
+    const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body
+    }));
+    assert.equal(response.status, expectedStatus);
+  }
+  assert.equal([...authStorage.values.keys()].some(key => key.startsWith("auth:email-challenge-claim:")), false);
+});
+
+test("MFA limiter rejects oversized route bodies before JSON processing", async () => {
+  const { authLimiter, authStorage } = environment();
+  const body = JSON.stringify({ challengeId: "a".repeat(3000) });
+  const response = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  }));
+  assert.equal(response.status, 400);
+  assert.equal([...authStorage.values.keys()].some(key => key.startsWith("auth:email-challenge-claim:")), false);
+});
+
+test("MFA limiter accepts the documented route fields and rejects unsupported content type", async () => {
+  const { authLimiter, authStorage } = environment();
+  const unsupported = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ challengeId: "valid-id" })
+  }));
+  assert.equal(unsupported.status, 400);
+  const accepted = await authLimiter.fetch(new Request("https://auth-rate-limit.internal/email-challenge-claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId: "valid-id" })
+  }));
+  assert.equal(accepted.status, 200);
+  assert.equal(authStorage.values.has("auth:email-challenge-claim:valid-id"), true);
+});
+
 test("auth limiter storage failures return service unavailable", async () => {
   const { authLimiter, authStorage } = environment();
   authStorage.transaction = async () => { throw new Error("storage unavailable"); };
@@ -764,4 +812,29 @@ test("blank MFA secret is rejected before issuing a challenge", async () => {
   }), env);
   assert.equal(response.status, 503);
   assert.equal([...values.keys()].some(key => key.startsWith("session:") || key.startsWith("mfa_challenge:")), false);
+});
+
+test("email OTP send quota is reserved atomically under concurrent requests", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const ipHash = createHash("sha256").update("email-send-test-ip").digest("hex");
+  const results = await Promise.all(Array.from({ length: 12 }, () => limiter.reserveEmailSend(ipHash)));
+  assert.equal(results.filter(result => result.allowed).length, 3);
+  assert.equal(results.filter(result => !result.allowed).length, 9);
+});
+
+test("email OTP wrong-code attempt budget is atomic under concurrent requests", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const results = await Promise.all(Array.from({ length: 15 }, () => limiter.reserveEmailAttempt("emailchallenge_test123")));
+  assert.equal(results.filter(result => result.allowed).length, 5);
+  assert.equal(results.filter(result => !result.allowed).length, 10);
+});
+
+test("email OTP challenge can be claimed only once under concurrent success attempts", async () => {
+  const storage = new MemoryStorage();
+  const limiter = new MfaRateLimiter({ storage });
+  const results = await Promise.all(Array.from({ length: 10 }, () => limiter.claimEmailChallenge("emailchallenge_replay")));
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(results.filter(value => !value).length, 9);
 });
