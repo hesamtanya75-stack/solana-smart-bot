@@ -85,7 +85,7 @@ function sameOriginApiRequest(request, url) {
   }
   return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
-async function readBoundedJson(request, maxBytes = 8192) {
+async function readBoundedJson(request, maxBytes = 8192, allowedFields = null) {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("Request body required");
   const chunks = []; let total = 0;
@@ -100,6 +100,9 @@ async function readBoundedJson(request, maxBytes = 8192) {
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   const value = JSON.parse(new TextDecoder().decode(bytes));
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON object required");
+  if (allowedFields && Object.keys(value).some(key => !allowedFields.includes(key))) {
+    throw new Error("Unexpected JSON field");
+  }
   return value;
 }
 function cleanState(value) {
@@ -841,7 +844,10 @@ export default {
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 2048, ["email", "phone"]);
+          if (Object.keys(body).some(key => typeof body[key] !== "string")) {
+            return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400);
+          }
           const p = await readProfile(env);
           if (typeof body.email === "string") {
             const email = body.email.trim().slice(0, 254);
