@@ -71,12 +71,14 @@ test("origin protection runs before login and private API route handling", () =>
 });
 
 test("authentication JSON bodies are size-bounded and must be JSON objects", () => {
-  assert.ok(workerSource.includes("async function readBoundedJson(request, maxBytes = 8192)"));
+  assert.ok(workerSource.includes("async function readBoundedJson(request, maxBytes = 8192, allowedFields = null)"));
   assert.ok(workerSource.includes("const reader = request.body?.getReader();"));
   assert.ok(workerSource.includes("if (total > maxBytes)"));
   assert.ok(workerSource.includes("await reader.cancel();"));
   assert.ok(workerSource.includes('if (!value || typeof value !== "object" || Array.isArray(value))'));
   assert.ok(workerSource.includes("readBoundedJson(request, 4096)"));
+  assert.ok(workerSource.includes('readBoundedJson(request, 2048, ["email", "phone"])'));
+  assert.ok(workerSource.includes("Unexpected JSON field"));
   assert.equal(workerSource.includes("const { code } = await request.json();"), false);
   assert.equal(workerSource.includes("const { password } = await request.json();"), false);
   assert.equal(workerSource.includes("const { challengeId, code } = await request.json();"), false);
