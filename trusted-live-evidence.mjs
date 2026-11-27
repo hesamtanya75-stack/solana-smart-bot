@@ -1021,7 +1021,7 @@ async function createUnsignedMessageDigest(encoded, parsed, expectedSigner) {
     const signatureHeader = readShortVector(bytes, 0);
     messageStart = signatureHeader.offset + parsed.signatureCount * 64;
   }
-  if (!Number.isSafeInteger(messageStart) || messageStart < 1 ||
+  if (!Number.isSafeInteger(messageStart) || messageStart < 0 ||
       messageEnd <= messageStart || messageEnd > bytes.length) {
     throw new Error("Unable to isolate canonical serialized transaction message");
   }
