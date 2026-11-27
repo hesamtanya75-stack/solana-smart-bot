@@ -87,7 +87,7 @@ function sameOriginApiRequest(request, url) {
 }
 async function readBoundedJson(request, maxBytes = 8192, allowedFields = null) {
   const contentType = request.headers.get("content-type") || "";
-  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     const error = new Error("Content-Type must be application/json");
     error.status = 415;
     throw error;
