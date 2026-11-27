@@ -246,8 +246,12 @@ export class PaperTradingState {
       if (body.operation === "clear-history" || body.operation === "paper-buy") {
         const requestId = String(body.requestId || "");
         if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) return response({ error: "Invalid request id" }, 400);
+        if (body.operation === "paper-buy" &&
+            (typeof body.price !== "number" || !Number.isFinite(body.price) || body.price <= 0)) {
+          return response({ error: "Invalid paper-trade price" }, 400);
+        }
         const result = await this.transact(record => {
-          const intent = body.operation === "paper-buy" ? JSON.stringify({ mint: String(body.mint || ""), price: Number(body.price) }) : "";
+          const intent = body.operation === "paper-buy" ? JSON.stringify({ mint: String(body.mint || ""), price: body.price }) : "";
           const previous = record.recentOperations.find(item => item.id === requestId);
           if (previous) {
             if (previous.operation !== body.operation || previous.intent !== intent) {
@@ -260,8 +264,8 @@ export class PaperTradingState {
             state.trades = [];
           } else {
             const mint = String(body.mint || "");
-            const price = Number(body.price);
-            if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || !(price > 0) || !Number.isFinite(price)) {
+            const price = body.price;
+            if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint) || typeof price !== "number" || !(price > 0) || !Number.isFinite(price)) {
               return { value: { error: "Invalid paper-trade details" } };
             }
             if (state.balance < 5) return { value: { error: "Insufficient paper balance" } };
