@@ -30,7 +30,9 @@ test("dashboard logout always clears local session and locks local trading in fi
     "serverModeReady=false",
     "serverLogoutLocked=true",
     'localStorage.removeItem("solanaBotSession")',
-    'serverLogin.style.display="flex"'
+    'serverLogin.style.display="flex"',
+    'try{\n        localStorage.setItem("solanaBotServerLogoutLocked", "1");\n      }catch(storageError)',
+    'try{\n        localStorage.removeItem("solanaBotSession");\n      }catch(storageError)'
   ]) {
     assert.ok(cleanup.includes(required), "logout finally must include " + required);
   }
