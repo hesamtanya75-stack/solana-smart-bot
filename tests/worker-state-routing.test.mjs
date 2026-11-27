@@ -341,6 +341,28 @@ test("password login throttles after five failures through the atomic auth Durab
   assert.equal(counter?.[1]?.count, 5);
 });
 
+test("MFA challenge rejects malformed and future timestamps before rate-limit reservation", async () => {
+  for (const createdAt of [NaN, 0, -1, Date.now() + 60_000, "not-a-timestamp"]) {
+    const { env, authStorage } = environment();
+    const values = new Map([
+      ["mfa_challenge:invalid-time", JSON.stringify({ createdAt, attempts: 0, emailVerified: true })]
+    ]);
+    env.BOT_STATE.get = async (key, type) => {
+      const value = values.get(key);
+      return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
+    };
+    env.BOT_STATE.delete = async key => { values.delete(key); };
+    const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.81" },
+      body: JSON.stringify({ challengeId: "invalid-time", code: "123456" })
+    }), env);
+    assert.equal(response.status, 401);
+    assert.equal([...authStorage.values.keys()].some(key => key.startsWith("auth:mfa-ip:")), false);
+    assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);
+  }
+});
+
 test("MFA challenge is deleted after five invalid codes", async () => {
   const { env, authStorage } = environment();
   const values = new Map([
