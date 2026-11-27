@@ -69,10 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out the live-trading preparation branch
+      - name: Check out the exact PR head or selected dispatch commit
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -108,10 +108,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out the live-trading preparation branch for tests
+      - name: Check out the exact PR head or selected dispatch commit for tests
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -138,10 +138,10 @@ jobs:
       DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
       DEVNET_MANUAL_FUNDING: '1'
     steps:
-      - name: Check out the live-trading preparation branch
+      - name: Check out the exact PR head or selected dispatch commit
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
