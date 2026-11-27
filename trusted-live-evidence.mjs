@@ -1010,9 +1010,14 @@ async function createUnsignedMessageDigest(encoded, parsed, expectedSigner) {
   let messageStart;
   let messageEnd = bytes.length;
   if (parsed.messageVersion === 1) {
-    messageStart = 1;
+    // This repository's validated v1 wire format starts with the 0x81
+    // version marker and places the fixed-width signature vector at the tail.
+    // Keep the version marker in the message digest; exclude only tail signatures.
+    messageStart = 0;
     messageEnd -= parsed.signatureCount * 64;
   } else {
+    // Legacy/v0 use the canonical short-vector signature count followed by
+    // signatures, then the complete message (including the v0 version prefix).
     const signatureHeader = readShortVector(bytes, 0);
     messageStart = signatureHeader.offset + parsed.signatureCount * 64;
   }
