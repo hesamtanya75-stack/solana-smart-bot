@@ -966,13 +966,13 @@ test("parser rejects an instruction program account marked as a signer", () => {
 });
 
 
-test("parser validates complete v0 account ordering before checking loaded writable privileges", () => {
+test("parser rejects caller-supplied ALT addresses without private finalized message evidence", () => {
   const staticAccountKeys = [SOURCE, SYSTEM];
   const resolvedAddressTableLookups = [{
     writableAddresses: [DESTINATION],
     readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
   }];
-  const parsed = parseSupportedInstructionMessage({
+  assert.throws(() => parseSupportedInstructionMessage({
     staticAccountKeys,
     accountKeys: [...staticAccountKeys, DESTINATION, COMPUTE_BUDGET_PROGRAM],
     header: {
@@ -986,55 +986,51 @@ test("parser validates complete v0 account ordering before checking loaded writa
       accountKeyIndexes: [0, 2],
       data: transferData(25)
     }]
-  });
-  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
-  assert.equal(parsed.lookupAddressAuthentication, "not-performed");
-  assert.equal(parsed.instructions[0].lamports, 25n);
-  assert.equal(parsed.signingPermitted, false);
-  assert.equal(parsed.submissionPermitted, false);
+  }), /ALT account roles require trusted finalized message evidence/);
 });
 
-test("parser rejects v0 lookup inputs without explicit static keys", () => {
-  assert.throws(() => parseSupportedInstructionMessage({
-    accountKeys: [SYSTEM, SOURCE, DESTINATION],
+test("parser rejects fabricated or mismatched digest-bound ALT evidence", () => {
+  const staticAccountKeys = [SOURCE, SYSTEM];
+  const resolvedAddressTableLookups = [{
+    writableAddresses: [DESTINATION],
+    readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
+  }];
+  const messageInput = {
+    staticAccountKeys,
+    accountKeys: [...staticAccountKeys, DESTINATION, COMPUTE_BUDGET_PROGRAM],
     header: {
       numRequiredSignatures: 1,
       numReadonlySignedAccounts: 0,
       numReadonlyUnsignedAccounts: 1
     },
-    resolvedAddressTableLookups: [{
-      writableAddresses: [DESTINATION],
-      readonlyAddresses: []
-    }],
-    instructions: [{
-      programIdIndex: 0,
-      accountKeyIndexes: [1, 2],
-      data: transferData(25)
-    }]
-  }), /must provide staticAccountKeys separately/);
-});
-
-test("parser rejects v0 account keys that disagree with canonical static and lookup ordering", () => {
-  assert.throws(() => parseSupportedInstructionMessage({
-    staticAccountKeys: [SOURCE, SYSTEM],
-    accountKeys: [SOURCE, SYSTEM, COMPUTE_BUDGET_PROGRAM],
-    header: {
-      numRequiredSignatures: 1,
-      numReadonlySignedAccounts: 0,
-      numReadonlyUnsignedAccounts: 1
+    resolvedAddressTableLookups,
+    trustedMessageEvidence: {
+      lookupTableResolution: "finalized-resolved",
+      lookupContextSlot: 100,
+      messageDigest: { algorithm: "SHA-256", value: "a".repeat(64) },
+      accountKeys: [...staticAccountKeys, DESTINATION, COMPUTE_BUDGET_PROGRAM],
+      staticAccountKeys,
+      header: {
+        numRequiredSignatures: 1,
+        numReadonlySignedAccounts: 0,
+        numReadonlyUnsignedAccounts: 1
+      },
+      resolvedAddressTableLookups,
+      compiledInstructions: [{
+        programIdIndex: 1,
+        accountKeyIndexes: [0, 2],
+        data: transferData(25)
+      }]
     },
-    resolvedAddressTableLookups: [{
-      writableAddresses: [DESTINATION],
-      readonlyAddresses: [COMPUTE_BUDGET_PROGRAM]
-    }],
     instructions: [{
       programIdIndex: 1,
       accountKeyIndexes: [0, 2],
       data: transferData(25)
     }]
-  }), /do not match static and lookup account ordering/);
+  };
+  assert.throws(() => parseSupportedInstructionMessage(messageInput),
+    /ALT account roles require trusted finalized message evidence/);
 });
-
 
 const PDA_OWNER = "CXhrFZJLKqjzmP3sjYLcF4dTeXWKCy9e2SXXZ2Yo6MPY";
 const PDA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";

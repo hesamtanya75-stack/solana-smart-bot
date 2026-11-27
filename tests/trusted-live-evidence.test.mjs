@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { parseSupportedInstructionMessage } from "../transaction-instruction-parser.mjs";
 import { fetchTrustedSolUsdQuote, fetchTrustedTokenRisk, fetchTrustedLiveEvidence, validateJupiterBuildResponse, validateUnsignedJupiterTransaction, resolveJupiterAddressLookupTables, validateAndResolveUnsignedJupiterTransaction, verifyFinalizedJupiterSettlement, parseTrustedMintAccount } from "../trusted-live-evidence.mjs";
 
 const BOT_WALLET = "BUDJQYHSefZZzAJLFV26wvpbfLpqkzuVYAYBGXfjGrgy";
@@ -164,11 +166,13 @@ function mockLookupTableAccount({ owner = "AddressLookupTab1e1111111111111111111
 }
 function validUnsignedV0TransactionWithLookup() {
   const signer = decodeBase58(BOT_WALLET);
+  const computeBudget = decodeBase58("ComputeBudget111111111111111111111111111111");
+  const instructionData = [2, 0x40, 0x0d, 0x03, 0x00]; // SetComputeUnitLimit(200000)
   const message = Uint8Array.from([
     0x80, 1, 0, 1,
-    2, ...signer, ...new Array(32).fill(17),
+    2, ...signer, ...computeBudget,
     ...new Array(32).fill(0),
-    1, 1, 1, 2, 0,
+    1, 1, 0, instructionData.length, ...instructionData,
     1, ...new Array(32).fill(42),
     1, 0,
     1, 1
@@ -382,6 +386,80 @@ test("malformed Jupiter instruction program index is rejected", () => {
 });
 
 
+test("combined validation binds a SHA-256 digest to the exact unsigned serialized message", async () => {
+  const original = validUnsignedTransaction();
+  const originalEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    original, BOT_WALLET
+  );
+  assert.equal(originalEvidence.messageDigest.algorithm, "SHA-256");
+  assert.equal(originalEvidence.messageDigest.encoding, "hex");
+  assert.match(originalEvidence.messageDigest.value, /^[a-f0-9]{64}$/);
+  assert.equal(originalEvidence.messageDigest.signer, BOT_WALLET);
+  assert.equal(originalEvidence.messageDigest.messageVersion, "legacy");
+  const originalBytes = Buffer.from(original, "base64");
+  assert.equal(
+    originalEvidence.messageDigest.value,
+    createHash("sha256").update(originalBytes.subarray(65)).digest("hex"),
+    "digest must cover the exact serialized message bytes, excluding the signature vector"
+  );
+  assert.equal(originalEvidence.semanticInstructionVerification, false);
+
+  const changedBytes = Buffer.from(original, "base64");
+  // Mutate the recent blockhash byte so the message remains structurally valid.
+  // Serialized layout: signature-count + signature + legacy header + key-count + keys.
+  changedBytes[65 + 3 + 1 + 64] ^= 1;
+  const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    changedBytes.toString("base64"), BOT_WALLET
+  );
+  assert.notEqual(
+    changedEvidence.messageDigest.value,
+    originalEvidence.messageDigest.value,
+    "any serialized message change must produce a different digest"
+  );
+});
+
+test("v1 digest includes its version marker, excludes tail signatures, and binds all message bytes", async () => {
+  const original = validUnsignedV1Transaction();
+  const originalEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    original, BOT_WALLET
+  );
+  const originalBytes = Buffer.from(original, "base64");
+  const messageEnd = originalBytes.length - originalEvidence.signatureCount * 64;
+  const exactMessage = originalBytes.subarray(0, messageEnd);
+
+  assert.equal(originalEvidence.messageDigest.messageVersion, 1);
+  assert.equal(originalEvidence.messageDigest.byteLength, exactMessage.length);
+  assert.equal(
+    originalEvidence.messageDigest.value,
+    createHash("sha256").update(exactMessage).digest("hex"),
+    "v1 digest must include the 0x81 version marker and stop before the tail signatures"
+  );
+
+  // Signature bytes are outside the message range. The validator deliberately
+  // rejects nonzero signatures, so prove the boundary independently here.
+  const signatureChanged = Buffer.from(originalBytes);
+  signatureChanged[signatureChanged.length - 1] ^= 1;
+  assert.equal(
+    createHash("sha256")
+      .update(signatureChanged.subarray(0, messageEnd))
+      .digest("hex"),
+    originalEvidence.messageDigest.value,
+    "signature-only changes must not alter the message digest"
+  );
+
+  // Mutate a recent-blockhash byte while preserving the v1 structure.
+  const messageChanged = Buffer.from(originalBytes);
+  messageChanged[8] ^= 1;
+  const changedEvidence = await validateAndResolveUnsignedJupiterTransaction(
+    messageChanged.toString("base64"), BOT_WALLET
+  );
+  assert.notEqual(
+    changedEvidence.messageDigest.value,
+    originalEvidence.messageDigest.value,
+    "any v1 message-byte change must alter the digest"
+  );
+});
+
 test("combined transaction validation resolves ALT and keeps instruction semantics untrusted", async () => {
   const parsed = await validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
@@ -394,7 +472,85 @@ test("combined transaction validation resolves ALT and keeps instruction semanti
   assert.equal(parsed.lookupContextSlot, 100);
   assert.equal(parsed.resolvedWritableAddresses[0], encodeBase58(new Uint8Array(32).fill(7)));
   assert.equal(parsed.resolvedReadonlyAddresses[0], encodeBase58(new Uint8Array(32).fill(8)));
+  assert.equal(parsed.messageDigest.algorithm, "SHA-256");
+  assert.equal(parsed.messageDigest.encoding, "hex");
+  assert.match(parsed.messageDigest.value, /^[a-f0-9]{64}$/);
+  assert.equal(parsed.messageDigest.messageVersion, 0);
+  assert.equal(parsed.messageDigest.signer, BOT_WALLET);
+  const serialized = Buffer.from(validUnsignedV0TransactionWithLookup(), "base64");
+  assert.equal(
+    parsed.messageDigest.value,
+    createHash("sha256").update(serialized.subarray(65)).digest("hex"),
+    "v0 digest must cover the exact serialized message, including ALT descriptors"
+  );
   assert.equal(parsed.semanticInstructionVerification, false);
+});
+
+test("parser consumes only immutable finalized ALT evidence bound to the exact compiled message", async () => {
+  const evidence = await validateAndResolveUnsignedJupiterTransaction(
+    validUnsignedV0TransactionWithLookup(), BOT_WALLET,
+    async () => Response.json({ jsonrpc: "2.0", id: 1, result: {
+      context: { slot: 100 }, value: [mockLookupTableAccount()]
+    } })
+  );
+  assert.equal(evidence.lookupTableResolution, "finalized-resolved");
+  assert.equal(evidence.messageDigest.algorithm, "SHA-256");
+  assert.equal(evidence.header.numReadonlyUnsignedAccounts, 1);
+  assert.equal(evidence.accountKeys.length, 4);
+  assert.equal(Object.isFrozen(evidence), true);
+  assert.equal(Object.isFrozen(evidence.accountKeys), true);
+  assert.equal(Object.isFrozen(evidence.header), true);
+  assert.equal(Object.isFrozen(evidence.compiledInstructions), true);
+  assert.equal(Object.isFrozen(evidence.compiledInstructions[0].accountKeyIndexes), true);
+  assert.deepEqual(evidence.resolvedAddressTableLookups, [{
+    writableAddresses: evidence.resolvedWritableAddresses,
+    readonlyAddresses: evidence.resolvedReadonlyAddresses
+  }]);
+
+  const parsed = parseSupportedInstructionMessage({
+    accountKeys: evidence.accountKeys,
+    instructions: evidence.compiledInstructions,
+    staticAccountKeys: evidence.staticAccountKeys,
+    header: evidence.header,
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
+    trustedMessageEvidence: evidence
+  });
+  assert.equal(parsed.accountPrivilegeAnalysis, "structural-match-only");
+  assert.equal(parsed.lookupAddressAuthentication, "finalized-message-digest-bound");
+  assert.equal(parsed.signingPermitted, false);
+  assert.equal(parsed.submissionPermitted, false);
+
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: evidence.accountKeys,
+    instructions: evidence.compiledInstructions.map(item => ({
+      ...item, data: Buffer.from([2, 1, 0, 0, 0]).toString("base64")
+    })),
+    staticAccountKeys: evidence.staticAccountKeys,
+    header: evidence.header,
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
+    trustedMessageEvidence: evidence
+  }), /do not match digest-bound finalized ALT evidence/);
+
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: evidence.accountKeys,
+    instructions: evidence.compiledInstructions,
+    staticAccountKeys: evidence.staticAccountKeys,
+    header: { ...evidence.header, numReadonlyUnsignedAccounts: 0 },
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
+    trustedMessageEvidence: evidence
+  }), /do not match digest-bound finalized ALT evidence/);
+
+  assert.throws(() => parseSupportedInstructionMessage({
+    accountKeys: [
+      evidence.accountKeys[0], evidence.accountKeys[1],
+      evidence.resolvedReadonlyAddresses[0], evidence.resolvedWritableAddresses[0]
+    ],
+    instructions: evidence.compiledInstructions,
+    staticAccountKeys: evidence.staticAccountKeys,
+    header: evidence.header,
+    resolvedAddressTableLookups: evidence.resolvedAddressTableLookups,
+    trustedMessageEvidence: evidence
+  }), /do not match digest-bound finalized ALT evidence/);
 });
 
 test("ALT resolver fetches finalized tables and resolves writable/readonly addresses", async () => {
@@ -457,7 +613,7 @@ test("resolved ALT addresses cannot duplicate a static transaction account key",
   const tableKey = encodeBase58(new Uint8Array(32).fill(42));
   const account = mockLookupTableAccount();
   const data = Buffer.from(account.data[0], "base64");
-  data.fill(17, 56, 88); // Duplicate the second inline static account key.
+  data.set(decodeBase58("ComputeBudget111111111111111111111111111111"), 56); // Duplicate the second inline static account key.
   account.data = [data.toString("base64"), "base64"];
   await assert.rejects(validateAndResolveUnsignedJupiterTransaction(
     validUnsignedV0TransactionWithLookup(), BOT_WALLET,
