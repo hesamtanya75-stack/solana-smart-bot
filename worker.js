@@ -86,6 +86,18 @@ function sameOriginApiRequest(request, url) {
   return request.headers.get("Sec-Fetch-Site") !== "cross-site";
 }
 async function readBoundedJson(request, maxBytes = 8192, allowedFields = null) {
+  const contentType = request.headers.get("content-type") || "";
+  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    const error = new Error("Content-Type must be application/json");
+    error.status = 415;
+    throw error;
+  }
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && (!/^(0|[1-9]\\d*)$/.test(contentLength) || Number(contentLength) > maxBytes)) {
+    const error = new Error("Request body too large or invalid");
+    error.status = 413;
+    throw error;
+  }
   const reader = request.body?.getReader();
   if (!reader) throw new Error("Request body required");
   const chunks = []; let total = 0;
@@ -720,7 +732,7 @@ export default {
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const { password } = await readBoundedJson(request, 4096);
+        const { password } = await readBoundedJson(request, 4096, ["password"]);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const loginScope = "login:" + ipHash;
@@ -786,8 +798,8 @@ export default {
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await readBoundedJson(request, 4096);
-        if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const { challengeId, code } = await readBoundedJson(request, 4096, ["challengeId", "code"]);
+        if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) || typeof code !== "string" || !/^(?:\\d{6}|[a-z0-9-]{8,32})$/i.test(code.trim())) return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const failureScope = "totp:" + ipHash;
