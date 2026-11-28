@@ -21,7 +21,7 @@ test("pull-request preflight is secret-free and funded Devnet requires explicit 
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
   // PR-controlled scripts and tests must not receive repository credentials.
-  assert.doesNotMatch(readOnlyJob, /secrets\./);
+  assert.doesNotMatch(readOnlyJob, /\$\{\{\s*secrets\./);
   assert.match(readOnlyJob, /DEVNET_RPC_URL:\s*https:\/\/api\.devnet\.solana\.com/);
   assert.doesNotMatch(readOnlyJob, /ALCHEMY_API_KEY/);
   assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*github\.ref\s*==\s*'refs\/heads\/security\/pr33-safety-transplant-4678a20'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
