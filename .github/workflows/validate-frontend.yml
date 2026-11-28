@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "index.html"
+      - "worker.js"
       - ".github/workflows/validate-frontend.yml"
   pull_request:
     branches: [main]
