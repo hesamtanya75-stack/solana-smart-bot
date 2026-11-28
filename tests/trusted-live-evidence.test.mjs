@@ -2226,6 +2226,39 @@ test("executable program resolver bounds RPC batches and pins later batches to p
   assert.ok(evidence.programs.every(item => item.executable === true));
 });
 
+test("executable resolver enforces caller-provided finalized minimum context slot", async () => {
+  const id = "11111111111111111111111111111111";
+  let request;
+  await assert.rejects(resolveExecutableProgramAccounts([id], async (_url, options) => {
+    request = JSON.parse(options.body);
+    return Response.json({
+      jsonrpc: "2.0", id: 1,
+      result: {
+        context: { slot: 499 },
+        value: [{
+          owner: "NativeLoader1111111111111111111111111111111",
+          executable: true,
+          data: ["", "base64"]
+        }]
+      }
+    });
+  }, 500), /context or account count is invalid/);
+  assert.equal(request.params[1].commitment, "finalized");
+  assert.equal(request.params[1].minContextSlot, 500);
+
+  let rpcCalled = false;
+  await assert.rejects(resolveExecutableProgramAccounts([id], async () => {
+    rpcCalled = true;
+    throw new Error("RPC must not run for an invalid minimum slot");
+  }, -1), /minimum context slot is invalid/);
+  assert.equal(rpcCalled, false);
+  await assert.rejects(resolveExecutableProgramAccounts([id], async () => {
+    rpcCalled = true;
+    throw new Error("RPC must not run for an unsafe minimum slot");
+  }, Number.MAX_SAFE_INTEGER + 1), /minimum context slot is invalid/);
+  assert.equal(rpcCalled, false);
+});
+
 test("executable program resolver rejects malformed finalized context and account metadata", async () => {
   const id = "11111111111111111111111111111111";
   for (const result of [
