@@ -859,6 +859,9 @@ export default {
           throw error;
         }
       } catch (error) {
+        if (error?.status === 400 || error?.status === 413) {
+          return json({ error: "Invalid login request." }, error.status);
+        }
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
