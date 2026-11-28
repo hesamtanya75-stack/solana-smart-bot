@@ -777,8 +777,9 @@ export default {
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
-        if (typeof challengeId !== "string" || typeof code !== "string") if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
-        return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        if (typeof challengeId !== "string" || typeof code !== "string") {
+          return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        }
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const ipFailureKey = "totp_fail:" + ip;
