@@ -32,18 +32,20 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         env:
-          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL || 'https://api.devnet.solana.com' }}
+          # PR-controlled code must never receive a repository RPC secret.
+          # This preflight is read-only and always uses the public Devnet endpoint.
+          DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
       - name: Report funded Devnet lifecycle as skipped without explicit opt-in
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true) }}
         run: |
           echo "::notice title=Funded Devnet lifecycle skipped::explicit workflow_dispatch opt-in is required; no faucet-funded transfer was attempted."
           node -e 'console.log(JSON.stringify({ status: "skipped", reason: "explicit workflow_dispatch opt-in is required", signing: "not performed", transactionsSubmitted: 0, userPrivateKeysUsed: false, mainnetTouched: false, swapExecuted: false }, null, 2))'
-          printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
 
   funded-devnet-lifecycle:
-    # This isolated job is never part of pull_request runs. The secret is not
-    # exposed to checkout, dependency installation, or PR test steps.
+    # This isolated job is never part of pull_request runs. Its secret is
+    # exposed only after a maintainer explicitly dispatches with the opt-in.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true }}
     needs: devnet-read-only
     runs-on: ubuntu-latest
