@@ -1801,6 +1801,7 @@ if (serverToken) {
         <div class="profile-secret" id="totpBackupCode"></div>
       </div>
       <p class="profile-note">تێبینی: کۆدی گەڕاندنەوە یەکجار بەکاردێت. بەشی پشتڕاستکردنەوەی Gmail/SMS دواتر، دوای پەیوەستکردنی دابینکەر، تەواو دەکرێت.</p>
+      <button id="profileLogout" style="background:#7f1d1d;border-color:#b91c1c">دەرچوون و هەڵوەشاندنەوەی چوونەژوورەوە</button>
       <button id="profileClose" style="background:#334155;border-color:#475569">داخستن</button>
     </div>`;
   document.body.appendChild(modal);
@@ -1819,6 +1820,24 @@ if (serverToken) {
   }
   button.onclick=async()=>{modal.style.display="flex";await loadProfile();};
   document.getElementById("profileClose").onclick=()=>{modal.style.display="none";};
+  document.getElementById("profileLogout").onclick=async()=>{
+    const logoutButton=document.getElementById("profileLogout");
+    logoutButton.disabled=true;
+    status().textContent="هەڵوەشاندنەوەی Session...";
+    try{
+      await serverRequest("/api/logout",{method:"POST",body:"{}"});
+      serverToken="";
+      serverModeReady=false;
+      localStorage.removeItem("solanaBotSession");
+      modal.style.display="none";
+      serverLogin.style.display="flex";
+      status().textContent="چوونەژوورەوە هەڵوەشێندرایەوە.";
+    }catch(e){
+      status().textContent="هەڵە لە دەرچوون: "+e.message;
+    }finally{
+      logoutButton.disabled=false;
+    }
+  };
   modal.addEventListener("click",e=>{if(e.target===modal)modal.style.display="none";});
   document.getElementById("profileSave").onclick=async()=>{
     status().textContent="پاشەکەوت دەکرێت...";
