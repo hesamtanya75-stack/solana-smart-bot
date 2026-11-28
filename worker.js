@@ -42,11 +42,11 @@ function json(data, status = 200) {
 }
 async function readBoundedLoginJson(request, allowedFields) {
   const contentType = request.headers.get("content-type") || "";
-  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     const error = new TypeError("JSON content type required"); error.status = 400; throw error;
   }
   const length = request.headers.get("content-length");
-  if (length !== null && (!/^(0|[1-9]\\d*)$/.test(length) || Number(length) > 4096)) {
+  if (length !== null && (!/^(0|[1-9]\d*)$/.test(length) || Number(length) > 4096)) {
     const error = new TypeError("Request body too large or invalid");
     error.status = Number(length) > 4096 ? 413 : 400; throw error;
   }
