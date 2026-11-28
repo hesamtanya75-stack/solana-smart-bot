@@ -789,7 +789,7 @@ test("backup code cannot authenticate after MFA is disabled or loses its secret"
   const backupCode = "ABCD1234EFGH5678";
   const backupHash = createHash("sha256").update(backupCode).digest("hex");
   const values = new Map([
-    ["mfa_challenge:pending", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
+    ["mfa_challenge:pending", JSON.stringify({ createdAt: Date.now(), attempts: 0, emailVerified: true })]
   ]);
   env.BOT_STATE.get = async (key, type) => {
     const value = values.get(key);
