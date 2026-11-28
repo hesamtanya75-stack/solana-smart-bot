@@ -902,7 +902,10 @@ const SOLANA_PROGRAM_LOADER_IDS = new Set([
  * owned by a recognized Solana loader at the returned finalized context.
  * It does not verify code identity, upgrade authority, semantics, or CPI.
  */
-export async function resolveExecutableProgramAccounts(programIds, fetchImpl = fetch) {
+export async function resolveExecutableProgramAccounts(programIds, fetchImpl = fetch, minimumContextSlot = 0) {
+  if (!Number.isSafeInteger(minimumContextSlot) || minimumContextSlot < 0) {
+    throw new Error("Executable program minimum context slot is invalid");
+  }
   const ids = snapshotDensePlainArray(
     programIds, 256, "Compiled instruction program IDs",
     "Compiled instruction program IDs are malformed"
@@ -912,7 +915,6 @@ export async function resolveExecutableProgramAccounts(programIds, fetchImpl = f
     throw new Error("Compiled instruction program IDs are missing, invalid, or duplicated");
   }
   const resolved = [];
-  let minimumContextSlot = 0;
   for (let offset = 0; offset < ids.length; offset += 100) {
     const batch = ids.slice(offset, offset + 100);
     const config = {
@@ -1195,7 +1197,9 @@ export async function validateAndResolveUnsignedJupiterTransaction(
   const messageDigest = await createUnsignedMessageDigest(encoded, parsed, expectedSigner);
   const accountKeys = Object.freeze(allMessageKeys);
   const programIds = collectCompiledInstructionProgramIds(parsed, accountKeys);
-  const programExecutableEvidence = await resolveExecutableProgramAccounts(programIds, fetchImpl);
+  const programExecutableEvidence = await resolveExecutableProgramAccounts(
+    programIds, fetchImpl, resolution.contextSlot
+  );
   const resolvedAddressTableLookups = Object.freeze(resolution.tables.map(table =>
     Object.freeze({
       writableAddresses: table.writable,
