@@ -40,6 +40,45 @@ function json(data, status = 200) {
     }
   });
 }
+async function readBoundedLoginJson(request, allowedFields) {
+  const contentType = request.headers.get("content-type") || "";
+  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    const error = new TypeError("JSON content type required"); error.status = 400; throw error;
+  }
+  const length = request.headers.get("content-length");
+  if (length !== null && (!/^(0|[1-9]\\d*)$/.test(length) || Number(length) > 4096)) {
+    const error = new TypeError("Request body too large or invalid");
+    error.status = Number(length) > 4096 ? 413 : 400; throw error;
+  }
+  if (!request.body) { const error = new TypeError("Request body required"); error.status = 400; throw error; }
+  const reader = request.body.getReader(), chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 4096) {
+        await reader.cancel();
+        const error = new TypeError("Request body too large"); error.status = 413; throw error;
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  let parsed;
+  try {
+    const bytes = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    const error = new TypeError("Malformed JSON request"); error.status = 400; throw error;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      Object.keys(parsed).some(key => !allowedFields.includes(key))) {
+    const error = new TypeError("Invalid request fields"); error.status = 400; throw error;
+  }
+  return parsed;
+}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   return {
@@ -627,7 +666,7 @@ export default {
     if (url.pathname === "/api/login" && request.method === "POST") {
       let pendingEmailChallengeKey = "";
       try {
-        const { password } = await request.json();
+        const { password } = await readBoundedLoginJson(request, ["password"]);
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -689,6 +728,7 @@ export default {
             console.error("Failed to clear unsent email OTP challenge", String(cleanupError?.message || cleanupError));
           }
         }
+        if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         console.error("Email OTP send error", String(error?.message || error));
         return json({ error: "Could not send sign-in verification code." }, 503);
@@ -696,7 +736,7 @@ export default {
     }
     if (url.pathname === "/api/login/email" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
+        const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
         if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) || typeof code !== "string" || !/^\d{6}$/.test(code)) {
           return json({ error: "Enter a valid six-digit email code." }, 400);
         }
@@ -729,14 +769,16 @@ export default {
         await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
+        if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
         if (error?.status === 503) return json({ error: "Authentication security service is unavailable; try later." }, 503);
         return json({ error: "Could not verify email code." }, 400);
       }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
-        if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
+        if (typeof challengeId !== "string" || typeof code !== "string") if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
+        return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const ipFailureKey = "totp_fail:" + ip;
