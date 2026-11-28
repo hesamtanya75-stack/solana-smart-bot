@@ -15,12 +15,12 @@ const MAX_REQUEST_BODY_BYTES = 4_096;
 
 async function readBoundedJson(request, maxBytes = MAX_REQUEST_BODY_BYTES) {
   const contentType = request.headers.get("Content-Type") || "";
-  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     throw new Error("Content-Type must be application/json");
   }
   const declaredLength = request.headers.get("Content-Length");
   if (declaredLength !== null &&
-      (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
+      (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
     throw new Error("Request body exceeds the allowed size");
   }
   if (!request.body) throw new Error("Request body is required");
