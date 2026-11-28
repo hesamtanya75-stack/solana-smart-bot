@@ -679,3 +679,39 @@ test("compare-and-set closes migration on malformed or non-empty raw activity me
     assert.equal(migration.status, 409);
   }
 });
+
+
+test("legacy migration rejects mistyped automation flags and preserves the raw snapshot", async () => {
+  for (const flags of [
+    { autoEnabled: "true", paused: false },
+    { autoEnabled: false, paused: "false" },
+    { autoEnabled: 1, paused: false },
+    { autoEnabled: false, paused: null },
+    { autoEnabled: {}, paused: false },
+    { autoEnabled: false, paused: [] }
+  ]) {
+    const legacy = { balance: 100, trades: [], ...flags };
+    const { instance, storage } = makeDO(legacy);
+    const result = await call(instance, { operation: "get" });
+    assert.equal(result.status, 503);
+    assert.equal(await storage.get("paper_state_v1"), undefined);
+    const kv = instance.env.BOT_STATE;
+    assert.deepEqual(await kv.get("bot_state", "json"), legacy);
+    assert.equal(await kv.get("paper_state_do_migration_v1"), "initializing");
+  }
+});
+
+test("valid or omitted legacy automation flags remain backward compatible", async () => {
+  for (const legacy of [
+    { balance: 100, trades: [] },
+    { balance: 100, trades: [], autoEnabled: false, paused: false },
+    { balance: 100, trades: [], autoEnabled: true, paused: false }
+  ]) {
+    const { instance } = makeDO(legacy);
+    const result = await call(instance, { operation: "get" });
+    assert.equal(result.status, 200);
+    assert.equal(typeof result.body.state.autoEnabled, "boolean");
+    assert.equal(typeof result.body.state.paused, "boolean");
+    assert.equal(result.body.migrationOpen, legacy.autoEnabled !== true);
+  }
+});
