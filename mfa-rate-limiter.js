@@ -81,6 +81,24 @@ export class MfaRateLimiter {
         await this.clearTotpSetup(body.ipHash);
         return response({ ok: true });
       }
+      if (url.pathname === "/email-send-reserve") {
+        validateHash(body.ipHash, "IP hash");
+        const result = await this.reserveEmailSend(body.ipHash);
+        await this.scheduleCleanup();
+        return response(result);
+      }
+      if (url.pathname === "/email-attempt-reserve") {
+        validateChallengeId(body.challengeId);
+        const result = await this.reserveEmailAttempt(body.challengeId);
+        await this.scheduleCleanup();
+        return response(result);
+      }
+      if (url.pathname === "/email-challenge-claim") {
+        validateChallengeId(body.challengeId);
+        const claimed = await this.claimEmailChallenge(body.challengeId);
+        await this.scheduleCleanup();
+        return response({ claimed });
+      }
       if (url.pathname === "/mfa-challenge-claim" || url.pathname === "/mfa-challenge-release") {
         validateChallengeId(body.challengeId);
         if (url.pathname === "/mfa-challenge-claim") {
@@ -164,6 +182,48 @@ export class MfaRateLimiter {
       await txn.put(ipKey, { count: ipEntry.count + 1, expiresAt: ipEntry.expiresAt });
       await txn.put(challengeKey, { count: challengeEntry.count + 1, expiresAt: challengeEntry.expiresAt });
       return { allowed: true };
+    });
+  }
+
+  async reserveEmailSend(ipHash) {
+    validateHash(ipHash, "IP hash");
+    return this.storage.transaction(async txn => {
+      const now = Date.now();
+      const key = "auth:email-send:" + ipHash;
+      const current = await txn.get(key);
+      const entry = current && current.expiresAt > now
+        ? { count: legacyCount(current.count), expiresAt: current.expiresAt }
+        : { count: 0, expiresAt: now + IP_WINDOW_MS };
+      if (entry.count >= 3) return { allowed: false, reason: "ip" };
+      await txn.put(key, { count: entry.count + 1, expiresAt: entry.expiresAt });
+      return { allowed: true, count: entry.count + 1 };
+    });
+  }
+
+  async reserveEmailAttempt(challengeId) {
+    validateChallengeId(challengeId);
+    return this.storage.transaction(async txn => {
+      const now = Date.now();
+      const key = "auth:email-attempt:" + challengeId;
+      const current = await txn.get(key);
+      const entry = current && current.expiresAt > now
+        ? { count: legacyCount(current.count), expiresAt: current.expiresAt }
+        : { count: 0, expiresAt: now + 10 * 60 * 1000 };
+      if (entry.count >= MAX_ATTEMPTS) return { allowed: false, attempts: entry.count };
+      const count = entry.count + 1;
+      await txn.put(key, { count, expiresAt: entry.expiresAt });
+      return { allowed: true, attempts: count };
+    });
+  }
+
+  async claimEmailChallenge(challengeId) {
+    validateChallengeId(challengeId);
+    return this.storage.transaction(async txn => {
+      const key = "auth:email-challenge-claim:" + challengeId;
+      const current = await txn.get(key);
+      if (current && current.expiresAt > Date.now()) return false;
+      await txn.put(key, { expiresAt: Date.now() + 10 * 60 * 1000 });
+      return true;
     });
   }
 

@@ -1732,7 +1732,14 @@ if (serverLogoutButton) {
       await serverRequest("/api/logout", { method: "POST" });
       serverModeReady = false;
       serverToken = "";
+      serverMfaChallenge = "";
+      serverEmailChallenge = "";
       localStorage.removeItem("solanaBotSession");
+      const emailCode = document.getElementById("serverEmailCode");
+      if (emailCode) emailCode.remove();
+      const totpCode = document.getElementById("serverTotpCode");
+      if (totpCode) totpCode.remove();
+      document.getElementById("serverLoginButton").textContent = "چوونەژوورەوە";
       serverLogoutButton.hidden = true;
       serverLogin.style.display = "flex";
       document.getElementById("serverPassword").value = "";
@@ -1745,11 +1752,15 @@ if (serverLogoutButton) {
   });
 }
 let serverMfaChallenge = "";
+let serverEmailChallenge = "";
 function clearExpiredServerSession() {
   serverModeReady = false;
   serverToken = "";
   localStorage.removeItem("solanaBotSession");
   serverMfaChallenge = "";
+  serverEmailChallenge = "";
+  const emailCode = document.getElementById("serverEmailCode");
+  if (emailCode) emailCode.remove();
   const logoutButton = document.getElementById("serverLogoutButton");
   if (logoutButton) logoutButton.hidden = true;
   const otp = document.getElementById("serverTotpCode");
@@ -1767,6 +1778,31 @@ async function submitServerLogin() {
   button.disabled = true;
   error.textContent = "چوونەژوورەوە...";
   try {
+    if (serverEmailChallenge) {
+      const codeInput = document.getElementById("serverEmailCode");
+      const verified = await serverRequest("/api/login/email", {
+        method: "POST",
+        body: JSON.stringify({ challengeId: serverEmailChallenge, code: codeInput.value.trim() })
+      });
+      serverEmailChallenge = "";
+      if (verified.mfaRequired) {
+        serverMfaChallenge = verified.challengeId;
+        let otp = document.getElementById("serverTotpCode");
+        if (!otp) {
+          otp = document.createElement("input");
+          otp.id = "serverTotpCode";
+          otp.autocomplete = "one-time-code";
+          otp.maxLength = 16;
+          otp.placeholder = "کۆدی Google Authenticator یان کۆدی گەڕاندنەوە";
+          codeInput.insertAdjacentElement("afterend", otp);
+        }
+        otp.value = "";
+        error.textContent = "کۆدی Google Authenticator بنووسە و دووبارە دوگمەی پشتڕاستکردنەوە دابگرە.";
+        return;
+      }
+      await finishServerLogin(verified.token);
+      return;
+    }
     if (serverMfaChallenge) {
       const otp = document.getElementById("serverTotpCode");
       const verified = await serverRequest("/api/login/totp", {
@@ -1781,25 +1817,26 @@ async function submitServerLogin() {
       method: "POST",
       body: JSON.stringify({ password: input.value })
     });
-    if (result.mfaRequired) {
-      serverMfaChallenge = result.challengeId;
-      let otp = document.getElementById("serverTotpCode");
-      if (!otp) {
-        otp = document.createElement("input");
-        otp.id = "serverTotpCode";
-        otp.autocomplete = "one-time-code";
-        otp.maxLength = 16;
-        otp.placeholder = "کۆدی Authenticator یان کۆدی گەڕاندنەوە";
-        input.insertAdjacentElement("afterend", otp);
+    if (result.emailOtpRequired) {
+      serverEmailChallenge = result.challengeId;
+      let codeInput = document.getElementById("serverEmailCode");
+      if (!codeInput) {
+        codeInput = document.createElement("input");
+        codeInput.id = "serverEmailCode";
+        codeInput.inputMode = "numeric";
+        codeInput.autocomplete = "one-time-code";
+        codeInput.maxLength = 6;
+        codeInput.placeholder = "کۆدی ٦ ژمارەیی Gmail";
+        input.insertAdjacentElement("afterend", codeInput);
       }
-      otp.value = "";
-      error.textContent = "کۆدی Google Authenticator بنووسە و دووبارە دوگمەی چوونەژوورەوە دابگرە.";
+      codeInput.value = "";
+      error.textContent = "کۆدی پشتڕاستکردنەوە بۆ " + result.email + " نێردرا؛ کۆدەکە بنووسە.";
       button.textContent = "پشتڕاستکردنەوە";
       return;
     }
     await finishServerLogin(result.token);
   } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
+    error.textContent = e.message;
   } finally {
     button.disabled = false;
   }
