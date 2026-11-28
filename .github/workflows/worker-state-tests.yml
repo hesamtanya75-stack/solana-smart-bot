@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "worker.js"
+      - "tests/worker-state-routing.test.mjs"
+      - "mfa-rate-limiter.js"
       - "index.html"
       - "paper-state-coordinator.js"
       - "mfa-rate-limiter.js"

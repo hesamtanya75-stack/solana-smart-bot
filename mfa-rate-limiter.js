@@ -9,6 +9,83 @@ function response(data, status = 200) {
   });
 }
 
+const MAX_REQUEST_BYTES = 2048;
+const ROUTE_FIELDS = new Map([
+  ["/login-attempt", ["ipHash", "legacyCount"]],
+  ["/login-clear", ["ipHash"]],
+  ["/mfa-attempt", ["ipHash", "challengeId", "legacyIpCount", "legacyChallengeCount"]],
+  ["/mfa-clear", ["ipHash", "challengeId"]],
+  ["/totp-setup-attempt", ["ipHash"]],
+  ["/totp-setup-clear", ["ipHash"]],
+  ["/email-send-reserve", ["ipHash"]],
+  ["/email-attempt-reserve", ["challengeId"]],
+  ["/email-challenge-claim", ["challengeId"]],
+  ["/mfa-challenge-claim", ["challengeId"]],
+  ["/mfa-challenge-release", ["challengeId"]],
+  ["/mfa-credential-claim", ["credentialHash"]],
+  ["/mfa-credential-release", ["credentialHash"]],
+  ["/totp-setup-claim", ["secretHash"]],
+  ["/totp-setup-release", ["secretHash"]]
+]);
+
+async function readBoundedRouteJson(request, pathname) {
+  const allowed = ROUTE_FIELDS.get(pathname);
+  if (!allowed) return Object.create(null);
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && (!/^(0|[1-9]\d*)$/.test(contentLength) ||
+      Number(contentLength) > MAX_REQUEST_BYTES)) {
+    throw new TypeError("Request body is too large or malformed");
+  }
+  const contentType = request.headers.get("content-type") || "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    throw new TypeError("Expected JSON request body");
+  }
+  if (!request.body) throw new TypeError("JSON request body is required");
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_REQUEST_BYTES) {
+        await reader.cancel();
+        throw new TypeError("Request body is too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  let text;
+  try {
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new TypeError("Request body is not valid UTF-8");
+  }
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new TypeError("Malformed JSON request body");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      (Object.getPrototypeOf(body) !== Object.prototype && Object.getPrototypeOf(body) !== null)) {
+    throw new TypeError("JSON request body must be an object");
+  }
+  for (const key of Object.keys(body)) {
+    if (!allowed.includes(key)) throw new TypeError("Unexpected request field");
+  }
+  return body;
+}
+
 function validateHash(value, name) {
   if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
     throw new TypeError("Invalid " + name);
@@ -36,7 +113,7 @@ export class MfaRateLimiter {
     const url = new URL(request.url);
     try {
       if (request.method !== "POST") return response({ error: "Method not allowed" }, 405);
-      const body = await request.json();
+      const body = await readBoundedRouteJson(request, url.pathname);
 
       if (url.pathname === "/login-attempt") {
         validateHash(body.ipHash, "IP hash");
@@ -80,6 +157,24 @@ export class MfaRateLimiter {
         }
         await this.clearTotpSetup(body.ipHash);
         return response({ ok: true });
+      }
+      if (url.pathname === "/email-send-reserve") {
+        validateHash(body.ipHash, "IP hash");
+        const result = await this.reserveEmailSend(body.ipHash);
+        await this.scheduleCleanup();
+        return response(result);
+      }
+      if (url.pathname === "/email-attempt-reserve") {
+        validateChallengeId(body.challengeId);
+        const result = await this.reserveEmailAttempt(body.challengeId);
+        await this.scheduleCleanup();
+        return response(result);
+      }
+      if (url.pathname === "/email-challenge-claim") {
+        validateChallengeId(body.challengeId);
+        const claimed = await this.claimEmailChallenge(body.challengeId);
+        await this.scheduleCleanup();
+        return response({ claimed });
       }
       if (url.pathname === "/mfa-challenge-claim" || url.pathname === "/mfa-challenge-release") {
         validateChallengeId(body.challengeId);
@@ -164,6 +259,48 @@ export class MfaRateLimiter {
       await txn.put(ipKey, { count: ipEntry.count + 1, expiresAt: ipEntry.expiresAt });
       await txn.put(challengeKey, { count: challengeEntry.count + 1, expiresAt: challengeEntry.expiresAt });
       return { allowed: true };
+    });
+  }
+
+  async reserveEmailSend(ipHash) {
+    validateHash(ipHash, "IP hash");
+    return this.storage.transaction(async txn => {
+      const now = Date.now();
+      const key = "auth:email-send:" + ipHash;
+      const current = await txn.get(key);
+      const entry = current && current.expiresAt > now
+        ? { count: legacyCount(current.count), expiresAt: current.expiresAt }
+        : { count: 0, expiresAt: now + IP_WINDOW_MS };
+      if (entry.count >= 3) return { allowed: false, reason: "ip" };
+      await txn.put(key, { count: entry.count + 1, expiresAt: entry.expiresAt });
+      return { allowed: true, count: entry.count + 1 };
+    });
+  }
+
+  async reserveEmailAttempt(challengeId) {
+    validateChallengeId(challengeId);
+    return this.storage.transaction(async txn => {
+      const now = Date.now();
+      const key = "auth:email-attempt:" + challengeId;
+      const current = await txn.get(key);
+      const entry = current && current.expiresAt > now
+        ? { count: legacyCount(current.count), expiresAt: current.expiresAt }
+        : { count: 0, expiresAt: now + 10 * 60 * 1000 };
+      if (entry.count >= MAX_ATTEMPTS) return { allowed: false, attempts: entry.count };
+      const count = entry.count + 1;
+      await txn.put(key, { count, expiresAt: entry.expiresAt });
+      return { allowed: true, attempts: count };
+    });
+  }
+
+  async claimEmailChallenge(challengeId) {
+    validateChallengeId(challengeId);
+    return this.storage.transaction(async txn => {
+      const key = "auth:email-challenge-claim:" + challengeId;
+      const current = await txn.get(key);
+      if (current && current.expiresAt > Date.now()) return false;
+      await txn.put(key, { expiresAt: Date.now() + 10 * 60 * 1000 });
+      return true;
     });
   }
 

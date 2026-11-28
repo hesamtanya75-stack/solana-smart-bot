@@ -40,6 +40,45 @@ function json(data, status = 200) {
     }
   });
 }
+async function readBoundedLoginJson(request, allowedFields) {
+  const contentType = request.headers.get("content-type") || "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    const error = new TypeError("JSON content type required"); error.status = 400; throw error;
+  }
+  const length = request.headers.get("content-length");
+  if (length !== null && (!/^(0|[1-9]\d*)$/.test(length) || Number(length) > 4096)) {
+    const error = new TypeError("Request body too large or invalid");
+    error.status = Number(length) > 4096 ? 413 : 400; throw error;
+  }
+  if (!request.body) { const error = new TypeError("Request body required"); error.status = 400; throw error; }
+  const reader = request.body.getReader(), chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 4096) {
+        await reader.cancel();
+        const error = new TypeError("Request body too large"); error.status = 413; throw error;
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  let parsed;
+  try {
+    const bytes = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    const error = new TypeError("Malformed JSON request"); error.status = 400; throw error;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      Object.keys(parsed).some(key => !allowedFields.includes(key))) {
+    const error = new TypeError("Invalid request fields"); error.status = 400; throw error;
+  }
+  return parsed;
+}
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
   return {
@@ -140,7 +179,7 @@ async function authorized(request, env) {
   const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
-  if (!session || !(session.expiresAt > Date.now())) return false;
+  if (!session || !(session.expiresAt > Date.now()) || session.emailVerified !== true) return false;
   const profile = await readProfile(env);
   return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
 }
@@ -625,53 +664,135 @@ export default {
       });
     }
     if (url.pathname === "/api/login" && request.method === "POST") {
+      let pendingEmailChallengeKey = "";
       try {
-        const { password } = await request.json();
+        const { password } = await readBoundedLoginJson(request, ["password"]);
         const expected = env.BOT_LOGIN_PASSWORD;
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const legacyFailures = await env.BOT_STATE.get("login_fail:" + ip, "json") || { count: 0 };
-        const loginLimit = await authRateLimitRequest(env, "/login-attempt", {
-          ipHash,
-          legacyCount: Number(legacyFailures.count || 0)
-        });
-        if (!loginLimit.allowed) {
-          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
-        if (!expected || typeof password !== "string" || password !== expected) {
-          return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
-        }
+        const loginLimit = await authRateLimitRequest(env, "/login-attempt", { ipHash, legacyCount: Number(legacyFailures.count || 0) });
+        if (!loginLimit.allowed) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        if (!expected || typeof password !== "string" || password !== expected) return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
         await authRateLimitRequest(env, "/login-clear", { ipHash });
         await env.BOT_STATE.delete("login_fail:" + ip);
+
+        // Do not send an email OTP when the configured second factor is unusable.
+        // Keep the login flow fail-closed before creating or delivering a challenge.
         const profile = await readProfile(env);
-        // A damaged MFA profile must never downgrade to password-only login.
-        if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
+        if (profile.totpEnabled &&
+            (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
           return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
         }
+
+        const adminEmail = String(env.ADMIN_EMAIL || "").trim();
+        const resendKey = String(env.RESEND_API_KEY || "").trim();
+        const fromEmail = String(env.RESEND_FROM_EMAIL || "onboarding@resend.dev").trim();
+        if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail) || !resendKey) {
+          return json({ error: "ADMIN_EMAIL and RESEND_API_KEY must be configured for email verification." }, 503);
+        }
+        const sendLimit = await authRateLimitRequest(env, "/email-send-reserve", { ipHash });
+        if (!sendLimit.allowed) return json({ error: "Too many email codes requested; wait 15 minutes." }, 429);
+        let otpRandom;
+        do {
+          otpRandom = crypto.getRandomValues(new Uint32Array(1))[0];
+        } while (otpRandom >= 4294000000); // Reject the incomplete range to avoid modulo bias.
+        const code = String(otpRandom % 1000000).padStart(6, "0");
+        const challengeId = crypto.randomUUID();
+        pendingEmailChallengeKey = "email_login_challenge:" + challengeId;
+        // Store first so the code cannot arrive before its verification record.
+        await env.BOT_STATE.put(pendingEmailChallengeKey, JSON.stringify({ codeHash: await hashText(challengeId + ":" + code + ":" + expected), createdAt: Date.now() }), { expirationTtl: 600 });
+        const mailResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + resendKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: fromEmail, to: [adminEmail], subject: "Solana Smart Bot sign-in code",
+            text: "Your sign-in code is " + code + ". It expires in 10 minutes.",
+            html: "<p>Solana Smart Bot sign-in code:</p><strong style='font-size:28px'>" + code + "</strong><p>Expires in 10 minutes.</p>"
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!mailResponse.ok) {
+          await env.BOT_STATE.delete(pendingEmailChallengeKey);
+          pendingEmailChallengeKey = "";
+          console.error("Resend delivery failed", mailResponse.status);
+          return json({ error: "Email verification delivery failed." }, 503);
+        }
+        pendingEmailChallengeKey = "";
+        const at = adminEmail.indexOf("@");
+        const maskedEmail = adminEmail.slice(0, Math.min(2, at)) + "***" + adminEmail.slice(at);
+        return json({ ok: true, emailOtpRequired: true, challengeId, email: maskedEmail });
+      } catch (error) {
+        if (pendingEmailChallengeKey) {
+          try { await env.BOT_STATE.delete(pendingEmailChallengeKey); } catch (cleanupError) {
+            console.error("Failed to clear unsent email OTP challenge", String(cleanupError?.message || cleanupError));
+          }
+        }
+        if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
+        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        console.error("Email OTP send error", String(error?.message || error));
+        return json({ error: "Could not send sign-in verification code." }, 503);
+      }
+    }
+    if (url.pathname === "/api/login/email" && request.method === "POST") {
+      try {
+        const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
+        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+          return json({ error: "Enter a valid six-digit email code." }, 400);
+        }
+        const key = "email_login_challenge:" + challengeId;
+        const challenge = await env.BOT_STATE.get(key, "json");
+        const challengeCreatedAt = challenge?.createdAt;
+        const challengeAge = Date.now() - challengeCreatedAt;
+        if (!challenge || !Number.isSafeInteger(challengeCreatedAt) || challengeCreatedAt <= 0 ||
+            challengeCreatedAt > Date.now() || challengeAge > 600000) {
+          return json({ error: "Email code expired; sign in again." }, 401);
+        }
+        const attempt = await authRateLimitRequest(env, "/email-attempt-reserve", { challengeId });
+        if (!attempt.allowed) {
+          await env.BOT_STATE.delete(key);
+          return json({ error: "Email code attempts exhausted; sign in again." }, 429);
+        }
+        if (await hashText(challengeId + ":" + code + ":" + String(env.BOT_LOGIN_PASSWORD || "")) !== challenge.codeHash) return json({ error: "Incorrect email code." }, 401);
+        const claim = await authRateLimitRequest(env, "/email-challenge-claim", { challengeId });
+        if (!claim.claimed) return json({ error: "This email challenge has already been used." }, 409);
+        await env.BOT_STATE.delete(key);
+        const profile = await readProfile(env);
         if (profile.totpEnabled) {
-          const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
-          return json({ ok: true, mfaRequired: true, challengeId });
+          if (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+          const mfaId = crypto.randomUUID();
+          await env.BOT_STATE.put("mfa_challenge:" + mfaId, JSON.stringify({ createdAt: Date.now(), attempts: 0, emailVerified: true }), { expirationTtl: 300 });
+          return json({ ok: true, mfaRequired: true, challengeId: mfaId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
-        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
-        return json({ error: "داواکاری هەڵەیە" }, 400);
+        if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
+        if (error?.status === 503) return json({ error: "Authentication security service is unavailable; try later." }, 503);
+        return json({ error: "Could not verify email code." }, 400);
       }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
-        if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
+        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) ||
+            typeof code !== "string" || !/^[A-Za-z0-9]{6,32}$/.test(code)) {
+          return json({ error: "Invalid login request." }, 400);
+        }
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
         const ipFailureKey = "totp_fail:" + ip;
         const key = "mfa_challenge:" + challengeId;
         const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
+        const challengeCreatedAt = challenge?.createdAt;
+        const challengeAge = Date.now() - challengeCreatedAt;
+        if (!challenge || challenge.emailVerified !== true ||
+            !Number.isSafeInteger(challengeCreatedAt) || challengeCreatedAt <= 0 ||
+            challengeCreatedAt > Date.now() || challengeAge > 300000) {
+          return json({ error: "Email verification is required; sign in again." }, 401);
+        }
         if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
         const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
         const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
@@ -730,7 +851,7 @@ export default {
           await env.BOT_STATE.delete(key);
           const token = crypto.randomUUID();
           const expiresAt = Date.now() + SESSION_MS;
-          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), emailVerified: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
           return json({ ok: true, token });
         } catch (error) {
           try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
@@ -738,6 +859,7 @@ export default {
           throw error;
         }
       } catch (error) {
+        if (error?.status === 400 || error?.status === 413) return json({ error: "Invalid login request." }, error.status);
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
