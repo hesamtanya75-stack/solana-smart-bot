@@ -30,6 +30,8 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         env:
+          # PR code is untrusted; do not expose repository RPC/API secrets.
+          # This job is read-only and uses the public Devnet endpoint only.
           DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
       - name: Report funded Devnet lifecycle as skipped without explicit opt-in

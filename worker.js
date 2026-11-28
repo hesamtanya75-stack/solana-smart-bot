@@ -539,7 +539,8 @@ async function refreshTrades(state, env) {
   let sold = 0;
   for (const trade of open) {
     const price = Number(best.get(trade.mint)?.priceUsd || 0);
-    if (!(price > 0)) continue;
+    // Reject non-finite provider values before they can enter persisted paper state.
+    if (!Number.isFinite(price) || price <= 0) continue;
     trade.currentPrice = price;
     if (price >= Number(trade.buyPrice) * 1.10 || price <= Number(trade.buyPrice) * 0.95) {
       const saleValue = Number((Number(trade.tokens) * price).toFixed(2));

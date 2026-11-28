@@ -46,6 +46,42 @@ async function call(instance, body) {
 const mintA = "So11111111111111111111111111111111111111112";
 const requestId = suffix => "paper-test-request-" + suffix;
 
+async function runScheduledWithDexPrice(t, initial, priceUsd, beforeCompareAndSet = null) {
+  const { instance } = makeDO(initial);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    assert.match(String(url), /api\.dexscreener\.com\/latest\/dex\/tokens\//);
+    return new Response(JSON.stringify({ pairs: [{
+      chainId: "solana",
+      baseToken: { address: mintA },
+      liquidity: { usd: 50000 },
+      priceUsd
+    }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const namespace = {
+    idFromName: name => name,
+    get: id => {
+      assert.equal(id, "paper-trading");
+      return { fetch: async (url, init) => {
+        const request = new Request(url, init);
+        if (beforeCompareAndSet) {
+          const body = await request.clone().json();
+          if (body.operation === "compare-and-set") await beforeCompareAndSet(instance);
+        }
+        return instance.fetch(request);
+      } };
+    }
+  };
+  const pending = [];
+  await Worker.scheduled({}, {
+    PAPER_TRADING_STATE: namespace,
+    BOT_STATE: new MemoryKV()
+  }, { waitUntil: promise => pending.push(promise) });
+  await Promise.all(pending);
+  return call(instance, { operation: "get" });
+}
+
 test("internal state endpoint rejects oversized request bodies before JSON parsing", async () => {
   const { instance } = makeDO({ balance: 100, trades: [], updatedAt: null });
   const response = await instance.fetch(new Request("https://paper-trading.internal/", {
@@ -67,6 +103,20 @@ test("PaperTradingState imports the existing KV paper state once", async () => {
   assert.equal(result.body.state.trades.length, 1);
   assert.equal(result.body.state.autoEnabled, true);
   assert.equal(result.body.revision, 0);
+});
+
+test("bootstrap rejects malformed legacy metadata before writing marker or DO record", async () => {
+  const legacy = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: [], lastScanReport: [{ mint: mintA, status: "blocked", reasons: [7] }]
+  };
+  const { instance, storage } = makeDO(legacy);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(storage.values.has("paper_state_v1"), false);
+  const marker = await instance.env.BOT_STATE.get("paper_state_do_migration_v1");
+  assert.equal(marker, null);
+  assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), legacy);
 });
 
 test("interrupted initializing marker safely resumes the one-time KV import", async () => {
@@ -377,4 +427,255 @@ test("scheduled cron retries a revision conflict without overwriting concurrent 
   assert.ok(Number.isFinite(Date.parse(current.body.state.lastRunAt)));
   assert.match(current.body.state.lastMessage, /Auto-buy inactive/);
   assert.equal(current.body.revision, 2);
+});
+
+
+test("scheduled cron paper-sells at the +10% threshold and credits the sale value", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const first = await runScheduledWithDexPrice(t, initial, "2.2");
+  assert.equal(first.status, 200);
+  assert.equal(first.body.state.balance, 100.5);
+  assert.equal(first.body.state.trades[0].sold, true);
+  assert.equal(first.body.state.trades[0].sellPrice, 2.2);
+  assert.equal(first.body.state.trades[0].saleValue, 5.5);
+});
+
+test("scheduled cron paper-sells at the -5% threshold and credits the reduced value", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const result = await runScheduledWithDexPrice(t, initial, "1.9");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.balance, 99.75);
+  assert.equal(result.body.state.trades[0].sold, true);
+  assert.equal(result.body.state.trades[0].saleValue, 4.75);
+});
+
+
+test("scheduled cron does not credit a previously sold paper trade twice", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const first = await runScheduledWithDexPrice(t, initial, "2.2");
+  const second = await runScheduledWithDexPrice(t, first.body.state, "2.2");
+  assert.equal(first.body.state.balance, 100.5);
+  assert.equal(second.body.state.balance, 100.5);
+  assert.equal(second.body.state.trades[0].sold, true);
+  assert.equal(second.body.state.trades[0].saleValue, 5.5);
+});
+
+test("scheduled cron retries a sell after a concurrent revision change without double-crediting", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  let injected = false;
+  const result = await runScheduledWithDexPrice(t, initial, "2.2", async instance => {
+    if (injected) return;
+    injected = true;
+    const concurrent = await call(instance, { operation: "automation", settings: { paused: true } });
+    assert.equal(concurrent.status, 200);
+  });
+  assert.equal(injected, true);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.paused, true);
+  assert.equal(result.body.state.balance, 100.5);
+  assert.equal(result.body.state.trades[0].sold, true);
+  assert.equal(result.body.state.trades[0].saleValue, 5.5);
+  assert.equal(result.body.revision, 2);
+});
+
+test("scheduled cron ignores non-finite provider prices without corrupting paper state", async t => {
+  const initial = { balance: 95, autoEnabled: false, paused: false, scannedMints: [], trades: [{
+    mint: mintA, amount: 5, buyPrice: 2, currentPrice: 2, tokens: 2.5, sold: false
+  }] };
+  const result = await runScheduledWithDexPrice(t, initial, "Infinity");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.state.balance, 95);
+  assert.equal(result.body.state.trades[0].sold, false);
+  assert.equal(result.body.state.trades[0].currentPrice, 2);
+  assert.ok(Number.isFinite(Date.parse(result.body.state.lastRunAt)));
+});
+
+
+test("legacy paper history above the supported limit fails closed without truncation", async () => {
+  const trades = Array.from({ length: 501 }, (_, index) => ({
+    mint: mintA,
+    amount: 5,
+    buyPrice: 2,
+    currentPrice: 2,
+    tokens: 2.5,
+    sold: true,
+    sellPrice: 2,
+    saleValue: 5,
+    boughtAt: new Date(0 + index).toISOString()
+  }));
+  const legacy = { balance: 100, trades, autoEnabled: false, paused: false, scannedMints: [] };
+  const { instance, storage } = makeDO(legacy);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, "Paper trading state operation failed");
+  assert.equal(await storage.get("paper_state_v1"), undefined);
+  assert.equal((await storage.values).size, 0);
+});
+
+
+test("legacy migration rejects malformed metadata without consuming the migration window", async () => {
+  const invalidStates = [
+    { deferredMints: [{ mint: mintA, retryAt: "later" }] },
+    { deferredMints: "not-an-array" },
+    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: [42] }] },
+    { lastScanReport: [{ mint: mintA, status: "blocked" }] },
+    { scannedMints: [42] }
+  ];
+  for (const metadata of invalidStates) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.status, 200);
+    const result = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: initial.body.revision,
+      state: {
+        balance: 95, trades: [], autoEnabled: false, paused: false,
+        scannedMints: [], ...metadata
+      }
+    });
+    assert.equal(result.status, 503);
+    const current = await call(instance, { operation: "get" });
+    assert.equal(current.body.revision, initial.body.revision);
+    assert.equal(current.body.migrationOpen, true);
+    assert.equal(current.body.state.balance, 100);
+  }
+});
+
+test("legacy migration window stays closed when paper metadata shows prior activity", async () => {
+  const cases = [
+    { deferredMints: [{ mint: mintA, retryAt: 123 }] },
+    { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] }
+  ];
+  for (const extra of cases) {
+    const { instance } = makeDO({
+      balance: 100, trades: [], autoEnabled: false, paused: false,
+      scannedMints: [], ...extra
+    });
+    const result = await call(instance, { operation: "get" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.migrationOpen, false);
+    const attempt = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: result.body.revision,
+      state: { balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(attempt.status, 409);
+  }
+});
+
+
+test("compare-and-set permanently closes legacy migration after deferred or scan-report activity", async () => {
+  const activityCases = [
+    {
+      active: { deferredMints: [{ mint: mintA, retryAt: 123 }] },
+      cleared: { deferredMints: [] }
+    },
+    {
+      active: { lastScanReport: [{ mint: mintA, status: "blocked", reasons: ["risk"] }] },
+      cleared: { lastScanReport: [] }
+    }
+  ];
+  for (const activity of activityCases) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, true);
+    const recorded = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: initial.body.revision,
+      state: { ...initial.body.state, ...activity.active }
+    });
+    assert.equal(recorded.status, 200);
+    const afterActivity = await call(instance, { operation: "get" });
+    assert.equal(afterActivity.body.migrationOpen, false);
+    const cleared = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: recorded.body.revision,
+      state: { ...recorded.body.state, ...activity.cleared }
+    });
+    assert.equal(cleared.status, 200);
+    const afterClear = await call(instance, { operation: "get" });
+    assert.equal(afterClear.body.migrationOpen, false);
+    const migration = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: afterClear.body.revision,
+      state: { balance: 75, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(migration.status, 409);
+  }
+});
+
+
+test("malformed legacy activity metadata fails bootstrap; valid activity closes browser migration", async () => {
+  const malformedCases = [
+    { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
+    { deferredMints: { mint: mintA, retryAt: 123 } },
+    { lastScanReport: [{ mint: 7, status: null, reasons: "invalid" }] },
+    { lastScanReport: { mint: mintA, status: "blocked" } },
+    { scannedMints: { mint: mintA } }
+  ];
+  for (const extra of malformedCases) {
+    const legacy = {
+      balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [], ...extra
+    };
+    const { instance, storage } = makeDO(legacy);
+    const result = await call(instance, { operation: "get" });
+    // Invalid raw structures must be rejected before a marker or DO record exists.
+    assert.equal(result.status, 503);
+    assert.equal(storage.values.has("paper_state_v1"), false);
+    assert.equal(await instance.env.BOT_STATE.get("paper_state_do_migration_v1"), null);
+    assert.deepEqual(await instance.env.BOT_STATE.get("bot_state", "json"), legacy);
+  }
+
+  const legacyWithActivity = {
+    balance: 100, trades: [], autoEnabled: false, paused: false,
+    scannedMints: ["valid-but-nonempty"]
+  };
+  const { instance } = makeDO(legacyWithActivity);
+  const result = await call(instance, { operation: "get" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.migrationOpen, false);
+  const attempt = await call(instance, {
+    operation: "migrate-legacy",
+    expectedRevision: result.body.revision,
+    state: { balance: 65, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+  });
+  assert.equal(attempt.status, 409);
+});
+
+test("compare-and-set closes migration on malformed or non-empty raw activity metadata", async () => {
+  const cases = [
+    { scannedMints: { mint: mintA } },
+    { scannedMints: ["not-a-valid-mint"] },
+    { deferredMints: { mint: mintA, retryAt: 123 } },
+    { deferredMints: [{ mint: 7, retryAt: "invalid" }] },
+    { lastScanReport: { mint: mintA, status: "blocked" } },
+    { lastScanReport: [{ mint: 7, status: null }] }
+  ];
+  for (const metadata of cases) {
+    const { instance } = makeDO({ balance: 100, trades: [], autoEnabled: false, paused: false, scannedMints: [] });
+    const initial = await call(instance, { operation: "get" });
+    assert.equal(initial.body.migrationOpen, true);
+    const updated = await call(instance, {
+      operation: "compare-and-set",
+      expectedRevision: initial.body.revision,
+      state: { ...initial.body.state, ...metadata }
+    });
+    assert.equal(updated.status, 200);
+    const current = await call(instance, { operation: "get" });
+    assert.equal(current.body.migrationOpen, false);
+    const migration = await call(instance, {
+      operation: "migrate-legacy",
+      expectedRevision: current.body.revision,
+      state: { balance: 60, trades: [], autoEnabled: false, paused: false, scannedMints: [] }
+    });
+    assert.equal(migration.status, 409);
+  }
 });

@@ -11,6 +11,36 @@ const DEFAULT_STATE = {
   updatedAt: null
 };
 
+function hasNoMigrationMetadata(value) {
+  return ["scannedMints", "deferredMints", "lastScanReport"].every(key =>
+    value?.[key] === undefined || (Array.isArray(value[key]) && value[key].length === 0)
+  );
+}
+
+function validateMigrationMetadata(value) {
+  if (value.scannedMints !== undefined &&
+      (!Array.isArray(value.scannedMints) || value.scannedMints.length > 1000 ||
+       value.scannedMints.some(mint => typeof mint !== "string" || !mint.trim() || mint.length > 64))) {
+    throw new Error("Paper trading migration integrity error: invalid scanned mints");
+  }
+  if (value.deferredMints !== undefined &&
+      (!Array.isArray(value.deferredMints) || value.deferredMints.length > 1000 ||
+       value.deferredMints.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
+         typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+         typeof item.retryAt !== "number" || !Number.isFinite(item.retryAt)))) {
+    throw new Error("Paper trading migration integrity error: invalid deferred mints");
+  }
+  if (value.lastScanReport !== undefined &&
+      (!Array.isArray(value.lastScanReport) || value.lastScanReport.length > 20 ||
+       value.lastScanReport.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
+         typeof item.mint !== "string" || !item.mint.trim() || item.mint.length > 64 ||
+         typeof item.status !== "string" || !item.status.trim() || item.status.length > 40 ||
+         !Array.isArray(item.reasons) || item.reasons.length > 10 ||
+         item.reasons.some(reason => typeof reason !== "string" || reason.length > 300)))) {
+    throw new Error("Paper trading migration integrity error: invalid scan report");
+  }
+}
+
 function cleanState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Paper trading state integrity error: state must be an object");
@@ -23,10 +53,13 @@ function cleanState(value) {
     throw new Error("Paper trading state integrity error: trades must be an array");
   }
   const sourceTrades = s.trades || [];
+  if (sourceTrades.length > 500) {
+    throw new Error("Paper trading state integrity error: trade history exceeds the supported limit");
+  }
   const finite = (value, fallback = 0) =>
     value === undefined ? fallback :
     typeof value === "number" && Number.isFinite(value) ? value : NaN;
-  const trades = sourceTrades.slice(-500).map(trade => {
+  const trades = sourceTrades.map(trade => {
     if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
         typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) {
       throw new Error("Paper trading state integrity error: malformed trade record");
@@ -182,11 +215,25 @@ export class PaperTradingState {
     // after writing the marker but before committing the Durable Object record.
     // If a record had committed, the first storage.get above would have returned it.
     const legacy = await this.env.BOT_STATE.get("bot_state", "json");
+    // Validate the untouched legacy snapshot before creating a migration marker
+    // or a Durable Object record; cleanState may normalize optional metadata.
+    validateMigrationMetadata(legacy || DEFAULT_STATE);
     await this.env.BOT_STATE.put(migrationKey, "initializing");
     const initialState = cleanState(legacy || DEFAULT_STATE);
+    // cleanState intentionally filters malformed optional metadata for normal
+    // operation. During the one-time migration decision, however, malformed or
+    // non-empty legacy metadata must count as prior activity and close migration.
+    const noLegacyDeferredActivity = legacy?.deferredMints === undefined ||
+      (Array.isArray(legacy.deferredMints) && legacy.deferredMints.length === 0);
+    const noLegacyScanReportActivity = legacy?.lastScanReport === undefined ||
+      (Array.isArray(legacy.lastScanReport) && legacy.lastScanReport.length === 0);
+    const noLegacyScannedMintActivity = legacy?.scannedMints === undefined ||
+      (Array.isArray(legacy.scannedMints) && legacy.scannedMints.length === 0);
     const migrationOpen = initialState.balance === 100 && initialState.trades.length === 0 &&
       initialState.autoEnabled === false && initialState.paused === false &&
-      initialState.scannedMints.length === 0;
+      initialState.scannedMints.length === 0 && initialState.deferredMints.length === 0 &&
+      initialState.lastScanReport.length === 0 &&
+      noLegacyDeferredActivity && noLegacyScanReportActivity && noLegacyScannedMintActivity;
     const candidate = { state: initialState, revision: 0, recentOperations: [], migrationOpen, migrationMarkerPending: true };
     record = await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get("paper_state_v1");
@@ -244,7 +291,8 @@ export class PaperTradingState {
           const migrationStillOpen = record.migrationOpen === true &&
             nextState.balance === 100 && nextState.trades.length === 0 &&
             nextState.autoEnabled === false && nextState.paused === false &&
-            nextState.scannedMints.length === 0;
+            nextState.scannedMints.length === 0 && nextState.deferredMints.length === 0 &&
+            nextState.lastScanReport.length === 0 && hasNoMigrationMetadata(body.state);
           const next = {
             ...record,
             state: nextState,
@@ -270,10 +318,14 @@ export class PaperTradingState {
           const canMigrate = record.migrationOpen === true &&
             current.balance === 100 && current.trades.length === 0 &&
             current.autoEnabled === false && current.paused === false &&
-            current.scannedMints.length === 0;
+            current.scannedMints.length === 0 && current.deferredMints.length === 0 &&
+            current.lastScanReport.length === 0;
           if (!canMigrate) {
             return { value: { conflict: true, revision: record.revision, state: current } };
           }
+          // Migration is a one-time import: reject malformed metadata instead
+          // of letting cleanState silently filter and discard legacy history.
+          validateMigrationMetadata(body.state);
           const next = {
             ...record, state: cleanState(body.state),
             migrationOpen: false, revision: record.revision + 1

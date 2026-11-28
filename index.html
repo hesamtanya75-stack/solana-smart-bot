@@ -1666,21 +1666,54 @@ saveDemoState = function() {
 };
 async function finishServerLogin(token) {
   clearServerPolling();
+  // Persist the token only after loading and migrating paper state succeeds.
   serverToken = token;
-  localStorage.setItem("solanaBotSession", token);
   const remote = await serverRequest("/api/state");
   serverStateRevision = Number.isSafeInteger(remote.revision) ? remote.revision : null;
   // Enable server persistence before migrating the browser's existing paper-trading
   // state. Otherwise saveServerState() returns early and the next sync replaces
   // the local history and balance with the empty server defaults.
-  serverModeReady = true;
   if (remote.canMigrateLegacy === true) {
-    let old = null;
-    try { old = JSON.parse(localStorage.getItem("demoTradingData") || "null"); } catch (_) {}
-    if (old && Array.isArray(old.trades)) {
-      demoBalance = Number.isFinite(Number(old.balance)) ? Number(old.balance) : 100;
+    // Never replace an unreadable or malformed local paper-trading snapshot with
+    // the default $100 balance: that would consume the one-time migration window
+    // and silently discard the user's previous paper history.
+    const legacyRaw = localStorage.getItem("demoTradingData");
+    if (legacyRaw !== null) {
+      let old;
+      try { old = JSON.parse(legacyRaw); }
+      catch (_) { throw new Error("داتای کڕینی خەیاڵی لۆکاڵ خوێندرایەوە نییە؛ داتاکە مەسڕەوە و پێش گواستنەوە پشکنینی بکە."); }
+      if (!old || typeof old !== "object" || Array.isArray(old) ||
+          !Array.isArray(old.trades) || old.trades.length > 500 ||
+          typeof old.balance !== "number" || !Number.isFinite(old.balance) || old.balance < 0) {
+        throw new Error("داتای کڕینی خەیاڵی لۆکاڵ ناتەواوە؛ گواستنەوە ڕاگیرا بۆ پاراستنی مێژووی مامەڵەکان.");
+      }
+      // Validate every legacy trade before enabling server mode or mutating the
+      // in-memory account. The server applies the same strict numeric checks.
+      const invalidTrade = old.trades.some(trade => {
+        if (!trade || typeof trade !== "object" || Array.isArray(trade) ||
+            typeof trade.mint !== "string" || !trade.mint.trim() || trade.mint.length > 64) return true;
+        const amount = trade.amount;
+        const buyPrice = trade.buyPrice;
+        const tokens = trade.tokens;
+        const currentPrice = trade.currentPrice === undefined ? buyPrice : trade.currentPrice;
+        const sellPrice = trade.sellPrice === undefined ? 0 : trade.sellPrice;
+        const saleValue = trade.saleValue === undefined ? 0 : trade.saleValue;
+        return ![amount, buyPrice, tokens, currentPrice, sellPrice, saleValue].every(
+          value => typeof value === "number" && Number.isFinite(value)
+        ) || amount <= 0 || buyPrice <= 0 || tokens <= 0 ||
+          currentPrice < 0 || sellPrice < 0 || saleValue < 0 ||
+          (trade.sold !== undefined && typeof trade.sold !== "boolean");
+      });
+      if (invalidTrade) {
+        throw new Error("مێژووی مامەڵەکانی کڕینی خەیاڵی ناتەواوە یان ژمارەی نادروستی تێدایە؛ گواستنەوە ڕاگیرا بۆ پاراستنی داتا.");
+      }
+      demoBalance = old.balance;
       demoTrades = old.trades;
     }
+  }
+  // Enable server persistence only after validating any existing local snapshot.
+  serverModeReady = true;
+  if (remote.canMigrateLegacy === true) {
     await saveServerState();
   } else {
     applyServerState(remote);
@@ -1693,6 +1726,7 @@ async function finishServerLogin(token) {
     autoEnabled: false, paused: false
   });
   await syncServerState();
+  localStorage.setItem("solanaBotSession", token);
   refreshServerPrices().catch(() => {});
   serverSyncTimer = setInterval(() => syncServerState().catch(() => {}), 15000);
   serverPriceTimer = setInterval(() => refreshServerPrices().catch(() => {}), 5000);
@@ -1702,6 +1736,7 @@ async function submitServerLogin() {
   const input = document.getElementById("serverPassword");
   const error = document.getElementById("serverLoginError");
   const button = document.getElementById("serverLoginButton");
+  let receivedSessionToken = false;
   button.disabled = true;
   error.textContent = "چوونەژوورەوە...";
   try {
@@ -1712,6 +1747,7 @@ async function submitServerLogin() {
         body: JSON.stringify({ challengeId: serverMfaChallenge, code: otp.value.trim() })
       });
       serverMfaChallenge = "";
+      receivedSessionToken = true;
       await finishServerLogin(verified.token);
       return;
     }
@@ -1735,9 +1771,22 @@ async function submitServerLogin() {
       button.textContent = "پشتڕاستکردنەوە";
       return;
     }
+    receivedSessionToken = true;
     await finishServerLogin(result.token);
   } catch (e) {
-    error.textContent = e.message === "وشەی نهێنی هەڵەیە" ? e.message : e.message;
+    if (receivedSessionToken) {
+      // A valid credential is not enough: keep the browser fail-closed unless
+      // paper-state migration and the initial server sync both complete.
+      clearServerPolling();
+      serverModeReady = false;
+      serverStateRevision = null;
+      serverToken = "";
+      serverLogoutLocked = true;
+      localStorage.setItem("solanaBotServerLogoutLocked", "1");
+      localStorage.removeItem("solanaBotSession");
+      serverLogin.style.display = "flex";
+    }
+    error.textContent = e.message;
   } finally {
     button.disabled = false;
   }

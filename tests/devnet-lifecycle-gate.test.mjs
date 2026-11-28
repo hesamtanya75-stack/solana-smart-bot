@@ -15,13 +15,15 @@ function getStep(name) {
   return workflow.slice(start, next === -1 ? undefined : next);
 }
 
-test("funded Devnet lifecycle is isolated to an explicit manual job and never receives a public-RPC fallback", () => {
+test("pull-request preflight is secret-free and funded Devnet requires explicit manual opt-in", () => {
   assert.match(workflow, /workflow_dispatch:[\s\S]*run_funded_devnet_lifecycle:[\s\S]*default: false/);
   const readOnlyJob = workflow.slice(workflow.indexOf("  devnet-read-only:"), workflow.indexOf("  funded-devnet-lifecycle:"));
   const fundedJob = workflow.slice(workflow.indexOf("  funded-devnet-lifecycle:"));
 
-  assert.doesNotMatch(readOnlyJob, /secrets\.DEVNET_RPC_URL/);
-  assert.match(readOnlyJob, /DEVNET_RPC_URL: https:\/\/api\.devnet\.solana\.com/);
+  // PR-controlled scripts and tests must not receive repository credentials.
+  assert.doesNotMatch(readOnlyJob, /\$\{\{\s*secrets\./);
+  assert.match(readOnlyJob, /DEVNET_RPC_URL:\s*https:\/\/api\.devnet\.solana\.com/);
+  assert.doesNotMatch(readOnlyJob, /ALCHEMY_API_KEY/);
   assert.match(fundedJob, /if:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_dispatch'\s*&&\s*github\.ref\s*==\s*'refs\/heads\/security\/pr33-safety-transplant-4678a20'\s*&&\s*inputs\.run_funded_devnet_lifecycle\s*==\s*true\s*\}\}/);
   assert.match(fundedJob, /environment:\s*devnet-funded/);
   assert.doesNotMatch(fundedJob, /^\s{4}env:\s*\n\s{6}DEVNET_RPC_URL:/m);
@@ -42,16 +44,33 @@ test("funded Devnet lifecycle is isolated to an explicit manual job and never re
   assert.match(script, /DEVNET_RPC_URL is required for funded Devnet lifecycle/);
   assert.doesNotMatch(script, /process\.env\.DEVNET_RPC_URL\s*\|\|\s*["']https:\/\/api\.devnet\.solana\.com/);
 });
+
 test("Devnet preflight retries transient network failures without exposing the RPC URL", async () => {
   const script = readFileSync(
     new URL("../scripts/devnet-preflight.mjs", import.meta.url),
     "utf8"
   );
-  assert.match(script, /catch \(error\)[\s\S]*network request failed after 4 attempts/);
+  assert.match(script, /catch \(error\)[\s\S]*network request failed after 6 attempts/);
   assert.match(script, /AbortSignal\.timeout\(15000\)/);
   assert.match(script, /mismatched JSON-RPC envelope/);
   assert.match(script, /payload\.jsonrpc !== "2\.0" \|\| payload\.id !== 1/);
   assert.doesNotMatch(script, /console\.(?:log|error)\([^\n]*DEVNET_RPC/);
+});
+
+test("read-only Devnet preflight falls back to official public RPC only on configured-provider DNS failure", () => {
+  const script = readFileSync(
+    new URL("../scripts/devnet-preflight.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /error\?\.cause\?\.code === "ENOTFOUND"/);
+  assert.match(script, /activeDevnetRpc = PUBLIC_DEVNET_RPC/);
+  assert.match(script, /usedPublicRpcFallback/);
+  const funded = readFileSync(
+    new URL("../scripts/devnet-signed-lifecycle.mjs", import.meta.url),
+    "utf8"
+  );
+  assert.match(funded, /DEVNET_RPC_URL is required for funded Devnet lifecycle/);
+  assert.doesNotMatch(funded, /PUBLIC_DEVNET_RPC|api\.devnet\.solana\.com/);
 });
 
 test("Devnet airdrop confirmation uses its signature and never repeats a submitted request", () => {
@@ -77,7 +96,7 @@ test("Devnet RPC retryable HTTP responses honor bounded Retry-After and release 
     "utf8"
   );
   assert.match(script, /function retryDelayMs\(response, attempt\)/);
-  assert.match(script, /Math\.min\(dateDelay, 10_000\)/);
+  assert.match(script, /Math\.min\(dateDelay, 30_000\)/);
   assert.match(script, /response\.body\?\.cancel\(\)/);
   assert.match(script, /setTimeout\(resolve, retryDelayMs\(response, attempt\)\)/);
 });
