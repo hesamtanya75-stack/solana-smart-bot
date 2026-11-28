@@ -28,7 +28,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -73,7 +73,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -112,7 +112,7 @@ jobs:
       - name: Check out the live-trading preparation branch for tests
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -142,7 +142,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
