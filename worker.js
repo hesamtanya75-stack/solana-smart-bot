@@ -777,8 +777,9 @@ export default {
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
         const { challengeId, code } = await readBoundedLoginJson(request, ["challengeId", "code"]);
-        if (typeof challengeId !== "string" || typeof code !== "string") {
-          return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        if (typeof challengeId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(challengeId) ||
+            typeof code !== "string" || !/^[A-Za-z0-9]{6,32}$/.test(code)) {
+          return json({ error: "Invalid login request." }, 400);
         }
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
@@ -858,6 +859,9 @@ export default {
           throw error;
         }
       } catch (error) {
+        if (error?.status === 400 || error?.status === 413) {
+          return json({ error: "Invalid login request." }, error.status);
+        }
         if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
