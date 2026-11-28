@@ -41,9 +41,12 @@ jobs:
           printf '%s\n' "### Funded Devnet lifecycle: skipped" "" "Reason: explicit workflow_dispatch opt-in is required. No signing or transaction submission was attempted." >> "$GITHUB_STEP_SUMMARY"
 
   funded-devnet-lifecycle:
-    # This isolated job is never part of pull_request runs. The secret is not
-    # exposed to checkout, dependency installation, or PR test steps.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true }}
+    # Fail closed: manual funded tests may run only from the protected default
+    # branch, never from a PR or an arbitrary dispatch ref. Configure the
+    # `devnet-funded` GitHub Environment with required reviewers and prevent
+    # self-review before enabling this job; environment approval gates secrets.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.run_funded_devnet_lifecycle == true }}
+    environment: devnet-funded
     needs: devnet-read-only
     runs-on: ubuntu-latest
     timeout-minutes: 10
