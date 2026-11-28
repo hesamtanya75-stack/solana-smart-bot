@@ -11,6 +11,51 @@ function json(data, status = 200) {
   });
 }
 
+const MAX_REQUEST_BODY_BYTES = 4_096;
+
+async function readBoundedJson(request, maxBytes = MAX_REQUEST_BODY_BYTES) {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+    throw new Error("Content-Type must be application/json");
+  }
+  const declaredLength = request.headers.get("Content-Length");
+  if (declaredLength !== null &&
+      (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
+    throw new Error("Request body exceeds the allowed size");
+  }
+  if (!request.body) throw new Error("Request body is required");
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error("Request body exceeds the allowed size");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error("Request body is not valid JSON");
+  }
+}
+
 function emptyState() {
   return { killSwitch: true, reservations: {} };
 }
@@ -96,9 +141,10 @@ export class LiveTradeCoordinator {
 
     let body;
     try {
-      body = await request.json();
-    } catch {
-      return json({ error: "Invalid JSON body" }, 400);
+      body = await readBoundedJson(request);
+    } catch (error) {
+      const message = String(error?.message || error);
+      return json({ error: message }, /exceeds the allowed size/i.test(message) ? 413 : 400);
     }
 
     try {
