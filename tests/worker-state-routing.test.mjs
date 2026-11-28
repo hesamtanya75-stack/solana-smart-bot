@@ -313,6 +313,29 @@ test("unauthenticated automation and profile API requests are rejected before st
 });
 
 
+test("public login endpoints reject oversized, malformed, wrong-type and unknown-field JSON before touching auth state", async () => {
+  const routes = [
+    ["/api/login", { password: "p" }, ["password", "unexpected"]],
+    ["/api/login/email", { challengeId: "challenge_123", code: "123456" }, ["challengeId", "code", "unexpected"]],
+    ["/api/login/totp", { challengeId: "challenge_123", code: "123456" }, ["challengeId", "code", "unexpected"]]
+  ];
+  for (const [path, valid, extra] of routes) {
+    for (const requestCase of [
+      { headers: { "Content-Type": "application/json" }, body: "x".repeat(4097), expected: 413 },
+      { headers: { "Content-Type": "text/plain" }, body: JSON.stringify(valid), expected: 400 },
+      { headers: { "Content-Type": "application/json" }, body: "{", expected: 400 },
+      { headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(extra.map(key => [key, key === "unexpected" ? true : valid[key]]))), expected: 400 }
+    ]) {
+      const { env, touchedKvKeys } = environment();
+      const response = await worker.fetch(new Request("https://worker.test" + path, {
+        method: "POST", headers: requestCase.headers, body: requestCase.body
+      }), env);
+      assert.equal(response.status, requestCase.expected, path + " malformed input");
+      assert.deepEqual(touchedKvKeys, [], path + " must reject before KV access");
+    }
+  }
+});
+
 test("password login throttles after five failures through the atomic auth Durable Object", async () => {
   const { env, authStorage } = environment();
   const values = new Map();
