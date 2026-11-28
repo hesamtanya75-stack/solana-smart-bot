@@ -57,6 +57,22 @@ test("allows payer and owner to share the same compiled account index", () => {
   assert.equal(result.ownerAccountIndex, 0);
 });
 
+test("rejects non-canonical public keys and duplicate keys under distinct indexes", () => {
+  const malformedKeys = [...keys];
+  malformedKeys[1] = "not-a-public-key";
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], malformedKeys),
+    /canonical 32-byte public keys/
+  );
+
+  const duplicateKeys = [...keys];
+  duplicateKeys[1] = duplicateKeys[0];
+  assert.throws(
+    () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], duplicateKeys),
+    /duplicate public key/
+  );
+});
+
 test("rejects unsupported duplicate ATA role indexes", () => {
   assert.throws(
     () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,2,4,5], keys),
@@ -66,4 +82,33 @@ test("rejects unsupported duplicate ATA role indexes", () => {
     () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,3,5], keys),
     /unsupported role alias/
   );
+});
+
+test("accepts canonical 32-byte Solana program IDs and rejects invalid base58 lengths", () => {
+  const knownKeys = [
+    SYSTEM,
+    TOKEN,
+    TOKEN_2022,
+    ATA
+  ];
+  for (const key of knownKeys) {
+    const candidateKeys = [...keys];
+    candidateKeys[1] = key;
+    // A program ID is a valid public key encoding even when used in a role
+    // slot for this encoding-only check; duplicate-role rules still apply.
+    if (candidateKeys.some((value, index) => index !== 1 && value === key)) continue;
+    assert.doesNotThrow(() =>
+      decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], candidateKeys)
+    );
+  }
+
+  for (const invalid of ["1", "1111111111111111111111111111111", "0".repeat(32),
+    "z".repeat(45), "z".repeat(100000), "111111111111111111111111111111111"]) {
+    const candidateKeys = [...keys];
+    candidateKeys[1] = invalid;
+    assert.throws(
+      () => decodeAssociatedTokenInstruction(ATA, encoded(0), [0,1,2,3,4,5], candidateKeys),
+      /canonical 32-byte public keys/
+    );
+  }
 });
