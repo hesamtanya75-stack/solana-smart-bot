@@ -321,7 +321,7 @@ test("public login endpoints reject oversized, malformed, wrong-type and unknown
   ];
   for (const [path, valid, extra] of routes) {
     for (const requestCase of [
-      { headers: { "Content-Type": "application/json" }, body: "x".repeat(4097), expected: path === "/api/login/totp" ? 400 : 413 },
+      { headers: { "Content-Type": "application/json" }, body: "x".repeat(4097), expected: 413 },
       { headers: { "Content-Type": "text/plain" }, body: JSON.stringify(valid), expected: 400 },
       { headers: { "Content-Type": "application/json" }, body: "{", expected: 400 },
       { headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(extra.map(key => [key, key === "unexpected" ? true : valid[key]]))), expected: 400 }
