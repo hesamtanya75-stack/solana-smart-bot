@@ -39,6 +39,13 @@ async function requestDevnetAirdrop(connection, publicKey) {
 }
 
 async function main() {
+  if (process.env.RUN_FUNDED_DEVNET_LIFECYCLE !== "true") {
+    console.log(JSON.stringify({
+      status: "skipped",
+      reason: "Explicit RUN_FUNDED_DEVNET_LIFECYCLE=true is required; no RPC, airdrop, signing, or submission performed."
+    }, null, 2));
+    return;
+  }
   const connection = new Connection(DEVNET_RPC, {
     commitment: "confirmed",
     confirmTransactionInitialTimeout: 60_000
