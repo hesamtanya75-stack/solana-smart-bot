@@ -1,0 +1,79 @@
+name: Cloudflare Worker build validation
+
+on:
+  pull_request:
+    paths:
+      - ".assetsignore"
+      - "worker.js"
+      - "auth-guard.mjs"
+      - "paper-trading-state.mjs"
+      - "trusted-live-evidence.mjs"
+      - "live-trade-coordinator.mjs"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "tests/**"
+      - "SECURITY_REVIEW.md"
+      - ".github/workflows/cloudflare-worker-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-new-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify Wrangler targets the active Worker
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+          if (config.name !== "solana-smart-bot-new") {
+            throw new Error(`Unexpected Worker name: ${config.name}`);
+          }
+          if (config.main !== "worker.js") {
+            throw new Error(`Unexpected Worker entry point: ${config.main}`);
+          }
+          if (config.assets?.run_worker_first !== true && !config.assets?.run_worker_first?.includes("/*")) {
+            throw new Error("Static assets must pass through the Worker allowlist before serving");
+          }
+          if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) {
+            throw new Error("BOT_STATE KV binding is missing");
+          }
+          const requiredBindings = [
+            ["PAPER_STATE_COORDINATOR", "PaperStateCoordinator"],
+            ["AUTH_RATE_LIMITER", "MfaRateLimiter"]
+          ];
+          for (const [name, className] of requiredBindings) {
+            if (!config.durable_objects?.bindings?.some(binding =>
+              binding.name === name && binding.class_name === className)) {
+              throw new Error(`${name} Durable Object binding is missing`);
+            }
+          }
+          for (const className of ["PaperStateCoordinator", "MfaRateLimiter"]) {
+            if (config.exports?.[className]?.type !== "durable-object" ||
+                config.exports?.[className]?.storage !== "sqlite") {
+              throw new Error(`${className} must use its existing declarative SQLite export`);
+            }
+          }
+          if ("migrations" in config) {
+            throw new Error("Do not replay first-create migrations against existing production DO namespaces");
+          }
+          if (config.durable_objects?.bindings?.some(binding =>
+            binding.name === "LIVE_TRADE_COORDINATOR" || binding.class_name === "LiveTradeCoordinator")) {
+            throw new Error("Live-trading coordinator must remain unbound from the public Worker");
+          }
+          console.log("Validated current Worker target, assets, KV, DO bindings, and production-safe exports.");
+          NODE
+
+      - name: Build Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc

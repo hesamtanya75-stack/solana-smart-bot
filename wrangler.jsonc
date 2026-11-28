@@ -9,14 +9,7 @@
   "assets": {
     "directory": "./",
     "binding": "ASSETS",
-    "run_worker_first": [
-      "/",
-      "/index.html",
-      "/api/*",
-      "/health",
-      "/version",
-      "/asset-check"
-    ]
+    "run_worker_first": true
   },
   "kv_namespaces": [
     {
@@ -40,6 +33,10 @@
         {
           "name": "AUTH_RATE_LIMITER",
           "class_name": "MfaRateLimiter"
+        },
+        {
+          "name": "AUTH_GUARD",
+          "class_name": "AuthGuard"
         }
       ]
     }
@@ -58,6 +55,10 @@
       {
         "name": "AUTH_RATE_LIMITER",
         "class_name": "MfaRateLimiter"
+      },
+      {
+        "name": "AUTH_GUARD",
+        "class_name": "AuthGuard"
       }
     ]
   },
@@ -67,6 +68,18 @@
       "storage": "sqlite"
     },
     "MfaRateLimiter": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "AuthGuard": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "LiveTradeCoordinator": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "PaperTradingState": {
       "type": "durable-object",
       "storage": "sqlite"
     }

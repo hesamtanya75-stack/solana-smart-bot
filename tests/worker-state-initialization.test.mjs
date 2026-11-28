@@ -21,7 +21,10 @@ const workerWithEmbeddedCoordinator = workerWithEmbeddedRpcConfig
   .replace(
     'export { MfaRateLimiter } from "./mfa-rate-limiter.js";',
     "const { MfaRateLimiter } = await import(" + JSON.stringify(limiterModuleUrl) + "); export { MfaRateLimiter };"
-  );
+  )
+  .replace('export { AuthGuard } from "./auth-guard.mjs";', "")
+  .replace('export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";', "")
+  .replace('export { PaperTradingState } from "./paper-trading-state.mjs";', "");
 const workerModuleUrl = "data:text/javascript;base64," + Buffer.from(workerWithEmbeddedCoordinator).toString("base64");
 const { default: worker, PaperStateCoordinator } = await import(workerModuleUrl);
 

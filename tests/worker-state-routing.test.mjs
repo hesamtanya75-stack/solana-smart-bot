@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import worker, { PaperStateCoordinator, MfaRateLimiter } from "../worker.js";
+import worker, { PaperStateCoordinator, MfaRateLimiter, AuthGuard } from "../worker.js";
 
 class MemoryStorage {
   values = new Map();
@@ -35,6 +35,16 @@ function environment() {
   const authStorage = new MemoryStorage();
   const authLimiter = new MfaRateLimiter({ storage: authStorage });
   const authStub = { fetch: (input, init) => authLimiter.fetch(new Request(input, init)) };
+  const guardStorage = new MemoryStorage();
+  const authGuard = new AuthGuard({ storage: guardStorage }, {
+    AUTH_GUARD_INTERNAL_TOKEN: "worker-state-test-internal-token-1234567890"
+  });
+  guardStorage.values.set("auth_guard_state", {
+    initialized: true, backupHash: null, lastTotpCounter: -1, failures: {},
+    challenges: {}, totpEnabled: false, totpSecret: null,
+    pendingTotpSecret: null, pendingTotpAt: null
+  });
+  const guardStub = { fetch: (input, init) => authGuard.fetch(new Request(input, init)) };
   const touchedKvKeys = [];
   const env = {
     BOT_STATE: {
@@ -53,15 +63,20 @@ function environment() {
     AUTH_RATE_LIMITER: {
       idFromName: name => name,
       get: () => authStub
+    },
+    AUTH_GUARD_INTERNAL_TOKEN: "worker-state-test-internal-token-1234567890",
+    AUTH_GUARD: {
+      idFromName: name => name,
+      get: () => guardStub
     }
   };
-  return { env, coordinator, touchedKvKeys, authStorage, authLimiter };
+  return { env, coordinator, touchedKvKeys, authStorage, authLimiter, authGuard, guardStorage };
 }
 function request(path, method = "GET", body) {
   return new Request("https://worker.test" + path, {
     method,
     headers: {
-      Authorization: "Bearer test-session",
+      Authorization: "Bearer 11111111-1111-4111-8111-111111111111",
       ...(body === undefined ? {} : { "Content-Type": "application/json" })
     },
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -111,13 +126,16 @@ test("concurrent first-time automation patches preserve both settings", async ()
       return response;
     }
   };
+  const authEnvironment = environment().env;
   const env = {
     BOT_STATE: {
       get: async () => ({ expiresAt: Date.now() + 60_000 }),
       put: async () => {},
       delete: async () => {}
     },
-    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub },
+    AUTH_GUARD_INTERNAL_TOKEN: authEnvironment.AUTH_GUARD_INTERNAL_TOKEN,
+    AUTH_GUARD: authEnvironment.AUTH_GUARD
   };
   const responses = await Promise.all([
     worker.fetch(request("/api/automation", "POST", { enabled: true }), env),
@@ -166,13 +184,16 @@ test("concurrent state API PUTs cannot overwrite a newer paper-state version", a
       return coordinator.fetch(new Request(input, init));
     }
   };
+  const authEnvironment = environment().env;
   const env = {
     BOT_STATE: {
       get: async () => ({ expiresAt: Date.now() + 60_000 }),
       put: async () => {},
       delete: async () => {}
     },
-    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub }
+    PAPER_STATE_COORDINATOR: { idFromName: name => name, get: () => stub },
+    AUTH_GUARD_INTERNAL_TOKEN: authEnvironment.AUTH_GUARD_INTERNAL_TOKEN,
+    AUTH_GUARD: authEnvironment.AUTH_GUARD
   };
   await coordinator.importOnce({
     balance: 100, trades: [], autoEnabled: false, paused: false,
@@ -313,8 +334,8 @@ test("unauthenticated automation and profile API requests are rejected before st
 });
 
 
-test("password login throttles after five failures through the atomic auth Durable Object", async () => {
-  const { env, authStorage } = environment();
+test("password login throttles after five failures through transactional AuthGuard", async () => {
+  const { env, authGuard, guardStorage } = environment();
   const values = new Map();
   env.BOT_LOGIN_PASSWORD = "preview-test-password";
   env.BOT_STATE.get = async (key, type) => {
@@ -329,7 +350,7 @@ test("password login throttles after five failures through the atomic auth Durab
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.10" },
       body: JSON.stringify({ password: "wrong-password" })
     }), env);
-    assert.equal(response.status, 401);
+    assert.equal(response.status, i < 4 ? 401 : 429);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login", {
     method: "POST",
@@ -337,41 +358,40 @@ test("password login throttles after five failures through the atomic auth Durab
     body: JSON.stringify({ password: "preview-test-password" })
   }), env);
   assert.equal(blocked.status, 429);
-  const counter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:login:"));
-  assert.equal(counter?.[1]?.count, 5);
+  const state = guardStorage.values.get("auth_guard_state");
+  assert.equal(state.failures["scope:login:" + createHash("sha256").update("192.0.2.10").digest("hex")].count, 5);
+  assert.equal(await authGuard.isRateLimited("login:" + createHash("sha256").update("192.0.2.10").digest("hex")), true);
 });
 
-test("MFA challenge is deleted after five invalid codes", async () => {
-  const { env, authStorage } = environment();
-  const values = new Map([
-    ["admin_profile", JSON.stringify({ totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP", backupHash: null })],
-    ["mfa_challenge:test-challenge", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
-  ]);
-  env.BOT_STATE.get = async (key, type) => {
-    const value = values.get(key);
-    return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
-  };
-  env.BOT_STATE.put = async (key, value) => { values.set(key, value); };
-  env.BOT_STATE.delete = async key => { values.delete(key); };
+test("MFA challenge is deleted after five invalid codes by AuthGuard", async () => {
+  const { env, authGuard, guardStorage } = environment();
+  const secret = "JBSWY3DPEHPK3PXP";
+  const challengeId = "123e4567-e89b-42d3-a456-426614174000";
+  guardStorage.values.delete("auth_guard_state");
+  await authGuard.initializeFromLegacy({
+    totpEnabled: true,
+    totpSecret: secret,
+    backupHash: null,
+    lastTotpCounter: -1
+  });
+  await authGuard.createMfaChallenge(challengeId);
   for (let i = 0; i < 5; i++) {
     const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
       method: "POST",
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
-      body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+      body: JSON.stringify({ challengeId, code: "000000" })
     }), env);
-    assert.equal(response.status, 401);
+    assert.equal(response.status, i < 4 ? 401 : 429);
   }
   const blocked = await worker.fetch(new Request("https://worker.test/api/login/totp", {
     method: "POST",
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.20" },
-    body: JSON.stringify({ challengeId: "test-challenge", code: "000000" })
+    body: JSON.stringify({ challengeId, code: "000000" })
   }), env);
   assert.equal(blocked.status, 429);
-  assert.equal(values.has("mfa_challenge:test-challenge"), false);
-  const ipCounter = [...authStorage.values.entries()].find(([key]) => key.startsWith("auth:mfa-ip:"));
-  const challengeCounter = authStorage.values.get("auth:mfa-challenge:test-challenge");
-  assert.equal(ipCounter?.[1]?.count, 5);
-  assert.equal(challengeCounter?.count, 5);
+  const state = guardStorage.values.get("auth_guard_state");
+  assert.equal(state.challenges[challengeId], undefined);
+  assert.equal(state.failures["scope:totp:" + createHash("sha256").update("192.0.2.20").digest("hex")].count, 5);
 });
 
 test("auth limiter alarm removes expired counters and preserves active windows", async () => {
@@ -398,15 +418,11 @@ test("MFA attempt reservations are atomic under concurrent requests", async () =
 });
 
 
-test("diagnostic screen route is hidden unless explicitly enabled", async () => {
+test("diagnostic screen route is permanently hidden from public requests", async () => {
   const { env } = environment();
   env.ASSETS = { fetch: async () => new Response("Not found", { status: 404 }) };
-  const hidden = await worker.fetch(new Request("https://worker.test/screen-test"), env);
-  assert.equal(hidden.status, 404);
-  env.ENABLE_DIAGNOSTIC_ROUTES = "true";
-  const enabled = await worker.fetch(new Request("https://worker.test/screen-test"), env);
-  assert.equal(enabled.status, 200);
-  assert.match(await enabled.text(), /SCREEN TEST OK/);
+  const response = await worker.fetch(new Request("https://worker.test/screen-test"), env);
+  assert.equal(response.status, 404);
 });
 
 test("backup-code credential claims are atomic under concurrent login attempts", async () => {
@@ -540,7 +556,7 @@ test("TOTP setup and confirmation routes require an authenticated admin session"
 test("enabling MFA invalidates sessions issued before MFA activation", async () => {
   const { env } = environment();
   const values = new Map([
-    ["session:old-session", { expiresAt: Date.now() + 60000, authVersion: 0 }],
+    ["session:33333333-3333-4333-8333-333333333333", { expiresAt: Date.now() + 60000, authVersion: 0 }],
     ["admin_profile", { totpEnabled: true, authVersion: 1 }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
@@ -549,7 +565,7 @@ test("enabling MFA invalidates sessions issued before MFA activation", async () 
     return type === "json" ? value : JSON.stringify(value);
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
-    headers: { Authorization: "Bearer old-session" }
+    headers: { Authorization: "Bearer 33333333-3333-4333-8333-333333333333" }
   }), env);
   assert.equal(response.status, 401);
 });
@@ -562,7 +578,7 @@ test("current session generation remains authorized after MFA activation", async
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   env.BOT_STATE.get = async (key, type) => {
-    if (key === "session:current-session") {
+    if (key === "session:22222222-2222-4222-8222-222222222222") {
       const session = { expiresAt: Date.now() + 60000, authVersion: 3 };
       return type === "json" ? session : JSON.stringify(session);
     }
@@ -573,7 +589,7 @@ test("current session generation remains authorized after MFA activation", async
     return null;
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
-    headers: { Authorization: "Bearer current-session" }
+    headers: { Authorization: "Bearer 22222222-2222-4222-8222-222222222222" }
   }), env);
   assert.equal(response.status, 200);
 });
@@ -586,14 +602,14 @@ test("expired and missing admin sessions cannot read paper state", async () => {
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   const sessions = new Map([
-    ["session:expired-session", { expiresAt: Date.now() - 1, authVersion: 0 }]
+    ["session:44444444-4444-4444-8444-444444444444", { expiresAt: Date.now() - 1, authVersion: 0 }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
     const value = sessions.get(key);
     if (value == null) return null;
     return type === "json" ? value : JSON.stringify(value);
   };
-  for (const token of ["expired-session", "missing-session"]) {
+  for (const token of ["44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"]) {
     const response = await worker.fetch(new Request("https://worker.test/api/state", {
       headers: { Authorization: "Bearer " + token }
     }), env);
@@ -609,7 +625,7 @@ test("session with a stale auth generation cannot mutate paper state", async () 
     lastMessage: "ready", lastScanReport: [], updatedAt: null
   });
   const values = new Map([
-    ["session:stale-generation", { expiresAt: Date.now() + 60000, authVersion: 4 }],
+    ["session:66666666-6666-4666-8666-666666666666", { expiresAt: Date.now() + 60000, authVersion: 4 }],
     ["admin_profile", { authVersion: 5, totpEnabled: true, totpSecret: "JBSWY3DPEHPK3PXP" }]
   ]);
   env.BOT_STATE.get = async (key, type) => {
@@ -619,7 +635,7 @@ test("session with a stale auth generation cannot mutate paper state", async () 
   };
   const response = await worker.fetch(new Request("https://worker.test/api/state", {
     method: "PUT",
-    headers: { Authorization: "Bearer stale-generation", "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer 66666666-6666-4666-8666-666666666666", "Content-Type": "application/json" },
     body: JSON.stringify({ balance: 1 })
   }), env);
   assert.equal(response.status, 401);
@@ -632,7 +648,7 @@ test("authenticated logout revokes the current server session", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
   assert.ok(touchedKvKeys.some(([operation, key]) =>
-    operation === "delete" && key === "session:test-session"
+    operation === "delete" && key === "session:11111111-1111-4111-8111-111111111111"
   ));
 });
 
@@ -723,12 +739,11 @@ test("enabled MFA with missing secret fails closed instead of granting a passwor
 
 
 test("backup code cannot authenticate after MFA is disabled or loses its secret", async () => {
-  const { env } = environment();
+  const { env, authGuard, guardStorage } = environment();
   const backupCode = "ABCD1234EFGH5678";
   const backupHash = createHash("sha256").update(backupCode).digest("hex");
-  const values = new Map([
-    ["mfa_challenge:pending", JSON.stringify({ createdAt: Date.now(), attempts: 0 })]
-  ]);
+  const challengeId = "11111111-1111-4111-8111-111111111111";
+  const values = new Map();
   env.BOT_STATE.get = async (key, type) => {
     const value = values.get(key);
     return type === "json" && typeof value === "string" ? JSON.parse(value) : value ?? null;
@@ -739,11 +754,17 @@ test("backup code cannot authenticate after MFA is disabled or loses its secret"
     { totpEnabled: false, totpSecret: "JBSWY3DPEHPK3PXP", backupHash },
     { totpEnabled: true, totpSecret: null, backupHash }
   ]) {
+    guardStorage.values.set("auth_guard_state", {
+      initialized: true, backupHash, lastTotpCounter: -1, failures: {},
+      challenges: {}, totpEnabled: profile.totpEnabled, totpSecret: profile.totpSecret,
+      pendingTotpSecret: null, pendingTotpAt: null
+    });
+    await authGuard.createMfaChallenge(challengeId);
     values.set("admin_profile", JSON.stringify(profile));
     const response = await worker.fetch(new Request("https://worker.test/api/login/totp", {
       method: "POST",
       headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.67" },
-      body: JSON.stringify({ challengeId: "pending", code: backupCode })
+      body: JSON.stringify({ challengeId, code: backupCode })
     }), env);
     assert.equal(response.status, 401);
     assert.equal([...values.keys()].some(key => key.startsWith("session:")), false);

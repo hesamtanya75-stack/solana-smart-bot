@@ -1,6 +1,10 @@
 export { PaperStateCoordinator } from "./paper-state-coordinator.js";
+// Keep the previously provisioned paper-trading Durable Object exported for safe namespace reconciliation.
+export { PaperTradingState } from "./paper-trading-state.mjs";
 import { resolveSolanaRpcEndpoints } from "./solana-rpc-config.js";
 export { MfaRateLimiter } from "./mfa-rate-limiter.js";
+export { AuthGuard } from "./auth-guard.mjs";
+export { LiveTradeCoordinator } from "./live-trade-coordinator.mjs";
 
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_STATE = {
@@ -31,14 +35,87 @@ function getRpcEndpoints(env) {
   return { endpoints: preferred, errors: resolved.errors };
 }
 
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+};
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...SECURITY_HEADERS,
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store"
     }
   });
+}
+function secureDashboard(html) {
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(18));
+  const nonce = btoa(String.fromCharCode(...nonceBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const nonceHtml = html.replace(/<script\b([^>]*)>/gi, (tag, attrs) =>
+    /\bnonce\s*=/.test(attrs) ? tag : "<script nonce=\"" + nonce + "\"" + attrs + ">"
+  );
+  const csp = [
+    "default-src 'self'",
+    "script-src 'nonce-" + nonce + "' 'strict-dynamic' 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "connect-src 'self' https://solana.drpc.org https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://api.dexscreener.com https://api.rugcheck.xyz",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
+  ].join("; ");
+  return { html: nonceHtml, csp };
+}
+function sameOriginApiRequest(request, url) {
+  if (!url.pathname.startsWith("/api/") ||
+      !["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase())) return true;
+  const origin = request.headers.get("Origin");
+  if (origin) {
+    try { if (new URL(origin).origin !== url.origin) return false; }
+    catch { return false; }
+  } else {
+    // Browser requests include Origin; Fetch Metadata is checked when supplied.
+    // Non-browser clients may omit both.
+    const fetchSite = request.headers.get("Sec-Fetch-Site");
+    if (fetchSite === "cross-site") return false;
+    if (fetchSite && fetchSite !== "same-origin") return false;
+  }
+  return request.headers.get("Sec-Fetch-Site") !== "cross-site";
+}
+async function readBoundedJson(request, maxBytes = 8192, allowedFields = null) {
+  const contentType = request.headers.get("content-type") || "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    const error = new Error("Content-Type must be application/json");
+    error.status = 415;
+    throw error;
+  }
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && (!/^(0|[1-9]\\d*)$/.test(contentLength) || Number(contentLength) > maxBytes)) {
+    const error = new Error("Request body too large or invalid");
+    error.status = 413;
+    throw error;
+  }
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("Request body required");
+  const chunks = []; let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) { await reader.cancel(); const error = new Error("Request body too large"); error.status = 413; throw error; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const value = JSON.parse(new TextDecoder().decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON object required");
+  if (allowedFields && Object.keys(value).some(key => !allowedFields.includes(key))) {
+    throw new Error("Unexpected JSON field");
+  }
+  return value;
 }
 function cleanState(value) {
   const s = value && typeof value === "object" ? value : {};
@@ -136,13 +213,67 @@ async function patchPaperState(env, patch) {
   }
   return coordinatorRequest(env, "patch", patch);
 }
+async function saveProfileMetadata(env, profile) {
+  const profileKey = ["admin", "profile"].join("_");
+  await env.BOT_STATE.put(profileKey, JSON.stringify(profile));
+}
+async function authGuardCall(env, body) {
+  const namespace = env.AUTH_GUARD;
+  const token = String(env.AUTH_GUARD_INTERNAL_TOKEN || "");
+  if (!namespace || token.length < 32) throw new Error("Authentication guard is not configured");
+  const stub = namespace.get(namespace.idFromName("admin"));
+  let response;
+  try {
+    response = await stub.fetch("https://auth-guard.internal/operation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    const unavailable = new Error("Authentication guard is unavailable");
+    unavailable.status = 503;
+    throw unavailable;
+  }
+  let result;
+  try { result = await response.json(); } catch { result = {}; }
+  if (!response.ok) {
+    const error = new Error(result.error || "Authentication guard request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+async function migrateLegacyFailure(env, scope, legacyKey) {
+  const legacy = await env.BOT_STATE.get(legacyKey, "json");
+  const count = Math.max(0, Math.min(5, Number(legacy?.count || 0)));
+  if (count > 0) await authGuardCall(env, { operation: "import-legacy-failure", scope, count });
+  await env.BOT_STATE.delete(legacyKey);
+}
+async function matchingTotpCounter(secret, code, now = Date.now()) {
+  if (!secret || !/^[0-9]{6}$/.test(String(code || ""))) return null;
+  for (const drift of [0, -30000, 30000]) {
+    const counter = Math.floor((now + drift) / 30000);
+    if (await totpCode(secret, now + drift) === String(code)) return counter;
+  }
+  return null;
+}
 async function authorized(request, env) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) return false;
+  const authorization = request.headers.get("Authorization") || "";
+  const match = /^Bearer ([^\s]+)$/i.exec(authorization);
+  const token = match ? match[1] : "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) return false;
   const session = await env.BOT_STATE.get("session:" + token, "json");
   if (!session || !(session.expiresAt > Date.now())) return false;
   const profile = await readProfile(env);
-  return Number(session.authVersion || 0) === Number(profile.authVersion || 0);
+  if (Number(session.authVersion || 0) !== Number(profile.authVersion || 0)) return false;
+  // Every authenticated route confirms the MFA generation from the isolated
+  // Durable Object. A password-only session issued before MFA activation is
+  // never accepted after the guard reports MFA enabled, even if a KV write
+  // during session-generation rotation failed.
+  const auth = await authGuardCall(env, { operation: "get-profile" });
+  if (!auth.initialized) return false;
+  if (auth.totpEnabled === true && session.mfaAuthenticated !== true) return false;
+  return true;
 }
 async function rpc(method, params, env) {
   const resolved = getRpcEndpoints(env);
@@ -592,158 +723,127 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const buildId = env.BUILD_ID || env.CF_VERSION_METADATA?.id || "local-unversioned";
+    if (!sameOriginApiRequest(request, url)) return json({ error: "Cross-origin API request rejected" }, 403);
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, mode: "paper-trading", scheduler: "Cloudflare Cron", storage: "Durable Object (paper state) + Workers KV (sessions/cache)", build: buildId });
     }
     if (url.pathname === "/version" && request.method === "GET") {
       return json({ ok: true, build: buildId, frontend: "premium-dashboard-v2", asset: "index.html" });
     }
-    if (url.pathname === "/asset-check" && request.method === "GET") {
-      try {
-        const assetUrl = new URL("/index.html", request.url);
-        const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
-        const html = await asset.clone().text();
-        return json({ ok: asset.ok, status: asset.status, contentType: asset.headers.get("Content-Type"), bytes: new TextEncoder().encode(html).length, hasDashboardTitle: html.includes("پشکنەری زیرەکی کۆینی سولانا"), hasPremiumDesign: html.includes('id="SB_FINAL_PURPLE_GLASS"') && html.includes("SOLANA SMART BOT"), hasFinalPurpleGlass: html.includes('id="SB_FINAL_PURPLE_GLASS"'), hasOldClaudeSkin: html.includes("SB_CLAUDE_SKIN"), hasLegacyPremiumSection: html.includes("FINAL PREMIUM DASHBOARD V2"), styleTags: [...html.matchAll(/<style\b[^>]*>/gi)].map(match => match[0]), hasLoginPanel: html.includes("serverLogin") });
-      } catch (error) {
-        return json({ ok: false, error: String(error?.message || error) }, 500);
-      }
-    }
-    if (url.pathname === "/dashboard-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
-      const assetUrl = new URL("/index.html", request.url);
-      const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
-      if (!asset.ok) return new Response("Dashboard asset unavailable", { status: 502 });
-      let html = await asset.text();
-      const probe = `<div id="sb-page-probe" style="position:fixed;z-index:2147483647;left:8px;right:8px;bottom:8px;padding:12px;border:2px solid #27e7d3;border-radius:12px;background:#07152b;color:#fff;font:12px/1.45 system-ui;direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere">DASHBOARD TEST: checking visible elements…</div><script>(function(){var p=document.getElementById("sb-page-probe");function update(extra){try{var m=document.querySelector("main"),h=document.querySelector("header"),l=document.getElementById("serverLogin"),c=l&&l.querySelector(".login-card"),b=document.body;var cs=function(x){if(!x)return "missing";var s=getComputedStyle(x),r=x.getBoundingClientRect();return "display="+s.display+", visibility="+s.visibility+", opacity="+s.opacity+", rect="+Math.round(r.width)+"x"+Math.round(r.height)+", text="+(x.innerText||"").trim().slice(0,70)};var s=getComputedStyle(b);p.textContent="DASHBOARD TEST: HTML loaded\\nBody: "+s.backgroundColor+" / "+s.color+" / "+s.display+"\\nMain: "+cs(m)+"\\nHeader: "+cs(h)+"\\nLogin: "+cs(l)+"\\nLogin card: "+cs(c)+"\\nBody text length: "+(b.innerText||"").length+"\\n"+(extra||"Page scripts had time to run.");}catch(e){p.textContent="PROBE ERROR: "+e.message;}}window.addEventListener("error",function(e){update("JAVASCRIPT ERROR: "+e.message+" @ "+e.lineno+":"+e.colno);});window.addEventListener("unhandledrejection",function(e){update("PROMISE ERROR: "+String(e.reason&&e.reason.message||e.reason));});setTimeout(function(){update();},1800);})();</script>`;
-      html = html.replace(/<body[^>]*>/i, match => match + probe);
-      return new Response(html, {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
-      });
-    }
-    if (url.pathname === "/screen-test" && request.method === "GET" && env.ENABLE_DIAGNOSTIC_ROUTES === "true") {
-      return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Screen Test</title><style>html,body{margin:0;min-height:100%;background:#10152b;color:#fff;font:18px system-ui}main{margin:24px auto;padding:24px;max-width:520px;border:2px solid #27e7d3;border-radius:18px;background:linear-gradient(135deg,#24104d,#063b43);text-align:center}h1{color:#27e7d3}p{line-height:1.6}</style></head><body><main><h1>SCREEN TEST OK</h1><p>If you can read this, your browser can display a page from this Worker.</p><p>HTTP route: /screen-test</p></main></body></html>", {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
-      });
-    }
     if (url.pathname === "/api/login" && request.method === "POST") {
       try {
-        const { password } = await request.json();
-        const expected = env.BOT_LOGIN_PASSWORD;
+        const { password } = await readBoundedJson(request, 4096, ["password"]);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
-        const legacyFailures = await env.BOT_STATE.get("login_fail:" + ip, "json") || { count: 0 };
-        const loginLimit = await authRateLimitRequest(env, "/login-attempt", {
-          ipHash,
-          legacyCount: Number(legacyFailures.count || 0)
-        });
-        if (!loginLimit.allowed) {
-          return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-        }
+        const loginScope = "login:" + ipHash;
+        await migrateLegacyFailure(env, loginScope, "login_fail:" + ip);
+        const limited = await authGuardCall(env, { operation: "is-rate-limited", scope: loginScope });
+        if (limited.limited) return json({ error: "زۆر هەوڵی چوونەژوورەوە دراوە؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        const expected = env.BOT_LOGIN_PASSWORD;
         if (!expected || typeof password !== "string" || password !== expected) {
-          return json({ error: "وشەی نهێنی هەڵەیە" }, 401);
+          const failure = await authGuardCall(env, { operation: "record-failure", scope: loginScope });
+          return json({ error: "وشەی نهێنی هەڵەیە" }, failure.limited ? 429 : 401);
         }
-        await authRateLimitRequest(env, "/login-clear", { ipHash });
+        await authGuardCall(env, { operation: "clear-failures", scope: loginScope });
         await env.BOT_STATE.delete("login_fail:" + ip);
-        const profile = await readProfile(env);
-        // A damaged MFA profile must never downgrade to password-only login.
-        if (profile.totpEnabled && (typeof profile.totpSecret !== "string" || !profile.totpSecret.trim())) {
-          return json({ error: "Authenticator configuration is incomplete; administrator recovery is required." }, 503);
+        const legacyProfile = await readProfile(env);
+        const marker = await env.BOT_STATE.get("auth_guard_migration_v1");
+        const guardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (marker === "complete") {
+          if (!guardProfile.initialized) throw Object.assign(new Error("Migrated AuthGuard state is unavailable"), { status: 503 });
+        } else {
+          if (legacyProfile.totpEnabled === true &&
+              (typeof legacyProfile.totpSecret !== "string" || !legacyProfile.totpSecret.trim())) {
+            throw Object.assign(new Error("Legacy MFA profile is incomplete"), { status: 503 });
+          }
+          const migration = await authGuardCall(env, {
+            operation: "initialize-legacy",
+            backupHash: legacyProfile.backupHash ?? null,
+            lastTotpCounter: Number.isSafeInteger(legacyProfile.lastTotpCounter) ? legacyProfile.lastTotpCounter : -1,
+            totpEnabled: legacyProfile.totpEnabled === true,
+            totpSecret: legacyProfile.totpSecret ?? null,
+            pendingTotpSecret: legacyProfile.pendingTotpSecret ?? null,
+            pendingTotpAt: Number.isSafeInteger(legacyProfile.pendingTotpAt) ? legacyProfile.pendingTotpAt : null
+          });
+          const verified = await authGuardCall(env, {
+            operation: "verify-legacy",
+            backupHash: legacyProfile.backupHash ?? null,
+            lastTotpCounter: Number.isSafeInteger(legacyProfile.lastTotpCounter) ? legacyProfile.lastTotpCounter : -1,
+            totpEnabled: legacyProfile.totpEnabled === true,
+            totpSecret: legacyProfile.totpSecret ?? null,
+            pendingTotpSecret: legacyProfile.pendingTotpSecret ?? null,
+            pendingTotpAt: Number.isSafeInteger(legacyProfile.pendingTotpAt) ? legacyProfile.pendingTotpAt : null
+          });
+          if (!migration.initialized && !verified.verified) throw Object.assign(new Error("Legacy MFA state conflicts with initialized AuthGuard"), { status: 503 });
+          if (!verified.verified) throw Object.assign(new Error("Legacy MFA migration could not be verified"), { status: 503 });
+          for (const key of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) delete legacyProfile[key];
+          await env.BOT_STATE.put("admin_profile", JSON.stringify(legacyProfile));
+          await env.BOT_STATE.put("auth_guard_migration_v1", "complete");
         }
-        if (profile.totpEnabled) {
+        const currentGuardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (currentGuardProfile.totpEnabled) {
           const challengeId = crypto.randomUUID();
-          await env.BOT_STATE.put("mfa_challenge:" + challengeId, JSON.stringify({ createdAt: Date.now(), attempts: 0 }), { expirationTtl: 300 });
+          const challenge = await authGuardCall(env, { operation: "create-challenge", challengeId });
+          if (!challenge.created) return json({ error: "نەتوانرا داواکاری MFA دروست بکرێت" }, 503);
           return json({ ok: true, mfaRequired: true, challengeId });
         }
         const token = crypto.randomUUID();
         const expiresAt = Date.now() + SESSION_MS;
-        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(legacyProfile.authVersion || 0), mfaAuthenticated: false }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
         return json({ ok: true, token });
       } catch (error) {
-        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی چوونەژوورەوە بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "داواکاری هەڵەیە" }, 400);
       }
     }
     if (url.pathname === "/api/login/totp" && request.method === "POST") {
       try {
-        const { challengeId, code } = await request.json();
-        if (typeof challengeId !== "string" || typeof code !== "string") return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
+        const { challengeId, code } = await readBoundedJson(request, 4096, ["challengeId", "code"]);
+        if (typeof challengeId !== "string" || !/^[a-f0-9-]{36}$/i.test(challengeId) || typeof code !== "string" || !/^(?:\d{6}|[a-z0-9-]{8,32})$/i.test(code.trim())) return json({ error: "کۆدی پشتڕاستکردنەوە نادروستە" }, 400);
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
         const ipHash = await hashText(ip);
-        const ipFailureKey = "totp_fail:" + ip;
-        const key = "mfa_challenge:" + challengeId;
-        const challenge = await env.BOT_STATE.get(key, "json");
-        if (!challenge || Date.now() - Number(challenge.createdAt || 0) > 300000) return json({ error: "کاتی چوونەژوورەوە تەواو بوو؛ دووبارە هەوڵ بدە" }, 401);
-        if (Number(challenge.attempts || 0) >= 5) { await env.BOT_STATE.delete(key); return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429); }
-        const legacyIpFailures = await env.BOT_STATE.get(ipFailureKey, "json") || { count: 0 };
-        const mfaLimit = await authRateLimitRequest(env, "/mfa-attempt", {
-          ipHash,
+        const failureScope = "totp:" + ipHash;
+        await migrateLegacyFailure(env, failureScope, "totp_fail:" + ip);
+        const limited = await authGuardCall(env, { operation: "is-rate-limited", scope: failureScope });
+        if (limited.limited) return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+        const guardProfile = await authGuardCall(env, { operation: "get-profile" });
+        if (!guardProfile.totpEnabled || !guardProfile.totpSecret) return json({ error: "Authenticator is not configured correctly" }, 401);
+        const matchedCounter = await matchingTotpCounter(guardProfile.totpSecret, code);
+        const submittedBackupHash = await hashText(String(code).trim().toUpperCase());
+        const result = await authGuardCall(env, {
+          operation: "complete-challenge",
           challengeId,
-          legacyIpCount: Number(legacyIpFailures.count || 0),
-          legacyChallengeCount: Number(challenge.attempts || 0)
+          totpCounter: matchedCounter,
+          backupHash: matchedCounter === null ? submittedBackupHash : null,
+          failureScope
         });
-        if (!mfaLimit.allowed) {
-          if (mfaLimit.reason === "challenge") {
-            await env.BOT_STATE.delete(key);
+        if (!result.ok) {
+          if (result.reason === "rate-limited" || result.reason === "attempts-exhausted") {
             return json({ error: "هەوڵەکان تەواو بوون؛ دووبارە بچۆ ژوورەوە" }, 429);
           }
-          return json({ error: "هەوڵەکانی Authenticator زۆر بوون؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          return json({ error: "کۆدی Authenticator هەڵەیە یان داواکارییەکە بەسەرچووە" }, 401);
         }
+        await env.BOT_STATE.delete("totp_fail:" + ip);
         const profile = await readProfile(env);
-        if (!profile.totpEnabled || typeof profile.totpSecret !== "string" || !profile.totpSecret.trim()) {
-          return json({ error: "Authenticator is not configured correctly" }, 401);
-        }
-        let valid = await verifyTotp(profile.totpSecret, code);
-        let credentialClaimHash = null;
-        let backupCodeUsed = false;
-        if (valid) {
-          // A TOTP value is claimable only once during its short validity window,
-          // including across separate login challenges.
-          credentialClaimHash = await hashText("totp:" + profile.totpSecret + ":" + code);
-        } else if (profile.backupHash) {
-          const submittedHash = await hashText(String(code).trim().toUpperCase());
-          if (submittedHash === profile.backupHash) {
-            valid = true;
-            backupCodeUsed = true;
-            credentialClaimHash = await hashText("backup:" + profile.backupHash);
-          }
-        }
-        if (!valid) {
-          return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-        }
-        const credentialClaim = await authRateLimitRequest(env, "/mfa-credential-claim", { credentialHash: credentialClaimHash });
-        if (!credentialClaim.claimed) {
-          return json({ error: "ئەم کۆدە پێشتر بەکارهاتووە؛ کۆدێکی نوێ بەکاربهێنە." }, 409);
-        }
-        const challengeClaim = await authRateLimitRequest(env, "/mfa-challenge-claim", { challengeId });
-        if (!challengeClaim.claimed) {
-          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
-          return json({ error: "ئەم داواکارییەی پشتڕاستکردنەوە پێشتر بەکارهاتووە؛ دووبارە بچۆ ژوورەوە." }, 409);
-        }
-        try {
-          if (backupCodeUsed) {
-            // The atomic credential claim prevents concurrent reuse while this
-            // one-time backup hash is removed from the profile.
-            profile.backupHash = null;
-            await env.BOT_STATE.put("admin_profile", JSON.stringify(profile));
-          }
-          await authRateLimitRequest(env, "/mfa-clear", { ipHash, challengeId });
-          await env.BOT_STATE.delete(ipFailureKey);
-          await env.BOT_STATE.delete(key);
-          const token = crypto.randomUUID();
-          const expiresAt = Date.now() + SESSION_MS;
-          await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0) }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
-          return json({ ok: true, token });
-        } catch (error) {
-          try { await authRateLimitRequest(env, "/mfa-credential-release", { credentialHash: credentialClaimHash }); } catch {}
-          try { await authRateLimitRequest(env, "/mfa-challenge-release", { challengeId }); } catch {}
-          throw error;
-        }
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + SESSION_MS;
+        await env.BOT_STATE.put("session:" + token, JSON.stringify({ expiresAt, authVersion: Number(profile.authVersion || 0), mfaAuthenticated: true }), { expirationTtl: Math.ceil(SESSION_MS / 1000) });
+        return json({ ok: true, token });
       } catch (error) {
-        if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی MFA بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
         return json({ error: "نەتوانرا کۆدی پشتڕاستکردنەوە بپشکنرێت" }, 400);
       }
     }
     if (url.pathname.startsWith("/api/")) {
-      if (!(await authorized(request, env))) return json({ error: "Unauthorized" }, 401);
+      let sessionAuthorized = false;
+      try { sessionAuthorized = await authorized(request, env); }
+      catch (error) {
+        if (error?.status === 503 || error?.message === "Authentication guard is not configured") {
+          return json({ error: "Authentication guard is unavailable" }, 503);
+        }
+        throw error;
+      }
+      if (!sessionAuthorized) return json({ error: "Unauthorized" }, 401);
       if (url.pathname === "/api/logout" && request.method === "POST") {
         const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
         if (token) await env.BOT_STATE.delete("session:" + token);
@@ -751,11 +851,15 @@ export default {
       }
       if (url.pathname === "/api/profile" && request.method === "GET") {
         const p = await readProfile(env);
-        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled });
+        const auth = await authGuardCall(env, { operation: "get-profile" });
+        return json({ email: p.email || "", phone: p.phone || "", emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: auth.totpEnabled === true });
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 2048, ["email", "phone"]);
+          if (Object.keys(body).some(key => typeof body[key] !== "string")) {
+            return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400);
+          }
           const p = await readProfile(env);
           if (typeof body.email === "string") {
             const email = body.email.trim().slice(0, 254);
@@ -769,53 +873,70 @@ export default {
             if (phone !== p.phone) p.phoneVerified = false;
             p.phone = phone;
           }
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          await saveProfileMetadata(env, p);
           return json({ ok: true, email: p.email, phone: p.phone, emailVerified: !!p.emailVerified, phoneVerified: !!p.phoneVerified, totpEnabled: !!p.totpEnabled, message: "زانیاری پڕۆفایل پاشەکەوت کرا؛ ئیمەیڵ و مۆبایل هێشتا پشتڕاست نەکراونەتەوە." });
         } catch { return json({ error: "زانیاری پڕۆفایل نادروستە" }, 400); }
       }
       if (url.pathname === "/api/totp/setup" && request.method === "POST") {
-        const p = await readProfile(env);
-        if (p.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
-        const secretBytes = crypto.getRandomValues(new Uint8Array(20));
-        const secret = base32Encode(secretBytes);
-        p.pendingTotpSecret = secret;
-        p.pendingTotpAt = Date.now();
-        await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
-        const label = encodeURIComponent("Solana Smart Bot Admin");
-        const issuer = encodeURIComponent("Solana Smart Bot");
-        const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
-        return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator بە شێوەی دستی زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
-      }
-      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
-        let claimedSecretHash = null;
         try {
-          const { code } = await request.json();
-          const p = await readProfile(env);
-          if (!p.pendingTotpSecret || Date.now() - Number(p.pendingTotpAt || 0) > 600000) return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          const { password } = await readBoundedJson(request, 4096);
+          const expected = env.BOT_LOGIN_PASSWORD;
           const ip = request.headers.get("CF-Connecting-IP") || "unknown";
           const ipHash = await hashText(ip);
-          const setupLimit = await authRateLimitRequest(env, "/totp-setup-attempt", { ipHash });
-          if (!setupLimit.allowed) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
-          if (!(await verifyTotp(p.pendingTotpSecret, code))) return json({ error: "کۆدی Authenticator هەڵەیە" }, 401);
-          claimedSecretHash = await hashText(p.pendingTotpSecret);
-          const claim = await authRateLimitRequest(env, "/totp-setup-claim", { secretHash: claimedSecretHash });
-          if (!claim.claimed) return json({ error: "ئەم setup ـە پێشتر پشتڕاست کراوەتەوە؛ تکایە دووبارە setup بکە." }, 409);
-          await authRateLimitRequest(env, "/totp-setup-clear", { ipHash });
+          const scope = "totp-setup:" + ipHash;
+          await migrateLegacyFailure(env, scope, "totp_setup_fail:" + ip);
+          const limited = await authGuardCall(env, { operation: "is-rate-limited", scope });
+          if (limited.limited) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
+          if (!expected || typeof password !== "string" || password !== expected) {
+            const failure = await authGuardCall(env, { operation: "record-failure", scope });
+            return json({ error: "وشەی نهێنی بۆ چالاککردنی Authenticator هەڵەیە" }, failure.limited ? 429 : 401);
+          }
+          await authGuardCall(env, { operation: "clear-failures", scope });
+          const auth = await authGuardCall(env, { operation: "get-profile" });
+          if (auth.totpEnabled) return json({ error: "Google Authenticator پێشتر چالاک کراوە" }, 409);
+          const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
+          const begun = await authGuardCall(env, { operation: "begin-totp-setup", secret });
+          if (!begun.ok) return json({ error: "نەتوانرا setup ـی Authenticator دەستپێبکرێت" }, 409);
+          const label = encodeURIComponent("Solana Smart Bot Admin");
+          const issuer = encodeURIComponent("Solana Smart Bot");
+          const uri = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=" + issuer + "&algorithm=SHA1&digits=6&period=30";
+          return json({ ok: true, secret, otpauthUri: uri, message: "ئەم کلیلە لە Google Authenticator زیاد بکە؛ پاشان کۆدی ٦ ژمارەیی بنووسە." });
+        } catch (error) {
+          if (error?.status === 503 || error?.message === "Authentication guard is not configured") return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
+          return json({ error: "نەتوانرا setup ـی Authenticator دەستپێبکرێت" }, 400);
+        }
+      }
+      if (url.pathname === "/api/totp/confirm" && request.method === "POST") {
+        try {
+          const { code } = await readBoundedJson(request, 4096);
+          const auth = await authGuardCall(env, { operation: "get-profile" });
+          if (!auth.pendingTotpSecret || !Number.isSafeInteger(auth.pendingTotpAt) ||
+              Date.now() < auth.pendingTotpAt || Date.now() - auth.pendingTotpAt > 600000) {
+            return json({ error: "کلیلی کاتی بەسەرچووە؛ setup دووبارە بکە" }, 400);
+          }
+          const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+          const ipHash = await hashText(ip);
+          const scope = "totp-setup:" + ipHash;
+          const limited = await authGuardCall(env, { operation: "is-rate-limited", scope });
+          if (limited.limited) return json({ error: "هەوڵی چالاککردنی Authenticator زۆر بوو؛ ١٥ خولەک چاوەڕێ بکە." }, 429);
           const backupCode = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
-          p.totpSecret = p.pendingTotpSecret;
+          const result = await authGuardCall(env, {
+            operation: "confirm-totp-setup",
+            code: String(code || ""),
+            backupHash: await hashText(backupCode),
+            failureScope: scope
+          });
+          if (!result.ok) {
+            return json({ error: result.reason === "rate-limited" ? "هەوڵەکان تەواو بوون" : "کۆدی Authenticator هەڵەیە" }, result.reason === "rate-limited" ? 429 : 401);
+          }
+          const p = await readProfile(env);
           p.totpEnabled = true;
-          // Rotate the session generation so all previously issued sessions
-          // become invalid immediately after MFA is enabled.
           p.authVersion = Number(p.authVersion || 0) + 1;
-          p.backupHash = await hashText(backupCode);
-          delete p.pendingTotpSecret;
-          delete p.pendingTotpAt;
-          await env.BOT_STATE.put("admin_profile", JSON.stringify(p));
+          for (const key of ["totpSecret", "pendingTotpSecret", "pendingTotpAt", "backupHash", "lastTotpCounter"]) delete p[key];
+          await saveProfileMetadata(env, p);
+          await authGuardCall(env, { operation: "clear-failures", scope });
           return json({ ok: true, backupCode, message: "Google Authenticator چالاک کرا. کۆدی گەڕاندنەوە تەنها یەکجار پیشان دەدرێت." });
         } catch (error) {
-          if (claimedSecretHash) {
-            try { await authRateLimitRequest(env, "/totp-setup-release", { secretHash: claimedSecretHash }); } catch {}
-          }
           if (error?.status === 503) return json({ error: "خزمەتگوزاری پاراستنی Authenticator بەردەست نییە؛ دواتر هەوڵ بدە." }, 503);
           return json({ error: "نەتوانرا Authenticator چالاک بکرێت" }, 400);
         }
@@ -863,20 +984,26 @@ export default {
         }
       }
       if (url.pathname === "/api/state" && request.method === "GET") {
-        const state = await readStoredState(env);
-        return json(state || cleanState(null));
+        const stored = await readStoredState(env);
+        const revision = stored && Number.isSafeInteger(stored[STATE_VERSION]) ? stored[STATE_VERSION] : 0;
+        return json({
+          ...(stored || cleanState(null)),
+          revision,
+          canMigrateLegacy: !stored
+        });
       }
       if (url.pathname === "/api/state" && request.method === "PUT") {
         try {
-          const body = await request.json();
-          if (!body || typeof body !== "object" || Array.isArray(body)) {
-            return json({ error: "Invalid state" }, 400);
+          const body = await readBoundedJson(request, 256 * 1024);
+          const expectedRevision = body.expectedRevision;
+          if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) {
+            return json({ error: "Invalid expectedRevision" }, 400);
           }
-          const allowedKeys = new Set([
+          const stateKeys = [
             "balance", "trades", "autoEnabled", "paused", "scannedMints",
             "deferredMints", "lastRunAt", "lastMessage", "lastScanReport", "updatedAt"
-          ]);
-          if (Object.keys(body).some(key => !allowedKeys.has(key))) {
+          ];
+          if (Object.keys(body).some(key => key !== "expectedRevision" && !stateKeys.includes(key))) {
             return json({ error: "State contains unsupported fields" }, 400);
           }
           const stringFields = ["lastRunAt", "lastMessage", "updatedAt"];
@@ -899,25 +1026,38 @@ export default {
               return json({ error: "Invalid " + key }, 400);
             }
           }
-          const current = await readState(env);
-          const expectedVersion = current[STATE_VERSION];
-          const state = cleanState({ ...current, ...body, lastScanReport: body.lastScanReport ?? current.lastScanReport });
-          if (Number.isSafeInteger(expectedVersion)) Object.defineProperty(state, STATE_VERSION, { value: expectedVersion, writable: true });
-          await saveState(env, state);
-          return json({ ok: true, state });
+          const stored = await readStoredState(env);
+          const currentRevision = stored && Number.isSafeInteger(stored[STATE_VERSION]) ? stored[STATE_VERSION] : 0;
+          if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
+            return json({ error: "State changed; reload and retry" }, 409);
+          }
+          const patch = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "expectedRevision"));
+          if (!stored) {
+            const initial = cleanState({ ...DEFAULT_STATE, ...patch, updatedAt: new Date().toISOString() });
+            const result = await coordinatorRequest(env, "import", initial);
+            return json({ ok: true, state: result.state || initial, revision: result.version, canMigrateLegacy: false });
+          }
+          const state = cleanState({ ...stored, ...patch, lastScanReport: patch.lastScanReport ?? stored.lastScanReport });
+          Object.defineProperty(state, STATE_VERSION, { value: currentRevision, writable: true });
+          const result = await saveState(env, state);
+          return json({ ok: true, state, revision: result.version, canMigrateLegacy: false });
         } catch (error) {
           return json({ error: error.status === 409 ? "State changed; reload and retry" : "Invalid state" }, error.status || 400);
         }
       }
       if (url.pathname === "/api/automation" && request.method === "POST") {
         try {
-          const body = await request.json();
+          const body = await readBoundedJson(request, 4096);
+          if (Object.keys(body).some(key => !["enabled", "paused"].includes(key)) ||
+              Object.keys(body).some(key => typeof body[key] !== "boolean")) {
+            return json({ error: "Invalid settings" }, 400);
+          }
           const patch = {};
           if (typeof body.enabled === "boolean") patch.autoEnabled = body.enabled;
           if (typeof body.paused === "boolean") patch.paused = body.paused;
           if (!Object.keys(patch).length) return json({ error: "Invalid settings" }, 400);
           const result = await patchPaperState(env, patch);
-          return json({ ok: true, state: result.state });
+          return json({ ok: true, state: result.state, revision: result.version });
         } catch (error) {
           return json({ error: "Invalid settings" }, error.status || 400);
         }
@@ -931,16 +1071,20 @@ export default {
     // Fetch the dashboard as a clean GET and rebuild its HTML response.
     // This avoids forwarding browser navigation headers or stale encoding/length
     // metadata from the incoming request to the static-assets binding.
+    if (!isDashboardHtml) return json({ error: "Not found" }, 404);
     const assetRequest = new Request(assetUrl, { method: "GET" });
     const assetResponse = await env.ASSETS.fetch(assetRequest);
     if (isDashboardHtml && assetResponse.ok) {
       const html = await assetResponse.text();
-      return new Response(html, {
+      const secured = secureDashboard(html);
+      return new Response(secured.html, {
         status: assetResponse.status,
         headers: {
+          ...SECURITY_HEADERS,
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
           "Pragma": "no-cache",
+          "Content-Security-Policy": secured.csp,
           "X-Solana-Smart-Bot-Build": buildId
         }
       });

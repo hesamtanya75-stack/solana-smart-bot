@@ -28,7 +28,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -73,7 +73,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -88,18 +88,16 @@ jobs:
           if (config.main !== "worker.js") throw new Error("Unexpected Worker entry point");
           if (config.assets?.run_worker_first !== true) throw new Error("Static asset allowlist routing is required");
           if (!config.kv_namespaces?.some(binding => binding.binding === "BOT_STATE")) throw new Error("BOT_STATE KV binding is missing");
-          const requiredBindings = [["LIVE_TRADE_COORDINATOR", "LiveTradeCoordinator"], ["AUTH_GUARD", "AuthGuard"], ["PAPER_TRADING_STATE", "PaperTradingState"]];
+          const requiredBindings = [["PAPER_STATE_COORDINATOR", "PaperStateCoordinator"], ["AUTH_RATE_LIMITER", "MfaRateLimiter"], ["AUTH_GUARD", "AuthGuard"]];
           for (const [name, className] of requiredBindings) {
             if (!config.durable_objects?.bindings?.some(binding => binding.name === name && binding.class_name === className)) {
               throw new Error(`${name} Durable Object binding is missing`);
             }
-          }
-          for (const [tag, className] of [["v1-live-trade-coordinator", "LiveTradeCoordinator"], ["v2-auth-guard", "AuthGuard"], ["v3-paper-trading-state", "PaperTradingState"]]) {
-            if (!(config.migrations || []).some(migration => migration.tag === tag && migration.new_sqlite_classes?.includes(className))) {
-              throw new Error(`${tag} migration is missing`);
+            if (!config.exports?.[className] || config.exports[className].type !== "durable-object" || config.exports[className].storage !== "sqlite") {
+              throw new Error(`${className} SQLite export declaration is missing`);
             }
           }
-          console.log("Worker configuration and Durable Object migrations validated.");
+          console.log("Worker configuration and currently bound SQLite Durable Objects validated.");
           NODE
       - name: Build Worker without deploying
         run: npx --yes wrangler@4 deploy --dry-run --config wrangler.jsonc
@@ -112,7 +110,7 @@ jobs:
       - name: Check out the live-trading preparation branch for tests
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -142,7 +140,7 @@ jobs:
       - name: Check out the live-trading preparation branch
         uses: actions/checkout@v4
         with:
-          ref: phantom-wallet-settlement-foundation
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
           persist-credentials: false
 
       - name: Set up Node.js

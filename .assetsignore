@@ -3,6 +3,8 @@
 # repository metadata, server code, tests, docs, local state, and credentials.
 
 .git
+node_modules
+node_modules/**
 .git/**
 .wrangler
 .wrangler/**

@@ -12,8 +12,13 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
   assert.ok(scripts.length > 0, "expected at least one inline dashboard script");
   assert.match(
     html,
-    /response\.status === 401[\s\S]*?!path\.startsWith\("\/api\/login"\)[\s\S]*?path !== "\/api\/totp\/confirm"/,
-    "an incorrect TOTP setup code must not be treated as an expired admin session"
+    /if \(!response\.ok\) throw new Error\(data\.error \|\| \("HTTP " \+ response\.status\)\)/,
+    "API errors must preserve the server-provided status message"
+  );
+  assert.match(
+    html,
+    /document\.getElementById\("totpConfirm"\)\.onclick[\s\S]*?catch\(e\)\{status\(\)\.textContent=e\.message;\}/,
+    "TOTP confirmation errors must remain visible without resetting the session"
   );
   const mfaConfirmStart = html.indexOf('document.getElementById("totpConfirm").onclick');
   const mfaConfirmEnd = html.indexOf('})();', mfaConfirmStart);
@@ -26,10 +31,9 @@ test("dashboard inline scripts parse as valid JavaScript", () => {
   );
   assert.match(
     html,
-    /if\(!serverModeReady\)\s*\{\s*serverLogin\.style\.display="flex"/,
-    "closing the admin profile after MFA activation must reopen the login panel"
-  );
-  for (const [index, source] of scripts.entries()) {
+    /serverToken="";\s*serverModeReady=false;\s*localStorage\.removeItem\("solanaBotSession"\);\s*serverLogin\.style\.display="flex";\s*status\(\)\.textContent=p\.message\+"؛ تکایە دووبارە بچۆ ژوورەوە\."/,
+    "successful MFA activation must invalidate the old session and require a fresh login"
+  );  for (const [index, source] of scripts.entries()) {
     assert.doesNotThrow(
       () => new vm.Script(source, { filename: "index.html:inline-script-" + (index + 1) }),
       "inline script " + (index + 1) + " should parse"
