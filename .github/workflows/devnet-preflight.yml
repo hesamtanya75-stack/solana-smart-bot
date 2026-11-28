@@ -30,8 +30,9 @@ jobs:
         run: npm test
       - name: Verify Devnet cluster identity and read-only RPC methods
         env:
-          DEVNET_RPC_URL: ${{ secrets.DEVNET_RPC_URL }}
-          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+          # PR code is untrusted; do not expose repository RPC/API secrets.
+          # This job is read-only and uses the public Devnet endpoint only.
+          DEVNET_RPC_URL: https://api.devnet.solana.com
         run: node scripts/devnet-preflight.mjs
       - name: Report funded Devnet lifecycle as skipped without explicit opt-in
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_funded_devnet_lifecycle == true) }}
