@@ -210,3 +210,33 @@ test("idempotency binds mint, destination, slippage and quote identity", async (
   assert.equal(changed.status, 409);
   assert.match(changed.body.error, /different order intent/);
 });
+
+
+test("coordinator rejects oversized request bodies before parsing", async () => {
+  const { coordinator } = makeCoordinator();
+  const response = await coordinator.fetch(new Request("https://coordinator/reserve", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer test-only-internal-token-32-characters",
+      "Content-Length": "4097"
+    },
+    body: JSON.stringify({ payload: "x".repeat(4100) })
+  }));
+  assert.equal(response.status, 413);
+  assert.match((await response.json()).error, /exceeds the allowed size/);
+});
+
+test("coordinator requires JSON content type for mutations", async () => {
+  const { coordinator } = makeCoordinator();
+  const response = await coordinator.fetch(new Request("https://coordinator/reserve", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain",
+      Authorization: "Bearer test-only-internal-token-32-characters"
+    },
+    body: JSON.stringify(validReservation())
+  }));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Content-Type/);
+});
